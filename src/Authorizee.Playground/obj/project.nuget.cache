@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "dgSpecHash": "5PGXgj8lIFTbT/mokF+ZIRCTG4arR7ODAj1+26tlC+qiU6M5Wa8hp7a6cXcyo3mqE/2I2+WkzT9pjWTOti0+2g==",
+  "success": true,
+  "projectFilePath": "E:\\govei\\projects\\authorizee\\src\\Authorizee.Playground\\Authorizee.Playground.csproj",
+  "expectedPackageFiles": [
+    "E:\\govei\\packages\\.nuget\\dapper\\2.1.28\\dapper.2.1.28.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\dapper.sqlbuilder\\2.0.78\\dapper.sqlbuilder.2.0.78.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\microsoft.aspnetcore.openapi\\8.0.1\\microsoft.aspnetcore.openapi.8.0.1.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\microsoft.extensions.apidescription.server\\6.0.5\\microsoft.extensions.apidescription.server.6.0.5.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\microsoft.extensions.dependencyinjection.abstractions\\8.0.0\\microsoft.extensions.dependencyinjection.abstractions.8.0.0.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\microsoft.extensions.logging.abstractions\\8.0.0\\microsoft.extensions.logging.abstractions.8.0.0.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\microsoft.openapi\\1.4.3\\microsoft.openapi.1.4.3.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\npgsql\\8.0.1\\npgsql.8.0.1.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\swashbuckle.aspnetcore\\6.4.0\\swashbuckle.aspnetcore.6.4.0.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\swashbuckle.aspnetcore.swagger\\6.4.0\\swashbuckle.aspnetcore.swagger.6.4.0.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\swashbuckle.aspnetcore.swaggergen\\6.4.0\\swashbuckle.aspnetcore.swaggergen.6.4.0.nupkg.sha512",
+    "E:\\govei\\packages\\.nuget\\swashbuckle.aspnetcore.swaggerui\\6.4.0\\swashbuckle.aspnetcore.swaggerui.6.4.0.nupkg.sha512"
+  ],
+  "logs": []
+}

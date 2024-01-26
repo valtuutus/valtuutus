@@ -1,0 +1,11 @@
+E:\govei\projects\authorizee\src\Authorizee.Core\bin\Debug\net8.0\Authorizee.Core.deps.json
+E:\govei\projects\authorizee\src\Authorizee.Core\bin\Debug\net8.0\Authorizee.Core.dll
+E:\govei\projects\authorizee\src\Authorizee.Core\bin\Debug\net8.0\Authorizee.Core.pdb
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.GeneratedMSBuildEditorConfig.editorconfig
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.AssemblyInfoInputs.cache
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.AssemblyInfo.cs
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.csproj.CoreCompileInputs.cache
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.dll
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\refint\Authorizee.Core.dll
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\Authorizee.Core.pdb
+E:\govei\projects\authorizee\src\Authorizee.Core\obj\Debug\net8.0\ref\Authorizee.Core.dll
