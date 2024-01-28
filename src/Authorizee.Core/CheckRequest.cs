@@ -1,3 +1,5 @@
+namespace Authorizee.Core;
+
 public record CheckRequest
 {
     public required string EntityType { get; init; }
