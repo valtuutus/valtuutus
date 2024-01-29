@@ -38,7 +38,22 @@ public record PermissionNode(PermissionNodeType Type)
         return new PermissionNode(PermissionNodeType.Expression)
             { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Union, [Leaf(left), Leaf(right)]) };
     }
+    
+    public static PermissionNode Union(params string[] checks)
+    {
+        var nodes = checks.Select(Leaf).ToList();
+        
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Union, nodes) };
+    }
 
+    public static PermissionNode Union(params PermissionNode[] nodes)
+    {
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Union, nodes.ToList()) };
+    }
+
+    
     public static PermissionNode Leaf(string value)
     {
         return new PermissionNode(PermissionNodeType.Leaf)

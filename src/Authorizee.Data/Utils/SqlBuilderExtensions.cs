@@ -22,4 +22,13 @@ public static class SqlBuilderExtensions
         
         return builder;
     }
+    
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter)
+    {
+        builder = builder.Where("entity_type = @EntityType", filter);
+        builder = builder.Where("entity_id = @EntityId", filter);
+        builder = builder.Where("attribute = @Attribute", filter);
+        
+        return builder;
+    }
 }

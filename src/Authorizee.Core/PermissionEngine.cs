@@ -1,4 +1,5 @@
-﻿using Authorizee.Core.Data;
+﻿using System.Text.Json;
+using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Microsoft.Extensions.Logging;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
@@ -9,10 +10,12 @@ public enum CheckType
 {
     None,
     DirectRelation,
-    Permission
+    Permission,
+    Attribute,
+    Rule
 }
 
-public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, ILogger<PermissionEngine> logger)
+public class PermissionEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, Schema schema, ILogger<PermissionEngine> logger)
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
@@ -32,11 +35,14 @@ public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, I
             .FirstOrDefault(x => x.Name == req.Permission);
         var relation = schema.GetRelations(req.EntityType)
             .FirstOrDefault(x => x.Name == req.Permission);
+        var attribute = schema.GetAttributes(req.EntityType)
+            .FirstOrDefault(x => x.Name == req.Permission);
 
-        var type = new { permission, relation } switch
+        var type = new { permission, relation, attribute } switch
         {
             { permission: null, relation: not null } => CheckType.DirectRelation,
             { permission: not null, relation: null } => CheckType.Permission,
+            { attribute: not null} => CheckType.Attribute,
             _ => CheckType.None
         };
 
@@ -58,7 +64,28 @@ public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, I
         {
             CheckType.Permission => checkPermission(),
             CheckType.DirectRelation => CheckRelation(req),
+            CheckType.Attribute => CheckAttribute(req),
             _ => Fail()
+        };
+    }
+
+    public CheckFunction CheckAttribute(CheckRequest req)
+    {
+        return async (ct) =>
+        {
+            var attribute = await attributeReader.GetAttribute(new AttributeFilter
+            {
+                Attribute = req.Permission,
+                EntityId = req.EntityId,
+                EntityType = req.EntityType
+            });
+
+            if (attribute is null)
+                return false;
+
+            var attrValue = attribute.Value.GetValue<bool>();
+
+            return attrValue;
         };
     }
 
@@ -122,7 +149,7 @@ public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, I
     {
         return async (ct) =>
         {
-            var relations = await tupleReader.GetRelations(new RelationFilter
+            var relations = await relationReader.GetRelations(new RelationFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
@@ -148,7 +175,7 @@ public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, I
         return async (ct) =>
         {
             logger.LogDebug("Checking relation {relation} with req: {req}", req.Permission, req);
-            var relations = await tupleReader.GetRelations(new RelationFilter
+            var relations = await relationReader.GetRelations(new RelationFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
@@ -210,7 +237,7 @@ public class PermissionEngine(IRelationTupleReader tupleReader, Schema schema, I
                 return true;
             }
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException exZ)
         {
             logger.LogDebug("Checking union: returned: {value}, operation cancelled", true);
             return true;

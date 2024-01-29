@@ -1,8 +1,14 @@
-﻿namespace Authorizee.Core.Schemas;
+﻿using Jint;
+using Jint.Native;
+
+namespace Authorizee.Core.Schemas;
+
+// TODO: Validate schema correctness before injecting into the dependency injection container
 
 public class SchemaBuilder
 {
     private readonly List<EntitySchemaBuilder> _entities = [];
+    private readonly List<Rule> _rules = [];
 
     public EntitySchemaBuilder WithEntity(string entityName)
     {
@@ -11,9 +17,15 @@ public class SchemaBuilder
         return builder;
     }
 
+    public SchemaBuilder WithRule<T>(string ruleName, string rule)
+    {
+        _rules.Add(new Rule { Name = ruleName, RuleFn = rule });
+        return this;
+    }
+
     public Schema Build()
     {
-        return new Schema(_entities.Select(e => e.Build()).ToList());
+        return new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
     }
 }
 
@@ -21,6 +33,7 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 {
     private readonly List<Relation> _relations = new();
     private readonly List<Permission> _permissions = new();
+    private readonly List<Attribute> _attributes = new();
 
     public EntitySchemaBuilder WithRelation(string relationName, Action<RelationSchemaBuilder> config)
     {
@@ -36,6 +49,12 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
         return this;
     }
 
+    public EntitySchemaBuilder WithAttribute(string attrName, Type attrType)
+    {
+        _attributes.Add(new Attribute(attrName, attrType));
+        return this;
+    }
+
     public EntitySchemaBuilder WithEntity(string entityName)
     {
         return schemaBuilder.WithEntity(entityName);
@@ -47,7 +66,8 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
         {
             Name = name,
             Relations = _relations,
-            Permissions = _permissions
+            Permissions = _permissions,
+            Attributes = _attributes
         };
     }
 }

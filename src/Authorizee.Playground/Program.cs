@@ -16,9 +16,6 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("Db")!));
 
-builder.Services.AddTransient<IRelationTupleReader, RelationTupleReader>();
-builder.Services.AddTransient<PermissionEngine>();
-
 builder.Services.AddSchemaConfiguration(c =>
 {
     c
@@ -37,7 +34,13 @@ builder.Services.AddSchemaConfiguration(c =>
         .WithEntity("project")
             .WithRelation("org", rc => rc.WithEntityType("organization"))
             .WithRelation("team", rc => rc.WithEntityType("team"))
-            .WithPermission("view",  PermissionNode.Union("org.admin", "team.member"))
+            .WithAttribute("public", typeof(bool))
+            .WithPermission("view",  
+            PermissionNode.Union(
+                PermissionNode.Leaf("org.admin"), 
+                PermissionNode.Leaf("team.member"), 
+                PermissionNode.Intersect("public", "org.member"))
+            )
             .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))
             .WithPermission("delete", PermissionNode.Leaf("team.member"));
 });
