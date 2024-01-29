@@ -5,6 +5,7 @@ using Authorizee.Core.Schemas;
 using Authorizee.Data;
 using Authorizee.Data.Configuration;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,10 +14,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDatabaseSetup(builder.Configuration.GetConnectionString("Db")!);
+builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("Db")!));
 
 builder.Services.AddTransient<IRelationTupleReader, RelationTupleReader>();
-builder.Services.AddTransient<PermissionService>();
+builder.Services.AddTransient<PermissionEngine>();
 
 builder.Services.AddSchemaConfiguration(c =>
 {
@@ -29,16 +30,16 @@ builder.Services.AddSchemaConfiguration(c =>
             .WithRelation("owner", rc => rc.WithEntityType("user"))
             .WithRelation("member", rc => rc.WithEntityType("user"))
             .WithRelation("org", rc => rc.WithEntityType("organization"))
-            .WithPermission("edit", PermissionNode.Or("org.admin", "owner"))
-            .WithPermission("delete", PermissionNode.Or("org.admin", "owner"))
-            .WithPermission("invite", PermissionNode.And("org.admin", PermissionNode.Or("owner", "member")))
-            .WithPermission("remove_user", new PermissionNode("owner"))
+            .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
+            .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
+            .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
+            .WithPermission("remove_user", PermissionNode.Leaf("owner"))
         .WithEntity("project")
             .WithRelation("org", rc => rc.WithEntityType("organization"))
             .WithRelation("team", rc => rc.WithEntityType("team"))
-            .WithPermission("view",  PermissionNode.Or("org.admin", "team.member"))
-            .WithPermission("edit", PermissionNode.Or("org.admin", "team.member"))
-            .WithPermission("delete", new PermissionNode("team.member"));
+            .WithPermission("view",  PermissionNode.Union("org.admin", "team.member"))
+            .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))
+            .WithPermission("delete", PermissionNode.Leaf("team.member"));
 });
 
 var app = builder.Build();
@@ -53,7 +54,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        ([AsParameters] CheckRequest req, [FromServices] PermissionService service) => { return service.Check(req); })
+        async ([AsParameters] CheckRequest req, [FromServices] PermissionEngine service, CancellationToken ct) => await service.Check(req, ct))
     .WithName("Check Relation")
     .WithOpenApi();
 

@@ -1,39 +1,51 @@
 ﻿namespace Authorizee.Core.Schemas;
 
-public record PermissionNode(string Value)
+public enum PermissionNodeType
 {
-    public PermissionNode? Left { get; init; }
-    public PermissionNode? Right { get; init; }
+    Leaf,
+    Expression
+}
 
-    public const string AND = "AND";
-    public const string OR = "OR";
+public enum PermissionOperation
+{
+    Intersect,
+    Union,
+}
 
-    public static PermissionNode And(string left, string right)
+public record PermissionNodeLeaf(string Value);
+
+public record PermissionNodeOperation(PermissionOperation Operation, List<PermissionNode> Children);
+
+public record PermissionNode(PermissionNodeType Type)
+{
+    public PermissionNodeLeaf? LeafNode { get; init; }
+    public PermissionNodeOperation? ExpressionNode { get; init; }
+
+    public static PermissionNode Intersect(string left, string right)
     {
-        return new PermissionNode(AND)
-        {
-            Left = new PermissionNode(left),
-            Right = new PermissionNode(right)
-        };
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Intersect, [Leaf(left), Leaf(right)]) };
     }
-    
-    public static PermissionNode And(string left, PermissionNode right)
+
+    public static PermissionNode Intersect(string left, PermissionNode right)
     {
-        return new PermissionNode(AND)
-        {
-            Left = new PermissionNode(left),
-            Right = right
-        };
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Intersect, [Leaf(left), right]) };
     }
-    
-    public static PermissionNode Or(string left, string right)
+
+    public static PermissionNode Union(string left, string right)
     {
-        return new PermissionNode(OR)
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Union, [Leaf(left), Leaf(right)]) };
+    }
+
+    public static PermissionNode Leaf(string value)
+    {
+        return new PermissionNode(PermissionNodeType.Leaf)
         {
-            Left = new PermissionNode(left),
-            Right = new PermissionNode(right)
+            LeafNode = new PermissionNodeLeaf(value)
         };
     }
 }
 
-public record Permission(string Name, PermissionNode PermissionTree);
+public record Permission(string Name, PermissionNode Tree);

@@ -1,26 +1,32 @@
-﻿using System.Data;
-using Authorizee.Core;
+﻿using Authorizee.Core;
 using Authorizee.Core.Data;
+using Authorizee.Data.Configuration;
 using Authorizee.Data.Utils;
 using Dapper;
+using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data;
 
-public class RelationTupleReader(IDbConnection connection) : IRelationTupleReader
+public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<RelationTupleReader> logger)
+    : IRelationTupleReader
 {
     public async Task<List<RelationTuple>> GetRelations(RelationFilter filter)
     {
+        using var connection = connectionFactory();
+
         var queryTemplate = new SqlBuilder()
             .FilterRelations(filter)
             .AddTemplate(@"SELECT 
-                    entity_type as EntityType,
-                    entity_id as EntityId,
-                    relation as Relation,
-                    subject_type as SubjectType,
-                    subject_id as SubjectId, 
-                    subject_relation as SubjectRelation 
+                    entity_type,
+                    entity_id,
+                    relation,
+                    subject_type,
+                    subject_id, 
+                    subject_relation 
                 FROM relation_tuples /**where**/");
-        
+
+        logger.LogDebug("Querying relations tuples with filter: {filter}", filter);
+
         return (await connection.QueryAsync<RelationTuple>(queryTemplate.RawSql, queryTemplate.Parameters))
             .ToList();
     }
