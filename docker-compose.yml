@@ -1,0 +1,19 @@
+# docker-compose up -d
+# docker-compose down
+
+version: "3.6"
+
+services:
+  db:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres # The PostgreSQL user (useful to connect to the database)
+      - POSTGRES_PASSWORD=hqysxvqw5cgdYyQHTfHe # The PostgreSQL password (useful to connect to the database)
+      - POSTGRES_DB=authorizee # The PostgreSQL default database (automatically created at first launch)
+    volumes:
+      - sqlvolume:/var/lib/postgresql/data
+
+volumes:
+  sqlvolume:
