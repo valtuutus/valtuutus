@@ -1,5 +1,6 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Data;
+using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
 using Authorizee.Data.Utils;
 using Dapper;
@@ -11,6 +12,8 @@ public class AttributeReader(DbConnectionFactory connectionFactory, ILogger<Rela
 {
     public async Task<AttributeTuple?> GetAttribute(AttributeFilter filter)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()

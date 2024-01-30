@@ -1,5 +1,6 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Data;
+using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
 using Authorizee.Data.Utils;
 using Dapper;
@@ -12,6 +13,8 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
 {
     public async Task<List<RelationTuple>> GetRelations(RelationFilter filter)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()

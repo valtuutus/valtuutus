@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using Authorizee.Core.Data;
+using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Microsoft.Extensions.Logging;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
@@ -19,6 +20,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
         logger.LogDebug("Initializing check permission with request: {req}", req);
         return await CheckInternal(req)(ct);
     }
@@ -48,6 +50,8 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
         var checkPermission = () =>
         {
+            using var activity = DefaultActivitySource.Instance.StartActivity("CheckPermission");
+
             if (permission is null)
                 return Fail();
 
@@ -73,6 +77,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
     {
         return async (ct) =>
         {
+            using var activity = DefaultActivitySource.Instance.StartActivity();
             var attribute = await attributeReader.GetAttribute(new AttributeFilter
             {
                 Attribute = req.Permission,
@@ -91,6 +96,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
     private CheckFunction CheckExpression(CheckRequest req, PermissionNode node)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
         logger.LogDebug("Checking permission expression: {req} with node {node}", req, node);
         return node.ExpressionNode!.Operation switch
         {
@@ -103,6 +109,8 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
     private CheckFunction CheckExpressionChild(CheckRequest req, List<PermissionNode> children,
         Func<List<CheckFunction>, CancellationToken, Task<bool>> operationCombiner)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
         var checkFunctions = new List<Func<CancellationToken, Task<bool>>>(capacity: children.Count);
         foreach (var child in children)
         {
@@ -123,6 +131,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
     private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
         logger.LogDebug("Checking leaf: {node}", node);
         var perm = node.LeafNode!.Value;
 
@@ -138,6 +147,8 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
     private CheckFunction CheckComputedUserSet(CheckRequest req, string computedUserSetRelation)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
         return CheckInternal(req with
         {
             Permission = computedUserSetRelation
@@ -149,6 +160,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
     {
         return async (ct) =>
         {
+            using var activity = DefaultActivitySource.Instance.StartActivity();
             var relations = await relationReader.GetRelations(new RelationFilter
             {
                 EntityId = req.EntityId,
@@ -174,6 +186,8 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
     {
         return async (ct) =>
         {
+            using var activity = DefaultActivitySource.Instance.StartActivity();
+
             logger.LogDebug("Checking relation {relation} with req: {req}", req.Permission, req);
             var relations = await relationReader.GetRelations(new RelationFilter
             {
@@ -210,6 +224,8 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
     private async Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
         var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var cancellationToken = cancellationTokenSource.Token;
 
@@ -249,6 +265,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
     
     private async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
     {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
         var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var cancellationToken = cancellationTokenSource.Token;
 

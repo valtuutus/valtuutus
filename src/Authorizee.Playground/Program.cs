@@ -1,11 +1,16 @@
+using System.Diagnostics;
 using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
+using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Authorizee.Data;
 using Authorizee.Data.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +49,40 @@ builder.Services.AddSchemaConfiguration(c =>
             .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))
             .WithPermission("delete", PermissionNode.Leaf("team.member"));
 });
+
+Activity.DefaultIdFormat = ActivityIdFormat.W3C;
+
+
+builder.Services
+    .AddOpenTelemetry()
+    .ConfigureResource((rb) => rb
+        .AddService(serviceName: DefaultActivitySource.SourceName)
+        .AddTelemetrySdk()
+        .AddEnvironmentVariableDetector())
+    .WithTracing(telemetry =>
+    {
+        telemetry
+            .AddSource(DefaultActivitySource.SourceName)
+            .AddAspNetCoreInstrumentation(o =>
+            {
+                o.RecordException = true;
+            })
+            .AddOtlpExporter();
+    })
+    .WithMetrics(telemetry =>
+    {
+        telemetry
+            .AddMeter("Microsoft.AspNetCore.Hosting")
+            .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+            .AddView("http-server-request-duration",
+                new ExplicitBucketHistogramConfiguration
+                {
+                    Boundaries = new double[] { 0, 0.005, 0.01, 0.025, 0.05,
+                        0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10 }
+                })
+            .AddAspNetCoreInstrumentation()
+            .AddOtlpExporter();
+    });
 
 var app = builder.Build();
 
