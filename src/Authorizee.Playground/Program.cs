@@ -100,8 +100,8 @@ app.MapGet("/check",
     .WithName("Check Relation")
     .WithOpenApi();
 
-app.MapGet("/lookup-entity",
-        async ([AsParameters] LookupEntityRequest req, [FromServices] LookupEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+app.MapPost("/lookup-entity",
+        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
     .WithName("Lookup entity")
     .WithOpenApi();
 
