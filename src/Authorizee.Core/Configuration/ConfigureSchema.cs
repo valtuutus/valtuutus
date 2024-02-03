@@ -13,5 +13,6 @@ public static class ConfigureSchema
         config(builder);
         services.AddSingleton(builder.Build());
         services.AddSingleton<PermissionEngine>();
+        services.AddSingleton<LookupEngine>();
     }
 }
