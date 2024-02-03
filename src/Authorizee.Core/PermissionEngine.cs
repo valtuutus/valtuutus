@@ -73,7 +73,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
         };
     }
 
-    public CheckFunction CheckAttribute(CheckRequest req)
+    private CheckFunction CheckAttribute(CheckRequest req)
     {
         return async (ct) =>
         {
