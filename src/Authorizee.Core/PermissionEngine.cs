@@ -7,7 +7,7 @@ using CheckFunction = System.Func<System.Threading.CancellationToken, System.Thr
 
 namespace Authorizee.Core;
 
-public enum CheckType
+public enum RelationType
 {
     None,
     DirectRelation,
@@ -42,10 +42,10 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
         var type = new { permission, relation, attribute } switch
         {
-            { permission: null, relation: not null } => CheckType.DirectRelation,
-            { permission: not null, relation: null } => CheckType.Permission,
-            { attribute: not null} => CheckType.Attribute,
-            _ => CheckType.None
+            { permission: null, relation: not null } => RelationType.DirectRelation,
+            { permission: not null, relation: null } => RelationType.Permission,
+            { attribute: not null} => RelationType.Attribute,
+            _ => RelationType.None
         };
 
         var checkPermission = () =>
@@ -66,9 +66,9 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
 
         return type switch
         {
-            CheckType.Permission => checkPermission(),
-            CheckType.DirectRelation => CheckRelation(req),
-            CheckType.Attribute => CheckAttribute(req),
+            RelationType.Permission => checkPermission(),
+            RelationType.DirectRelation => CheckRelation(req),
+            RelationType.Attribute => CheckAttribute(req),
             _ => Fail()
         };
     }
