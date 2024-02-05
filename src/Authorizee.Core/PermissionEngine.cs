@@ -161,7 +161,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.Instance.StartActivity();
-            var relations = await relationReader.GetRelations(new RelationFilter
+            var relations = await relationReader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
@@ -189,7 +189,7 @@ public class PermissionEngine(IRelationTupleReader relationReader, IAttributeRea
             using var activity = DefaultActivitySource.Instance.StartActivity();
 
             logger.LogDebug("Checking relation {relation} with req: {req}", req.Permission, req);
-            var relations = await relationReader.GetRelations(new RelationFilter
+            var relations = await relationReader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,

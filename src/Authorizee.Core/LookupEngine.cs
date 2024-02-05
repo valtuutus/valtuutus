@@ -1,15 +1,41 @@
 using System.Collections.Concurrent;
 using System.Threading.Tasks.Dataflow;
+using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Core;
 
-public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILogger<LookupEngine> logger)
+public class LookupEngine(
+    Schema schema,
+    PermissionEngine permissionEngine,
+    ILogger<LookupEngine> logger,
+    IRelationTupleReader tupleReader)
 {
     public async Task<ConcurrentBag<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
     {
-        var relations = GetPermissionGraphToSubject(req.EntityType, req.Permission, req.SubjectType);
+        var relationsOrAttributes =
+            GetPermissionRelationsAndAttributes(req.EntityType, req.Permission, req.SubjectType);
+
+        var relations = relationsOrAttributes.Where(x => x.Type == RelationOrAttributeType.Relation)
+            .Select(x => x.Relation!);
+
+        var requestedSubjectRelations = relations.Where(x =>
+            x.SubjectType.Equals(req.SubjectType, StringComparison.InvariantCultureIgnoreCase));
+
+        var relationTuples =
+            await tupleReader.GetRelations(requestedSubjectRelations
+                .Select(x => new EntityRelationFilter
+                {
+                    Relation = x.Name,
+                    EntityType = x.EntityType
+                }),
+                new SubjectFilter
+                {
+                    SubjectId = req.SubjectId,
+                    SubjectType = req.SubjectType
+                }
+            );
 
         ConcurrentBag<string> entityIDs = [];
 
@@ -32,7 +58,7 @@ public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILog
         return entityIDs;
     }
 
-    private HashSet<RelationOrAttribute> GetPermissionGraphToSubject(string finalEntityType,
+    private HashSet<RelationOrAttribute> GetPermissionRelationsAndAttributes(string finalEntityType,
         string finalEntityPermission, string finalSubjectType)
     {
         var relationSet = new HashSet<RelationOrAttribute>();
@@ -59,7 +85,7 @@ public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILog
                 {
                     continue;
                 }
-                
+
                 if (entity.Relation is not null)
                     walk(entity.Type, entity.Relation);
             }
@@ -74,6 +100,7 @@ public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILog
                     {
                         walkExpression(entityType, child);
                     }
+
                     break;
                 case PermissionNodeType.Leaf:
                     if (node.LeafNode!.Value.Split('.') is [{ } relation, { } entityPermission])
@@ -83,13 +110,14 @@ public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILog
 
                         foreach (var entity in r.Entities)
                         {
-                            walk(entity.Type, entity.Relation ?? entityPermission );
+                            walk(entity.Type, entity.Relation ?? entityPermission);
                         }
                     }
                     else
                     {
                         walk(entityType, node.LeafNode.Value);
                     }
+
                     break;
             }
         }
@@ -138,7 +166,7 @@ public class LookupEngine(Schema schema, PermissionEngine permissionEngine, ILog
         }
 
         walk(finalEntityType, finalEntityPermission);
-        
+
         return relationSet;
     }
 }
