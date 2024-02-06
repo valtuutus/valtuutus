@@ -1,4 +1,5 @@
-﻿using Jint;
+﻿using Esprima;
+using Jint;
 using Jint.Native;
 
 namespace Authorizee.Core.Schemas;
@@ -25,7 +26,9 @@ public class SchemaBuilder
 
     public Schema Build()
     {
-        return new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
+        var schema = new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
+        var graph = new SchemaGraph(schema);
+        return schema;
     }
 }
 

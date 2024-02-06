@@ -39,6 +39,7 @@ builder.Services.AddSchemaConfiguration(c =>
         .WithEntity("project")
             .WithRelation("org", rc => rc.WithEntityType("organization"))
             .WithRelation("team", rc => rc.WithEntityType("team"))
+            .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
             .WithAttribute("public", typeof(bool))
             .WithPermission("view",  
             PermissionNode.Union(
