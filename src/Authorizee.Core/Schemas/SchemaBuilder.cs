@@ -41,6 +41,8 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
         _relations.Add(builder.Build());
         return this;
     }
+    
+    public SchemaBuilder SchemaBuilder => schemaBuilder;
 
     public EntitySchemaBuilder WithPermission(string permissionName, PermissionNode permissionTree)
     {
