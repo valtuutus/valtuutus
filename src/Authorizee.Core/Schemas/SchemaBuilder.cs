@@ -1,8 +1,4 @@
-﻿using Esprima;
-using Jint;
-using Jint.Native;
-
-namespace Authorizee.Core.Schemas;
+﻿namespace Authorizee.Core.Schemas;
 
 // TODO: Validate schema correctness before injecting into the dependency injection container
 
@@ -24,11 +20,11 @@ public class SchemaBuilder
         return this;
     }
 
-    public Schema Build()
+    public (Schema, SchemaGraph) Build()
     {
         var schema = new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
         var graph = new SchemaGraph(schema);
-        return schema;
+        return (schema, graph);
     }
 }
 

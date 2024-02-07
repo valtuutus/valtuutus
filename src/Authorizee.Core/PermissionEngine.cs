@@ -1,5 +1,4 @@
-﻿using System.Text.Json;
-using Authorizee.Core.Data;
+﻿using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Microsoft.Extensions.Logging;
