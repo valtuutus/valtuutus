@@ -79,12 +79,12 @@ public sealed class PermissionEngineSpecs
     }
     
     
-    public static PermissionEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes)
+    public static PermissionEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
         var logger = Substitute.For<ILogger<PermissionEngine>>();
-        return new PermissionEngine(relationTupleReader, attributeReader, Schemas.schema, logger);
+        return new PermissionEngine(relationTupleReader, attributeReader, schema ?? Schemas.schema, logger);
     }
 
 
@@ -181,56 +181,79 @@ public sealed class PermissionEngineSpecs
         result.Should().Be(expected);
     }
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> DirectRelationPermissions => new()
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsData => new()
     {
 
         {
-            // Checks intersect of two permissions
+            // Checks union of two relations, both true
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, Workspaces.PublicWorkspace, "member", Users.Identifier, Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-                new(Workspaces.Identifier, Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
-            },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "comment",  Users.Identifier, Users.Alice),
-            true
-        },
-        {
-            // Checks intersect of two permissions, but the first one is false
-            new RelationTuple[]
-            {
-            },
-            new AttributeTuple[]
-            {
-                new(Workspaces.Identifier, Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
-            },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "comment",  Users.Identifier, Users.Alice),
-            false
-        },
-        {
-            // Checks intersect of two permissions, but the second one is false
-            new RelationTuple[]
-            {
-                new(Workspaces.Identifier, Workspaces.PublicWorkspace, "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", Users.Identifier, Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks union of two relations, first is false
+            new RelationTuple[]
+            {
+                new("project", "1", "admin", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks union of two relations, second is false
+            new RelationTuple[]
+            {
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks union of two relations, both are false
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
             false
-        }
+        },
+
+        
     };
     
     
     [Theory]
-    [MemberData(nameof(DirectRelationPermissions))]
-    public async Task DirectPermissionChecksShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    [MemberData(nameof(UnionRelationsData))]
+    public async Task CheckingSimpleUnionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var engine = CreateEngine(tuples, attributes);
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithPermission("view", PermissionNode.Union("member", "admin"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
         
         // Act
         var result = await engine.Check(request, default);
@@ -238,6 +261,87 @@ public sealed class PermissionEngineSpecs
         // assert
         result.Should().Be(expected);
     }
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionRelationsData => new()
+    {
+        {
+            // Checks intersection of two relations, both true
+            new RelationTuple[]
+            {
+                new("project", "1", "owner", Users.Identifier, Users.Alice),
+                new("project", "1", "whatever", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks intersection of two relations, first is false
+            new RelationTuple[]
+            {
+                new("project", "1", "whatever", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks intersection of two relations, second is false
+            new RelationTuple[]
+            {
+                new("project", "1", "owner", Users.Identifier, Users.Alice),
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks intersection of two permissions, both are false
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            false
+        },
+
+        
+    };
+    
+    
+    [Theory]
+    [MemberData(nameof(IntersectionRelationsData))]
+    public async Task CheckingSimpleIntersectionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("owner", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithRelation("whatever", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithPermission("delete", PermissionNode.Intersect("owner", "whatever"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
     
     
     [Fact]
