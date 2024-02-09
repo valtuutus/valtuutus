@@ -781,6 +781,83 @@ public sealed class PermissionEngineSpecs
         result.Should().Be(expected);
     }
     
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> NestedPermissionsData => new()
+    {
+
+        {
+            // Checks nested permission, admin
+            new RelationTuple[]
+            {
+                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "parent", Workspaces.Identifier, "1"),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks intersect of relations, member
+            new RelationTuple[]
+            {
+                new(Workspaces.Identifier, "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "parent", Workspaces.Identifier, "1"),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks intersect of relations, no relations
+            new RelationTuple[]
+            {
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            false
+        },
+
+        
+    };
+    
+    
+    [Theory]
+    [MemberData(nameof(NestedPermissionsData))]
+    public async Task CheckingNestedPermissionsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity(Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(Users.Identifier))
+            .WithPermission("view", PermissionNode.Union("admin", "member"))
+            .WithEntity("project")
+                .WithRelation("admin", rc => rc.WithEntityType(Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("parent.view"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
     
     
     [Fact]
