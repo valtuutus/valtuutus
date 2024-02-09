@@ -343,6 +343,198 @@ public sealed class PermissionEngineSpecs
     }
     
     
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsAttributesData => new()
+    {
+
+        {
+            // Checks union of attr and rel, both true
+            new RelationTuple[]
+            {
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(true))
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks union of attr and rel, first is true
+            new RelationTuple[]
+            {
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        
+        {
+            // Checks union of attr and rel, second is true
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(true))
+
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks union of attr and rel, both are false (attr setted)
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(false))
+
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks union of attr and rel, both are false (attr setted)
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+
+            },
+            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            false
+        },
+
+
+        
+    };
+    
+    
+    [Theory]
+    [MemberData(nameof(UnionRelationsAttributesData))]
+    public async Task CheckingSimpleUnionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithAttribute("public", typeof(bool))
+                .WithPermission("view", PermissionNode.Union("member", "public"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionRelationsAttributesData => new()
+    {
+        {
+            // Checks intersection of attr and rel, both true
+            new RelationTuple[]
+            {
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(true))
+            },
+            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks intersection of attr and rel, first is true
+            new RelationTuple[]
+            {
+                new("project", "1", "member", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            false
+        },
+        
+        {
+            // Checks intersection of attr and rel, second is true
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(true))
+
+            },
+            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks intersection of attr and rel, both are false (attr setted)
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple("project", "1", "public", JsonValue.Create(false))
+
+            },
+            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks intersection of attr and rel, both are false (attr setted)
+            new RelationTuple[]
+            {
+            },
+            new AttributeTuple[]
+            {
+
+            },
+            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            false
+        },
+    };
+    
+    [Theory]
+    [MemberData(nameof(IntersectionRelationsAttributesData))]
+    public async Task CheckingSimpleIntersectionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithAttribute("public", typeof(bool))
+                .WithPermission("comment", PermissionNode.Intersect("public", "member"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
     
     [Fact]
     public async Task EmptyDataShouldReturnFalseOnPermissions()
