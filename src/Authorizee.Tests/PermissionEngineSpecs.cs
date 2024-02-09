@@ -535,6 +535,80 @@ public sealed class PermissionEngineSpecs
     }
     
     
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> NestedRelationData => new()
+    {
+
+        {
+            // Checks nested relation, true
+            new RelationTuple[]
+            {
+                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "parent", Workspaces.Identifier, "1"),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            true
+        },
+        {
+            // Checks nested relation, but workspace is not parent of the project
+            new RelationTuple[]
+            {
+                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            false
+        },
+        {
+            // Checks nested relation, no relation
+            new RelationTuple[]
+            {
+
+            },
+            new AttributeTuple[]
+            {
+            },
+            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            false
+        },
+
+        
+    };
+    
+    
+    [Theory]
+    [MemberData(nameof(NestedRelationData))]
+    public async Task CheckingSimpleNestedRelationShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var (schema, _) = new SchemaBuilder()
+            .WithEntity(Users.Identifier)
+            .WithEntity(Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(Users.Identifier))
+            .WithEntity("project")
+                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithPermission("delete", PermissionNode.Leaf("parent.admin"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    
     
     [Fact]
     public async Task EmptyDataShouldReturnFalseOnPermissions()
