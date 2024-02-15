@@ -64,6 +64,7 @@ builder.Services
     {
         telemetry
             .AddSource(DefaultActivitySource.SourceName)
+            .AddSource(DefaultActivitySource.SourceNameInternal)
             .AddAspNetCoreInstrumentation(o =>
             {
                 o.RecordException = true;
