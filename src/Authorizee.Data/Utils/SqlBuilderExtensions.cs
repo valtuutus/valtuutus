@@ -46,6 +46,28 @@ public static class SqlBuilderExtensions
         
         return builder;
     }
+    
+    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilters)
+    {
+        if (!string.IsNullOrEmpty(entityFilter.EntityType))
+            builder = builder.Where("entity_type = @EntityType", new {entityFilter.EntityType});
+        
+        if (!string.IsNullOrEmpty(entityFilter.Relation))
+            builder = builder.Where("relation = @Relation", new {entityFilter.Relation});
+
+        var entityRelationFilters = subjectsFilters as SubjectFilter[] ?? subjectsFilters.ToArray();
+        for (var i = 0; i < entityRelationFilters.Length; i++)
+        {
+            var filter = entityRelationFilters[i];
+            builder = builder.OrWhere($"(subject_type = @SubjectType{i} AND subject_id = @SubjectId{i})", new Dictionary<string, object>
+            {
+                {$"@SubjectType{i}", filter.SubjectType},
+                {$"@SubjectId{i}", filter.SubjectId},
+            });
+        }
+        
+        return builder;
+    }
 
     
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter)

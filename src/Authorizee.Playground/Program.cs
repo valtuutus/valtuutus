@@ -44,7 +44,7 @@ builder.Services.AddSchemaConfiguration(c =>
             .WithPermission("view",  
             PermissionNode.Union(
                 PermissionNode.Leaf("org.admin"), 
-                PermissionNode.Leaf("team.member"), 
+                PermissionNode.Leaf("member"), 
                 PermissionNode.Intersect("public", "org.member"))
             )
             .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))

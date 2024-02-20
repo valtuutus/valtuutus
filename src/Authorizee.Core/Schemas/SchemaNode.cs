@@ -2,22 +2,24 @@
 
 public interface ISchemaNode
 {
+    public string Name { get; }
     public NodeType Type { get; }
 }
 
 public class SchemaRelationsIdentifier(Schema Schema)
 {
     private readonly List<(string, string)> _relations = new();
+    private readonly Dictionary<string, (NodeType type, string key)> _permToNodeKeyAndType = new();
     private readonly Dictionary<string, ISchemaNode> _nodeKeyMap = new();
 
-    public (List<(string, string)>, Dictionary<string, ISchemaNode>) Identify()
+    public (List<(string, string)>, Dictionary<string, ISchemaNode>, Dictionary<string, (NodeType type, string key)>) Identify()
     {
         foreach (var entity in Schema.Entities)
         {
             BuildGraphRecursive(BuildEntityKey(entity.Name), null);
         }
 
-        return (_relations, _nodeKeyMap);
+        return (_relations, _nodeKeyMap, _permToNodeKeyAndType);
     }
 
     private void BuildGraphRecursive(string key, string? parentKey)
@@ -82,6 +84,8 @@ public class SchemaRelationsIdentifier(Schema Schema)
             Name = permissionName,
             ExpressionRoot = perm.Tree
         });
+
+        _permToNodeKeyAndType.Add($"{entityName}.{permissionName}", (NodeType.Permission, key));
 
         RelationType identifyType(string entityType, string relationName)
         {
@@ -172,6 +176,8 @@ public class SchemaRelationsIdentifier(Schema Schema)
             Name = relationName
         });
 
+        _permToNodeKeyAndType.Add($"{entityName}.{relationName}", (NodeType.Relation, key));
+
         foreach (var relationEntity in relation.Entities)
         {
             if (!string.IsNullOrWhiteSpace(relationEntity.Relation))
@@ -194,6 +200,8 @@ public class SchemaRelationsIdentifier(Schema Schema)
         {
             Name = attr.Name
         });
+
+        _permToNodeKeyAndType.Add($"{entityName}.{attributeName}", (NodeType.Attribute, key));
     }
 
     private static string BuildAttrKey(string entityName, string attributeName)
@@ -220,21 +228,23 @@ public class SchemaRelationsIdentifier(Schema Schema)
 public record SchemaGraph
 {
     private readonly Schema _schema;
-    private Dictionary<string, int> nodeKeyToIndexMap = new();
+    private Dictionary<string, int> _nodeKeyToIndexMap = new();
+    private readonly Dictionary<string, (NodeType type, string key)> _permNameKeyMap;
     private List<ISchemaNode> _nodes = new();
     private readonly bool[][] _matrix;
 
     public SchemaGraph(Schema schema)
     {
         _schema = schema;
-        var (relations, keyMap) = new SchemaRelationsIdentifier(schema).Identify();
+        var (relations, keyMap, permNameKeyMap) = new SchemaRelationsIdentifier(schema).Identify();
+        _permNameKeyMap = permNameKeyMap; 
 
         _matrix = new bool[keyMap.Count][];
 
         var index = 0;
         foreach (var (key, node) in keyMap)
         {
-            nodeKeyToIndexMap.Add(key, index);
+            _nodeKeyToIndexMap.Add(key, index);
             _matrix[index] = new bool[keyMap.Count];
             _nodes.Add(node);
             index++;
@@ -242,11 +252,98 @@ public record SchemaGraph
 
         foreach (var (nodeA, nodeB) in relations)
         {
-            var nodeAIndex = nodeKeyToIndexMap[nodeA];
-            var nodeBIndex = nodeKeyToIndexMap[nodeB];
+            var nodeAIndex = _nodeKeyToIndexMap[nodeA];
+            var nodeBIndex = _nodeKeyToIndexMap[nodeB];
 
             _matrix[nodeAIndex][nodeBIndex] = true;
         }
+    }
+
+    public (NodeType, ISchemaNode)? GetItem(string entityName, string permission)
+    {
+        if (!_permNameKeyMap.TryGetValue($"{entityName}.{permission}", out var tuple))
+        {
+            return null;
+        }
+
+        var nodeIndex = _nodeKeyToIndexMap[tuple.key];
+
+        return (tuple.type, _nodes[nodeIndex]);
+    }
+    
+    public NodeType? GetItemType(string entityName, string permission)
+    {
+        if (!_permNameKeyMap.TryGetValue($"{entityName}.{permission}", out var tuple))
+        {
+            return null;
+        }
+        
+        return tuple.type;
+    }
+
+    public HashSet<ISchemaNode> GetRelatedItems(string entityName, string permission, string subjectType)
+    {
+        var relations = new HashSet<(int, int)>();
+        var visited = new HashSet<int>();
+        
+        bool walk(int nodeIndex, int? parentIndex = null)
+        {
+            var node = _nodes[nodeIndex];
+            
+            if (node.Name == subjectType)
+            {
+                Console.WriteLine($"node is of subject type {subjectType}");
+                return true;
+            }
+            
+            if (!visited.Add(nodeIndex))
+            {
+                Console.WriteLine($"Already visited node {nodeIndex}");
+                return false;
+            }
+
+            if (parentIndex.HasValue)
+            {
+                relations.Add((nodeIndex, parentIndex.Value));
+            }
+
+            var row = _matrix[nodeIndex];
+
+            if (node.Type != NodeType.Permission)
+                return false;
+            
+            var res = false;
+            for (var i = 0; i < row.Length; i++)
+            {
+                if (row[i])
+                {
+                    Console.WriteLine($"Expanding node index {i}, {_nodes[i].Type}:{_nodes[i].Name}");
+                    if (!walk(i, nodeIndex))
+                    {
+                        Console.WriteLine($"Adding node index {i}, {_nodes[i].Type}:{_nodes[i].Name}");
+                        res = true;
+                    }
+                }
+            }
+
+            return res;
+        }
+        
+        if (!_permNameKeyMap.TryGetValue($"{entityName}.{permission}", out var key))
+        {
+            return new HashSet<ISchemaNode>();
+        }
+            
+        var permIndex = _nodeKeyToIndexMap[key.key];
+
+        walk(permIndex);
+
+        foreach (var (child, parent) in relations)
+        {
+            Console.WriteLine($"{_nodes[parent].Name} ---> {_nodes[child].Name}");
+        }
+
+        return new HashSet<ISchemaNode>();
     }
 }
 
@@ -261,14 +358,12 @@ public record AttributeNode : ISchemaNode
 {
     public required string Name { get; init; }
     public NodeType Type => NodeType.Attribute;
-    public List<ISchemaNode> Connections { get; init; } = [];
 }
 
 public record RelationNode : ISchemaNode
 {
     public required string Name { get; init; }
     public NodeType Type => NodeType.Relation;
-    public List<ISchemaNode> Connections { get; init; } = [];
 }
 
 public record PermissionGraphNode : ISchemaNode
@@ -276,7 +371,6 @@ public record PermissionGraphNode : ISchemaNode
     public required string Name { get; init; }
     public required PermissionNode ExpressionRoot { get; init; }
     public NodeType Type => NodeType.Permission;
-    public List<ISchemaNode> Connections { get; init; } = [];
 }
 
 public enum NodeType

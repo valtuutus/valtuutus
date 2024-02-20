@@ -84,7 +84,8 @@ public sealed class PermissionEngineSpecs
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
         var logger = Substitute.For<ILogger<PermissionEngine>>();
-        return new PermissionEngine(relationTupleReader, attributeReader, schema ?? Schemas.schema, logger);
+        var schemaGraph = new SchemaGraph( schema ?? Schemas.schema);
+        return new PermissionEngine(relationTupleReader, attributeReader, schemaGraph, logger);
     }
 
 

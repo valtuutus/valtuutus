@@ -48,4 +48,10 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
             .ToList()
         );
     }
+
+    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter)
+    {
+        // TODO: make actual implementation
+        return Task.FromResult(new List<RelationTuple>());
+    }
 }
