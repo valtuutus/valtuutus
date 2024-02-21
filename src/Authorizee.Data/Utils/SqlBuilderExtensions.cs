@@ -73,8 +73,10 @@ public static class SqlBuilderExtensions
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter)
     {
         builder = builder.Where("entity_type = @EntityType", filter);
-        builder = builder.Where("entity_id = @EntityId", filter);
         builder = builder.Where("attribute = @Attribute", filter);
+        
+        if (!string.IsNullOrWhiteSpace(filter.EntityId))
+            builder = builder.Where("entity_id = @EntityId", filter);
         
         return builder;
     }
