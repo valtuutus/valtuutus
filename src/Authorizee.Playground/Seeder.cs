@@ -4,6 +4,7 @@ using Authorizee.Data;
 using Bogus;
 using Dapper;
 using Npgsql;
+using NpgsqlTypes;
 
 namespace Authorizee.Api;
 
@@ -104,26 +105,40 @@ public static class Seeder
 
         var connString = configuration.GetConnectionString("Db");
         
-        // var relationChunks = relations.Chunk(10000);
-        //
-        // await Parallel.ForEachAsync(relationChunks, async (chunk, ct) =>
-        // {
-        //     await using var conn = new NpgsqlConnection(connString);
-        //     await conn.ExecuteAsync(
-        //         "insert into public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) values (@EntityType, @EntityId, @Relation, @SubjectType, @SubjectId, @SubjectRelation)", chunk);
-        //     Console.WriteLine($"Inserted relation chunk into the db");
-        // });
-
-        var attributesChunks = attributes.Chunk(10000);
-        //
-        // // SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        // await Parallel.ForEachAsync(attributesChunks, async (chunk, ct) =>
-        // {
-        //     await using var conn = new NpgsqlConnection(connString);
-        //     await conn.ExecuteAsync(
-        //         "insert into public.attributes (entity_type, entity_id, attribute, value) values (@EntityType, @EntityId, @Attribute, @Value::jsonb)", chunk);
-        //     Console.WriteLine($"Inserted attribute chunk into the db");
-        // });
+        await using var connection = new NpgsqlConnection(connString);
+        await connection.OpenAsync();
+        
+        await using (var writer = await connection.BeginBinaryImportAsync(
+                   "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)"))
+        {
+            foreach (var record in relations)
+            {
+                await writer.StartRowAsync();
+                await writer.WriteAsync(record.EntityType);
+                await writer.WriteAsync(record.EntityId);
+                await writer.WriteAsync(record.Relation);
+                await writer.WriteAsync(record.SubjectType);
+                await writer.WriteAsync(record.SubjectId);
+                await writer.WriteAsync(record.SubjectRelation);
+            }
+        
+            await writer.CompleteAsync();
+        }
+        
+        await using (var writer = await connection.BeginBinaryImportAsync(
+                         "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)"))
+        {
+            foreach (var record in attributes)
+            {
+                await writer.StartRowAsync();
+                await writer.WriteAsync(record.EntityType);
+                await writer.WriteAsync(record.EntityId);
+                await writer.WriteAsync(record.Attribute);
+                await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
+            }
+        
+            await writer.CompleteAsync();
+        }
         
     }
 }

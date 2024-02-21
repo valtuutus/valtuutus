@@ -108,6 +108,6 @@ app.MapPost("/lookup-entity",
     .WithName("Lookup entity")
     .WithOpenApi();
 
-// await Seeder.Seed(builder.Configuration);
+//await Seeder.Seed(builder.Configuration);
 
 app.Run();
