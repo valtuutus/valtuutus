@@ -83,7 +83,12 @@ public class LookupEngine(
             async Task<IList<RelationOrAttributeTuple>> handleLeafRelationNode()
             {
                 using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("handleLeafRelationNode");
+                activity?.SetTag("type", "relation");
                 var nodeRelation = node.LeafNode!.Value.Relation!;
+                activity?.SetTag("relation", nodeRelation.Name);
+                activity?.SetTag("subject_type", nodeRelation.SubjectType);
+                activity?.SetTag("subject_relation", nodeRelation.SubjectRelation);
+                activity?.SetTag("entity_type", nodeRelation.EntityType);
                 if (loadedRelations.TryGetValue(nodeRelation, out LookupNodeState value) &&
                     value == LookupNodeState.Loaded)
                 {
@@ -142,7 +147,10 @@ public class LookupEngine(
             async Task<IList<RelationOrAttributeTuple>> handleLeafAttributeNode()
             {
                 using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("handleLeafAttributeNode");
+                activity?.SetTag("type", "attribute");
                 var nodeAttribute = node.LeafNode!.Value.Attribute!;
+                activity?.SetTag("attribute", nodeAttribute.Name);
+                activity?.SetTag("entity_type", nodeAttribute.EntityType);
                 if (loadedAttributes.TryGetValue(nodeAttribute, out LookupNodeState value) &&
                     value == LookupNodeState.Loaded)
                 {
@@ -160,7 +168,6 @@ public class LookupEngine(
             
             async Task<IList<RelationOrAttributeTuple>> handleLeafNode()
             {
-                using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("handleLeafNode");
                 return node.LeafNode!.Value.Type switch
                 {
                     RelationOrAttributeType.Attribute => await handleLeafAttributeNode(),
@@ -174,13 +181,15 @@ public class LookupEngine(
                 using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("handleExpressionNode");
                 if (node.ExpressionNode!.Operation == LookupNodeExpressionType.Union)
                 {
-                    var tasks = new List<Task<IList<RelationOrAttributeTuple>>>(node.ExpressionNode!.Children.Count);
-                    tasks.AddRange(node.ExpressionNode!.Children.Select(walk));
-                    await Task.WhenAll(tasks);
+                    var entities = new List<RelationOrAttributeTuple>();
+                    foreach (var child in node.ExpressionNode!.Children)
+                    {
+                        entities.AddRange(await walk(child));
+                    }
 
-                    return tasks.SelectMany(x => x.Result).ToArray();
+                    return entities.ToArray();
                 }
-                
+
                 if (node.ExpressionNode!.Operation == LookupNodeExpressionType.Intersect)
                 {
                     var overlappingItems = Enumerable.Empty<RelationOrAttributeTuple>();
@@ -203,13 +212,8 @@ public class LookupEngine(
                 if (node.ExpressionNode!.Operation == LookupNodeExpressionType.Join &&
                     node.ExpressionNode.Children is [{ } childA, { } childB])
                 {
-                    
-                    var tasks = new List<Task<IList<RelationOrAttributeTuple>>>(2)
-                    {
-                        walk(childA),
-                        walk(childB)
-                    };
-                    await Task.WhenAll(tasks);
+                    var childAEntities = await walk(childA);
+                    var childBEntities = await walk(childB);
 
                     // Join is always between 2 relationships,
                     // so we can confidently use a.RelationTuple and b.RelationTuple
@@ -217,8 +221,8 @@ public class LookupEngine(
                     // "A" is always the principal permission,
                     // this is only a convention which is kind fragile
                     // we need to think of a better way of doing this  
-                    return tasks[0].Result.Join(
-                            tasks[1].Result,
+                    return childAEntities.Join(
+                            childBEntities,
                             a => new { Type = a.RelationTuple!.SubjectType, Id = a.RelationTuple!.SubjectId },
                             b => new { Type = b.RelationTuple!.EntityType, Id = b.RelationTuple!.EntityId },
                             (a, b) => a)
