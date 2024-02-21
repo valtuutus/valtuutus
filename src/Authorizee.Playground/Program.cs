@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Authorizee.Api;
 using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
@@ -106,5 +107,7 @@ app.MapPost("/lookup-entity",
         async ([FromBody] LookupEntityRequest req, [FromServices] LookupEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
     .WithName("Lookup entity")
     .WithOpenApi();
+
+// await Seeder.Seed(builder.Configuration);
 
 app.Run();

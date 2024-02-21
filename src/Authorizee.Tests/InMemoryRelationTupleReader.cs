@@ -51,7 +51,18 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
 
     public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter)
     {
-        // TODO: make actual implementation
-        return Task.FromResult(new List<RelationTuple>());
+        var result = _relationTuples.AsEnumerable();
+        
+        if (!string.IsNullOrEmpty(entityFilter.EntityType))
+            result = result.Where(x => x.EntityType == entityFilter.EntityType);
+
+        if (!string.IsNullOrEmpty(entityFilter.Relation))
+            result = result.Where(x => x.Relation == entityFilter.Relation);
+        
+        return Task.FromResult(result.Where(x =>
+                subjectsFilter.Any(y => x.SubjectType == y.SubjectType
+                                        && x.SubjectId == y.SubjectId))
+            .ToList()
+        );
     }
 }

@@ -8,7 +8,6 @@ namespace Authorizee.Core;
 
 public class LookupEngine(
     Schema schema,
-    PermissionEngine permissionEngine,
     ILogger<LookupEngine> logger,
     IRelationTupleReader tupleReader,
     IAttributeReader attributeReader)
@@ -86,11 +85,21 @@ public class LookupEngine(
                 {
                     return relationsValues[nodeRelation];
                 }
-
+                
+                // team#member
                 var relatedRelation = relationOrAttributes
                     .Where(x =>
-                        x.Relation!.EntityType == nodeRelation.SubjectType &&
-                        x.Relation!.Name == nodeRelation.SubjectRelation)
+                        x.Type == RelationOrAttributeType.Relation
+                        && x.Relation!.EntityType == nodeRelation.SubjectType 
+                        && x.Relation!.Name == nodeRelation.SubjectRelation)
+                    .Select(x => x.Relation!)
+                    .FirstOrDefault();
+
+                // organization#member -> project#org
+                relatedRelation ??= relationOrAttributes
+                    .Where(x => x.Type == RelationOrAttributeType.Relation
+                                && x.Relation!.SubjectType == req.SubjectType
+                                && x.Relation!.EntityType == nodeRelation.EntityType)
                     .Select(x => x.Relation!)
                     .FirstOrDefault();
 
@@ -98,7 +107,14 @@ public class LookupEngine(
                     ? []
                     : relationsValues[relatedRelation];
 
-                return (await tupleReader.GetRelations(
+                if (relatedRelation is not null && subjectValues is [])
+                {
+                    loadedRelations.Add(nodeRelation, LookupNodeState.Loaded);
+                    relationsValues.Add(nodeRelation, []);
+                    return [];
+                }
+
+                var res = (await tupleReader.GetRelations(
                         new EntityRelationFilter
                         {
                             Relation = nodeRelation.Name,
@@ -113,6 +129,10 @@ public class LookupEngine(
                     ))
                     .Select(x => new RelationOrAttributeTuple(x))
                     .ToArray();
+                
+                loadedRelations.Add(nodeRelation, LookupNodeState.Loaded);
+                relationsValues.Add(nodeRelation, res);
+                return res;
             }
 
             async Task<IList<RelationOrAttributeTuple>> handleLeafAttributeNode()
@@ -182,7 +202,11 @@ public class LookupEngine(
                     var childBEntities = await walk(childB);
 
                     // Join is always between 2 relationships,
-                    // so we can confidently use a.RelationTuple and b.RelationTuple 
+                    // so we can confidently use a.RelationTuple and b.RelationTuple
+                    
+                    // "A" is always the principal permission,
+                    // this is only a convention which is kind fragile
+                    // we need to think of a better way of doing this  
                     return childAEntities.Join(
                             childBEntities,
                             a => new { Type = a.RelationTuple!.SubjectType, Id = a.RelationTuple!.SubjectId },
@@ -205,27 +229,28 @@ public class LookupEngine(
 
         return new ConcurrentBag<string>((await walk(lookupTree))
             .Select(x => x.EntityId)
+            .OrderBy(x => x)
             .ToArray());
         
-        ConcurrentBag<string> entityIDs = [];
-
-        var callback = (string entityId) => { entityIDs.Add(entityId); };
-
-        var bulkChecker = new ActionBlock<CheckRequest>(async request =>
-        {
-            var result = await permissionEngine.Check(request, ct);
-            if (result)
-            {
-                callback(request.EntityId);
-            }
-        }, new ExecutionDataflowBlockOptions
-        {
-            MaxDegreeOfParallelism = 5
-        });
-
-        bulkChecker.Complete();
-        await bulkChecker.Completion;
-        return entityIDs;
+        // ConcurrentBag<string> entityIDs = [];
+        //
+        // var callback = (string entityId) => { entityIDs.Add(entityId); };
+        //
+        // var bulkChecker = new ActionBlock<CheckRequest>(async request =>
+        // {
+        //     var result = await permissionEngine.Check(request, ct);
+        //     if (result)
+        //     {
+        //         callback(request.EntityId);
+        //     }
+        // }, new ExecutionDataflowBlockOptions
+        // {
+        //     MaxDegreeOfParallelism = 5
+        // });
+        //
+        // bulkChecker.Complete();
+        // await bulkChecker.Completion;
+        // return entityIDs;
     }
     
     private (LookupNode, HashSet<RelationOrAttribute>) ExpandPermission(string rootEntityType,
@@ -259,7 +284,22 @@ public class LookupEngine(
 
                         foreach (var entity in r.Entities)
                         {
-                            walk(entity.Type, entity.Relation ?? entityPermission, lookupNode);
+                            var joinNode = new LookupExpressionNode(LookupNodeExpressionType.Join, []);
+                            var childRelation = new Relation
+                            {
+                                Name = relation,
+                                EntityType = entityType,
+                                SubjectType = entity.Type,
+                                SubjectRelation = entity.Relation
+                            };
+                            var childRelationUnion = new RelationOrAttribute(childRelation);
+                            
+                            joinNode.Children.Add(LookupNode.Leaf(childRelationUnion));
+                            relationSet.Add(childRelationUnion);
+                            
+                            walk(entity.Type, entity.Relation ?? entityPermission, joinNode);
+                            
+                            lookupNode.Children.Add(new LookupNode(joinNode));
                         }
                     }
                     else

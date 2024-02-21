@@ -6,8 +6,8 @@ env "dev" {
 
   // Define the URL of the database which is managed
   // in this environment.
-  url =  "postgres://postgres:hqysxvqw5cgdYyQHTfHe@localhost:5432/authorizee?sslmode=disable"
-  dev = "postgres://postgres:hqysxvqw5cgdYyQHTfHe@localhost:5432/authorizee-dev?sslmode=disable"
+  url =  "postgres://postgres:hqysxvqw5cgdYyQHTfHe@192.168.1.20:5432/authorizee?sslmode=disable"
+  dev = "postgres://postgres:hqysxvqw5cgdYyQHTfHe@192.168.1.20:5432/authorizee-dev?sslmode=disable"
 
   migration {
     // URL where the migration directory resides.

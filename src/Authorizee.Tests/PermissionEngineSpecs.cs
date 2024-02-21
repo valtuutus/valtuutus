@@ -9,82 +9,13 @@ namespace Authorizee.Tests;
 
 public sealed class PermissionEngineSpecs
 {
-    private static readonly (Schema schema, SchemaGraph schemaGraph) Schemas =  new SchemaBuilder()
-            .WithEntity("user")
-            .WithEntity("group")
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                )
-            .WithEntity("workspace")
-                .WithRelation("owner", rc =>
-                    rc.WithEntityType("user"))
-                .WithRelation("admin", rc =>
-                    rc.WithEntityType("user"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user"))
-                .WithAttribute("public", typeof(bool))
-                .WithPermission("comment", PermissionNode.Intersect("member", PermissionNode.Leaf("public")))
-                .WithPermission("delete", PermissionNode.Leaf("owner"))
-                .WithPermission("view", PermissionNode.Union(
-                    PermissionNode.Leaf("public"), PermissionNode.Leaf("owner"), 
-                    PermissionNode.Leaf("member"), PermissionNode.Leaf("admin"))
-                )
-            .WithEntity("team")
-                .WithRelation("lead", rc => rc.WithEntityType("user"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("group", "member"))
-            .WithEntity("project")
-                .WithRelation("parent", rc => rc.WithEntityType("workspace"))
-                .WithRelation("team", rc => rc.WithEntityType("team"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("team", "member"))
-                .WithRelation("lead", rc => rc.WithEntityType("team", "lead"))
-                .WithAttribute("public", typeof(bool))
-                .WithPermission("view", PermissionNode.Union(
-                    PermissionNode.Leaf("member"), PermissionNode.Leaf("lead"), PermissionNode.Intersect("public", "parent.view"))
-                )
-            .WithEntity("task")
-                .WithRelation("parent", rc => rc.WithEntityType("project"))
-                .WithRelation("assignee", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("group", "member"))
-                .WithPermission("view", PermissionNode.Leaf("parent.view")).SchemaBuilder.Build();
-
-
-    private static class Users
-    {
-        public const string Identifier = "user";
-        public const string Alice = "alice";
-        public const string Bob = "bob";
-        public const string Charlie = "charlie";
-        public const string Dan = "dan";
-        public const string Eve = "eve";
-    }
-    
-    private static class Groups
-    {
-        public const string Identifier = "group";
-        public const string Admins = "admins";
-        public const string Developers = "developers";
-        public const string Designers = "designers";
-    }
-    
-    private static class Workspaces
-    {
-        public const string Identifier = "workspace";
-        public const string PublicWorkspace = "1";
-        public const string PrivateWorkspace = "2";
-    }
-    
     
     public static PermissionEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
         var logger = Substitute.For<ILogger<PermissionEngine>>();
-        var schemaGraph = new SchemaGraph( schema ?? Schemas.schema);
+        var schemaGraph = new SchemaGraph( schema ?? TestsConsts.Schemas.schema);
         return new PermissionEngine(relationTupleReader, attributeReader, schemaGraph, logger);
     }
 
@@ -96,24 +27,24 @@ public sealed class PermissionEngineSpecs
             // Checks direct relation
             new RelationTuple[]
             {
-                new(Groups.Identifier, Groups.Admins, "member", Users.Identifier, Users.Alice),
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Admins, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest(Groups.Identifier, Groups.Admins, "member",  Users.Identifier, Users.Alice),
+            new CheckRequest(TestsConsts.Groups.Identifier, TestsConsts.Groups.Admins, "member",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks direct relation, but alice is not a part of the group
             new RelationTuple[]
             {
-                new(Groups.Identifier, Groups.Designers, "member", Users.Identifier, Users.Alice),
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest(Groups.Identifier, Groups.Admins, "member",  Users.Identifier, Users.Alice),
+            new CheckRequest(TestsConsts.Groups.Identifier, TestsConsts.Groups.Admins, "member",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -123,9 +54,9 @@ public sealed class PermissionEngineSpecs
             },
             new AttributeTuple[]
             {
-                new AttributeTuple(Workspaces.Identifier, Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
             },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "public"),
+            new CheckRequest(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public"),
             true
         },
         {
@@ -135,33 +66,33 @@ public sealed class PermissionEngineSpecs
             },
             new AttributeTuple[]
             {
-                new AttributeTuple(Workspaces.Identifier, Workspaces.PrivateWorkspace, "public", JsonValue.Create(false))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "public", JsonValue.Create(false))
             },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PrivateWorkspace, "public"),
+            new CheckRequest(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "public"),
             false
         },
         {
             // Checks permission top level
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, Workspaces.PublicWorkspace, "owner", Users.Identifier, Users.Alice)
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "delete", Users.Identifier, Users.Alice),
+            new CheckRequest(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "delete", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks permission but should fail
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, Workspaces.PrivateWorkspace, "owner", Users.Identifier, Users.Alice)
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest(Workspaces.Identifier, Workspaces.PublicWorkspace, "delete", Users.Identifier, Users.Alice),
+            new CheckRequest(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "delete", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         }
     };
@@ -184,44 +115,43 @@ public sealed class PermissionEngineSpecs
     
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsData => new()
     {
-
         {
             // Checks union of two relations, both true
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks union of two relations, first is false
             new RelationTuple[]
             {
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks union of two relations, second is false
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
@@ -232,7 +162,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -246,12 +176,12 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithPermission("view", PermissionNode.Union("member", "admin"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
@@ -269,39 +199,39 @@ public sealed class PermissionEngineSpecs
             // Checks intersection of two relations, both true
             new RelationTuple[]
             {
-                new("project", "1", "owner", Users.Identifier, Users.Alice),
-                new("project", "1", "whatever", Users.Identifier, Users.Alice),
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "whatever", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks intersection of two relations, first is false
             new RelationTuple[]
             {
-                new("project", "1", "whatever", Users.Identifier, Users.Alice),
+                new("project", "1", "whatever", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
             // Checks intersection of two relations, second is false
             new RelationTuple[]
             {
-                new("project", "1", "owner", Users.Identifier, Users.Alice),
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -312,7 +242,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -326,12 +256,12 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("owner", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("whatever", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithPermission("delete", PermissionNode.Intersect("owner", "whatever"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
@@ -351,27 +281,27 @@ public sealed class PermissionEngineSpecs
             // Checks union of attr and rel, both true
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
                 new AttributeTuple("project", "1", "public", JsonValue.Create(true))
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks union of attr and rel, first is true
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         
@@ -385,7 +315,7 @@ public sealed class PermissionEngineSpecs
                 new AttributeTuple("project", "1", "public", JsonValue.Create(true))
 
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
@@ -398,7 +328,7 @@ public sealed class PermissionEngineSpecs
                 new AttributeTuple("project", "1", "public", JsonValue.Create(false))
 
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -410,7 +340,7 @@ public sealed class PermissionEngineSpecs
             {
 
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -425,12 +355,12 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithAttribute("public", typeof(bool))
                 .WithPermission("view", PermissionNode.Union("member", "public"))
             .SchemaBuilder.Build();
@@ -449,27 +379,27 @@ public sealed class PermissionEngineSpecs
             // Checks intersection of attr and rel, both true
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
                 new AttributeTuple("project", "1", "public", JsonValue.Create(true))
             },
-            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "comment",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks intersection of attr and rel, first is true
             new RelationTuple[]
             {
-                new("project", "1", "member", Users.Identifier, Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "comment",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         
@@ -483,7 +413,7 @@ public sealed class PermissionEngineSpecs
                 new AttributeTuple("project", "1", "public", JsonValue.Create(true))
 
             },
-            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "comment",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -496,7 +426,7 @@ public sealed class PermissionEngineSpecs
                 new AttributeTuple("project", "1", "public", JsonValue.Create(false))
 
             },
-            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "comment",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -508,7 +438,7 @@ public sealed class PermissionEngineSpecs
             {
 
             },
-            new CheckRequest("project", "1", "comment",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "comment",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
     };
@@ -519,10 +449,10 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithAttribute("public", typeof(bool))
                 .WithPermission("comment", PermissionNode.Intersect("public", "member"))
             .SchemaBuilder.Build();
@@ -543,27 +473,27 @@ public sealed class PermissionEngineSpecs
             // Checks nested relation, true
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "parent", Workspaces.Identifier, "1"),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, "1"),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks nested relation, but workspace is not parent of the project
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -575,7 +505,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -589,14 +519,14 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
-            .WithEntity(Workspaces.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity("project")
-                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
                 .WithPermission("delete", PermissionNode.Leaf("parent.admin"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
@@ -615,41 +545,41 @@ public sealed class PermissionEngineSpecs
             // Checks union of relations, both are true
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "parent", Workspaces.Identifier, "1"),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, "1"),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks union of relations, first is false
             new RelationTuple[]
             {
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks union of relations, second is false
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
@@ -661,7 +591,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -675,15 +605,15 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
-            .WithEntity(Workspaces.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity("project")
-                .WithRelation("admin", rc => rc.WithEntityType(Users.Identifier))
-                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
                 .WithPermission("delete", PermissionNode.Union("parent.admin", "admin"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
@@ -702,41 +632,41 @@ public sealed class PermissionEngineSpecs
             // Checks intersect of relations, both are true
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "parent", Workspaces.Identifier, "1"),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, "1"),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks intersect of relations, first is false
             new RelationTuple[]
             {
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
             // Checks intersect of relations, second is false
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
         {
@@ -748,7 +678,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "delete",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -762,15 +692,15 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
-            .WithEntity(Workspaces.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity("project")
-                .WithRelation("admin", rc => rc.WithEntityType(Users.Identifier))
-                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
                 .WithPermission("delete", PermissionNode.Intersect("parent.admin", "admin"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
@@ -789,30 +719,30 @@ public sealed class PermissionEngineSpecs
             // Checks nested permission, admin
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "parent", Workspaces.Identifier, "1"),
+                new(TestsConsts.Workspaces.Identifier, "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, "1"),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
             // Checks intersect of relations, member
             new RelationTuple[]
             {
-                new(Workspaces.Identifier, "1", "member", Users.Identifier, Users.Alice),
-                new("project", "1", "admin", Users.Identifier, Users.Alice),
-                new("project", "1", "parent", Workspaces.Identifier, "1"),
+                new(TestsConsts.Workspaces.Identifier, "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, "1"),
 
             },
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             true
         },
         {
@@ -824,7 +754,7 @@ public sealed class PermissionEngineSpecs
             new AttributeTuple[]
             {
             },
-            new CheckRequest("project", "1", "view",  Users.Identifier, Users.Alice),
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
 
@@ -838,16 +768,16 @@ public sealed class PermissionEngineSpecs
     {
         // Arrange
         var (schema, _) = new SchemaBuilder()
-            .WithEntity(Users.Identifier)
-            .WithEntity(Workspaces.Identifier)
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
                 .WithRelation("member", rc =>
-                    rc.WithEntityType(Users.Identifier))
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithPermission("view", PermissionNode.Union("admin", "member"))
             .WithEntity("project")
-                .WithRelation("admin", rc => rc.WithEntityType(Users.Identifier))
-                .WithRelation("parent", rc => rc.WithEntityType(Workspaces.Identifier))
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
                 .WithPermission("view", PermissionNode.Leaf("parent.view"))
             .SchemaBuilder.Build();
         var engine = CreateEngine(tuples, attributes, schema);
