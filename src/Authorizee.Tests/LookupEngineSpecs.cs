@@ -243,6 +243,23 @@ public class LookupEngineSpecs
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([])
         },
+        {
+            // without public attribute as false
+            new RelationTuple[]
+            {
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            },
+            new AttributeTuple[]
+            {
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(false))
+            },
+            new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
+                TestsConsts.Users.Alice),
+            new ConcurrentBag<string>([])
+        },
     };
     
     [Theory]
