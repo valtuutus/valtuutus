@@ -1,7 +1,16 @@
 ﻿namespace Authorizee.Core.Schemas;
 
-public record Schema(List<Entity> Entities, List<Rule> Rules)
+public record Schema
 {
+    public List<Entity> Entities { get; init; }
+    public List<Rule> Rules { get; init; }
+    
+    public Schema(List<Entity> Entities, List<Rule> Rules)
+    {
+        this.Entities = Entities;
+        this.Rules = Rules;
+    }
+
     public List<Relation> GetRelations(string entityType)
     {
         return Entities
@@ -24,4 +33,16 @@ public record Schema(List<Entity> Entities, List<Rule> Rules)
             .SelectMany(e => e.Attributes)
             .ToList();
     }
+
+    // public PermissionNode ExpandPermissionTree(string entityType, string permission)
+    // {
+    //     var perm = Entities
+    //         .Where(e => e.Name == entityType)
+    //         .SelectMany(x => x.Permissions)
+    //         .First(p => p.Name == permission);
+    //
+    //     var treeRoot = perm.Tree;
+    //     // var expandedTreeRoot = PermissionNode.Leaf(treeRoot.LeafNode.)
+    //     
+    // }
 }

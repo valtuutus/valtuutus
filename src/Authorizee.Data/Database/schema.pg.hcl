@@ -47,6 +47,14 @@ table "relation_tuples" {
   index "idx_tuples_userset" {
     columns = [column.entity_type, column.entity_id, column.relation, column.subject_type, column.subject_relation]
   }
+
+  index "idx_tuples_subject_entities" {
+    columns = [column.entity_type, column.relation, column.subject_type, column.subject_id]
+  }
+
+  index "idx_tuples_entity_relation" {
+    columns = [column.entity_type, column.relation]
+  }
 }
 
 table "attributes" {

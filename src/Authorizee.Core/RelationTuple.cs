@@ -10,6 +10,16 @@ public record RelationTuple
     public string SubjectRelation { get; private init; } = null!;
     
     protected RelationTuple() {}
+    
+    public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null)
+    {
+        EntityType = entityType;
+        EntityId = entityId;
+        Relation = relation;
+        SubjectType = subjectType;
+        SubjectId = subjectId;
+        SubjectRelation = subjectRelation ?? "";
+    }
 
 
     public bool IsDirectSubject()

@@ -1,7 +1,4 @@
-﻿using Jint;
-using Jint.Native;
-
-namespace Authorizee.Core.Schemas;
+﻿namespace Authorizee.Core.Schemas;
 
 // TODO: Validate schema correctness before injecting into the dependency injection container
 
@@ -25,7 +22,8 @@ public class SchemaBuilder
 
     public Schema Build()
     {
-        return new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
+        var schema = new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
+        return schema;
     }
 }
 
@@ -42,6 +40,8 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
         _relations.Add(builder.Build());
         return this;
     }
+    
+    public SchemaBuilder SchemaBuilder => schemaBuilder;
 
     public EntitySchemaBuilder WithPermission(string permissionName, PermissionNode permissionTree)
     {

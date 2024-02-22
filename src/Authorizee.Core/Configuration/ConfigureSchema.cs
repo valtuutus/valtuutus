@@ -1,6 +1,4 @@
 ﻿using Authorizee.Core.Schemas;
-using Jint;
-using Jint.Native;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Authorizee.Core.Configuration;
@@ -11,7 +9,10 @@ public static class ConfigureSchema
     {
         var builder = new SchemaBuilder();
         config(builder);
-        services.AddSingleton(builder.Build());
-        services.AddSingleton<PermissionEngine>();
+        var schema = builder.Build();
+        services.AddSingleton(schema);
+        services.AddScoped<CheckEngine>();
+        services.AddScoped<LookupEngine>();
+        services.AddScoped<LookupEngine>();
     }
 }

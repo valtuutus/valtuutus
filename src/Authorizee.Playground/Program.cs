@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Authorizee.Api;
 using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
@@ -39,11 +40,12 @@ builder.Services.AddSchemaConfiguration(c =>
         .WithEntity("project")
             .WithRelation("org", rc => rc.WithEntityType("organization"))
             .WithRelation("team", rc => rc.WithEntityType("team"))
+            .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
             .WithAttribute("public", typeof(bool))
             .WithPermission("view",  
             PermissionNode.Union(
                 PermissionNode.Leaf("org.admin"), 
-                PermissionNode.Leaf("team.member"), 
+                PermissionNode.Leaf("member"), 
                 PermissionNode.Intersect("public", "org.member"))
             )
             .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))
@@ -63,6 +65,7 @@ builder.Services
     {
         telemetry
             .AddSource(DefaultActivitySource.SourceName)
+            .AddSource(DefaultActivitySource.SourceNameInternal)
             .AddAspNetCoreInstrumentation(o =>
             {
                 o.RecordException = true;
@@ -96,8 +99,15 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        async ([AsParameters] CheckRequest req, [FromServices] PermissionEngine service, CancellationToken ct) => await service.Check(req, ct))
+        async ([AsParameters] CheckRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.Check(req, ct))
     .WithName("Check Relation")
     .WithOpenApi();
+
+app.MapPost("/lookup-entity",
+        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+    .WithName("Lookup entity")
+    .WithOpenApi();
+
+//await Seeder.Seed(builder.Configuration);
 
 app.Run();

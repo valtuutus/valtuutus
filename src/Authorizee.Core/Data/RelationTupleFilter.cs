@@ -1,6 +1,6 @@
 namespace Authorizee.Core.Data;
 
-public record RelationFilter
+public record RelationTupleFilter
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -8,4 +8,16 @@ public record RelationFilter
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
+}
+
+public record EntityRelationFilter
+{
+    public required string EntityType { get; init; }
+    public required string Relation { get; init; }
+}
+
+public record SubjectFilter
+{
+    public required string SubjectType { get; init; }
+    public required string SubjectId { get; init; }
 }
