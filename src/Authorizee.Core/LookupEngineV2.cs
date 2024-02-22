@@ -84,8 +84,8 @@ public class LookupEngineV2(
     {
         return node.Operation switch
         {
-            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, CheckIntersect),
-            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, CheckUnion),
+            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, IntersectEntities),
+            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, UnionEntities),
             _ => throw new InvalidOperationException()
         };
     }
@@ -165,7 +165,7 @@ public class LookupEngineV2(
                 lookupFunctions.Add((ct) => JoinEntities(main, dependent, ct));
             }
 
-            return await CheckUnion(lookupFunctions, ct);
+            return await UnionEntities(lookupFunctions, ct);
         };
     }
 
@@ -248,7 +248,7 @@ public class LookupEngineV2(
                 }
             }
 
-            return await CheckUnion(lookupFunctions, ct);
+            return await UnionEntities(lookupFunctions, ct);
         };
     }
 
@@ -297,7 +297,7 @@ public class LookupEngineV2(
         return result;
     }
 
-    private async Task<List<RelationOrAttributeTuple>> CheckUnion(List<LookupFunction> functions,
+    private async Task<List<RelationOrAttributeTuple>> UnionEntities(List<LookupFunction> functions,
         CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
@@ -309,7 +309,7 @@ public class LookupEngineV2(
         return results;
     }
 
-    private async Task<List<RelationOrAttributeTuple>> CheckIntersect(List<LookupFunction> functions,
+    private async Task<List<RelationOrAttributeTuple>> IntersectEntities(List<LookupFunction> functions,
         CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
