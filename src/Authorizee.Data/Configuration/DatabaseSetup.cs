@@ -13,8 +13,8 @@ public static class DatabaseSetup
     {
         Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
         SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        services.AddSingleton<DbConnectionFactory>(_ => factory);
-        services.AddSingleton<IRelationTupleReader, RelationTupleReader>();
-        services.AddSingleton<IAttributeReader, AttributeReader>();
+        services.AddScoped<DbConnectionFactory>(_ => factory);
+        services.AddScoped<IRelationTupleReader, RelationTupleReader>();
+        services.AddScoped<IAttributeReader, AttributeReader>();
     }
 }
