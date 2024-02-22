@@ -14,6 +14,6 @@ public static class ConfigureSchema
         services.AddSingleton(schemaGraph);
         services.AddScoped<CheckEngine>();
         services.AddScoped<LookupEngine>();
-        services.AddScoped<LookupEngineV2>();
+        services.AddScoped<LookupEngine>();
     }
 }

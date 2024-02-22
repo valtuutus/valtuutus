@@ -10,12 +10,12 @@ namespace Authorizee.Tests;
 
 public class LookupEngineSpecs
 {
-    public static LookupEngineV2 CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    public static LookupEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
-        var logger = Substitute.For<ILogger<LookupEngineV2>>();
-        return new LookupEngineV2(schema ?? TestsConsts.Schemas.schema, logger, relationTupleReader, attributeReader);
+        var logger = Substitute.For<ILogger<LookupEngine>>();
+        return new LookupEngine(schema ?? TestsConsts.Schemas.schema, logger, relationTupleReader, attributeReader);
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
