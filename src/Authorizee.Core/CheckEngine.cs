@@ -15,7 +15,7 @@ public enum RelationType
     Rule
 }
 
-public class PermissionEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, SchemaGraph schema, ILogger<PermissionEngine> logger)
+public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, SchemaGraph schema, ILogger<CheckEngine> logger)
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {

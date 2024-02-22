@@ -7,16 +7,16 @@ using NSubstitute;
 
 namespace Authorizee.Tests;
 
-public sealed class PermissionEngineSpecs
+public sealed class CheckEngineSpecs
 {
     
-    public static PermissionEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    public static CheckEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
-        var logger = Substitute.For<ILogger<PermissionEngine>>();
+        var logger = Substitute.For<ILogger<CheckEngine>>();
         var schemaGraph = new SchemaGraph( schema ?? TestsConsts.Schemas.schema);
-        return new PermissionEngine(relationTupleReader, attributeReader, schemaGraph, logger);
+        return new CheckEngine(relationTupleReader, attributeReader, schemaGraph, logger);
     }
 
 

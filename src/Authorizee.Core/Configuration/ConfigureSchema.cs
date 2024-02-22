@@ -12,7 +12,7 @@ public static class ConfigureSchema
         var (schema, schemaGraph) = builder.Build();
         services.AddSingleton(schema);
         services.AddSingleton(schemaGraph);
-        services.AddScoped<PermissionEngine>();
+        services.AddScoped<CheckEngine>();
         services.AddScoped<LookupEngine>();
         services.AddScoped<LookupEngineV2>();
     }

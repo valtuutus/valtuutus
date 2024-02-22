@@ -99,7 +99,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        async ([AsParameters] CheckRequest req, [FromServices] PermissionEngine service, CancellationToken ct) => await service.Check(req, ct))
+        async ([AsParameters] CheckRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.Check(req, ct))
     .WithName("Check Relation")
     .WithOpenApi();
 
