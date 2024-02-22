@@ -4,7 +4,7 @@ namespace Authorizee.Tests;
 
 public static class TestsConsts
 {
-    public static readonly (Schema schema, SchemaGraph schemaGraph) Schemas = new SchemaBuilder()
+    public static readonly Schema Schemas = new SchemaBuilder()
         .WithEntity("user")
         .WithEntity("group")
             .WithRelation("member", rc =>

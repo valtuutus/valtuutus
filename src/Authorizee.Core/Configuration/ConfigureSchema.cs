@@ -9,9 +9,8 @@ public static class ConfigureSchema
     {
         var builder = new SchemaBuilder();
         config(builder);
-        var (schema, schemaGraph) = builder.Build();
+        var schema = builder.Build();
         services.AddSingleton(schema);
-        services.AddSingleton(schemaGraph);
         services.AddScoped<CheckEngine>();
         services.AddScoped<LookupEngine>();
         services.AddScoped<LookupEngine>();

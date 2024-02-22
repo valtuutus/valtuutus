@@ -15,7 +15,7 @@ public enum RelationType
     Rule
 }
 
-public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, SchemaGraph schema, ILogger<CheckEngine> logger)
+public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, Schema schema, ILogger<CheckEngine> logger)
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
@@ -33,22 +33,28 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
     {
         logger.LogDebug("Checking permission: {req}", req);
         
-        var type = schema.GetItemType(req.EntityType, req.Permission);
+        var permission = schema.GetPermissions(req.EntityType)
+            .FirstOrDefault(x => x.Name == req.Permission);
+        var relation = schema.GetRelations(req.EntityType)
+            .FirstOrDefault(x => x.Name == req.Permission);
+        var attribute = schema.GetAttributes(req.EntityType)
+            .FirstOrDefault(x => x.Name == req.Permission);
+
+        var type = new { permission, relation, attribute } switch
+        {
+            { permission: null, relation: not null } => RelationType.DirectRelation,
+            { permission: not null, relation: null } => RelationType.Permission,
+            { attribute: not null} => RelationType.Attribute,
+            _ => RelationType.None
+        };
 
         var checkPermission = () =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
 
-            var tuple = schema.GetItem(req.EntityType, req.Permission);
-            
-            if (tuple is null)
-                return Fail();
+            var permissionNode = permission!.Tree;
 
-            var schemaNode = (PermissionGraphNode)tuple.Value.Item2;
-
-            var permissionNode = schemaNode.ExpressionRoot;
-
-            logger.LogDebug("Checking permission {}", schemaNode.Name);
+            logger.LogDebug("Checking permission {}", permission.Name);
             
             return permissionNode.Type == PermissionNodeType.Expression
                 ? CheckExpression(req, permissionNode)
@@ -57,9 +63,9 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
 
         return type switch
         {
-            NodeType.Permission => checkPermission(),
-            NodeType.Relation => CheckRelation(req),
-            NodeType.Attribute => CheckAttribute(req),
+            RelationType.Permission => checkPermission(),
+            RelationType.DirectRelation => CheckRelation(req),
+            RelationType.Attribute => CheckAttribute(req),
             _ => Fail()
         };
     }

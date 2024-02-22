@@ -15,7 +15,7 @@ public class LookupEngineSpecs
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
         var logger = Substitute.For<ILogger<LookupEngine>>();
-        return new LookupEngine(schema ?? TestsConsts.Schemas.schema, logger, relationTupleReader, attributeReader);
+        return new LookupEngine(schema ?? TestsConsts.Schemas, logger, relationTupleReader, attributeReader);
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>

@@ -20,11 +20,10 @@ public class SchemaBuilder
         return this;
     }
 
-    public (Schema, SchemaGraph) Build()
+    public Schema Build()
     {
         var schema = new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
-        var graph = new SchemaGraph(schema);
-        return (schema, graph);
+        return schema;
     }
 }
 

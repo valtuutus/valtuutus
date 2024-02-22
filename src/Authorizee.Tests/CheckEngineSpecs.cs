@@ -15,8 +15,7 @@ public sealed class CheckEngineSpecs
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
         var logger = Substitute.For<ILogger<CheckEngine>>();
-        var schemaGraph = new SchemaGraph( schema ?? TestsConsts.Schemas.schema);
-        return new CheckEngine(relationTupleReader, attributeReader, schemaGraph, logger);
+        return new CheckEngine(relationTupleReader, attributeReader, schema ?? TestsConsts.Schemas, logger);
     }
 
 
@@ -175,7 +174,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingSimpleUnionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
@@ -255,7 +254,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingSimpleIntersectionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("owner", rc =>
@@ -354,7 +353,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingSimpleUnionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
@@ -448,7 +447,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingSimpleIntersectionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("project")
                 .WithRelation("member", rc =>
@@ -518,7 +517,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingSimpleNestedRelationShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
@@ -604,7 +603,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingUnionOfDirectAndNestedRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
@@ -691,7 +690,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingIntersectionOfDirectAndNestedRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
@@ -767,7 +766,7 @@ public sealed class CheckEngineSpecs
     public async Task CheckingNestedPermissionsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var (schema, _) = new SchemaBuilder()
+        var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
                 .WithRelation("admin", rc =>
