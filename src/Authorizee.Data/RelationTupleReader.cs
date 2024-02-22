@@ -65,7 +65,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
         var res = (await connection.QueryAsync<RelationTuple>(queryTemplate.RawSql, queryTemplate.Parameters))
             .ToList();
         stopwatch.Stop();
-        logger.LogDebug("Queried relations in {}ms", stopwatch.ElapsedMilliseconds);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", stopwatch.ElapsedMilliseconds, res.Count);
 
         return res;
     }
@@ -94,7 +94,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
         var res = (await connection.QueryAsync<RelationTuple>(queryTemplate.RawSql, queryTemplate.Parameters))
             .ToList();
         stopwatch.Stop();
-        logger.LogDebug("Queried relations in {}ms", stopwatch.ElapsedMilliseconds);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", stopwatch.ElapsedMilliseconds, res.Count);
 
         return res;
     }

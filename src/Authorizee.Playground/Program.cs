@@ -108,6 +108,11 @@ app.MapPost("/lookup-entity",
     .WithName("Lookup entity")
     .WithOpenApi();
 
+app.MapPost("/v2/lookup-entity",
+        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEngineV2 service, CancellationToken ct) => await service.LookupEntity(req, ct))
+    .WithName("Lookup entity V2")
+    .WithOpenApi();
+
 //await Seeder.Seed(builder.Configuration);
 
 app.Run();

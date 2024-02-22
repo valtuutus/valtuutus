@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Threading.Tasks.Dataflow;
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
@@ -245,6 +244,7 @@ public class LookupEngine(
 
         return new ConcurrentBag<string>((await walk(lookupTree))
             .Select(x => x.EntityId)
+            .Distinct()
             .OrderBy(x => x)
             .ToArray());
         
