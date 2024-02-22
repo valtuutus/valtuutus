@@ -78,6 +78,6 @@ public static class TestsConsts
     {
         public const string Identifier = "team";
         public const string OsBrabos = "osbrabos";
-        public const string OsMaisBrabos = "osbrabos";
+        public const string OsMaisBrabos = "osmaisbrabos";
     }
 }

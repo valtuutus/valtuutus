@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Diagnostics;
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
@@ -39,7 +38,7 @@ public class LookupEngineV2(
             FinalSubjectType = req.SubjectType,
             FinalSubjectId = req.SubjectId
         };
-        
+
         var res = await LookupEntityInternal(internalReq)(ct);
         return new ConcurrentBag<string>(res.Select(x => x.EntityId).Distinct().OrderBy(x => x));
     }
@@ -66,7 +65,132 @@ public class LookupEngineV2(
 
         return type switch
         {
-            RelationType.DirectRelation => LookupRelation(req, relation!)
+            RelationType.DirectRelation => LookupRelation(req, relation!),
+            RelationType.Permission => LookupPermission(req, permission!),
+            RelationType.Attribute => LookupAttribute(req, attribute!)
+        };
+    }
+
+    private LookupFunction LookupPermission(LookupEntityRequestInternal req, Permission permission)
+    {
+        var permNode = permission.Tree;
+
+        return permNode.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, permNode.ExpressionNode!)
+            : LookupLeaf(req, permNode.LeafNode!);
+    }
+
+    private LookupFunction LookupExpression(LookupEntityRequestInternal req, PermissionNodeOperation node)
+    {
+        return node.Operation switch
+        {
+            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, CheckIntersect),
+            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, CheckUnion),
+            _ => throw new InvalidOperationException()
+        };
+    }
+
+    private LookupFunction LookupExpressionChildren(LookupEntityRequestInternal req, List<PermissionNode> children,
+        Func<List<LookupFunction>, CancellationToken, Task<List<RelationOrAttributeTuple>>> aggregator)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var lookupFunctions = new List<LookupFunction>(capacity: children.Count);
+        foreach (var child in children)
+        {
+            switch (child.Type)
+            {
+                case PermissionNodeType.Expression:
+                    lookupFunctions.Add(LookupExpression(req, child.ExpressionNode!));
+                    break;
+                case PermissionNodeType.Leaf:
+                    lookupFunctions.Add(LookupLeaf(req, child.LeafNode!));
+                    break;
+            }
+        }
+
+        return async (ct) => await aggregator(lookupFunctions, ct);
+    }
+
+    private LookupFunction LookupLeaf(LookupEntityRequestInternal req, PermissionNodeLeaf node)
+    {
+        var perm = node.Value;
+
+        if (perm.Split('.') is [{ } userSet, { } computedUserSet])
+        {
+            // Indirect Relation
+            return CheckTupleToUserSet(req, userSet, computedUserSet);
+        }
+
+        // Direct Relation
+        return LookupComputedUserSet(req, perm);
+    }
+
+    private LookupFunction CheckTupleToUserSet(LookupEntityRequestInternal req, string tupleSetRelation,
+        string computedUserSetRelation)
+    {
+        return async (ct) =>
+        {
+            var relation = schema.GetRelations(req.EntityType)
+                .First(x => x.Name.Equals(tupleSetRelation, StringComparison.InvariantCultureIgnoreCase));
+
+            var lookupFunctions = new List<LookupFunction>(capacity: relation.Entities.Count);
+
+            foreach (var entity in relation.Entities)
+            {
+                var main = (List<RelationOrAttributeTuple> relatedTuples) =>
+                {
+                    using var activityMain = DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
+                    if (relatedTuples.Count > 0)
+                    {
+                        return LookupRelationLeaf(req with
+                        {
+                            Permission = tupleSetRelation,
+                            EntityType = req.EntityType,
+                            SubjectType = entity.Type,
+                            SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
+                            SubjectRelation = entity.Relation
+                        });
+                    }
+
+                    return (_) => Task.FromResult<List<RelationOrAttributeTuple>>([]);
+                };
+
+                var dependent = LookupEntityInternal(req with
+                {
+                    EntityType = entity.Type,
+                    Permission = computedUserSetRelation,
+                });
+
+                lookupFunctions.Add((ct) => JoinEntities(main, dependent, ct));
+            }
+
+            return await CheckUnion(lookupFunctions, ct);
+        };
+    }
+
+    private LookupFunction LookupComputedUserSet(LookupEntityRequestInternal req, string computedUserSetRelation)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        return LookupEntityInternal(req with
+        {
+            Permission = computedUserSetRelation
+        });
+    }
+
+    private LookupFunction LookupAttribute(LookupEntityRequestInternal req, Schemas.Attribute attribute)
+    {
+        return async (ct) =>
+        {
+            return (await attributeReader.GetAttributes(new AttributeFilter
+                {
+                    Attribute = attribute.Name,
+                    EntityType = req.EntityType
+                }))
+                .Where(a => a.Value.TryGetValue(out bool b) && b)
+                .Select(x => new RelationOrAttributeTuple(x))
+                .ToList();
         };
     }
 
@@ -75,8 +199,6 @@ public class LookupEngineV2(
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
-            // logger.LogDebug("Looking up relation {relation} with req: {req}", req.Permission, req);
 
             var lookupFunctions = new List<LookupFunction>(capacity: relation.Entities.Count);
 
@@ -99,7 +221,8 @@ public class LookupEngineV2(
                 {
                     var main = (List<RelationOrAttributeTuple> relatedTuples) =>
                     {
-                        using var activityMain = DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
+                        using var activityMain =
+                            DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
                         if (relatedTuples.Count > 0)
                         {
                             return LookupRelationLeaf(req with
@@ -109,18 +232,19 @@ public class LookupEngineV2(
                                 SubjectType = relationEntity.Type,
                                 SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
                                 SubjectRelation = relationEntity.Relation
-                            });    
+                            });
                         }
 
                         return (_) => Task.FromResult<List<RelationOrAttributeTuple>>([]);
                     };
+
                     var dependent = LookupRelation(req with
                     {
                         EntityType = relationEntity.Type,
                         Permission = relationEntity.Relation!,
                     }, subRelation);
-                    
-                    lookupFunctions.Add((ct) => CheckJoin(main, dependent, ct));
+
+                    lookupFunctions.Add((ct) => JoinEntities(main, dependent, ct));
                 }
             }
 
@@ -150,17 +274,17 @@ public class LookupEngineV2(
         };
     }
 
-    private async Task<List<RelationOrAttributeTuple>> CheckJoin(
+    private async Task<List<RelationOrAttributeTuple>> JoinEntities(
         Func<List<RelationOrAttributeTuple>, LookupFunction> main,
         LookupFunction dependent, CancellationToken ct
     )
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        
+
         var dependentResult = await dependent(ct);
-        activity.AddEvent(new ActivityEvent("carregou dependentResult"));
+        // activity.AddEvent(new ActivityEvent("carregou dependentResult"));
         var mainResult = await main(dependentResult)(ct);
-        activity.AddEvent(new ActivityEvent("carregou mainResult"));
+        // activity.AddEvent(new ActivityEvent("carregou mainResult"));
 
         var result = mainResult.Join(
                 dependentResult,
@@ -168,7 +292,7 @@ public class LookupEngineV2(
                 d => new { Type = d.RelationTuple!.EntityType, Id = d.RelationTuple!.EntityId },
                 (m, d) => m)
             .ToList();
-        activity.AddEvent(new ActivityEvent("calculou join"));
+        // activity.AddEvent(new ActivityEvent("calculou join"));
 
         return result;
     }
