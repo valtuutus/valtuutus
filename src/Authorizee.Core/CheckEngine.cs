@@ -23,6 +23,25 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         logger.LogDebug("Initializing check permission with request: {req}", req);
         return await CheckInternal(req)(ct);
     }
+    
+    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        var permission = schema.GetPermissions(req.EntityType);
+
+        var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
+        {
+            EntityType = req.EntityType,
+            EntityId = req.EntityId,
+            Permission = x.Name,
+            SubjectType = req.SubjectType,
+            SubjectId = req.SubjectId
+        })(ct))).ToArray();
+
+        await Task.WhenAll(tasks.Select(x => x.Value));
+        return new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+
+    }
 
     private CheckFunction Fail()
     {

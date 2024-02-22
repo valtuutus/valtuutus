@@ -7,6 +7,7 @@ using NSubstitute;
 
 namespace Authorizee.Tests;
 
+
 public sealed class CheckEngineSpecs
 {
     
@@ -810,5 +811,103 @@ public sealed class CheckEngineSpecs
 
         // Assert
         result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionsWhenNoPermissionsShouldReturnEmpty()
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+            .WithRelation("admin", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("member", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity("project")
+            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+            .WithPermission("view", PermissionNode.Leaf("parent.view"))
+            .SchemaBuilder.Build();
+        var engine = CreateEngine([], [], schema);
+        
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            SubjectType = "user",
+            SubjectId = "1"
+        }, default);
+
+
+        // Assert
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionShouldListAllPermissions()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+
+        for (int i = 0; i < 50; i++)
+        {
+            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+        }
+
+        var schema = entity.SchemaBuilder.Build();
+        
+        // act
+        var engine = CreateEngine([], [], schema);
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            SubjectType = "user",
+            SubjectId = "1"
+        }, default);
+        
+        // assert
+        await Verifier.Verify(result);
+
+    }
+    
+    
+    [Fact]
+    public async Task SubjectPermissionShouldEvaluatePermissions()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+
+        for (int i = 0; i < 50; i++)
+        {
+            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+        }
+
+        var schema = entity.SchemaBuilder.Build();
+        
+        // act
+        var engine = CreateEngine([], new []{ new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))}, schema);
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = TestsConsts.Workspaces.Identifier,
+            EntityId = TestsConsts.Workspaces.PublicWorkspace,
+            SubjectType = "user",
+            SubjectId = "1"
+        }, default);
+        
+        // assert
+        await Verifier.Verify(result);
+
     }
 }
