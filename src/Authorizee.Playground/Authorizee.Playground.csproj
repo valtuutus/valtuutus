@@ -20,6 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Authorizee.Data.Postgres\Authorizee.Data.Postgres.csproj" />
+    <ProjectReference Include="..\Authorizee.Data.SqlServer\Authorizee.Data.SqlServer.csproj" />
     <ProjectReference Include="..\Authorizee.Data\Authorizee.Data.csproj" />
   </ItemGroup>
 

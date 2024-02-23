@@ -1,9 +1,7 @@
-﻿using System.Dynamic;
-using Authorizee.Core.Data;
+﻿using Authorizee.Core.Data;
 using Dapper;
-using Jint.Runtime.Descriptors;
 
-namespace Authorizee.Data.Utils;
+namespace Authorizee.Data.Postgres.Utils;
 
 public static class SqlBuilderExtensions
 {

@@ -7,6 +7,8 @@ using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Authorizee.Data;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.Postgres;
+using Authorizee.Data.SqlServer;
 using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using OpenTelemetry.Metrics;
@@ -20,7 +22,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("Db")!));
+builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("Db")!), a => a.AddPostgres());
 
 builder.Services.AddSchemaConfiguration(c =>
 {

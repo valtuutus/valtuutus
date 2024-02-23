@@ -4,13 +4,13 @@ using Authorizee.Core;
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
-using Authorizee.Data.Utils;
+using Authorizee.Data.Postgres.Utils;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
-namespace Authorizee.Data;
+namespace Authorizee.Data.Postgres;
 
-public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<RelationTupleReader> logger)
+public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, ILogger<PostgresRelationTupleReader> logger)
     : IRelationTupleReader
 {
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)

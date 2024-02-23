@@ -2,13 +2,13 @@
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
-using Authorizee.Data.Utils;
+using Authorizee.Data.Postgres.Utils;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
-namespace Authorizee.Data;
+namespace Authorizee.Data.Postgres;
 
-public class AttributeReader(DbConnectionFactory connectionFactory, ILogger<RelationTupleReader> logger)
+public class PostgresAttributeReader(DbConnectionFactory connectionFactory, ILogger<PostgresRelationTupleReader> logger)
     : IAttributeReader
 {
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
