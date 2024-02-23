@@ -41,6 +41,19 @@ public static class Seeder
 {
     public static async Task Seed(IConfiguration configuration)
     {
+        var connString = configuration.GetConnectionString("Db");
+        
+        await using var connection = new NpgsqlConnection(connString);
+        await connection.OpenAsync();
+
+        var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from public.relation_tuples");
+        
+        var attrs = await connection.ExecuteScalarAsync<int>("select count(*) from public.attributes");
+
+        if (relationTuples > 0 && attrs > 0)
+        {
+            return;
+        }
         Randomizer.Seed = new Random(1500);
 
         var users = new Faker<User>()
@@ -103,53 +116,39 @@ public static class Seeder
                 JsonValue.Create(project.Public)));
         }
 
-        var connString = configuration.GetConnectionString("Db");
-        
-        await using var connection = new NpgsqlConnection(connString);
-        await connection.OpenAsync();
-
-        var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from public.relation_tuples");
-        
-        var attrs = await connection.ExecuteScalarAsync<int>("select count(*) from public.attributes");
-
-
-        if (relationTuples == 0)
+        await using (var writer = await connection.BeginBinaryImportAsync(
+                         "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)"))
         {
-            await using (var writer = await connection.BeginBinaryImportAsync(
-                             "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)"))
+            foreach (var record in relations)
             {
-                foreach (var record in relations)
-                {
-                    await writer.StartRowAsync();
-                    await writer.WriteAsync(record.EntityType);
-                    await writer.WriteAsync(record.EntityId);
-                    await writer.WriteAsync(record.Relation);
-                    await writer.WriteAsync(record.SubjectType);
-                    await writer.WriteAsync(record.SubjectId);
-                    await writer.WriteAsync(record.SubjectRelation);
-                }
-        
-                await writer.CompleteAsync();
+                await writer.StartRowAsync();
+                await writer.WriteAsync(record.EntityType);
+                await writer.WriteAsync(record.EntityId);
+                await writer.WriteAsync(record.Relation);
+                await writer.WriteAsync(record.SubjectType);
+                await writer.WriteAsync(record.SubjectId);
+                await writer.WriteAsync(record.SubjectRelation);
             }
+    
+            await writer.CompleteAsync();
         }
-
-        if (attrs == 0)
+        
+        
+        await using (var writer = await connection.BeginBinaryImportAsync(
+                         "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)"))
         {
-            await using (var writer = await connection.BeginBinaryImportAsync(
-                             "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)"))
+            foreach (var record in attributes)
             {
-                foreach (var record in attributes)
-                {
-                    await writer.StartRowAsync();
-                    await writer.WriteAsync(record.EntityType);
-                    await writer.WriteAsync(record.EntityId);
-                    await writer.WriteAsync(record.Attribute);
-                    await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
-                }
-        
-                await writer.CompleteAsync();
+                await writer.StartRowAsync();
+                await writer.WriteAsync(record.EntityType);
+                await writer.WriteAsync(record.EntityId);
+                await writer.WriteAsync(record.Attribute);
+                await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
             }
+    
+            await writer.CompleteAsync();
         }
+        
         
 
         
