@@ -11,8 +11,8 @@ public enum RelationType
     None,
     DirectRelation,
     Permission,
-    Attribute,
-    Rule
+    Attribute
+    
 }
 
 public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, Schema schema, ILogger<CheckEngine> logger)
@@ -43,7 +43,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
 
     }
 
-    private CheckFunction Fail()
+    private static CheckFunction Fail()
     {
         return (_) => Task.FromResult(false);
     }
@@ -52,41 +52,26 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
     {
         logger.LogDebug("Checking permission: {Req}", req);
         
-        var permission = schema.GetPermissions(req.EntityType)
-            .Find(x => x.Name == req.Permission);
-        var relation = schema.GetRelations(req.EntityType)
-            .Find(x => x.Name == req.Permission);
-        var attribute = schema.GetAttributes(req.EntityType)
-            .Find(x => x.Name == req.Permission);
-
-        var type = new { permission, relation, attribute } switch
+        return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
-            { permission: null, relation: not null } => RelationType.DirectRelation,
-            { permission: not null, relation: null } => RelationType.Permission,
-            { attribute: not null} => RelationType.Attribute,
-            _ => RelationType.None
-        };
-
-        CheckFunction CheckPermission()
-        {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
-
-            var permissionNode = permission!.Tree;
-
-            logger.LogDebug("Checking permission {}", permission.Name);
-
-            return permissionNode.Type == PermissionNodeType.Expression
-                ? CheckExpression(req, permissionNode)
-                : CheckLeaf(req, permissionNode);
-        }
-
-        return type switch
-        {
-            RelationType.Permission => CheckPermission(),
             RelationType.DirectRelation => CheckRelation(req),
+            RelationType.Permission => CheckPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
             RelationType.Attribute => CheckAttribute(req),
             _ => Fail()
         };
+    }
+    
+    private CheckFunction CheckPermission(CheckRequest req, Permission permission)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
+
+        var permissionNode = permission!.Tree;
+
+        logger.LogDebug("Checking permission {Permission}", permission.Name);
+
+        return permissionNode.Type == PermissionNodeType.Expression
+            ? CheckExpression(req, permissionNode)
+            : CheckLeaf(req, permissionNode);
     }
 
     private CheckFunction CheckAttribute(CheckRequest req)

@@ -44,28 +44,11 @@ public class LookupEntityEngine(
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var permission = schema.GetPermissions(req.EntityType)
-            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var relation = schema.GetRelations(req.EntityType)
-            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var attribute = schema.GetAttributes(req.EntityType)
-            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var type = new { permission, relation, attribute } switch
+        return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
-            { permission: null, relation: not null } => RelationType.DirectRelation,
-            { permission: not null, relation: null } => RelationType.Permission,
-            { permission: null, relation: null, attribute: not null } => RelationType.Attribute,
-            _ => RelationType.None
-        };
-
-        return type switch
-        {
-            RelationType.DirectRelation => LookupRelation(req, relation!),
-            RelationType.Permission => LookupPermission(req, permission!),
-            RelationType.Attribute => LookupAttribute(req, attribute!),
+            RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission)),
+            RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
+            RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission)),
             _ => throw new InvalidOperationException()
         };
     }
@@ -130,9 +113,7 @@ public class LookupEntityEngine(
     {
         return async (ct) =>
         {
-            var relation = schema.GetRelations(req.EntityType)
-                .First(x => x.Name.Equals(tupleSetRelation, StringComparison.InvariantCultureIgnoreCase));
-
+            var relation = schema.GetRelation(req.EntityType, tupleSetRelation);
             var lookupFunctions = new List<LookupFunction>(capacity: relation.Entities.Count);
 
             foreach (var entity in relation.Entities)
@@ -213,8 +194,7 @@ public class LookupEntityEngine(
                     continue;
                 }
 
-                var subRelation = schema.GetRelations(relationEntity.Type)
-                    .Find(x => x.Name == relationEntity.Relation);
+                var subRelation = relationEntity.Relation is null ? null : schema.GetRelation(relationEntity.Type, relationEntity.Relation);
 
                 if (subRelation is not null)
                 {
