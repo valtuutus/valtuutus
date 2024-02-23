@@ -23,16 +23,16 @@ public record Organization
 public record Team
 {
     public Guid Id { get; set; }
-    public Organization Org { get; set; }
-    public User Owner { get; set; }
+    public required Organization Org { get; set; }
+    public required User Owner { get; set; }
     public User[] Members { get; set; } = [];
 }
 
 public record Project
 {
     public Guid Id { get; set; }
-    public Organization Org { get; set; }
-    public Team Team { get; set; }
+    public required Organization Org { get; set; } 
+    public required Team Team { get; set; }
     public bool Public { get; set; }
     public User[] Members { get; set; } = [];
 }

@@ -30,14 +30,15 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
                     subject_relation 
                 FROM relation_tuples /**where**/");
 
+#if DEBUG
         logger.LogDebug("Querying relations tuples with filter: {filter}", JsonSerializer.Serialize(tupleFilter));
-
-        var stopwatch = new Stopwatch();
-        stopwatch.Start();;
+        var start = Stopwatch.GetTimestamp();
+#endif
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
-        stopwatch.Stop();
-        logger.LogDebug("Queried relations in {}ms", stopwatch.ElapsedMilliseconds);
+#if DEBUG
+        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start));
+#endif
         return res;
     }
     
@@ -58,26 +59,28 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
                     subject_relation 
                 FROM relation_tuples /**where**/");
 
+#if DEBUG
         logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityRelationFilter, subjectType, entitiesIds, subjectRelation}));
-
-        var stopwatch = new Stopwatch();
-        stopwatch.Start();;
+        var start = Stopwatch.GetTimestamp();
+#endif
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
-        stopwatch.Stop();
-        logger.LogDebug("Queried relations in {}ms, returned {} items", stopwatch.ElapsedMilliseconds, res.Count);
-
+        
+        
+#if DEBUG
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+#endif
         return res;
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilters, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()
-            .FilterRelations(entityFilter, subjectsFilters)
+            .FilterRelations(entityFilter, subjectsFilter)
             .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -87,14 +90,17 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
                     subject_relation 
                 FROM relation_tuples /**where**/");
 
-        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsFilters}));
-
-        var stopwatch = new Stopwatch();
-        stopwatch.Start();;
+#if DEBUG
+        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsFilter}));
+        var start = Stopwatch.GetTimestamp();
+#endif
+        
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
-        stopwatch.Stop();
-        logger.LogDebug("Queried relations in {}ms, returned {} items", stopwatch.ElapsedMilliseconds, res.Count);
+        
+#if DEBUG
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+#endif
 
         return res;
     }

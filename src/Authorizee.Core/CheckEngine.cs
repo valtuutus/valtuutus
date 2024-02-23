@@ -248,7 +248,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                     }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
                 })).ConfigureAwait(false);
 
-            if (results.Any(b => b))
+            if (Array.Exists(results, b => b))
             {
                 logger.LogDebug("Checking union: returned: {Value}", true);
                 return true;
@@ -292,8 +292,9 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                     }, cancellationToken);
                 })).ConfigureAwait(false);
 
-            logger.LogDebug("Checking intersection: returned: {Value}", results.All(b => b));
-            return results.All(b => b);
+            var result = Array.TrueForAll(results, b => b);
+            logger.LogDebug("Checking intersection: returned: {Value}", result);
+            return result;
         }
         catch (OperationCanceledException)
         {
