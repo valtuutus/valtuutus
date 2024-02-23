@@ -12,7 +12,7 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         _attributesTuples = attributesTuples;
     }
 
-    public Task<AttributeTuple?> GetAttribute(AttributeFilter filter)
+    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter)
     {
         var res = _attributesTuples.Where(x =>
             x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
@@ -23,7 +23,7 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         return Task.FromResult(res.FirstOrDefault());
     }
 
-    public Task<IList<AttributeTuple>> GetAttributes(AttributeFilter filter)
+    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter)
     {
         var res = _attributesTuples.Where(x =>
             x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
@@ -31,6 +31,15 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         if (!string.IsNullOrWhiteSpace(filter.EntityId))
             res = res.Where(x => x.EntityId == filter.EntityId);
 
-        return Task.FromResult((IList<AttributeTuple>)res.ToArray());
+        return Task.FromResult(res.ToList());
+    }
+
+    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds)
+    {
+        return Task.FromResult(_attributesTuples
+            .Where(x => x.EntityType == filter.EntityType
+                        && x.Attribute == filter.Attribute
+                        && entitiesIds.Contains(x.EntityId))
+            .ToList());
     }
 }

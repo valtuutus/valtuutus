@@ -31,6 +31,18 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
         return Task.FromResult(result.ToList());
     }
 
+    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType,
+        IEnumerable<string> entitiesIds,
+        string? subjectRelation = null)
+    {
+        return Task.FromResult(_relationTuples
+            .Where(x => x.EntityType == entityRelationFilter.EntityType
+                        && x.Relation == entityRelationFilter.Relation
+                        && x.SubjectType == subjectType && entitiesIds.Contains(x.EntityId)
+            )
+            .ToList());
+    }
+
     public Task<List<RelationTuple>> GetRelations(IEnumerable<EntityRelationFilter> filters,
         SubjectFilter? subjectFilter)
     {
@@ -49,16 +61,17 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
         );
     }
 
-    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter)
+    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter,
+        IEnumerable<SubjectFilter> subjectsFilter)
     {
         var result = _relationTuples.AsEnumerable();
-        
+
         if (!string.IsNullOrEmpty(entityFilter.EntityType))
             result = result.Where(x => x.EntityType == entityFilter.EntityType);
 
         if (!string.IsNullOrEmpty(entityFilter.Relation))
             result = result.Where(x => x.Relation == entityFilter.Relation);
-        
+
         return Task.FromResult(result.Where(x =>
                 subjectsFilter.Any(y => x.SubjectType == y.SubjectType
                                         && x.SubjectId == y.SubjectId))

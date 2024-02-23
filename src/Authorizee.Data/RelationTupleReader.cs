@@ -41,14 +41,14 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
         return res;
     }
     
-    public async Task<List<RelationTuple>> GetRelations(IEnumerable<EntityRelationFilter> filters, SubjectFilter? subjectFilter)
+    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation = null)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()
-            .FilterRelations(filters, subjectFilter)
+            .FilterRelations(entityRelationFilter, subjectType, entitiesIds, subjectRelation)
             .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -58,7 +58,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
                     subject_relation 
                 FROM relation_tuples /**where**/");
 
-        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {filters, subjectFilter}));
+        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityRelationFilter, subjectType, entitiesIds, subjectRelation}));
 
         var stopwatch = new Stopwatch();
         stopwatch.Start();;

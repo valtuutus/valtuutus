@@ -8,14 +8,14 @@ using NSubstitute;
 
 namespace Authorizee.Tests;
 
-public class LookupEngineSpecs
+public class LookupEntityEngineSpecs
 {
-    public static LookupEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    public static LookupEntityEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
-        var logger = Substitute.For<ILogger<LookupEngine>>();
-        return new LookupEngine(schema ?? TestsConsts.Schemas, logger, relationTupleReader, attributeReader);
+        var logger = Substitute.For<ILogger<LookupEntityEngine>>();
+        return new LookupEntityEngine(schema ?? TestsConsts.Schemas, logger, relationTupleReader, attributeReader);
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>

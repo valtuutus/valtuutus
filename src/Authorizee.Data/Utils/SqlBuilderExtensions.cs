@@ -25,24 +25,25 @@ public static class SqlBuilderExtensions
         return builder;
     }
     
-    public static SqlBuilder FilterRelations(this SqlBuilder builder, IEnumerable<EntityRelationFilter> filters, SubjectFilter? subjectFilter)
+    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityRelationFilter,
+        string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation)
     {
-        if (!string.IsNullOrEmpty(subjectFilter?.SubjectId))
-            builder = builder.Where("subject_id = @SubjectId", new {subjectFilter.SubjectId});
+        var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
         
-        if (!string.IsNullOrEmpty(subjectFilter?.SubjectType))
-            builder = builder.Where("subject_type = @SubjectType", new {subjectFilter.SubjectType});
-
-        var entityRelationFilters = filters as EntityRelationFilter[] ?? filters.ToArray();
-        for (var i = 0; i < entityRelationFilters.Length; i++)
-        {
-            var filter = entityRelationFilters[i];
-            builder = builder.OrWhere($"(entity_type = @EntityType{i} AND relation = @Relation{i})", new Dictionary<string, object>
-            {
-                {$"@EntityType{i}", filter.EntityType},
-                {$"@Relation{i}", filter.Relation},
-            });
-        }
+        if (!string.IsNullOrEmpty(subjectType))
+            builder = builder.Where("subject_type = @SubjectType", new {SubjectType = subjectType});
+        
+        if (!string.IsNullOrEmpty(entityRelationFilter.EntityType))
+            builder = builder.Where("entity_type = @EntityType", new {entityRelationFilter.EntityType});
+        
+        if (!string.IsNullOrEmpty(entityRelationFilter.Relation))
+            builder = builder.Where("relation = @Relation", new {entityRelationFilter.Relation});
+        
+        if (entitiesIdsArr.Length != 0)
+            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+        
+        if (!string.IsNullOrEmpty(subjectRelation))
+            builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation});
         
         return builder;
     }
@@ -70,13 +71,26 @@ public static class SqlBuilderExtensions
     }
 
     
-    public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter)
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributeFilter filter)
     {
         builder = builder.Where("entity_type = @EntityType", filter);
         builder = builder.Where("attribute = @Attribute", filter);
         
         if (!string.IsNullOrWhiteSpace(filter.EntityId))
             builder = builder.Where("entity_id = @EntityId", filter);
+        
+        return builder;
+    }
+    
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter, IEnumerable<string> entitiesIds)
+    {
+        var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
+        
+        builder = builder.Where("entity_type = @EntityType", filter);
+        builder = builder.Where("attribute = @Attribute", filter);
+        
+        if (entitiesIdsArr.Length != 0)
+            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
         
         return builder;
     }

@@ -20,9 +20,9 @@ public record LookupEntityRequestInternal
     public required string FinalSubjectId { get; init; }
 }
 
-public class LookupEngine(
+public class LookupEntityEngine(
     Schema schema,
-    ILogger<LookupEngine> logger,
+    ILogger<LookupEntityEngine> logger,
     IRelationTupleReader tupleReader,
     IAttributeReader attributeReader)
 {
@@ -183,7 +183,7 @@ public class LookupEngine(
     {
         return async (ct) =>
         {
-            return (await attributeReader.GetAttributes(new AttributeFilter
+            return (await attributeReader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attribute.Name,
                     EntityType = req.EntityType

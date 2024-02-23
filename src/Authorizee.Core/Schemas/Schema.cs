@@ -33,16 +33,4 @@ public record Schema
             .SelectMany(e => e.Attributes)
             .ToList();
     }
-
-    // public PermissionNode ExpandPermissionTree(string entityType, string permission)
-    // {
-    //     var perm = Entities
-    //         .Where(e => e.Name == entityType)
-    //         .SelectMany(x => x.Permissions)
-    //         .First(p => p.Name == permission);
-    //
-    //     var treeRoot = perm.Tree;
-    //     // var expandedTreeRoot = PermissionNode.Leaf(treeRoot.LeafNode.)
-    //     
-    // }
 }

@@ -11,7 +11,7 @@ namespace Authorizee.Data;
 public class AttributeReader(DbConnectionFactory connectionFactory, ILogger<RelationTupleReader> logger)
     : IAttributeReader
 {
-    public async Task<AttributeTuple?> GetAttribute(AttributeFilter filter)
+    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -33,7 +33,7 @@ public class AttributeReader(DbConnectionFactory connectionFactory, ILogger<Rela
             queryTemplate.Parameters);
     }
 
-    public async Task<IList<AttributeTuple>> GetAttributes(AttributeFilter filter)
+    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -52,6 +52,28 @@ public class AttributeReader(DbConnectionFactory connectionFactory, ILogger<Rela
 
         return (await connection.QueryAsync<AttributeTuple>(queryTemplate.RawSql,
                 queryTemplate.Parameters))
-            .ToArray();
+            .ToList();
+    }
+
+    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        using var connection = connectionFactory();
+
+        var queryTemplate = new SqlBuilder()
+            .FilterAttributes(filter, entitiesIds)
+            .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/");
+
+        logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
+
+        return (await connection.QueryAsync<AttributeTuple>(queryTemplate.RawSql,
+                queryTemplate.Parameters))
+            .ToList();
     }
 }

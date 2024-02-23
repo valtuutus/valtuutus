@@ -12,7 +12,7 @@ public static class ConfigureSchema
         var schema = builder.Build();
         services.AddSingleton(schema);
         services.AddScoped<CheckEngine>();
-        services.AddScoped<LookupEngine>();
-        services.AddScoped<LookupEngine>();
+        services.AddScoped<LookupEntityEngine>();
+        services.AddScoped<LookupSubjectEngine>();
     }
 }

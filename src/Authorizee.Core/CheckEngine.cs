@@ -75,7 +75,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attribute = await attributeReader.GetAttribute(new AttributeFilter
+            var attribute = await attributeReader.GetAttribute(new EntityAttributeFilter
             {
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
