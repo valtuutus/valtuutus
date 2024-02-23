@@ -53,11 +53,11 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         logger.LogDebug("Checking permission: {req}", req);
         
         var permission = schema.GetPermissions(req.EntityType)
-            .FirstOrDefault(x => x.Name == req.Permission);
+            .Find(x => x.Name == req.Permission);
         var relation = schema.GetRelations(req.EntityType)
-            .FirstOrDefault(x => x.Name == req.Permission);
+            .Find(x => x.Name == req.Permission);
         var attribute = schema.GetAttributes(req.EntityType)
-            .FirstOrDefault(x => x.Name == req.Permission);
+            .Find(x => x.Name == req.Permission);
 
         var type = new { permission, relation, attribute } switch
         {
@@ -99,7 +99,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType
-            });
+            }, ct);
 
             if (attribute is null)
                 return false;
@@ -182,7 +182,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = tupleSetRelation
-            });
+            }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
             checkFunctions.AddRange(relations.Select(relation =>
@@ -210,7 +210,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = req.Permission
-            });
+            }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
 
@@ -254,28 +254,32 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
                     {
                         if (t.Result)
                         {
-                            logger.LogDebug("Checking union: a function returned: {value}", true);
+                            logger.LogDebug("Checking union: a function returned: {Value}", true);
                             cancellationTokenSource.Cancel();
                         }
 
-                        logger.LogDebug("Checking union: a function returned: {value}", false);
+                        logger.LogDebug("Checking union: a function returned: {Value}", false);
                         return t.Result;
-                    }, cancellationToken);
+                    }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
                 })).ConfigureAwait(false);
 
             if (results.Any(b => b))
             {
-                logger.LogDebug("Checking union: returned: {value}", true);
+                logger.LogDebug("Checking union: returned: {Value}", true);
                 return true;
             }
         }
-        catch (OperationCanceledException exZ)
+        catch (OperationCanceledException)
         {
-            logger.LogDebug("Checking union: returned: {value}, operation cancelled", true);
+            logger.LogDebug("Checking union: returned: {Value}, operation cancelled", true);
             return true;
         }
+        finally
+        {
+            cancellationTokenSource.Dispose();
+        }
 
-        logger.LogDebug("Checking union: returned: {value}", false);
+        logger.LogDebug("Checking union: returned: {Value}", false);
         return false;
     }
     
@@ -310,6 +314,10 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         {
             logger.LogDebug("Checking intersection: returned: {value}, operation cancelled", false);
             return false;
+        }
+        finally
+        {
+            cancellationTokenSource.Dispose();
         }
     }
 }

@@ -22,7 +22,6 @@ public record LookupSubjectRequestInternal
 
 public class LookupSubjectEngine(
     Schema schema,
-    ILogger<LookupSubjectEngine> logger,
     IRelationTupleReader tupleReader,
     IAttributeReader attributeReader)
 {
@@ -48,13 +47,13 @@ public class LookupSubjectEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         var permission = schema.GetPermissions(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
+            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
 
         var relation = schema.GetRelations(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
+            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
 
         var attribute = schema.GetAttributes(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
+            .Find(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
 
         var type = new { permission, relation, attribute } switch
         {
@@ -68,7 +67,8 @@ public class LookupSubjectEngine(
         {
             RelationType.DirectRelation => LookupRelation(req, relation!),
             RelationType.Permission => LookupPermission(req, permission!),
-            RelationType.Attribute => LookupAttribute(req, attribute!)
+            RelationType.Attribute => LookupAttribute(req, attribute!),
+            _ => throw new ArgumentOutOfRangeException()
         };
     }
 
@@ -147,7 +147,8 @@ public class LookupSubjectEngine(
                     },
                     entity.Type,
                     req.EntitiesIds,
-                    entity.Relation
+                    entity.Relation,
+                    ct
                 );
                     
                 lookupFunctions.Add(LookupInternal(req with
@@ -180,13 +181,13 @@ public class LookupSubjectEngine(
             {
                 Attribute = attribute.Name,
                 EntityType = req.EntityType
-            }, req.EntitiesIds);
+            }, req.EntitiesIds, ct);
             
             return new RelationOrAttributeTuples(res);
         };
     }
 
-    private LookupSubjectFunction LookupRelation(LookupSubjectRequestInternal req, Schemas.Relation relation)
+    private LookupSubjectFunction LookupRelation(LookupSubjectRequestInternal req, Relation relation)
     {
         return async (ct) =>
         {
@@ -206,7 +207,7 @@ public class LookupSubjectEngine(
                 }
 
                 var subRelation = schema.GetRelations(relationEntity.Type)
-                    .FirstOrDefault(x => x.Name == relationEntity.Relation);
+                    .Find(x => x.Name == relationEntity.Relation);
 
                 if (subRelation is not null)
                 {
@@ -218,7 +219,8 @@ public class LookupSubjectEngine(
                         },
                         relationEntity.Type,
                         req.EntitiesIds,
-                        subRelation.Name
+                        subRelation.Name,
+                        ct
                     );
                     
                     lookupFunctions.Add(LookupRelation(req with
@@ -247,7 +249,8 @@ public class LookupSubjectEngine(
                 },
                 req.SubjectType,
                 req.EntitiesIds,
-                req.SubjectRelation
+                req.SubjectRelation,
+                ct
             );
 
             return new RelationOrAttributeTuples(res);
@@ -285,7 +288,7 @@ public class LookupSubjectEngine(
         {
             if (result.Type == RelationOrAttributeType.Attribute)
             {
-                if (result.AttributesTuples!.Any(x => x.Value.TryGetValue<bool>(out var b) && b))
+                if (result.AttributesTuples!.Exists(x => x.Value.TryGetValue<bool>(out var b) && b))
                 {
                     continue;
                 }

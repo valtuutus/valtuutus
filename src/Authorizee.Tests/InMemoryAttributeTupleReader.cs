@@ -12,7 +12,7 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         _attributesTuples = attributesTuples;
     }
 
-    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter)
+    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
     {
         var res = _attributesTuples.Where(x =>
             x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
@@ -23,7 +23,7 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         return Task.FromResult(res.FirstOrDefault());
     }
 
-    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter)
+    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
     {
         var res = _attributesTuples.Where(x =>
             x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
@@ -34,7 +34,7 @@ public class InMemoryAttributeTupleReader : IAttributeReader
         return Task.FromResult(res.ToList());
     }
 
-    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds)
+    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
     {
         return Task.FromResult(_attributesTuples
             .Where(x => x.EntityType == filter.EntityType
