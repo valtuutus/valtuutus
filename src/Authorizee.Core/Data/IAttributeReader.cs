@@ -2,6 +2,7 @@
 
 public interface IAttributeReader
 {
-    Task<AttributeTuple?> GetAttribute(AttributeFilter filter);
-    Task<IList<AttributeTuple>> GetAttributes(AttributeFilter filter);
+    Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct);
+    Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct);
+    Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct);
 }

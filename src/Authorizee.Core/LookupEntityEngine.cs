@@ -2,7 +2,6 @@
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
-using Microsoft.Extensions.Logging;
 using LookupFunction =
     System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<
         System.Collections.Generic.List<Authorizee.Core.RelationOrAttributeTuple>>>;
@@ -20,9 +19,8 @@ public record LookupEntityRequestInternal
     public required string FinalSubjectId { get; init; }
 }
 
-public class LookupEngine(
+public class LookupEntityEngine(
     Schema schema,
-    ILogger<LookupEngine> logger,
     IRelationTupleReader tupleReader,
     IAttributeReader attributeReader)
 {
@@ -46,28 +44,12 @@ public class LookupEngine(
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var permission = schema.GetPermissions(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var relation = schema.GetRelations(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var attribute = schema.GetAttributes(req.EntityType)
-            .FirstOrDefault(x => x.Name.Equals(req.Permission, StringComparison.InvariantCultureIgnoreCase));
-
-        var type = new { permission, relation, attribute } switch
+        return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
-            { permission: null, relation: not null } => RelationType.DirectRelation,
-            { permission: not null, relation: null } => RelationType.Permission,
-            { permission: null, relation: null, attribute: not null } => RelationType.Attribute,
-            _ => RelationType.None
-        };
-
-        return type switch
-        {
-            RelationType.DirectRelation => LookupRelation(req, relation!),
-            RelationType.Permission => LookupPermission(req, permission!),
-            RelationType.Attribute => LookupAttribute(req, attribute!)
+            RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission)),
+            RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
+            RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission)),
+            _ => throw new InvalidOperationException()
         };
     }
 
@@ -131,9 +113,7 @@ public class LookupEngine(
     {
         return async (ct) =>
         {
-            var relation = schema.GetRelations(req.EntityType)
-                .First(x => x.Name.Equals(tupleSetRelation, StringComparison.InvariantCultureIgnoreCase));
-
+            var relation = schema.GetRelation(req.EntityType, tupleSetRelation);
             var lookupFunctions = new List<LookupFunction>(capacity: relation.Entities.Count);
 
             foreach (var entity in relation.Entities)
@@ -183,18 +163,18 @@ public class LookupEngine(
     {
         return async (ct) =>
         {
-            return (await attributeReader.GetAttributes(new AttributeFilter
+            return (await attributeReader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attribute.Name,
                     EntityType = req.EntityType
-                }))
+                }, ct))
                 .Where(a => a.Value.TryGetValue(out bool b) && b)
                 .Select(x => new RelationOrAttributeTuple(x))
                 .ToList();
         };
     }
 
-    private LookupFunction LookupRelation(LookupEntityRequestInternal req, Schemas.Relation relation)
+    private LookupFunction LookupRelation(LookupEntityRequestInternal req, Relation relation)
     {
         return async (ct) =>
         {
@@ -214,8 +194,7 @@ public class LookupEngine(
                     continue;
                 }
 
-                var subRelation = schema.GetRelations(relationEntity.Type)
-                    .FirstOrDefault(x => x.Name == relationEntity.Relation);
+                var subRelation = relationEntity.Relation is null ? null : schema.GetRelation(relationEntity.Type, relationEntity.Relation);
 
                 if (subRelation is not null)
                 {
@@ -244,7 +223,7 @@ public class LookupEngine(
                         Permission = relationEntity.Relation!,
                     }, subRelation);
 
-                    lookupFunctions.Add((ct) => JoinEntities(main, dependent, ct));
+                    lookupFunctions.Add((ct1) => JoinEntities(main, dependent, ct1));
                 }
             }
 
@@ -267,14 +246,15 @@ public class LookupEngine(
                     {
                         SubjectId = s,
                         SubjectType = req.SubjectType
-                    })
+                    }),
+                    ct
                 ))
                 .Select(x => new RelationOrAttributeTuple(x))
                 .ToList();
         };
     }
 
-    private async Task<List<RelationOrAttributeTuple>> JoinEntities(
+    private static async Task<List<RelationOrAttributeTuple>> JoinEntities(
         Func<List<RelationOrAttributeTuple>, LookupFunction> main,
         LookupFunction dependent, CancellationToken ct
     )
@@ -282,9 +262,7 @@ public class LookupEngine(
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         var dependentResult = await dependent(ct);
-        // activity.AddEvent(new ActivityEvent("carregou dependentResult"));
         var mainResult = await main(dependentResult)(ct);
-        // activity.AddEvent(new ActivityEvent("carregou mainResult"));
 
         var result = mainResult.Join(
                 dependentResult,
@@ -292,7 +270,6 @@ public class LookupEngine(
                 d => new { Type = d.RelationTuple!.EntityType, Id = d.RelationTuple!.EntityId },
                 (m, d) => m)
             .ToList();
-        // activity.AddEvent(new ActivityEvent("calculou join"));
 
         return result;
     }

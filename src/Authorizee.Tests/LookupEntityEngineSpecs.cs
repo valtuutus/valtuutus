@@ -8,14 +8,13 @@ using NSubstitute;
 
 namespace Authorizee.Tests;
 
-public class LookupEngineSpecs
+public class LookupEntityEngineSpecs
 {
-    public static LookupEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    public static LookupEntityEngine CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var relationTupleReader = new InMemoryRelationTupleReader(tuples);
         var attributeReader = new InMemoryAttributeTupleReader(attributes);
-        var logger = Substitute.For<ILogger<LookupEngine>>();
-        return new LookupEngine(schema ?? TestsConsts.Schemas, logger, relationTupleReader, attributeReader);
+        return new LookupEntityEngine(schema ?? TestsConsts.Schemas, relationTupleReader, attributeReader);
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
@@ -23,18 +22,16 @@ public class LookupEngineSpecs
     {
         {
             // Checks direct relation
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Admins, "member", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -43,26 +40,22 @@ public class LookupEngineSpecs
         },
         {
             // Checks direct relation, but alice is not a part of the group
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member", TestsConsts.Users.Identifier,
-                    TestsConsts.Users.Bob),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Bob)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([])
         },
         {
             // Checks attribute
-            new RelationTuple[]
-            {
-            },
-            new AttributeTuple[]
-            {
-            },
+            [
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([])
@@ -89,8 +82,7 @@ public class LookupEngineSpecs
     {
         {
             // Checks indirect relation
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
@@ -99,11 +91,10 @@ public class LookupEngineSpecs
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsBrabos, "member",
-                    TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member"),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member")
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -113,19 +104,17 @@ public class LookupEngineSpecs
         },
         {
             // Checks indirect and direct relations
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member"),
                 
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsBrabos, "member",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -155,16 +144,14 @@ public class LookupEngineSpecs
     {
         {
             // Checks indirect relation
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "owner",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -174,14 +161,12 @@ public class LookupEngineSpecs
         },
         {
             // Checks indirect relation
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "owner",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -210,17 +195,15 @@ public class LookupEngineSpecs
     {
         {
             // with public attribute
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
                 new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
-            },
+            ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([
@@ -229,33 +212,29 @@ public class LookupEngineSpecs
         },
         {
             // without public attribute
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
-            },
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([])
         },
         {
             // without public attribute as false
-            new RelationTuple[]
-            {
+            [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
-                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            },
-            new AttributeTuple[]
-            {
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
                 new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(false))
-            },
+            ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new ConcurrentBag<string>([])

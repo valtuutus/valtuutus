@@ -5,7 +5,6 @@
 public class SchemaBuilder
 {
     private readonly List<EntitySchemaBuilder> _entities = [];
-    private readonly List<Rule> _rules = [];
 
     public EntitySchemaBuilder WithEntity(string entityName)
     {
@@ -13,31 +12,26 @@ public class SchemaBuilder
         _entities.Add(builder);
         return builder;
     }
-
-    public SchemaBuilder WithRule<T>(string ruleName, string rule)
-    {
-        _rules.Add(new Rule { Name = ruleName, RuleFn = rule });
-        return this;
-    }
+    
 
     public Schema Build()
     {
-        var schema = new Schema(_entities.Select(e => e.Build()).ToList(), _rules);
+        var schema = new Schema(_entities.Select(e => e.Build()).ToDictionary(e => e.Name, e => e));
         return schema;
     }
 }
 
 public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 {
-    private readonly List<Relation> _relations = new();
-    private readonly List<Permission> _permissions = new();
-    private readonly List<Attribute> _attributes = new();
+    private readonly Dictionary<string, Relation> _relations = new();
+    private readonly Dictionary<string, Permission> _permissions = new();
+    private readonly Dictionary<string, Attribute> _attributes = new();
 
     public EntitySchemaBuilder WithRelation(string relationName, Action<RelationSchemaBuilder> config)
     {
         var builder = new RelationSchemaBuilder(relationName);
         config(builder);
-        _relations.Add(builder.Build());
+        _relations.Add(relationName, builder.Build());
         return this;
     }
     
@@ -45,13 +39,13 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 
     public EntitySchemaBuilder WithPermission(string permissionName, PermissionNode permissionTree)
     {
-        _permissions.Add(new Permission(permissionName, permissionTree));
+        _permissions.Add(permissionName, new Permission(permissionName, permissionTree));
         return this;
     }
 
     public EntitySchemaBuilder WithAttribute(string attrName, Type attrType)
     {
-        _attributes.Add(new Attribute(attrName, attrType));
+        _attributes.Add(attrName, new Attribute(attrName, attrType));
         return this;
     }
 

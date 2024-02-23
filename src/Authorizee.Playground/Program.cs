@@ -104,14 +104,20 @@ app.MapGet("/check",
     .WithOpenApi();
 
 app.MapPost("/lookup-entity",
-        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEntityEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
     .WithName("Lookup entity")
+    .WithOpenApi();
+
+app.MapPost("/lookup-subject",
+        async ([FromBody] LookupSubjectRequest req, [FromServices] LookupSubjectEngine service, CancellationToken ct) => await service.Lookup(req, ct))
+    .WithName("Lookup subject")
     .WithOpenApi();
 
 app.MapPost("/subject-permission",
         async ([FromBody] SubjectPermissionRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
     .WithName("Subject permission")
     .WithOpenApi();
+
 _ = Task.Run(async () => await Seeder.Seed(builder.Configuration)); 
 
 app.Run();
