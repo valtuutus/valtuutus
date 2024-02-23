@@ -68,7 +68,7 @@ public class LookupSubjectEngine(
             RelationType.DirectRelation => LookupRelation(req, relation!),
             RelationType.Permission => LookupPermission(req, permission!),
             RelationType.Attribute => LookupAttribute(req, attribute!),
-            _ => throw new ArgumentOutOfRangeException()
+            _ => throw new InvalidOperationException()
         };
     }
 
