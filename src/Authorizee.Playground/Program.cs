@@ -113,6 +113,11 @@ app.MapPost("/lookup-subject",
     .WithName("Lookup subject")
     .WithOpenApi();
 
-//await Seeder.Seed(builder.Configuration);
+app.MapPost("/subject-permission",
+        async ([FromBody] SubjectPermissionRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
+    .WithName("Subject permission")
+    .WithOpenApi();
+
+_ = Task.Run(async () => await Seeder.Seed(builder.Configuration)); 
 
 app.Run();

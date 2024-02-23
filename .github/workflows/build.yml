@@ -1,0 +1,61 @@
+name: Build and test
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**.md'
+        
+concurrency:
+  group: ${{ github.head_ref || github.sha }}
+  cancel-in-progress: true        
+
+env:
+  GITHUB_WORKSPACE: ${{ github.workspace }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_DOTNET_ENABLE_CONCURRENT_EXECUTION: true  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft' # See 'Supported distributions' for available options
+          java-version: '17'
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v4.0.0
+        with:
+          dotnet-version: '8.x'
+      - name: Install dotnet-sonarscanner
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+      - name: Install dotnet-coverage
+        run: |
+          dotnet tool install --global dotnet-coverage
+          
+      # - name: Cache NuGet Packages
+      #   uses: actions/cache@v3
+      #   with:
+      #     key: nuget-${{ hashFiles('Directory.Packages.props') }}
+      #     path: ~/.nuget/packages
+          
+      - name: Build the project, run all tests and publish to SonarCloud
+        run: |
+          dotnet sonarscanner begin \
+          /k:"valtuutus_valtuutus" \
+          /o:"valtuutus" \
+          /d:sonar.token="$SONAR_TOKEN" \
+          /d:sonar.host.url="https://sonarcloud.io" \
+          /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
+          dotnet build Authorizee.sln --no-incremental          
+          dotnet-coverage collect 'dotnet test Authorizee.sln' -f xml  -o 'coverage.xml'
+          dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
