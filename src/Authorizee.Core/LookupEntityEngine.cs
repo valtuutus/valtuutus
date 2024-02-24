@@ -242,11 +242,8 @@ public class LookupEntityEngine(
                         Relation = req.Permission,
                         EntityType = req.EntityType
                     },
-                    req.SubjectsIds.Select(s => new SubjectFilter
-                    {
-                        SubjectId = s,
-                        SubjectType = req.SubjectType
-                    }),
+                    req.SubjectsIds,
+                    req.SubjectType,
                     ct
                 ))
                 .Select(x => new RelationOrAttributeTuple(x))

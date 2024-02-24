@@ -24,7 +24,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/");
+                FROM attributes with (NOLOCK) /**where**/");
 
         logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
@@ -45,7 +45,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/");
+                FROM attributes with (NOLOCK) /**where**/");
 
         logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
@@ -67,7 +67,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/");
+                FROM attributes with (NOLOCK) /**where**/");
 
         logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 

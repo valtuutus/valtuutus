@@ -73,14 +73,14 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
         return res;
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()
-            .FilterRelations(entityFilter, subjectsFilter)
+            .FilterRelations(entityFilter, subjectsIds, subjectType)
             .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -91,7 +91,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
                 FROM relation_tuples /**where**/");
 
 #if DEBUG
-        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsFilter}));
+        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsIds}));
         var start = Stopwatch.GetTimestamp();
 #endif
         

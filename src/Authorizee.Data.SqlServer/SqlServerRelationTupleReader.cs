@@ -28,7 +28,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples /**where**/");
+                FROM relation_tuples with (NOLOCK) /**where**/");
 
 #if DEBUG
         logger.LogDebug("Querying relations tuples with filter: {filter}", JsonSerializer.Serialize(tupleFilter));
@@ -57,7 +57,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples /**where**/");
+                FROM relation_tuples with (NOLOCK) /**where**/");
 
 #if DEBUG
         logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityRelationFilter, subjectType, entitiesIds, subjectRelation}));
@@ -73,14 +73,14 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
         return res;
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()
-            .FilterRelations(entityFilter, subjectsFilter)
+            .FilterRelations(entityFilter, subjectsIds, subjectType)
             .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -88,10 +88,10 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples /**where**/");
+                FROM relation_tuples with (NOLOCK) /**where**/");
 
 #if DEBUG
-        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsFilter}));
+        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsIds}));
         var start = Stopwatch.GetTimestamp();
 #endif
         

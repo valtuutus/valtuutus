@@ -6,5 +6,5 @@ public interface IRelationTupleReader
 
     Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entitiesIds, string? subjectRelation, CancellationToken ct);
-    Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct);
+    Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken ct);
 }

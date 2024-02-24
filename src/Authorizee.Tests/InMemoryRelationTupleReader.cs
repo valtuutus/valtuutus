@@ -44,7 +44,7 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
     }
 
     public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter,
-        IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct)
+        IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         var result = _relationTuples.AsEnumerable();
 
@@ -54,9 +54,10 @@ public class InMemoryRelationTupleReader : IRelationTupleReader
         if (!string.IsNullOrEmpty(entityFilter.Relation))
             result = result.Where(x => x.Relation == entityFilter.Relation);
 
+
+        result = result.Where(x => x.SubjectType == subjectType);
         return Task.FromResult(result.Where(x =>
-                subjectsFilter.Any(y => x.SubjectType == y.SubjectType
-                                        && x.SubjectId == y.SubjectId))
+                subjectsIds.Any(y => x.SubjectId == y))
             .ToList()
         );
     }
