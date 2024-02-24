@@ -10,4 +10,8 @@
       <ProjectReference Include="..\Authorizee.Data\Authorizee.Data.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
+    </ItemGroup>
+
 </Project>

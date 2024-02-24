@@ -4,7 +4,6 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <InvariantGlobalization>true</InvariantGlobalization>
     <RootNamespace>Authorizee.Api</RootNamespace>
     <UserSecretsId>6114138a-bdfb-452c-b317-dbdb2c961423</UserSecretsId>
   </PropertyGroup>
