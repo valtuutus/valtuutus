@@ -1,3 +1,5 @@
+//#define postgres
+
 using System.Diagnostics;
 using Authorizee.Api;
 using Authorizee.Core;
@@ -14,6 +16,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -21,8 +24,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-//builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
+#if postgres
+builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
+
+#else 
 builder.Services.AddDatabaseSetup(() => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
+#endif
 
 builder.Services.AddSchemaConfiguration(c =>
 {
@@ -120,7 +127,10 @@ app.MapPost("/subject-permission",
     .WithName("Subject permission")
     .WithOpenApi();
 
-_ = Task.Run(async () => await Seeder.SeedSqlServer(builder.Configuration)); 
-//_ = Task.Run(async () => await Seeder.SeedPostgres(builder.Configuration)); 
 
+#if postgres
+_ = Task.Run(async () => await Seeder.SeedPostgres(builder.Configuration)); 
+#else
+_ = Task.Run(async () => await Seeder.SeedSqlServer(builder.Configuration)); 
+#endif
 app.Run();
