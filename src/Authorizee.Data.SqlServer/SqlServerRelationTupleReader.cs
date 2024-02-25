@@ -38,7 +38,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }

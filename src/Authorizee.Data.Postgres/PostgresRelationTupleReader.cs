@@ -37,7 +37,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start));
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -68,7 +68,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
         
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -99,7 +99,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
             .ToList();
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
 
         return res;
