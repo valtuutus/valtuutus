@@ -55,3 +55,6 @@ CREATE STATISTICS [_dta_stat_677577452_1_5] ON [dbo].[relation_tuples]([id], [su
 CREATE NONCLUSTERED INDEX idx_relation_tuples_entity_type_entity_id_relation
 ON [dbo].[relation_tuples] ([entity_type],[entity_id],[relation])
 INCLUDE ([subject_type],[subject_id],[subject_relation])
+       
+CREATE NONCLUSTERED INDEX idx_relation_tuples_entity_type_relation_subject_type_subject_id
+ON [dbo].[relation_tuples] ([entity_type],[relation],[subject_type],[subject_id])
