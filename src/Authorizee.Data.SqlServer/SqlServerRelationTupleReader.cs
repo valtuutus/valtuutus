@@ -6,6 +6,7 @@ using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
 using Authorizee.Data.SqlServer.Utils;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.SqlServer;
@@ -17,11 +18,11 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterRelations(tupleFilter)
-            .AddTemplate(@"SELECT 
+            .AddTemplate(@"SELECT
                     entity_type,
                     entity_id,
                     relation,
@@ -37,7 +38,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start));
+        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start).TotalMilliseconds);
 #endif
         return res;
     }
@@ -46,11 +47,11 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterRelations(entityRelationFilter, subjectType, entitiesIds, subjectRelation)
-            .AddTemplate(@"SELECT 
+            .AddTemplate(@"SELECT
                     entity_type,
                     entity_id,
                     relation,
@@ -68,7 +69,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
         
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -77,11 +78,11 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterRelations(entityFilter, subjectsIds, subjectType)
-            .AddTemplate(@"SELECT 
+            .AddTemplate(@"SELECT
                     entity_type,
                     entity_id,
                     relation,
@@ -99,7 +100,7 @@ public class SqlServerRelationTupleReader(DbConnectionFactory connectionFactory,
             .ToList();
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
 
         return res;

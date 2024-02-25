@@ -5,9 +5,11 @@ using Authorizee.Core.Configuration;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.Postgres;
 using Authorizee.Data.SqlServer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -19,7 +21,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
+//builder.Services.AddDatabaseSetup(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
 builder.Services.AddDatabaseSetup(() => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
 
 builder.Services.AddSchemaConfiguration(c =>
@@ -119,5 +121,6 @@ app.MapPost("/subject-permission",
     .WithOpenApi();
 
 _ = Task.Run(async () => await Seeder.SeedSqlServer(builder.Configuration)); 
+//_ = Task.Run(async () => await Seeder.SeedPostgres(builder.Configuration)); 
 
 app.Run();

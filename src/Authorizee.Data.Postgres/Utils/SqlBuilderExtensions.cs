@@ -15,10 +15,10 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_id = @SubjectId", tupleFilter);
         
         if (!string.IsNullOrEmpty(tupleFilter.SubjectRelation))
-            builder = builder.Where("subject_id = @SubjectRelation", tupleFilter);
+            builder = builder.Where("subject_relation = @SubjectRelation", tupleFilter);
         
         if (!string.IsNullOrEmpty(tupleFilter.SubjectType))
-            builder = builder.Where("subject_id = @SubjectType", tupleFilter);
+            builder = builder.Where("subject_type = @SubjectType", tupleFilter);
         
         return builder;
     }
@@ -38,7 +38,7 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {entityRelationFilter.Relation});
         
         if (entitiesIdsArr.Length != 0)
-            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+            builder = builder.Where("entity_id = ANY(@EntitiesIds)", new {EntitiesIds = entitiesIdsArr});
         
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation});
@@ -57,7 +57,7 @@ public static class SqlBuilderExtensions
         builder.Where("subject_type = @SubjectType", new {SubjectType = subjectType});
 
         if (subjectsIds.Count != 0)
-            builder = builder.Where("subject_id = ANY(@entitiesIds)", new {subjectsIds = subjectsIds});
+            builder = builder.Where("subject_id = ANY(@SubjectsIds)", new {SubjectsIds = subjectsIds});
         
         return builder;
     }

@@ -4,6 +4,7 @@ using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
 using Authorizee.Data.SqlServer.Utils;
 using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.SqlServer;
@@ -15,7 +16,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterAttributes(filter)
@@ -36,7 +37,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterAttributes(filter)
@@ -58,7 +59,7 @@ public class SqlServerAttributeReader(DbConnectionFactory connectionFactory, ILo
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        using var connection = connectionFactory();
+        await using var connection = (SqlConnection)connectionFactory();
 
         var queryTemplate = new SqlBuilder()
             .FilterAttributes(filter, entitiesIds)
