@@ -10,21 +10,18 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = tupleFilter.EntityType,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
         {
             Value = tupleFilter.EntityId,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 64
         }});
         builder = builder.Where("relation = @Relation", new {Relation = new DbString()
         {
             Value = tupleFilter.Relation,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 64
         }});
@@ -33,7 +30,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_id = @SubjectId", new {SubjectId = new DbString()
             {
                 Value = tupleFilter.SubjectId,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -42,7 +38,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_relation = @SubjectRelation", new {SubjectRelation =new DbString()
             {
                 Value = tupleFilter.SubjectRelation,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -51,7 +46,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
             {
                 Value = tupleFilter.SubjectType,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 256
             }});
@@ -68,7 +62,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
             {
                 Value = subjectType,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 256
             }});
@@ -77,7 +70,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
             {
                 Value = entityRelationFilter.EntityType,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 256
             }});
@@ -86,7 +78,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {Relation = new DbString()
             {
                 Value = entityRelationFilter.Relation,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -99,7 +90,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation = new DbString()
             {
                 Value = subjectRelation,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -113,7 +103,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
             {
                 Value = entityFilter.EntityType,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 256
             }});
@@ -122,7 +111,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {Relation = new DbString()
             {
                 Value = entityFilter.Relation,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -130,7 +118,6 @@ public static class SqlBuilderExtensions
         builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
         {
             Value = subjectType,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 256
         }});
@@ -142,7 +129,6 @@ public static class SqlBuilderExtensions
                 {$"@SubjectId{i}", new DbString()
                 {
                     Value = subjectsIds[i],
-                    IsFixedLength = true,
                     IsAnsi = true,
                     Length = 256
                 }},
@@ -158,14 +144,12 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("attribute = @Attribute", new {Attribute =new DbString()
         {
             Value = filter.Attribute,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 64
         }});
@@ -174,7 +158,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
             {
                 Value = filter.EntityType,
-                IsFixedLength = true,
                 IsAnsi = true,
                 Length = 64
             }});
@@ -189,14 +172,12 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("attribute = @Attribute", new {Attribute = new DbString()
         {
             Value = filter.Attribute,
-            IsFixedLength = true,
             IsAnsi = true,
             Length = 64
         }});

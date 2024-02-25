@@ -52,3 +52,6 @@ CREATE NONCLUSTERED INDEX [_dta_index_relation_tuples_8_677577452__K6_K5_K1] ON 
 	[id] ASC
 )WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PRIMARY]
 CREATE STATISTICS [_dta_stat_677577452_1_5] ON [dbo].[relation_tuples]([id], [subject_type])
+CREATE NONCLUSTERED INDEX idx_relation_tuples_entity_type_entity_id_relation
+ON [dbo].[relation_tuples] ([entity_type],[entity_id],[relation])
+INCLUDE ([subject_type],[subject_id],[subject_relation])
