@@ -157,7 +157,7 @@ public static class SqlBuilderExtensions
         if (!string.IsNullOrWhiteSpace(filter.EntityId))
             builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
             {
-                Value = filter.EntityType,
+                Value = filter.EntityId,
                 IsAnsi = true,
                 Length = 64
             }});
