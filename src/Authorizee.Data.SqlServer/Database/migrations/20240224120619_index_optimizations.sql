@@ -58,3 +58,23 @@ INCLUDE ([subject_type],[subject_id],[subject_relation])
        
 CREATE NONCLUSTERED INDEX idx_relation_tuples_entity_type_relation_subject_type_subject_id
 ON [dbo].[relation_tuples] ([entity_type],[relation],[subject_type],[subject_id])
+       
+       
+CREATE NONCLUSTERED INDEX [_dta_index_attributes_8_645577338__K4_K2_3_5] ON [dbo].[attributes]
+(
+	[attribute] ASC,
+	[entity_type] ASC
+)
+INCLUDE([entity_id],[value]) WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PRIMARY]
+
+SET ANSI_PADDING ON
+
+CREATE NONCLUSTERED INDEX [_dta_index_relation_tuples_8_677577452__K4_K5_K6_K2_1_3_7] ON [dbo].[relation_tuples]
+(
+	[relation] ASC,
+	[subject_type] ASC,
+	[subject_id] ASC,
+	[entity_type] ASC
+)
+INCLUDE([id],[entity_id],[subject_relation]) WITH (SORT_IN_TEMPDB = OFF, DROP_EXISTING = OFF, ONLINE = OFF) ON [PRIMARY]
+
