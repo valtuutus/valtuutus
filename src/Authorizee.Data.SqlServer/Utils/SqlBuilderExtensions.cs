@@ -1,4 +1,5 @@
-﻿using Authorizee.Core.Data;
+﻿using System.Data;
+using Authorizee.Core.Data;
 using Dapper;
 
 namespace Authorizee.Data.SqlServer.Utils;
@@ -81,10 +82,15 @@ public static class SqlBuilderExtensions
                 IsAnsi = true,
                 Length = 64
             }});
-        
-        if (entitiesIdsArr.Length != 0)
-            // TODO: certamente isso aqui está quebrado
-            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+
+        if (entitiesIdsArr.Length > 0)
+        {
+            var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var entityId in entitiesIdsArr)
+                dt.Rows.Add(entityId);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter("TVP_ListIds")});
+        }
         
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation = new DbString()
@@ -122,17 +128,13 @@ public static class SqlBuilderExtensions
             Length = 256
         }});
 
-        for (var i = 0; i < subjectsIds.Count; i++)
+        if (subjectsIds.Count > 0)
         {
-            builder = builder.OrWhere($"(subject_id = @SubjectId{i})", new Dictionary<string, object>
-            {
-                {$"@SubjectId{i}", new DbString()
-                {
-                    Value = subjectsIds[i],
-                    IsAnsi = true,
-                    Length = 256
-                }},
-            });
+            var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var subjectId in subjectsIds)
+                dt.Rows.Add(subjectId);
+            builder = builder.Where("subject_id in (select id from @subjectsIds)", new {subjectsIds = dt.AsTableValuedParameter("TVP_ListIds")});
         }
         
         return builder;
@@ -181,10 +183,16 @@ public static class SqlBuilderExtensions
             IsAnsi = true,
             Length = 64
         }});
-        
+
         if (entitiesIdsArr.Length != 0)
-            // TODO: Certamente está quebrado
-            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+        {
+            var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var entityId in entitiesIdsArr)
+                dt.Rows.Add(entityId);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter("TVP_ListIds")});
+        }
+
         
         return builder;
     }

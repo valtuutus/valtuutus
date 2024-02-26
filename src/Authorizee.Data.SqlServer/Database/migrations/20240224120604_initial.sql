@@ -12,3 +12,10 @@ CREATE NONCLUSTERED INDEX [idx_tuples_userset] ON [relation_tuples] ([entity_typ
 CREATE NONCLUSTERED INDEX [idx_tuples_subject_entities] ON [relation_tuples] ([entity_type] ASC, [relation] ASC, [subject_type] ASC, [subject_id] ASC);
 -- Create index "idx_tuples_entity_relation" to table: "relation_tuples"
 CREATE NONCLUSTERED INDEX [idx_tuples_entity_relation] ON [relation_tuples] ([entity_type] ASC, [relation] ASC);
+
+
+CREATE TYPE TVP_ListIds AS TABLE
+    (
+    [id] [VARCHAR](64) NOT NULL,
+    index tvp_id (id)
+    )
