@@ -15,9 +15,3 @@ public record EntityRelationFilter
     public required string EntityType { get; init; }
     public required string Relation { get; init; }
 }
-
-public record SubjectFilter
-{
-    public required string SubjectType { get; init; }
-    public required string SubjectId { get; init; }
-}

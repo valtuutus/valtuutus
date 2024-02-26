@@ -1,9 +1,7 @@
-﻿using System.Dynamic;
-using Authorizee.Core.Data;
+﻿using Authorizee.Core.Data;
 using Dapper;
-using Jint.Runtime.Descriptors;
 
-namespace Authorizee.Data.Utils;
+namespace Authorizee.Data.Postgres.Utils;
 
 public static class SqlBuilderExtensions
 {
@@ -17,10 +15,10 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_id = @SubjectId", tupleFilter);
         
         if (!string.IsNullOrEmpty(tupleFilter.SubjectRelation))
-            builder = builder.Where("subject_id = @SubjectRelation", tupleFilter);
+            builder = builder.Where("subject_relation = @SubjectRelation", tupleFilter);
         
         if (!string.IsNullOrEmpty(tupleFilter.SubjectType))
-            builder = builder.Where("subject_id = @SubjectType", tupleFilter);
+            builder = builder.Where("subject_type = @SubjectType", tupleFilter);
         
         return builder;
     }
@@ -40,7 +38,7 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {entityRelationFilter.Relation});
         
         if (entitiesIdsArr.Length != 0)
-            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+            builder = builder.Where("entity_id = ANY(@EntitiesIds)", new {EntitiesIds = entitiesIdsArr});
         
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation});
@@ -48,24 +46,18 @@ public static class SqlBuilderExtensions
         return builder;
     }
     
-    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilters)
+    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType)
     {
         if (!string.IsNullOrEmpty(entityFilter.EntityType))
             builder = builder.Where("entity_type = @EntityType", new {entityFilter.EntityType});
         
         if (!string.IsNullOrEmpty(entityFilter.Relation))
             builder = builder.Where("relation = @Relation", new {entityFilter.Relation});
+        
+        builder.Where("subject_type = @SubjectType", new {SubjectType = subjectType});
 
-        var entityRelationFilters = subjectsFilters as SubjectFilter[] ?? subjectsFilters.ToArray();
-        for (var i = 0; i < entityRelationFilters.Length; i++)
-        {
-            var filter = entityRelationFilters[i];
-            builder = builder.OrWhere($"(subject_type = @SubjectType{i} AND subject_id = @SubjectId{i})", new Dictionary<string, object>
-            {
-                {$"@SubjectType{i}", filter.SubjectType},
-                {$"@SubjectId{i}", filter.SubjectId},
-            });
-        }
+        if (subjectsIds.Count != 0)
+            builder = builder.Where("subject_id = ANY(@SubjectsIds)", new {SubjectsIds = subjectsIds});
         
         return builder;
     }

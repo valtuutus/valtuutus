@@ -194,7 +194,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                Relation = req.Permission
+                Relation = req.Permission,
             }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);

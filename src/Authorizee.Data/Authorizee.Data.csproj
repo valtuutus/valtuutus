@@ -17,8 +17,4 @@
       <ProjectReference Include="..\Authorizee.Core\Authorizee.Core.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Database\migrations\" />
-    </ItemGroup>
-
 </Project>

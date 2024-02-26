@@ -4,13 +4,13 @@ using Authorizee.Core;
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Data.Configuration;
-using Authorizee.Data.Utils;
+using Authorizee.Data.Postgres.Utils;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
-namespace Authorizee.Data;
+namespace Authorizee.Data.Postgres;
 
-public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<RelationTupleReader> logger)
+public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, ILogger<PostgresRelationTupleReader> logger)
     : IRelationTupleReader
 {
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
@@ -37,7 +37,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms", Stopwatch.GetElapsedTime(start));
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -68,19 +68,19 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
         
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IEnumerable<SubjectFilter> subjectsFilter, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         using var connection = connectionFactory();
 
         var queryTemplate = new SqlBuilder()
-            .FilterRelations(entityFilter, subjectsFilter)
+            .FilterRelations(entityFilter, subjectsIds, subjectType)
             .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -91,7 +91,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
                 FROM relation_tuples /**where**/");
 
 #if DEBUG
-        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsFilter}));
+        logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityFilter, subjectsIds}));
         var start = Stopwatch.GetTimestamp();
 #endif
         
@@ -99,7 +99,7 @@ public class RelationTupleReader(DbConnectionFactory connectionFactory, ILogger<
             .ToList();
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start), res.Count);
+        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
 
         return res;
