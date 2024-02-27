@@ -10,4 +10,8 @@
       <ProjectReference Include="..\Authorizee.Data\Authorizee.Data.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Npgsql" Version="8.0.2" />
+    </ItemGroup>
+
 </Project>

@@ -28,6 +28,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Data.Postgres.Te
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Tests.Shared", "tests\Authorizee.Tests.Shared\Authorizee.Tests.Shared.csproj", "{C5EA2815-117F-4FF9-B6DA-87EC47B884C2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Data.SqlServer.Tests", "tests\Authorizee.Data.SqlServer.Tests\Authorizee.Data.SqlServer.Tests.csproj", "{954D9B3C-A6BF-4211-9EB5-B205093593A6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,10 @@ Global
 		{C5EA2815-117F-4FF9-B6DA-87EC47B884C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C5EA2815-117F-4FF9-B6DA-87EC47B884C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C5EA2815-117F-4FF9-B6DA-87EC47B884C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{954D9B3C-A6BF-4211-9EB5-B205093593A6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{954D9B3C-A6BF-4211-9EB5-B205093593A6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{954D9B3C-A6BF-4211-9EB5-B205093593A6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{954D9B3C-A6BF-4211-9EB5-B205093593A6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C45DF205-1484-49D5-A8C0-5AEADCC144D3} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
@@ -79,5 +85,6 @@ Global
 		{D074253B-9547-493D-A2E8-DCF0DB1D3204} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 		{C5EA2815-117F-4FF9-B6DA-87EC47B884C2} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
+		{954D9B3C-A6BF-4211-9EB5-B205093593A6} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 	EndGlobalSection
 EndGlobal
