@@ -4,14 +4,10 @@ using Authorizee.Core.Configuration;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Tests.Shared;
-using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Npgsql;
-using NpgsqlTypes;
 using NSubstitute;
-using Xunit;
 
 namespace Authorizee.Data.Postgres.Tests;
 
@@ -43,48 +39,11 @@ public sealed class CheckEngineSpecs : IAsyncLifetime
         return serviceCollection.BuildServiceProvider();
     }
     
-    private async Task InsertTuples(RelationTuple[] tuples)
-    {
-        await using var db = (NpgsqlConnection) _fixture.DbFactory();
-        await db.OpenAsync();
-        await using var writer = await db.BeginBinaryImportAsync(
-            "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)");
-        foreach (var record in tuples)
-        {
-            await writer.StartRowAsync();
-            await writer.WriteAsync(record.EntityType);
-            await writer.WriteAsync(record.EntityId);
-            await writer.WriteAsync(record.Relation);
-            await writer.WriteAsync(record.SubjectType);
-            await writer.WriteAsync(record.SubjectId);
-            await writer.WriteAsync(record.SubjectRelation);
-        }
-
-        await writer.CompleteAsync();
-    }
-    
-    private async Task InsertAttributes(AttributeTuple[] tuples)
-    {
-        await using var db = (NpgsqlConnection) _fixture.DbFactory();
-        await db.OpenAsync();
-        await using var writer = await db.BeginBinaryImportAsync(
-            "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)");
-        foreach (var record in tuples)
-        {
-            await writer.StartRowAsync();
-            await writer.WriteAsync(record.EntityType);
-            await writer.WriteAsync(record.EntityId);
-            await writer.WriteAsync(record.Attribute);
-            await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
-        }
-
-        await writer.CompleteAsync();
-    }
     
     private async Task<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        await Task.WhenAll(InsertTuples(tuples), InsertAttributes(attributes));
+        await Task.WhenAll(_fixture.DbFactory.InsertRelations(tuples), _fixture.DbFactory.InsertAttributes(attributes));
         var checkEngine = serviceProvider.CreateScope().ServiceProvider.GetRequiredService<CheckEngine>();
         return checkEngine;
     }
