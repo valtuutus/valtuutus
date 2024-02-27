@@ -16,13 +16,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		docker-compose.yml = docker-compose.yml
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Tests", "tests\Authorizee.Tests\Authorizee.Tests.csproj", "{D074253B-9547-493D-A2E8-DCF0DB1D3204}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Core.Tests", "tests\Authorizee.Core.Tests\Authorizee.Core.Tests.csproj", "{D074253B-9547-493D-A2E8-DCF0DB1D3204}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Data.Postgres", "src\Authorizee.Data.Postgres\Authorizee.Data.Postgres.csproj", "{5C19C542-4D53-4F67-9BA1-9808A3D7F1F1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Data.SqlServer", "src\Authorizee.Data.SqlServer\Authorizee.Data.SqlServer.csproj", "{18ADD67E-35CD-44D5-A43F-237C81A08818}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Authorizee.Data.Postgres.Tests", "tests\Authorizee.Data.Postgres.Tests\Authorizee.Data.Postgres.Tests.csproj", "{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -57,6 +59,10 @@ Global
 		{18ADD67E-35CD-44D5-A43F-237C81A08818}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{18ADD67E-35CD-44D5-A43F-237C81A08818}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{18ADD67E-35CD-44D5-A43F-237C81A08818}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C45DF205-1484-49D5-A8C0-5AEADCC144D3} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
@@ -65,5 +71,6 @@ Global
 		{5C19C542-4D53-4F67-9BA1-9808A3D7F1F1} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
 		{18ADD67E-35CD-44D5-A43F-237C81A08818} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
 		{D074253B-9547-493D-A2E8-DCF0DB1D3204} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
+		{6C84DD3C-7885-435B-95BA-76ACA0F5F0AA} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 	EndGlobalSection
 EndGlobal

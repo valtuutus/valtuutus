@@ -1,7 +1,6 @@
-﻿using Authorizee.Core;
-using Authorizee.Core.Data;
+﻿using Authorizee.Core.Data;
 
-namespace Authorizee.Tests;
+namespace Authorizee.Core.Tests;
 
 public class InMemoryAttributeTupleReader : IAttributeReader
 {

@@ -5,7 +5,7 @@ namespace Authorizee.Core.Configuration;
 
 public static class ConfigureSchema
 {
-    public static void AddSchemaConfiguration(this IServiceCollection services, Action<SchemaBuilder> config)
+    public static IServiceCollection AddSchemaConfiguration(this IServiceCollection services, Action<SchemaBuilder> config)
     {
         var builder = new SchemaBuilder();
         config(builder);
@@ -14,5 +14,7 @@ public static class ConfigureSchema
         services.AddScoped<CheckEngine>();
         services.AddScoped<LookupEntityEngine>();
         services.AddScoped<LookupSubjectEngine>();
+
+        return services;
     }
 }

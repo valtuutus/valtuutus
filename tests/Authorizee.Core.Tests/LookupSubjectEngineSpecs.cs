@@ -1,12 +1,9 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
-using Authorizee.Core;
 using Authorizee.Core.Schemas;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
-using NSubstitute;
 
-namespace Authorizee.Tests;
+namespace Authorizee.Core.Tests;
 
 public class LookupSubjectEngineSpecs
 {

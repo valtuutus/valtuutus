@@ -1,6 +1,6 @@
 ﻿using Authorizee.Core.Schemas;
 
-namespace Authorizee.Tests;
+namespace Authorizee.Core.Tests;
 
 public static class TestsConsts
 {
