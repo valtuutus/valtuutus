@@ -2,7 +2,7 @@
 
 namespace Authorizee.Core.Tests;
 
-public class InMemoryRelationTupleReader : IRelationTupleReader
+public sealed class InMemoryRelationTupleReader : IRelationTupleReader
 {
     private readonly RelationTuple[] _relationTuples;
 

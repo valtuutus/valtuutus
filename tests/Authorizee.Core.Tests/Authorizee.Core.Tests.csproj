@@ -27,6 +27,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Authorizee.Core\Authorizee.Core.csproj" />
+      <ProjectReference Include="..\Authorizee.Tests.Shared\Authorizee.Tests.Shared.csproj" />
     </ItemGroup>
 
 </Project>

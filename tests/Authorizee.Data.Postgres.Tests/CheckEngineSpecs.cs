@@ -1,17 +1,22 @@
-﻿using Authorizee.Core;
+﻿using System.Text.Json.Nodes;
+using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
+using Authorizee.Tests.Shared;
+using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
+using NpgsqlTypes;
 using NSubstitute;
 using Xunit;
 
 namespace Authorizee.Data.Postgres.Tests;
 
 [Collection("PostgreSqlSpec")]
-public class CheckEngineSpecs : IAsyncDisposable
+public sealed class CheckEngineSpecs : IAsyncLifetime
 {
     private readonly PostgresFixture _fixture;
 
@@ -20,49 +25,445 @@ public class CheckEngineSpecs : IAsyncDisposable
         _fixture = fixture;
     }
     
-    private ServiceProvider CreateServiceProvider()
+    private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
-        var serviceProvider = new ServiceCollection()
+        var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<PostgresAttributeReader>>())
             .AddSingleton(Substitute.For<ILogger<PostgresRelationTupleReader>>())
             .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
-            .AddSchemaConfiguration(c =>
-            {
+            .AddSchemaConfiguration(TestsConsts.Action);
+        if (schema != null)
+        {
+            var serviceDescriptor = serviceCollection.First(descriptor => descriptor.ServiceType == typeof(Schema));
+            serviceCollection.Remove(serviceDescriptor);
+            serviceCollection.AddSingleton(schema);
+        }
 
-            }).BuildServiceProvider();
-
-        return serviceProvider;
+        return serviceCollection.BuildServiceProvider();
     }
+    
+    private async Task InsertTuples(RelationTuple[] tuples)
+    {
+        await using var db = (NpgsqlConnection) _fixture.DbFactory();
+        await db.OpenAsync();
+        await using var writer = await db.BeginBinaryImportAsync(
+            "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)");
+        foreach (var record in tuples)
+        {
+            await writer.StartRowAsync();
+            await writer.WriteAsync(record.EntityType);
+            await writer.WriteAsync(record.EntityId);
+            await writer.WriteAsync(record.Relation);
+            await writer.WriteAsync(record.SubjectType);
+            await writer.WriteAsync(record.SubjectId);
+            await writer.WriteAsync(record.SubjectRelation);
+        }
+
+        await writer.CompleteAsync();
+    }
+    
+    private async Task InsertAttributes(AttributeTuple[] tuples)
+    {
+        await using var db = (NpgsqlConnection) _fixture.DbFactory();
+        await db.OpenAsync();
+        await using var writer = await db.BeginBinaryImportAsync(
+            "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)");
+        foreach (var record in tuples)
+        {
+            await writer.StartRowAsync();
+            await writer.WriteAsync(record.EntityType);
+            await writer.WriteAsync(record.EntityId);
+            await writer.WriteAsync(record.Attribute);
+            await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
+        }
+
+        await writer.CompleteAsync();
+    }
+    
     private async Task<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
-
-        var serviceProvider = CreateServiceProvider();
+        var serviceProvider = CreateServiceProvider(schema);
+        await Task.WhenAll(InsertTuples(tuples), InsertAttributes(attributes));
         var checkEngine = serviceProvider.CreateScope().ServiceProvider.GetRequiredService<CheckEngine>();
         return checkEngine;
     }
     
-    [Fact]
-    public async Task FixtureIsWorking()
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> TopLevelChecks =
+        CheckEngineSpecList.TopLevelChecks;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsData =
+        CheckEngineSpecList.UnionRelationsData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionRelationsData =
+        CheckEngineSpecList.IntersectionRelationsData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsAttributesData =
+        CheckEngineSpecList.UnionRelationsAttributesData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionRelationsAttributesData =
+        CheckEngineSpecList.IntersectionRelationsAttributesData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> NestedRelationData =
+        CheckEngineSpecList.NestedRelationData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionOfDirectAndNestedRelationData =
+        CheckEngineSpecList.UnionOfDirectAndNestedRelationData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionOfDirectAndNestedRelationData =
+        CheckEngineSpecList.IntersectionOfDirectAndNestedRelationData;
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> NestedPermissionsData =
+        CheckEngineSpecList.NestedPermissionsData;
+    
+    
+    [Theory]
+    [MemberData(nameof(CheckEngineSpecList.TopLevelChecks))]
+    public async Task TopLevelCheckShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
-        // arrange
+        // Arrange
+        var engine = await CreateEngine(tuples, attributes);
+        
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    [Theory]
+    [MemberData(nameof(UnionRelationsData))]
+    public async Task CheckingSimpleUnionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithPermission("view", PermissionNode.Union("member", "admin"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    
+    
+    [Theory]
+    [MemberData(nameof(IntersectionRelationsData))]
+    public async Task CheckingSimpleIntersectionOfRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("owner", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("whatever", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithPermission("delete", PermissionNode.Intersect("owner", "whatever"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    [Theory]
+    [MemberData(nameof(UnionRelationsAttributesData))]
+    public async Task CheckingSimpleUnionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithAttribute("public", typeof(bool))
+                .WithPermission("view", PermissionNode.Union("member", "public"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    
+    [Theory]
+    [MemberData(nameof(IntersectionRelationsAttributesData))]
+    public async Task CheckingSimpleIntersectionOfRelationsAndAttributesShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity("project")
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithAttribute("public", typeof(bool))
+                .WithPermission("comment", PermissionNode.Intersect("public", "member"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    [Theory]
+    [MemberData(nameof(NestedRelationData))]
+    public async Task CheckingSimpleNestedRelationShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity("project")
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+                .WithPermission("delete", PermissionNode.Leaf("parent.admin"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    [Theory]
+    [MemberData(nameof(UnionOfDirectAndNestedRelationData))]
+    public async Task CheckingUnionOfDirectAndNestedRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity("project")
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+                .WithPermission("delete", PermissionNode.Union("parent.admin", "admin"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    [Theory]
+    [MemberData(nameof(IntersectionOfDirectAndNestedRelationData))]
+    public async Task CheckingIntersectionOfDirectAndNestedRelationsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity("project")
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+                .WithPermission("delete", PermissionNode.Intersect("parent.admin", "admin"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    [Theory]
+    [MemberData(nameof(NestedPermissionsData))]
+    public async Task CheckingNestedPermissionsShouldReturnExpected(RelationTuple[] tuples, AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithPermission("view", PermissionNode.Union("admin", "member"))
+            .WithEntity("project")
+                .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("parent.view"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
+    
+    
+    
+    [Fact]
+    public async Task EmptyDataShouldReturnFalseOnPermissions()
+    {
+        // Arrange
         var engine = await CreateEngine([], []);
         
-        // act
+        
+        // Act
         var result = await engine.Check(new CheckRequest
         {
-            EntityId = "1",
-            EntityType = "project",
+            EntityType = "workspace",
             Permission = "view",
+            EntityId = "1",
+            SubjectId = "1",
+            SubjectType = "user"
+        }, default);
+
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionsWhenNoPermissionsShouldReturnEmpty()
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+            .WithRelation("admin", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("member", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity("project")
+            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
+            .WithPermission("view", PermissionNode.Leaf("parent.view"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine([], [], schema);
+        
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            SubjectType = "user",
+            SubjectId = "1"
+        }, default);
+
+
+        // Assert
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionShouldListAllPermissions()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+
+        for (int i = 0; i < 50; i++)
+        {
+            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+        }
+
+        var schema = entity.SchemaBuilder.Build();
+        
+        // act
+        var engine = await CreateEngine([], [], schema);
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
             SubjectType = "user",
             SubjectId = "1"
         }, default);
         
         // assert
-        result.Should().BeFalse();
+        await Verifier.Verify(result);
+
+    }
+    
+    
+    [Fact]
+    public async Task SubjectPermissionShouldEvaluatePermissions()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+
+        for (int i = 0; i < 50; i++)
+        {
+            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+        }
+
+        var schema = entity.SchemaBuilder.Build();
+        
+        // act
+        var engine = await CreateEngine([], [new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
+        ], schema);
+        
+        // Act
+        var result = await engine.SubjectPermission(new SubjectPermissionRequest
+        {
+            EntityType = TestsConsts.Workspaces.Identifier,
+            EntityId = TestsConsts.Workspaces.PublicWorkspace,
+            SubjectType = "user",
+            SubjectId = "1"
+        }, default);
+        
+        // assert
+        await Verifier.Verify(result);
+
     }
 
-    public async ValueTask DisposeAsync()
+    public Task InitializeAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    public async Task DisposeAsync()
     {
         await _fixture.ResetDatabaseAsync();
     }
