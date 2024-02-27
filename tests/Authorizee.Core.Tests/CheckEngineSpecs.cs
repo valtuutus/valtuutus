@@ -1,14 +1,11 @@
-using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
-using Authorizee.Core;
 using Authorizee.Core.Schemas;
-using Authorizee.Core.Tests;
 using Authorizee.Tests.Shared;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 
-namespace Authorizee.Tests;
+namespace Authorizee.Core.Tests;
 
 
 public sealed class CheckEngineSpecs
