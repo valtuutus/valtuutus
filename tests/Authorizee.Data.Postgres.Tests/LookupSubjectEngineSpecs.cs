@@ -12,7 +12,7 @@ using NSubstitute;
 namespace Authorizee.Data.Postgres.Tests;
 
 [Collection("PostgreSqlSpec")]
-public sealed class LookupSubjectEngineSpecs : IAsyncLifetime
+public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAsyncLifetime
 {
     private readonly PostgresFixture _fixture;
 
@@ -40,7 +40,7 @@ public sealed class LookupSubjectEngineSpecs : IAsyncLifetime
     }
     
     
-    private async Task<LookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    protected override async ValueTask<LookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         await Task.WhenAll(_fixture.DbFactory.InsertRelations(tuples), _fixture.DbFactory.InsertAttributes(attributes));
@@ -49,79 +49,7 @@ public sealed class LookupSubjectEngineSpecs : IAsyncLifetime
     }
 
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
-        TopLevelChecks => LookupSubjectEngineSpecList.TopLevelChecks;
     
-    
-    [Theory]
-    [MemberData(nameof(TopLevelChecks))]
-    public async Task TopLevelCheckShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes,
-        LookupSubjectRequest request, ConcurrentBag<string> expected)
-    {
-        // Arrange
-        var engine = await CreateEngine(tuples, attributes);
-
-        // Act
-        var result = await engine.Lookup(request, default);
-
-        // assert
-        result.Should().BeEquivalentTo(expected);
-    }
-    
-    
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
-        IndirectRelationLookup = LookupSubjectEngineSpecList.IndirectRelationLookup;
-
-    [Theory]
-    [MemberData(nameof(IndirectRelationLookup))]
-    public async Task IndirectRelationLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupSubjectRequest request, ConcurrentBag<string> expected)
-    {
-        // Arrange
-        var engine = await CreateEngine(tuples, attributes);
-
-        // Act
-        var result = await engine.Lookup(request, default);
-
-        // assert
-        result.Should().BeEquivalentTo(expected);
-    }
-
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
-        SimplePermissionLookup = LookupSubjectEngineSpecList.SimplePermissionLookup;
-    
-    [Theory]
-    [MemberData(nameof(SimplePermissionLookup))]
-    public async Task SimplePermissionLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupSubjectRequest request, ConcurrentBag<string> expected)
-    {
-        // Arrange
-        var engine = await CreateEngine(tuples, attributes);
-
-        // Act
-        var result = await engine.Lookup(request, default);
-
-        // assert
-        result.Should().BeEquivalentTo(expected);
-    }
-    
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
-        IntersectWithRelationAndAttributePermissionLookup = LookupSubjectEngineSpecList.IntersectWithRelationAndAttributePermissionLookup;
-    
-    [Theory]
-    [MemberData(nameof(IntersectWithRelationAndAttributePermissionLookup))]
-    public async Task IntersectWithRelationAndAttributeLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupSubjectRequest request, ConcurrentBag<string> expected)
-    {
-        // Arrange
-        var engine = await CreateEngine(tuples, attributes);
-
-        // Act
-        var result = await engine.Lookup(request, default);
-
-        // assert
-        result.Should().BeEquivalentTo(expected);
-    }
     
     public Task InitializeAsync()
     {
