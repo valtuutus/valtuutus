@@ -1,6 +1,7 @@
 ﻿using System.Data;
 using Authorizee.Core;
 using Authorizee.Data.Configuration;
+using FastMember;
 using Microsoft.Data.SqlClient;
 
 namespace Authorizee.Data.SqlServer.Tests;
@@ -15,8 +16,15 @@ public static class InsertExtensions
         var sqlBulkRelations = new SqlBulkCopy(db);
         sqlBulkRelations.DestinationTableName = "relation_tuples";
 
-        using var relationsTable = tuples.ToDataTable();
-        await sqlBulkRelations.WriteToServerAsync(relationsTable);
+        await using var creader = ObjectReader.Create(tuples);
+        sqlBulkRelations.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
+        sqlBulkRelations.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
+        sqlBulkRelations.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Relation", "relation"));
+        sqlBulkRelations.ColumnMappings.Add( new SqlBulkCopyColumnMapping("SubjectType", "subject_type"));
+        sqlBulkRelations.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectId", "subject_id"));
+        sqlBulkRelations.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectRelation", "subject_relation"));
+        
+        await sqlBulkRelations.WriteToServerAsync(creader);
     }
     
     public static async Task InsertAttributes(this DbConnectionFactory factory, AttributeTuple[] tuples)
@@ -28,56 +36,12 @@ public static class InsertExtensions
         using var sqlBulkAttributes = new SqlBulkCopy(db);
         sqlBulkAttributes.DestinationTableName = "attributes";
 
-        using var attributesTable = tuples.ToDataTable();
+        await using var creader = ObjectReader.Create(tuples.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString() }));
+        sqlBulkAttributes.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
+        sqlBulkAttributes.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
+        sqlBulkAttributes.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
+        sqlBulkAttributes.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Value", "value"));
 
-        await sqlBulkAttributes.WriteToServerAsync(attributesTable);
-    }
-    
-    private static DataTable ToDataTable(this IEnumerable<RelationTuple> items)
-    {
-        var dataTable = new DataTable("relation_tuples");
-        
-        dataTable.Columns.Add("entity_type", typeof(string));
-        dataTable.Columns.Add("entity_id", typeof(string));
-        dataTable.Columns.Add("relation", typeof(string));
-        dataTable.Columns.Add("subject_type", typeof(string));
-        dataTable.Columns.Add("subject_id", typeof(string));
-        dataTable.Columns.Add("subject_relation", typeof(string));
-        
-        foreach (var tuple in items)
-        {
-            var row = dataTable.NewRow();
-            row["entity_type"] = tuple.EntityType;
-            row["entity_id"] = tuple.EntityId;
-            row["relation"] = tuple.Relation;
-            row["subject_type"] = tuple.SubjectType;
-            row["subject_id"] = tuple.SubjectId;
-            row["subject_relation"] = tuple.SubjectRelation;
-            dataTable.Rows.Add(row);
-        }
-
-        return dataTable;
-    }
-    
-    private static DataTable ToDataTable(this IEnumerable<AttributeTuple> items)
-    {
-        var dataTable = new DataTable("attributes");
-        
-        dataTable.Columns.Add("entity_type", typeof(string));
-        dataTable.Columns.Add("entity_id", typeof(string));
-        dataTable.Columns.Add("attribute", typeof(string));
-        dataTable.Columns.Add("value", typeof(string));
-
-        foreach (var tuple in items)
-        {
-            var row = dataTable.NewRow();
-            row["entity_type"] = tuple.EntityType;
-            row["entity_id"] = tuple.EntityId;
-            row["attribute"] = tuple.Attribute;
-            row["value"] = tuple.Value.ToJsonString();
-            dataTable.Rows.Add(row);
-        }
-
-        return dataTable;
+        await sqlBulkAttributes.WriteToServerAsync(creader);
     }
 }

@@ -15,14 +15,13 @@ public sealed class SqlServerSpecsFixture : ICollectionFixture<SqlServerFixture>
 public class SqlServerFixture : IAsyncLifetime
 {
     public DbConnectionFactory DbFactory = default!;
-    private SqlConnection _dbConnection = default!;
     private Respawner _respawner = default!;
 
     
     private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
-	    .WithPassword("authorizee123")
+	    .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+	    .WithPassword("Authorizee123!")
 	    .WithName($"mssql-integration-tests-{Guid.NewGuid()}")
-	    .WithCleanUp(true)
 	    .Build();
     
     public async Task InitializeAsync()
@@ -30,21 +29,20 @@ public class SqlServerFixture : IAsyncLifetime
 	    await _dbContainer.StartAsync();
 	    await CreateDatabase("authorizee");
         DbFactory = () => new SqlConnection(GetContainerConnectionString());
-        _dbConnection = (SqlConnection)DbFactory();
-        await _dbConnection.ExecuteAsync(DbMigration);
+        await using var dbConnection = (SqlConnection)DbFactory();
+        await dbConnection.ExecuteAsync(DbMigration);
         await SetupRespawnerAsync();
 
     }
     
     public async Task ResetDatabaseAsync()
     {
-        await _respawner.ResetAsync(_dbConnection);
+        await _respawner.ResetAsync(GetContainerConnectionString());
     }
     
     private async Task SetupRespawnerAsync()
     {
-        await _dbConnection.OpenAsync();
-        _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
+        _respawner = await Respawner.CreateAsync(GetContainerConnectionString(), new RespawnerOptions
         {
             DbAdapter = DbAdapter.SqlServer,
         });
@@ -74,7 +72,7 @@ public class SqlServerFixture : IAsyncLifetime
 
 	    sqlBuilder.TrustServerCertificate = true;
 	    sqlBuilder.UserID = "sa";
-	    sqlBuilder.Password = "authorizee123";
+	    sqlBuilder.Password = "Authorizee123!";
 	    sqlBuilder.DataSource = $"localhost,{_dbContainer.GetMappedPublicPort(1433)}";
 	    sqlBuilder.InitialCatalog = "authorizee";
 
