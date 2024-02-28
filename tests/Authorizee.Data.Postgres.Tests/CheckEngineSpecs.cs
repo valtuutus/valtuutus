@@ -1,5 +1,6 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Configuration;
+using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Tests.Shared;
@@ -40,8 +41,10 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
     protected override async ValueTask<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        await Task.WhenAll(_fixture.DbFactory.InsertRelations(tuples), _fixture.DbFactory.InsertAttributes(attributes));
-        var checkEngine = serviceProvider.CreateScope().ServiceProvider.GetRequiredService<CheckEngine>();
+        var scope = serviceProvider.CreateScope();
+        var checkEngine = scope.ServiceProvider.GetRequiredService<CheckEngine>();
+        var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        await writerProvider.Write(tuples, attributes);
         return checkEngine;
     }
     
