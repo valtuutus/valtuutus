@@ -68,3 +68,5 @@ CREATE TYPE TVP_ListIds AS TABLE
     [id] [VARCHAR](64) NOT NULL,
     index tvp_id (id)
     );
+
+CREATE TABLE [transactions] ([id] bigint NOT NULL, [created_at] datetime2(7) NOT NULL, CONSTRAINT [PK_transactions] PRIMARY KEY CLUSTERED ([id] ASC));

@@ -9,6 +9,8 @@ public static class DependencyInjectionExtensions
     {
         services.AddScoped<IRelationTupleReader, SqlServerRelationTupleReader>();
         services.AddScoped<IAttributeReader, SqlServerAttributeReader>();
+        services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
+
     }
     
 }

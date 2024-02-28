@@ -1,5 +1,6 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Configuration;
+using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Tests.Shared;
@@ -41,9 +42,11 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
     protected override async ValueTask<LookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        await Task.WhenAll(_fixture.DbFactory.InsertRelations(tuples), _fixture.DbFactory.InsertAttributes(attributes));
-        var checkEngine = serviceProvider.CreateScope().ServiceProvider.GetRequiredService<LookupSubjectEngine>();
-        return checkEngine;
+        var scope = serviceProvider.CreateScope();
+        var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<LookupSubjectEngine>();
+        var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        await writerProvider.Write(tuples, attributes);
+        return lookupSubjectEngine;
     }
     
     
