@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.Postgres;
 
-public class PostgresAttributeReader(DbConnectionFactory connectionFactory, ILogger<PostgresRelationTupleReader> logger)
+public class PostgresAttributeReader(DbConnectionFactory connectionFactory, ILogger<PostgresAttributeReader> logger)
     : IAttributeReader
 {
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)

@@ -1,9 +1,8 @@
-﻿using Authorizee.Core;
-using Authorizee.Core.Data;
+﻿using Authorizee.Core.Data;
 
-namespace Authorizee.Tests;
+namespace Authorizee.Core.Tests;
 
-public class InMemoryRelationTupleReader : IRelationTupleReader
+public sealed class InMemoryRelationTupleReader : IRelationTupleReader
 {
     private readonly RelationTuple[] _relationTuples;
 

@@ -8,11 +8,12 @@ public delegate IDbConnection DbConnectionFactory();
 
 public static class DatabaseSetup
 {
-    public static void AddDatabaseSetup(this IServiceCollection  services, DbConnectionFactory factory, Action<IServiceCollection> configuring)
+    public static IServiceCollection AddDatabaseSetup(this IServiceCollection  services, DbConnectionFactory factory, Action<IServiceCollection> configuring)
     {
         Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
         SqlMapper.AddTypeHandler(new JsonTypeHandler());
         services.AddScoped<DbConnectionFactory>(_ => factory);
         configuring(services);
+        return services;
     }
 }
