@@ -9,7 +9,7 @@ using Sqids;
 
 namespace Authorizee.Data.SqlServer;
 
-public sealed class SqlServerDataWriterProvider : IDataWriterProvider
+internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IIdGenerator<long> _idGenerator;

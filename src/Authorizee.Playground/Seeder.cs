@@ -128,7 +128,7 @@ public static class Seeder
 
         var (relations, attributes) = GenerateData();
 
-        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await writer.Write(relations, attributes, default);
 
     }

@@ -4,6 +4,8 @@ using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Tests.Shared;
+using IdGen;
+using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -23,7 +25,7 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<PostgresDataReaderProvider>>())
+            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupEntityEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
             .AddSchemaConfiguration(TestsConsts.Action);
@@ -32,7 +34,12 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
             var serviceDescriptor = serviceCollection.First(descriptor => descriptor.ServiceType == typeof(Schema));
             serviceCollection.Remove(serviceDescriptor);
             serviceCollection.AddSingleton(schema);
-        }
+        }        
+        serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
+        serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
+        {
+            TimeSource = new MockAutoIncrementingIntervalTimeSource(1)
+        });
 
         return serviceCollection.BuildServiceProvider();
     }
@@ -43,8 +50,8 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<LookupEntityEngine>();
-        var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes, default);
+        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await dataEngine.Write(tuples, attributes, default);
         return lookupEntityEngine;
     }
     

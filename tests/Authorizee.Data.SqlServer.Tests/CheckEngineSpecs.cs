@@ -23,7 +23,7 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<SqlServerDataReaderProvider>>())
+            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddSqlServer())
             .AddSchemaConfiguration(TestsConsts.Action);
@@ -42,8 +42,8 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var checkEngine = scope.ServiceProvider.GetRequiredService<CheckEngine>();
-        var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes, default);
+        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await dataEngine.Write(tuples, attributes, default);
         return checkEngine;
     }
     

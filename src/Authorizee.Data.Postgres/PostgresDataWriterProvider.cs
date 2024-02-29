@@ -1,6 +1,9 @@
-﻿using Authorizee.Core;
+﻿using System.Diagnostics;
+using System.Text.Json;
+using Authorizee.Core;
 using Authorizee.Core.Data;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.Postgres.Utils;
 using Dapper;
 using IdGen;
 using Npgsql;
@@ -9,7 +12,7 @@ using Sqids;
 
 namespace Authorizee.Data.Postgres;
 
-public sealed class PostgresDataWriterProvider : IDataWriterProvider
+internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IIdGenerator<long> _idGenerator;
@@ -85,6 +88,33 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
         var transactId = _idGenerator.CreateId();
         await using var db = (NpgsqlConnection) _factory();
         await using var transaction = await db.BeginTransactionAsync(ct);
+
+        var latestTransaction = filter.Token is null
+            ? await db.QuerySingleOrDefaultAsync<long>(new CommandDefinition(
+                "SELECT MAX(id) FROM public.transactions", transaction: transaction, cancellationToken: ct))
+            : _encoder.Decode(filter.Token.Value.Value).Single();
+        
+        if (filter.Relations.Length > 0)
+        {
+            var relationsBuilder = new SqlBuilder();
+            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations, latestTransaction);
+            var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM public.relation_tuples /**where**/");
+
+            await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+                cancellationToken: ct));
+            
+        }
+
+        if (filter.Attributes.Length > 0)
+        {
+            var attributesBuilder = new SqlBuilder();
+            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes, latestTransaction);
+            var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM public.attributes /**where**/");
+
+            await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+                cancellationToken: ct));
+            
+        }
 
         await InsertTransaction(db, transactId, transaction, ct);
         await transaction.CommitAsync(ct);

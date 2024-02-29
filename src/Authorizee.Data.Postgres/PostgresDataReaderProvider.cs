@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.Postgres;
 
-public sealed class PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<PostgresDataReaderProvider> logger)
+internal sealed class PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
     : IDataReaderProvider
 {
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)

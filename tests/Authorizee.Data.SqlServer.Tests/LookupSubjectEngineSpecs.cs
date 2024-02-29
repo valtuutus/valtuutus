@@ -23,7 +23,7 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<SqlServerDataReaderProvider>>())
+            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupSubjectEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddSqlServer())
             .AddSchemaConfiguration(TestsConsts.Action);
@@ -43,8 +43,8 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<LookupSubjectEngine>();
-        var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes, default);
+        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await dataEngine.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
     

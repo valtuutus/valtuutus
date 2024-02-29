@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.SqlServer;
 
-public sealed class SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<SqlServerDataReaderProvider> logger)
+internal sealed class SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
     : IDataReaderProvider
 {
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
