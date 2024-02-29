@@ -87,11 +87,12 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
     {
         var transactId = _idGenerator.CreateId();
         await using var db = (NpgsqlConnection) _factory();
+        await db.OpenAsync(ct);
         await using var transaction = await db.BeginTransactionAsync(ct);
 
         var latestTransaction = filter.Token is null
             ? await db.QuerySingleOrDefaultAsync<long>(new CommandDefinition(
-                "SELECT MAX(id) FROM public.transactions", transaction: transaction, cancellationToken: ct))
+                "SELECT coalesce(max(id), 0) FROM public.transactions", transaction: transaction, cancellationToken: ct))
             : _encoder.Decode(filter.Token.Value.Value).Single();
         
         if (filter.Relations.Length > 0)

@@ -98,7 +98,7 @@ public static class SqlBuilderExtensions
                              (@SubjectType{i} IS NULL OR subject_type = @SubjectType{i}) and 
                              (@SubjectId{i} IS NULL OR subject_id = @SubjectId{i}) and 
                              (@Relation{i} IS NULL OR relation = @Relation{i}) and 
-                             (@SubjectRelation{i} IS NULL OR subject_relation = @SubjectRelation{i})
+                             (subject_relation = @SubjectRelation{i})
                              """,
                 new Dictionary<string, object?>
             {
@@ -107,7 +107,7 @@ public static class SqlBuilderExtensions
                 {$"@SubjectType{i}", filters[i].SubjectType},
                 {$"@SubjectId{i}", filters[i].SubjectId},
                 {$"@Relation{i}", filters[i].Relation},
-                {$"@SubjectRelation{i}", filters[i].SubjectRelation},
+                {$"@SubjectRelation{i}", filters[i].SubjectRelation ?? string.Empty },
                 
             });
         }

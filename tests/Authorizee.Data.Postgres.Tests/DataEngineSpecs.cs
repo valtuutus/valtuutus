@@ -66,21 +66,40 @@ public class DataEngineSpecs : IAsyncLifetime
         
         exists.Should().BeTrue();
     }
-
+    
     [Fact]
-    public async Task Writing_empty_data_should_throw()
+    public async Task DeletingData_ShouldReturnTransactionId()
     {
         // arrange
         var provider = CreateServiceProvider();
+        var dataEngine = provider.GetRequiredService<DataEngine>();
         
         // act
-        var dataEngine = provider.GetRequiredService<DataEngine>();
-        Func<Task> act = async () => await dataEngine.Write(Array.Empty<RelationTuple>(), Array.Empty<AttributeTuple>(), default);
-
+        var decoder = provider.GetRequiredService<SqidsEncoder<long>>();
+        var newSnapToken = await dataEngine.Delete(new DeleteFilter
+        {
+            Relations = new[] { new DeleteRelationsFilter
+            {
+                EntityType = "project",
+                EntityId = "1",
+                Relation = "member",
+                SubjectType = "user",
+                SubjectId = "1"
+            
+            } }
+        }, default);
+        
+        
         // assert
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        using var db = _fixture.DbFactory();
+        
+        var newTransactionId = decoder.Decode(newSnapToken.Value).Single();
+        // new transaction should exist
+        var newTransaction = await db.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT 1 FROM public.transactions WHERE id = @id)", 
+            new { id = newTransactionId });
+        
+        newTransaction.Should().BeTrue();
     }
-    
     public Task InitializeAsync()
     {
         return Task.CompletedTask;
