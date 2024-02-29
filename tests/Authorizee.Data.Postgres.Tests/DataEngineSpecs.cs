@@ -84,6 +84,20 @@ public class DataEngineSpecs : IAsyncLifetime
         
         exists.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Writing_empty_data_should_throw()
+    {
+        // arrange
+        var provider = CreateServiceProvider();
+        
+        // act
+        var dataEngine = provider.GetRequiredService<DataEngine>();
+        Func<Task> act = async () => await dataEngine.Write(Array.Empty<RelationTuple>(), Array.Empty<AttributeTuple>(), default);
+
+        // assert
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
     
     public Task InitializeAsync()
     {

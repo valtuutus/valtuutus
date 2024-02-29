@@ -50,12 +50,11 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<LookupSubjectEngine>();
+        if(tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
-
-
     
     
     public Task InitializeAsync()

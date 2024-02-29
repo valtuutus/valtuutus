@@ -42,6 +42,7 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var checkEngine = scope.ServiceProvider.GetRequiredService<CheckEngine>();
+        if(tuples.Length == 0 && attributes.Length == 0) return checkEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);
         return checkEngine;

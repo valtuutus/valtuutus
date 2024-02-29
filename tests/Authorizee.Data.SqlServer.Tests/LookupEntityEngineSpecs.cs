@@ -43,6 +43,7 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<LookupEntityEngine>();
+        if(tuples.Length == 0 && attributes.Length == 0) return lookupEntityEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);
         return lookupEntityEngine;
