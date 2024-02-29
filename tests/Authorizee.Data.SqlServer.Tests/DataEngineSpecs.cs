@@ -1,8 +1,8 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
-using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.Postgres.Tests;
 using Authorizee.Tests.Shared;
 using Dapper;
 using FluentAssertions;
@@ -13,15 +13,15 @@ using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Sqids;
 
-namespace Authorizee.Data.Postgres.Tests;
+namespace Authorizee.Data.SqlServer.Tests;
 
 
-[Collection("PostgreSqlSpec")]
-public class DataEngineSpecs : IAsyncLifetime
+[Collection("SqlServerSpec")]
+public sealed class DataEngineSpecs : IAsyncLifetime
 {
-    private readonly PostgresFixture _fixture;
+    private readonly SqlServerFixture _fixture;
 
-    public DataEngineSpecs(PostgresFixture fixture)
+    public DataEngineSpecs(SqlServerFixture fixture)
     {
         _fixture = fixture;
     }
@@ -30,7 +30,7 @@ public class DataEngineSpecs : IAsyncLifetime
     {
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
+            .AddDatabaseSetup(_fixture.DbFactory, o => o.AddSqlServer())
             .AddSchemaConfiguration(TestsConsts.Action);
 
         serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
@@ -56,13 +56,19 @@ public class DataEngineSpecs : IAsyncLifetime
 
         // assert
         using var db = _fixture.DbFactory();
-        var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM public.relation_tuples WHERE created_tx_id = @id) = 1", 
+        var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id)", 
+            new { id = transactionId });
+        var exists = await db.ExecuteScalarAsync<bool>("""
+                                                          SELECT
+                                                          CASE
+                                                              WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
+                                                                   THEN 1
+                                                              ELSE 0
+                                                          END
+                                                       """, 
             new { id = transactionId });
         
         relationCount.Should().BeTrue();
-        
-        var exists = await db.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT 1 FROM public.transactions WHERE id = @id)", 
-            new { id = transactionId });
         
         exists.Should().BeTrue();
     }
