@@ -2,13 +2,16 @@
 
 namespace Authorizee.Core.Tests;
 
-public sealed class InMemoryRelationTupleReader : IRelationTupleReader
+public sealed class InMemoryReaderProvider : IDataReaderProvider
 {
     private readonly RelationTuple[] _relationTuples;
+    private readonly AttributeTuple[] _attributesTuples;
 
-    public InMemoryRelationTupleReader(RelationTuple[] relationTuples)
+
+    public InMemoryReaderProvider(RelationTuple[] relationTuples, AttributeTuple[] attributesTuples)
     {
         _relationTuples = relationTuples;
+        _attributesTuples = attributesTuples;
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
@@ -59,5 +62,36 @@ public sealed class InMemoryRelationTupleReader : IRelationTupleReader
                 subjectsIds.Any(y => x.SubjectId == y))
             .ToList()
         );
+    }
+    
+    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
+
+        if (!string.IsNullOrWhiteSpace(filter.EntityId))
+            res = res.Where(x => x.EntityId == filter.EntityId);
+        
+        return Task.FromResult(res.FirstOrDefault());
+    }
+
+    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
+
+        if (!string.IsNullOrWhiteSpace(filter.EntityId))
+            res = res.Where(x => x.EntityId == filter.EntityId);
+
+        return Task.FromResult(res.ToList());
+    }
+
+    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    {
+        return Task.FromResult(_attributesTuples
+            .Where(x => x.EntityType == filter.EntityType
+                        && x.Attribute == filter.Attribute
+                        && entitiesIds.Contains(x.EntityId))
+            .ToList());
     }
 }

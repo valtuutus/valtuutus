@@ -19,10 +19,9 @@ public record LookupEntityRequestInternal
     public required string FinalSubjectId { get; init; }
 }
 
-public class LookupEntityEngine(
+public sealed class LookupEntityEngine(
     Schema schema,
-    IRelationTupleReader tupleReader,
-    IAttributeReader attributeReader)
+    IDataReaderProvider reader)
 {
     public async Task<ConcurrentBag<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
     {
@@ -163,7 +162,7 @@ public class LookupEntityEngine(
     {
         return async (ct) =>
         {
-            return (await attributeReader.GetAttributes(new EntityAttributeFilter
+            return (await reader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attribute.Name,
                     EntityType = req.EntityType
@@ -236,7 +235,7 @@ public class LookupEntityEngine(
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            return (await tupleReader.GetRelations(
+            return (await reader.GetRelations(
                     new EntityRelationFilter
                     {
                         Relation = req.Permission,

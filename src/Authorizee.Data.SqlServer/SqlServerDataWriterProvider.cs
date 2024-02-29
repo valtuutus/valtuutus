@@ -9,7 +9,7 @@ using Sqids;
 
 namespace Authorizee.Data.SqlServer;
 
-public class SqlServerDataWriterProvider : IDataWriterProvider
+public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IIdGenerator<long> _idGenerator;
@@ -63,6 +63,11 @@ public class SqlServerDataWriterProvider : IDataWriterProvider
         await transaction.CommitAsync();
         
         return new SnapToken(_encoder.Encode(transactId));
+    }
+
+    public Task<SnapToken> Delete(DeleteFilter filter)
+    {
+        throw new NotImplementedException();
     }
 
     public async Task<SnapToken> Delete()

@@ -23,8 +23,7 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<PostgresAttributeReader>>())
-            .AddSingleton(Substitute.For<ILogger<PostgresRelationTupleReader>>())
+            .AddSingleton(Substitute.For<ILogger<PostgresDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupEntityEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
             .AddSchemaConfiguration(TestsConsts.Action);

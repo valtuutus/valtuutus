@@ -15,7 +15,7 @@ public enum RelationType
     
 }
 
-public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader attributeReader, Schema schema, ILogger<CheckEngine> logger)
+public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogger<CheckEngine> logger)
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
@@ -79,7 +79,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attribute = await attributeReader.GetAttribute(new EntityAttributeFilter
+            var attribute = await reader.GetAttribute(new EntityAttributeFilter
             {
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
@@ -162,7 +162,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var relations = await relationReader.GetRelations(new RelationTupleFilter
+            var relations = await reader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
@@ -190,7 +190,7 @@ public class CheckEngine(IRelationTupleReader relationReader, IAttributeReader a
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
             logger.LogDebug("Checking relation {Relation} with req: {Req}", req.Permission, req);
-            var relations = await relationReader.GetRelations(new RelationTupleFilter
+            var relations = await reader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,

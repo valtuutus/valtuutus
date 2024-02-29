@@ -72,6 +72,11 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
         return new SnapToken(_encoder.Encode(transactId));
     }
 
+    public Task<SnapToken> Delete(DeleteFilter filter)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task<SnapToken> Delete()
     {
         var transactId = _idGenerator.CreateId();

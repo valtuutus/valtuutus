@@ -20,10 +20,9 @@ public record LookupSubjectRequestInternal
     public required string RootEntityId { get; init; }
 }
 
-public class LookupSubjectEngine(
+public sealed class LookupSubjectEngine(
     Schema schema,
-    IRelationTupleReader tupleReader,
-    IAttributeReader attributeReader)
+    IDataReaderProvider reader)
 {
     public async Task<ConcurrentBag<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
     {
@@ -123,7 +122,7 @@ public class LookupSubjectEngine(
     
             foreach (var entity in relation.Entities)
             {
-                var relations = await tupleReader.GetRelations(
+                var relations = await reader.GetRelations(
                     new EntityRelationFilter
                     {
                         Relation = relation.Name,
@@ -161,7 +160,7 @@ public class LookupSubjectEngine(
     {
         return async (ct) =>
         {
-            var res = await attributeReader.GetAttributes(new AttributeFilter
+            var res = await reader.GetAttributes(new AttributeFilter
             {
                 Attribute = attribute.Name,
                 EntityType = req.EntityType
@@ -194,7 +193,7 @@ public class LookupSubjectEngine(
 
                 if (subRelation is not null)
                 {
-                    var relations = await tupleReader.GetRelations(
+                    var relations = await reader.GetRelations(
                         new EntityRelationFilter
                         {
                             Relation = req.Permission,
@@ -224,7 +223,7 @@ public class LookupSubjectEngine(
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var res = await tupleReader.GetRelations(
+            var res = await reader.GetRelations(
                 new EntityRelationFilter
                 {
                     Relation = req.Permission,

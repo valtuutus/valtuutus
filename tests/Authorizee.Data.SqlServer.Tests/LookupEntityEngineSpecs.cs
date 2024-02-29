@@ -23,8 +23,7 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IAsyn
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<SqlServerAttributeReader>>())
-            .AddSingleton(Substitute.For<ILogger<SqlServerRelationTupleReader>>())
+            .AddSingleton(Substitute.For<ILogger<SqlServerDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupEntityEngine>>())
             .AddDatabaseSetup(_fixture.DbFactory, o => o.AddSqlServer())
             .AddSchemaConfiguration(TestsConsts.Action);
