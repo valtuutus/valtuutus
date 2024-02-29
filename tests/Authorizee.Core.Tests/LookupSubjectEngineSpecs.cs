@@ -1,8 +1,5 @@
-﻿using System.Collections.Concurrent;
-using System.Text.Json.Nodes;
-using Authorizee.Core.Schemas;
+﻿using Authorizee.Core.Schemas;
 using Authorizee.Tests.Shared;
-using FluentAssertions;
 
 namespace Authorizee.Core.Tests;
 

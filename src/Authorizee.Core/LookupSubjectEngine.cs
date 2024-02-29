@@ -2,7 +2,6 @@
 using Authorizee.Core.Data;
 using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
-using Microsoft.Extensions.Logging;
 using LookupSubjectFunction =
     System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Authorizee.Core.RelationOrAttributeTuples>>;
 

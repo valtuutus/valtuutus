@@ -2,7 +2,7 @@
 
 public interface IDataWriterProvider
 {
-    public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes);
+    public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct);
 
-    public Task<SnapToken> Delete(DeleteFilter filter);
+    public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct);
 }

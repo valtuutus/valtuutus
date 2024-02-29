@@ -44,7 +44,7 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<LookupSubjectEngine>();
         var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes);
+        await writerProvider.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
     

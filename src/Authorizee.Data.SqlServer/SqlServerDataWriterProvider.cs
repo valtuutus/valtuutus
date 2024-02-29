@@ -21,58 +21,74 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
         _idGenerator = idGenerator;
         _encoder = encoder;
     }
-    public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes)
+    
+    public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        var transactId = _idGenerator.CreateId();
+        var transactionId = _idGenerator.CreateId();
         
         await using var db = (SqlConnection) _factory();
-        await db.OpenAsync();
+        await db.OpenAsync(ct);
         var transaction = db.BeginTransaction();
         
-        await db.ExecuteAsync("INSERT INTO transactions (id, created_at) VALUES (@id, @created_at)", new
-        {
-            id = transactId,
-            created_at = DateTimeOffset.UtcNow
-        }, transaction: transaction);
-
+        await InsertTransaction(db, transactionId, transaction, ct);
         
         var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = "relation_tuples";
 
-        await using var relationsReader = ObjectReader.Create(relations);
+        await using var relationsReader = ObjectReader.Create(relations.Select(x => new
+        {
+            x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId
+        }));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Relation", "relation"));
         relationsBulkCopy.ColumnMappings.Add( new SqlBulkCopyColumnMapping("SubjectType", "subject_type"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectId", "subject_id"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectRelation", "subject_relation"));
+        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
         
-        await relationsBulkCopy.WriteToServerAsync(relationsReader);
+        await relationsBulkCopy.WriteToServerAsync(relationsReader, ct);
         
         using var attributesBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "attributes";
 
-        await using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString() }));
+        await using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
+            TransactionId = transactionId }));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Value", "value"));
+        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
 
-        await attributesBulkCopy.WriteToServerAsync(attributesReader);
 
-        await transaction.CommitAsync();
+        await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
+
+        await transaction.CommitAsync(ct);
         
-        return new SnapToken(_encoder.Encode(transactId));
+        return new SnapToken(_encoder.Encode(transactionId));
     }
+    
 
-    public Task<SnapToken> Delete(DeleteFilter filter)
-    {
-        throw new NotImplementedException();
-    }
-
-    public async Task<SnapToken> Delete()
+    public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         var transactId = _idGenerator.CreateId();
+        
+        await using var db = (SqlConnection) _factory();
+        await db.OpenAsync(ct);
+        var transaction = db.BeginTransaction();
+        await InsertTransaction(db, transactId, transaction, ct);
+        
+        await transaction.CommitAsync(ct);
         return new SnapToken(_encoder.Encode(transactId));
     }
+    
+    private static async Task InsertTransaction(SqlConnection db, long transactId, SqlTransaction transaction, CancellationToken ct)
+    {
+        await db.ExecuteAsync( new CommandDefinition("INSERT INTO transactions (id, created_at) VALUES (@id, @created_at)", new
+        {
+            id = transactId,
+            created_at = DateTimeOffset.UtcNow
+        }, transaction: transaction, cancellationToken: ct));
+    }
+    
 }

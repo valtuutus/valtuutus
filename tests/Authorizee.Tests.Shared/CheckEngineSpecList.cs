@@ -1,6 +1,5 @@
 ﻿using System.Text.Json.Nodes;
 using Authorizee.Core;
-using Xunit;
 
 namespace Authorizee.Tests.Shared;
 

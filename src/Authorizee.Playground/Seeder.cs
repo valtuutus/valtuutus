@@ -7,7 +7,6 @@ using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace Authorizee.Api;
 
@@ -130,7 +129,7 @@ public static class Seeder
         var (relations, attributes) = GenerateData();
 
         var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writer.Write(relations, attributes);
+        await writer.Write(relations, attributes, default);
 
     }
 

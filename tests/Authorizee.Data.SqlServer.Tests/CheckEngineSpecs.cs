@@ -43,7 +43,7 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
         var scope = serviceProvider.CreateScope();
         var checkEngine = scope.ServiceProvider.GetRequiredService<CheckEngine>();
         var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes);
+        await writerProvider.Write(tuples, attributes, default);
         return checkEngine;
     }
     

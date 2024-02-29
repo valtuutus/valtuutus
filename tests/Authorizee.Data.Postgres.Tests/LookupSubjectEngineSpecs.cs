@@ -1,11 +1,9 @@
-﻿using System.Collections.Concurrent;
-using Authorizee.Core;
+﻿using Authorizee.Core;
 using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Tests.Shared;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -46,7 +44,7 @@ public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IAs
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<LookupSubjectEngine>();
         var writerProvider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(tuples, attributes);
+        await writerProvider.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
 
