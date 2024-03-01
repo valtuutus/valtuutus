@@ -42,7 +42,15 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         DeleteFilter, RelationTuple[], AttributeTuple[]> DeleteCases =
         new()
         {
-
+            // Should delete everything, because no parameters has been passed to the filter.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1")],
+                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter()}
+                }, [], []
+            }
+            
         };
 
     [Theory]

@@ -202,23 +202,53 @@ public static class SqlBuilderExtensions
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"""
-                             (@EntityType{i} IS NULL OR entity_type = @EntityType{i}) and 
-                             (@EntityId{i} IS NULL OR entity_id = @EntityId{i}) and 
-                             (@SubjectType{i} IS NULL OR subject_type = @SubjectType{i}) and 
-                             (@SubjectId{i} IS NULL OR subject_id = @SubjectId{i}) and 
-                             (@Relation{i} IS NULL OR relation = @Relation{i}) and 
-                             (subject_relation = @SubjectRelation{i})
+                             (@EntityType{i} IS NULL OR entity_type = @EntityType{i}) and
+                             (@EntityId{i} IS NULL OR entity_id = @EntityId{i}) and
+                             (@SubjectType{i} IS NULL OR subject_type = @SubjectType{i}) and
+                             (@SubjectId{i} IS NULL OR subject_id = @SubjectId{i}) and
+                             (@Relation{i} IS NULL OR relation = @Relation{i}) and
+                             (@SubjectRelation{i} IS NULL OR subject_relation = @SubjectRelation{i})
                              """,
                 new Dictionary<string, object?>
-            {
-                {$"@EntityType{i}", filters[i].EntityType},
-                {$"@EntityId{i}", filters[i].EntityId},
-                {$"@SubjectType{i}", filters[i].SubjectType},
-                {$"@SubjectId{i}", filters[i].SubjectId},
-                {$"@Relation{i}", filters[i].Relation},
-                {$"@SubjectRelation{i}", filters[i].SubjectRelation ?? string.Empty },
+                {
+                    {$"@EntityType{i}", new DbString
+                    {
+                        Value = filters[i].EntityType,
+                        IsAnsi = true,
+                        Length = 256
+                    }},
+                    {$"@EntityId{i}",  new DbString
+                    {
+                        Value = filters[i].EntityId,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@SubjectType{i}", new DbString
+                    {
+                        Value = filters[i].SubjectType,
+                        IsAnsi = true,
+                        Length = 256
+                    }},
+                    {$"@SubjectId{i}", new DbString
+                    {
+                        Value = filters[i].SubjectId,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@Relation{i}", new DbString
+                    {
+                        Value = filters[i].Relation,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@SubjectRelation{i}", new DbString
+                    {
+                        Value = filters[i].SubjectRelation,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
                 
-            });
+                });
         }
 
         return builder;
