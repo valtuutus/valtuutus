@@ -90,30 +90,25 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         await db.OpenAsync(ct);
         await using var transaction = await db.BeginTransactionAsync(ct);
 
-        var latestTransaction = filter.Token is null
-            ? await db.QuerySingleOrDefaultAsync<long>(new CommandDefinition(
-                "SELECT coalesce(max(id), 0) FROM public.transactions", transaction: transaction, cancellationToken: ct))
-            : _encoder.Decode(filter.Token.Value.Value).Single();
-        
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
-            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations, latestTransaction);
+            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
             var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM public.relation_tuples /**where**/");
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
-                cancellationToken: ct));
+                cancellationToken: ct, transaction: transaction));
             
         }
 
         if (filter.Attributes.Length > 0)
         {
             var attributesBuilder = new SqlBuilder();
-            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes, latestTransaction);
+            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
             var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM public.attributes /**where**/");
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
-                cancellationToken: ct));
+                cancellationToken: ct, transaction: transaction));
             
         }
 

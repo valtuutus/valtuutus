@@ -5,8 +5,6 @@ public record DeleteFilter
     public DeleteRelationsFilter[] Relations { get; init; } = Array.Empty<DeleteRelationsFilter>();
 
     public DeleteAttributesFilter[] Attributes { get; init; } = Array.Empty<DeleteAttributesFilter>();
-    
-    public SnapToken? Token { get; set; }
 }
 
 public record struct DeleteAttributesFilter

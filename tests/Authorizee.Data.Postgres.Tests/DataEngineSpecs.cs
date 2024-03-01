@@ -1,46 +1,26 @@
 ﻿using Authorizee.Core;
-using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
-using Authorizee.Core.Schemas;
-using Authorizee.Data.Configuration;
-using Authorizee.Tests.Shared;
+using Authorizee.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
-using IdGen;
-using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using NSubstitute;
 using Sqids;
 
 namespace Authorizee.Data.Postgres.Tests;
 
 
 [Collection("PostgreSqlSpec")]
-public class DataEngineSpecs : IAsyncLifetime
+public class DataEngineSpecs : DataSpecificDataEngineSpecs
 {
-    private readonly PostgresFixture _fixture;
-
+    protected override void AddSpecificProvider(IServiceCollection services)
+    {
+        services.AddPostgres();
+    }
     public DataEngineSpecs(PostgresFixture fixture)
     {
         _fixture = fixture;
     }
-    
-    private ServiceProvider CreateServiceProvider()
-    {
-        var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
-            .AddSchemaConfiguration(TestsConsts.Action);
-
-        serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
-        serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
-        {
-            TimeSource = new MockAutoIncrementingIntervalTimeSource(1)
-        });
-
-        return serviceCollection.BuildServiceProvider();
-    }
+   
     
     [Fact]
     public async Task WritingData_ShouldAssociateRelationWithTransactionId()
@@ -100,13 +80,5 @@ public class DataEngineSpecs : IAsyncLifetime
         
         newTransaction.Should().BeTrue();
     }
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
-    }
 
-    public async Task DisposeAsync()
-    {
-        await _fixture.ResetDatabaseAsync();
-    }
 }

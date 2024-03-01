@@ -1,4 +1,5 @@
 ﻿using Authorizee.Data.Configuration;
+using Authorizee.Data.Tests.Shared;
 using Dapper;
 using Npgsql;
 using Respawn;
@@ -13,9 +14,9 @@ public sealed class PostgresSpecsFixture : ICollectionFixture<PostgresFixture>
 }
 
 
-public class PostgresFixture : IAsyncLifetime
+public class PostgresFixture : IAsyncLifetime, IDatabaseFixture
 {
-    public DbConnectionFactory DbFactory = default!;
+    public DbConnectionFactory DbFactory { get; private set; } = default!;
     private NpgsqlConnection _dbConnection = default!;
     private Respawner _respawner = default!;
 

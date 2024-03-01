@@ -1,6 +1,6 @@
 ﻿using IdGen;
 
-namespace Authorizee.Data.Postgres.Tests;
+namespace Authorizee.Data.Tests.Shared;
 
 public class MockTimeSource : ITimeSource
 {

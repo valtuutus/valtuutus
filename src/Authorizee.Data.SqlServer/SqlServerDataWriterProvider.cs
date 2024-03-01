@@ -1,6 +1,7 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Data;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.SqlServer.Utils;
 using Dapper;
 using FastMember;
 using IdGen;
@@ -77,6 +78,28 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         await db.OpenAsync(ct);
         var transaction = db.BeginTransaction();
         await InsertTransaction(db, transactId, transaction, ct);
+        
+        if (filter.Relations.Length > 0)
+        {
+            var relationsBuilder = new SqlBuilder();
+            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
+            var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM relation_tuples /**where**/");
+
+            await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+                cancellationToken: ct, transaction:transaction));
+            
+        }
+
+        if (filter.Attributes.Length > 0)
+        {
+            var attributesBuilder = new SqlBuilder();
+            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
+            var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM attributes /**where**/");
+
+            await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+                cancellationToken: ct, transaction: transaction));
+            
+        }
         
         await transaction.CommitAsync(ct);
         return new SnapToken(_encoder.Encode(transactId));

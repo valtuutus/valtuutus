@@ -16,7 +16,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Authorizee.Core\Authorizee.Core.csproj" />
-      <ProjectReference Include="..\..\src\Authorizee.Data\Authorizee.Data.csproj" />
     </ItemGroup>
 
 </Project>

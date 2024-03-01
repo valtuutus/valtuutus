@@ -1,4 +1,5 @@
 ﻿using Authorizee.Data.Configuration;
+using Authorizee.Data.Tests.Shared;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Respawn;
@@ -12,9 +13,9 @@ public sealed class SqlServerSpecsFixture : ICollectionFixture<SqlServerFixture>
 {
 }
 
-public class SqlServerFixture : IAsyncLifetime
+public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture
 {
-    public DbConnectionFactory DbFactory = default!;
+    public DbConnectionFactory DbFactory { get; private set; } = default!;
     private Respawner _respawner = default!;
 
     

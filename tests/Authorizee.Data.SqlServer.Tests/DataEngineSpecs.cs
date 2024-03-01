@@ -1,45 +1,21 @@
 ﻿using Authorizee.Core;
-using Authorizee.Core.Configuration;
 using Authorizee.Core.Data;
-using Authorizee.Data.Configuration;
-using Authorizee.Data.Postgres.Tests;
-using Authorizee.Tests.Shared;
+using Authorizee.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
-using IdGen;
-using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using NSubstitute;
 using Sqids;
 
 namespace Authorizee.Data.SqlServer.Tests;
 
 
 [Collection("SqlServerSpec")]
-public sealed class DataEngineSpecs : IAsyncLifetime
+public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
 {
-    private readonly SqlServerFixture _fixture;
 
     public DataEngineSpecs(SqlServerFixture fixture)
     {
         _fixture = fixture;
-    }
-    
-    private ServiceProvider CreateServiceProvider()
-    {
-        var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddDatabaseSetup(_fixture.DbFactory, o => o.AddSqlServer())
-            .AddSchemaConfiguration(TestsConsts.Action);
-
-        serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
-        serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
-        {
-            TimeSource = new MockAutoIncrementingIntervalTimeSource(1)
-        });
-
-        return serviceCollection.BuildServiceProvider();
     }
     
     [Fact]
@@ -72,28 +48,50 @@ public sealed class DataEngineSpecs : IAsyncLifetime
         
         exists.Should().BeTrue();
     }
-
+    
     [Fact]
-    public async Task Writing_empty_data_should_throw()
+    public async Task DeletingData_ShouldReturnTransactionId()
     {
         // arrange
         var provider = CreateServiceProvider();
+        var dataEngine = provider.GetRequiredService<DataEngine>();
         
         // act
-        var dataEngine = provider.GetRequiredService<DataEngine>();
-        Func<Task> act = async () => await dataEngine.Write(Array.Empty<RelationTuple>(), Array.Empty<AttributeTuple>(), default);
-
+        var decoder = provider.GetRequiredService<SqidsEncoder<long>>();
+        var newSnapToken = await dataEngine.Delete(new DeleteFilter
+        {
+            Relations = new[] { new DeleteRelationsFilter
+            {
+                EntityType = "project",
+                EntityId = "1",
+                Relation = "member",
+                SubjectType = "user",
+                SubjectId = "1"
+            
+            } }
+        }, default);
+        
+        
         // assert
-        await act.Should().ThrowAsync<InvalidOperationException>();
-    }
-    
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
+        using var db = _fixture.DbFactory();
+        
+        var newTransactionId = decoder.Decode(newSnapToken.Value).Single();
+        // new transaction should exist
+        var newTransaction = await db.ExecuteScalarAsync<bool>("""
+                                                               SELECT
+                                                               CASE
+                                                                   WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
+                                                                        THEN 1
+                                                                   ELSE 0
+                                                               END 
+                                                               """,
+            new { id = newTransactionId });
+        
+        newTransaction.Should().BeTrue();
     }
 
-    public async Task DisposeAsync()
+    protected override void AddSpecificProvider(IServiceCollection services)
     {
-        await _fixture.ResetDatabaseAsync();
+        services.AddSqlServer();
     }
 }

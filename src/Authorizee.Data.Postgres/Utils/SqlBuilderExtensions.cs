@@ -87,9 +87,8 @@ public static class SqlBuilderExtensions
         return builder;
     }
 
-    public static SqlBuilder FilterDeleteRelations(this SqlBuilder builder, DeleteRelationsFilter[] filters, long transactionId)
+    public static SqlBuilder FilterDeleteRelations(this SqlBuilder builder, DeleteRelationsFilter[] filters)
     {
-        builder.Where("created_tx_id <= @TransactionId", new {TransactionId = transactionId});
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"""
@@ -115,9 +114,8 @@ public static class SqlBuilderExtensions
         return builder;
     }
     
-    public static SqlBuilder FilterDeleteAttributes(this SqlBuilder builder, DeleteAttributesFilter[] filters, long transactionId)
+    public static SqlBuilder FilterDeleteAttributes(this SqlBuilder builder, DeleteAttributesFilter[] filters)
     {
-        builder.Where("created_tx_id <= @TransactionId", new {TransactionId = transactionId});
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"entity_type = @EntityType{i} AND entity_id = @EntityId{i}",  new Dictionary<string, object>
