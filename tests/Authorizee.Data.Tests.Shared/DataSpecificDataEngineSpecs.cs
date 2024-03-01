@@ -35,6 +35,36 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
 
         return serviceCollection.BuildServiceProvider();
     }
+
+    protected abstract Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples();
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[],
+        DeleteFilter, RelationTuple[], AttributeTuple[]> DeleteCases =
+        new()
+        {
+
+        };
+
+    [Theory]
+    [MemberData(nameof(DeleteCases))]
+    public async Task AfterDeletionDataShouldBeExpected(RelationTuple[] seedRelations, AttributeTuple[] seedAttributes,
+        DeleteFilter filter, RelationTuple[] expectedTuples, AttributeTuple[] expectedAttributes)
+    {
+        // arrange
+        var provider = CreateServiceProvider();
+        var engine = provider.GetRequiredService<DataEngine>();
+        await engine.Write(seedRelations, seedAttributes, default);
+        
+        // act
+        await engine.Delete(filter, default);
+        
+        // assert
+        var (relations, attributes) = await GetCurrentTuples();
+
+        relations.Should().BeEquivalentTo(expectedTuples);
+        attributes.Should().BeEquivalentTo(expectedAttributes);
+
+    }
     
     public Task InitializeAsync()
     {

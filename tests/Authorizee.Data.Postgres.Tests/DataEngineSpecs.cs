@@ -80,5 +80,23 @@ public class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         newTransaction.Should().BeTrue();
     }
+    
+    protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
+    {
+        using var db = _fixture.DbFactory();
+        var relations = (await db.QueryAsync<RelationTuple>("""
+                                                            SELECT  entity_type,
+                                                                    entity_id,
+                                                                    relation,
+                                                                    subject_type,
+                                                                    subject_id,
+                                                                    subject_relation from public.relation_tuples
+                                                            """)).ToArray();
+        var attributes =
+            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from public.attributes")).ToArray();
+        
+        return (relations, attributes);
+
+    }
 
 }
