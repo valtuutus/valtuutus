@@ -103,7 +103,7 @@ internal sealed class SqlServerDataReaderProvider(DbConnectionFactory connection
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -134,7 +134,7 @@ internal sealed class SqlServerDataReaderProvider(DbConnectionFactory connection
         
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -165,7 +165,7 @@ internal sealed class SqlServerDataReaderProvider(DbConnectionFactory connection
             .ToList();
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
 
         return res;

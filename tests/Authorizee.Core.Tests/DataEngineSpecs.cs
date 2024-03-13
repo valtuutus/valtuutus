@@ -7,7 +7,7 @@ namespace Authorizee.Core.Tests;
 
 public sealed class DataEngineSpecs
 {
-    private DataEngine CreateEngine()
+    private static DataEngine CreateEngine()
     {
         return new DataEngine(Substitute.For<IDataWriterProvider>());
     }
