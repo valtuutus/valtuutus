@@ -44,13 +44,66 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         {
             // Should delete everything, because no parameters has been passed to the filter.
             {
-                [new RelationTuple("project", "1", "member", "user", "1")],
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],
                 [], new DeleteFilter
                 {
                     Relations = new []{ new DeleteRelationsFilter()}
                 }, [], []
-            }
-            
+            },
+            // Should delete only the relation with the given subject id.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter{SubjectId = "1"}}
+                }, [], []
+            },
+            // Should delete only the relation with the given entity id.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],
+                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1"}}
+                }, [ new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")], []
+            },
+            // Should delete only the relation with the given entity id and subject id.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],
+                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1", SubjectId = "1"}}
+                }, [new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")], []
+            },
+            // Should delete only the relation with the given entity id and entity type project.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],
+                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1", EntityType = "project"}}
+                }, [new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")], []
+            },
+            // should delete only the relations with the given subject id and subject type user.
+            {
+                [new RelationTuple("project", "1", "member", "user", "1"),
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")],
+                [], new DeleteFilter
+                {
+                    Relations = new []{ new DeleteRelationsFilter{SubjectId = "1", SubjectType = "user"}}
+                }, [], []
+            },
         };
 
     [Theory]
@@ -73,6 +126,7 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         attributes.Should().BeEquivalentTo(expectedAttributes);
 
     }
+    
     
     public Task InitializeAsync()
     {
