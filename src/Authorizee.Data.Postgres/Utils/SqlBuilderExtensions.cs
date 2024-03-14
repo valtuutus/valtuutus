@@ -146,6 +146,7 @@ public static class SqlBuilderExtensions
     
     public static SqlBuilder FilterDeleteAttributes(this SqlBuilder builder, DeleteAttributesFilter[] filters)
     {
+        builder.Where("1 = 1");
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"entity_type = @EntityType{i} AND entity_id = @EntityId{i}",  new Dictionary<string, object>
