@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -7,12 +7,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Dapper" Version="2.1.28" />
-      <PackageReference Include="Dapper.SqlBuilder" Version="2.0.78" />
-      <PackageReference Include="IdGen" Version="3.0.3" />
-      <PackageReference Include="IdGen.DependencyInjection" Version="3.0.0" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
-      <PackageReference Include="Sqids" Version="3.1.0" />
+      <PackageReference Include="Dapper" />
+      <PackageReference Include="Dapper.SqlBuilder" />
+      <PackageReference Include="IdGen.DependencyInjection" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+      <PackageReference Include="Sqids" />
     </ItemGroup>
 
     <ItemGroup>

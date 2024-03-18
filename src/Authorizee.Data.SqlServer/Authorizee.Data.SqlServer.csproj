@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -11,8 +11,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="FastMember" Version="1.5.0" />
-      <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.5" />
+      <PackageReference Include="FastMember" />
+      <PackageReference Include="Microsoft.Data.SqlClient" />
     </ItemGroup>
 
 </Project>
