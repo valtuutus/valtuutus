@@ -7,8 +7,8 @@ public static class DependencyInjectionExtensions
 {
     public static void AddPostgres(this IServiceCollection services)
     {
-        services.AddScoped<IRelationTupleReader, PostgresRelationTupleReader>();
-        services.AddScoped<IAttributeReader, PostgresAttributeReader>();
+        services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
+        services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
     }
     
 }

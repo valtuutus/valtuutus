@@ -29,8 +29,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Authorizee.Data.SqlServer\Authorizee.Data.SqlServer.csproj" />
-      <ProjectReference Include="..\..\src\Authorizee.Data\Authorizee.Data.csproj" />
-      <ProjectReference Include="..\Authorizee.Tests.Shared\Authorizee.Tests.Shared.csproj" />
+      <ProjectReference Include="..\Authorizee.Data.Tests.Shared\Authorizee.Data.Tests.Shared.csproj" />
     </ItemGroup>
 
 </Project>

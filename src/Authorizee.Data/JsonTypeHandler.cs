@@ -1,8 +1,6 @@
 ﻿using System.Data;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using Dapper;
-using JsonSerializer = Jint.Native.Json.JsonSerializer;
 
 namespace Authorizee.Data;
 
