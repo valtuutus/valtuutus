@@ -14,6 +14,7 @@ public static class ConfigureSchema
         services.AddScoped<CheckEngine>();
         services.AddScoped<LookupEntityEngine>();
         services.AddScoped<LookupSubjectEngine>();
+        services.AddScoped<DataEngine>();
 
         return services;
     }

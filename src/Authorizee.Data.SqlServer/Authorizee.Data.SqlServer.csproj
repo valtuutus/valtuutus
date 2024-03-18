@@ -11,6 +11,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <PackageReference Include="FastMember" />
       <PackageReference Include="Microsoft.Data.SqlClient" />
     </ItemGroup>
 

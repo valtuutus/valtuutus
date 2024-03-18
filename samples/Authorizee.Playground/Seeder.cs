@@ -1,11 +1,12 @@
 ﻿using System.Data;
 using System.Text.Json.Nodes;
 using Authorizee.Core;
+using Authorizee.Core.Data;
+using Authorizee.Data.Configuration;
 using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
-using NpgsqlTypes;
 
 namespace Authorizee.Api;
 
@@ -108,11 +109,12 @@ public static class Seeder
         return (relations, attributes);
     }
 
-    public static async Task SeedPostgres(IConfiguration configuration)
+    public static async Task SeedPostgres(IServiceProvider serviceProvider)
     {
-        var connString = configuration.GetConnectionString("PostgresDb");
+        using var scope = serviceProvider.CreateScope();
+        var factory = scope.ServiceProvider.GetRequiredService<DbConnectionFactory>();
 
-        await using var connection = new NpgsqlConnection(connString);
+        await using var connection = (NpgsqlConnection)factory();
         await connection.OpenAsync();
 
         var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from public.relation_tuples");
@@ -126,37 +128,9 @@ public static class Seeder
 
         var (relations, attributes) = GenerateData();
 
-        await using (var writer = await connection.BeginBinaryImportAsync(
-                         "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation) from STDIN (FORMAT BINARY)"))
-        {
-            foreach (var record in relations)
-            {
-                await writer.StartRowAsync();
-                await writer.WriteAsync(record.EntityType);
-                await writer.WriteAsync(record.EntityId);
-                await writer.WriteAsync(record.Relation);
-                await writer.WriteAsync(record.SubjectType);
-                await writer.WriteAsync(record.SubjectId);
-                await writer.WriteAsync(record.SubjectRelation);
-            }
+        var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await writer.Write(relations, attributes, default);
 
-            await writer.CompleteAsync();
-        }
-
-        await using (var writer = await connection.BeginBinaryImportAsync(
-                         "copy public.attributes (entity_type, entity_id, attribute, value) from STDIN (FORMAT BINARY)"))
-        {
-            foreach (var record in attributes)
-            {
-                await writer.StartRowAsync();
-                await writer.WriteAsync(record.EntityType);
-                await writer.WriteAsync(record.EntityId);
-                await writer.WriteAsync(record.Attribute);
-                await writer.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb);
-            }
-
-            await writer.CompleteAsync();
-        }
     }
 
     public static async Task SeedSqlServer(IConfiguration configuration)

@@ -1,4 +1,4 @@
-//#define postgres
+#define postgres
 
 using System.Diagnostics;
 using Authorizee.Api;
@@ -8,9 +8,7 @@ using Authorizee.Core.Observability;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
 using Authorizee.Data.Postgres;
-using Authorizee.Data.SqlServer;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -129,7 +127,7 @@ app.MapPost("/subject-permission",
 
 
 #if postgres
-_ = Task.Run(async () => await Seeder.SeedPostgres(builder.Configuration)); 
+_ = Task.Run(async () => await Seeder.SeedPostgres(app.Services)); 
 #else
 _ = Task.Run(async () => await Seeder.SeedSqlServer(builder.Configuration)); 
 #endif

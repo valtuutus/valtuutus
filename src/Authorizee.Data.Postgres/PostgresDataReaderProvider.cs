@@ -10,8 +10,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Authorizee.Data.Postgres;
 
-public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, ILogger<PostgresRelationTupleReader> logger)
-    : IRelationTupleReader
+internal sealed class PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
+    : IDataReaderProvider
 {
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
     {
@@ -37,7 +37,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
         var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
             .ToList();
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -68,7 +68,7 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
         
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
         return res;
     }
@@ -99,9 +99,75 @@ public class PostgresRelationTupleReader(DbConnectionFactory connectionFactory, 
             .ToList();
         
 #if DEBUG
-        logger.LogDebug("Queried relations in {}ms, returned {} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+        logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
 
         return res;
+    }
+    
+    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        using var connection = connectionFactory();
+
+        var queryTemplate = new SqlBuilder()
+            .FilterAttributes(filter)
+            .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/
+                LIMIT 1");
+
+        logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
+
+        return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+            queryTemplate.Parameters, cancellationToken: ct));
+    }
+
+    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        using var connection = connectionFactory();
+
+        var queryTemplate = new SqlBuilder()
+            .FilterAttributes(filter)
+            .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/");
+
+        logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
+
+        return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: ct)))
+            .ToList();
+    }
+
+    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        using var connection = connectionFactory();
+
+        var queryTemplate = new SqlBuilder()
+            .FilterAttributes(filter, entitiesIds)
+            .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/");
+
+        logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
+
+        return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: ct)))
+            .ToList();
     }
 }

@@ -9,7 +9,9 @@
     <ItemGroup>
       <PackageReference Include="Dapper" />
       <PackageReference Include="Dapper.SqlBuilder" />
+      <PackageReference Include="IdGen.DependencyInjection" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+      <PackageReference Include="Sqids" />
     </ItemGroup>
 
     <ItemGroup>

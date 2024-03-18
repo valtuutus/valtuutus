@@ -26,7 +26,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Authorizee.Data.Postgres\Authorizee.Data.Postgres.csproj" />
-      <ProjectReference Include="..\Authorizee.Tests.Shared\Authorizee.Tests.Shared.csproj" />
+      <ProjectReference Include="..\Authorizee.Data.Tests.Shared\Authorizee.Data.Tests.Shared.csproj" />
     </ItemGroup>
 
 </Project>

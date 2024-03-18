@@ -196,4 +196,82 @@ public static class SqlBuilderExtensions
         
         return builder;
     }
+    
+    public static SqlBuilder FilterDeleteRelations(this SqlBuilder builder, DeleteRelationsFilter[] filters)
+    {
+        for (int i = 0; i < filters.Length; i++)
+        {
+            builder.OrWhere($"""
+                             (@EntityType{i} IS NULL OR entity_type = @EntityType{i}) and
+                             (@EntityId{i} IS NULL OR entity_id = @EntityId{i}) and
+                             (@SubjectType{i} IS NULL OR subject_type = @SubjectType{i}) and
+                             (@SubjectId{i} IS NULL OR subject_id = @SubjectId{i}) and
+                             (@Relation{i} IS NULL OR relation = @Relation{i}) and
+                             (@SubjectRelation{i} IS NULL OR subject_relation = @SubjectRelation{i})
+                             """,
+                new Dictionary<string, object?>
+                {
+                    {$"@EntityType{i}", new DbString
+                    {
+                        Value = filters[i].EntityType,
+                        IsAnsi = true,
+                        Length = 256
+                    }},
+                    {$"@EntityId{i}",  new DbString
+                    {
+                        Value = filters[i].EntityId,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@SubjectType{i}", new DbString
+                    {
+                        Value = filters[i].SubjectType,
+                        IsAnsi = true,
+                        Length = 256
+                    }},
+                    {$"@SubjectId{i}", new DbString
+                    {
+                        Value = filters[i].SubjectId,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@Relation{i}", new DbString
+                    {
+                        Value = filters[i].Relation,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                    {$"@SubjectRelation{i}", new DbString
+                    {
+                        Value = filters[i].SubjectRelation,
+                        IsAnsi = true,
+                        Length = 64
+                    }},
+                
+                });
+        }
+
+        return builder;
+    }
+    
+    public static SqlBuilder FilterDeleteAttributes(this SqlBuilder builder, DeleteAttributesFilter[] filters)
+    {
+        builder.Where("1 = 1");
+        for (int i = 0; i < filters.Length; i++)
+        {
+            builder.OrWhere($"entity_type = @EntityType{i} AND entity_id = @EntityId{i}",  new Dictionary<string, object>
+            {
+                {$"@EntityType{i}", filters[i].EntityType},
+                {$"@EntityId{i}", filters[i].EntityId},
+            });
+            
+            if (!string.IsNullOrEmpty(filters[i].Attribute))
+                builder = builder.Where($"attribute = @Attribute{i}", new Dictionary<string, object>
+                {
+                    {$"@Attribute{i}", filters[i].Attribute!},
+                });
+        }
+
+        return builder;
+    }
 }

@@ -7,8 +7,7 @@ public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
 {
     protected override ValueTask<LookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
-        var relationTupleReader = new InMemoryRelationTupleReader(tuples);
-        var attributeReader = new InMemoryAttributeTupleReader(attributes);
-        return ValueTask.FromResult<LookupEntityEngine>(new LookupEntityEngine(schema ?? TestsConsts.Schemas, relationTupleReader, attributeReader));
+        var readerProvider = new InMemoryReaderProvider(tuples, attributes);
+        return ValueTask.FromResult<LookupEntityEngine>(new LookupEntityEngine(schema ?? TestsConsts.Schemas, readerProvider));
     }
 }

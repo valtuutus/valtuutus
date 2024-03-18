@@ -1,8 +1,12 @@
 ﻿using Authorizee.Core;
 using Authorizee.Core.Configuration;
+using Authorizee.Core.Data;
 using Authorizee.Core.Schemas;
 using Authorizee.Data.Configuration;
+using Authorizee.Data.Tests.Shared;
 using Authorizee.Tests.Shared;
+using IdGen;
+using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -10,48 +14,15 @@ using NSubstitute;
 namespace Authorizee.Data.Postgres.Tests;
 
 [Collection("PostgreSqlSpec")]
-public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetime
+public sealed class CheckEngineSpecs : DataCheckEngineSpecs
 {
-    private readonly PostgresFixture _fixture;
-
     public CheckEngineSpecs(PostgresFixture fixture)
     {
         _fixture = fixture;
     }
-    
-    private ServiceProvider CreateServiceProvider(Schema? schema = null)
-    {
-        var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<PostgresAttributeReader>>())
-            .AddSingleton(Substitute.For<ILogger<PostgresRelationTupleReader>>())
-            .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
-            .AddDatabaseSetup(_fixture.DbFactory, o => o.AddPostgres())
-            .AddSchemaConfiguration(TestsConsts.Action);
-        if (schema != null)
-        {
-            var serviceDescriptor = serviceCollection.First(descriptor => descriptor.ServiceType == typeof(Schema));
-            serviceCollection.Remove(serviceDescriptor);
-            serviceCollection.AddSingleton(schema);
-        }
 
-        return serviceCollection.BuildServiceProvider();
-    }
-    
-    protected override async ValueTask<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    protected override void AddSpecificProvider(IServiceCollection services)
     {
-        var serviceProvider = CreateServiceProvider(schema);
-        await Task.WhenAll(_fixture.DbFactory.InsertRelations(tuples), _fixture.DbFactory.InsertAttributes(attributes));
-        var checkEngine = serviceProvider.CreateScope().ServiceProvider.GetRequiredService<CheckEngine>();
-        return checkEngine;
-    }
-    
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _fixture.ResetDatabaseAsync();
+        services.AddPostgres();
     }
 }
