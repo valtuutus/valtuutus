@@ -1,0 +1,6 @@
+@Valtuutus.Api_HostAddress = http://localhost:5256
+
+GET {{Valtuutus.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

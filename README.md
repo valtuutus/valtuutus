@@ -1,4 +1,4 @@
-# Authorizee
+# Valtuutus
 
 ## A Google Zanzibar inspired authorization library in .NET
 

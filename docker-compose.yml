@@ -11,7 +11,7 @@ services:
     environment:
       - POSTGRES_USER=postgres # The PostgreSQL user (useful to connect to the database)
       - POSTGRES_PASSWORD=hqysxvqw5cgdYyQHTfHe # The PostgreSQL password (useful to connect to the database)
-      - POSTGRES_DB=authorizee # The PostgreSQL default database (automatically created at first launch)
+      - POSTGRES_DB=Valtuutus # The PostgreSQL default database (automatically created at first launch)
     volumes:
       - sqlvolume:/var/lib/postgresql/data
 

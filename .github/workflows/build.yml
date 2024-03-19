@@ -42,12 +42,6 @@ jobs:
         run: |
           dotnet tool install --global dotnet-coverage
           
-      # - name: Cache NuGet Packages
-      #   uses: actions/cache@v3
-      #   with:
-      #     key: nuget-${{ hashFiles('Directory.Packages.props') }}
-      #     path: ~/.nuget/packages
-          
       - name: Build the project, run all tests and publish to SonarCloud
         run: |
           dotnet sonarscanner begin \
@@ -56,6 +50,6 @@ jobs:
           /d:sonar.token="$SONAR_TOKEN" \
           /d:sonar.host.url="https://sonarcloud.io" \
           /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
-          dotnet build Authorizee.sln --no-incremental          
-          dotnet-coverage collect 'dotnet test Authorizee.sln' -f xml  -o 'coverage.xml'
+          dotnet build Valtuutus.sln --no-incremental          
+          dotnet-coverage collect 'dotnet test Valtuutus.sln' -f xml  -o 'coverage.xml'
           dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
