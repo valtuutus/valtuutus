@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Valtuutus.Core;
+﻿using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
 

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
@@ -31,7 +31,7 @@ public sealed class LookupSubjectEngine(
     /// <returns>The list of ids of subjects of the provided type that has the permission on the specified entity.</returns>
     public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupSubjectSpanAttributes(req));
         var internalReq = new LookupSubjectRequestInternal
         {
             Permission = req.Permission,
@@ -44,7 +44,21 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(ct);
-        return new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
+        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
+
+        activity?.AddEvent(new ActivityEvent("LookupSubjectResult", tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
+        return hs;
+    }
+    
+        
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupSubjectResultAttributes(HashSet<string> result)
+    {
+        yield return new KeyValuePair<string, object?>("LookupSubjectResultCount", result.Count);
+    }
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupSubjectSpanAttributes(LookupSubjectRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("LookupSubjectRequest", req);
     }
 
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)

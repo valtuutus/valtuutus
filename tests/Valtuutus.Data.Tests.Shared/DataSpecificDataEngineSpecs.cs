@@ -4,7 +4,6 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Data.Configuration;
 using Valtuutus.Tests.Shared;
-using Dapper;
 using FluentAssertions;
 using IdGen;
 using IdGen.DependencyInjection;

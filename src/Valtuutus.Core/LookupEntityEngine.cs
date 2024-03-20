@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
@@ -31,7 +31,7 @@ public sealed class LookupEntityEngine(
     /// <returns>The list of ids of the entities</returns>
     public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupEntitySpanAttributes(req));
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -43,7 +43,20 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(ct);
-        return new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
+        var hs =  new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
+        activity?.AddEvent(new ActivityEvent("LookupEntityResult", tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
+        return hs;
+    }
+    
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(HashSet<string> result)
+    {
+        yield return new KeyValuePair<string, object?>("LookupEntityResultCount", result.Count);
+    }
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntitySpanAttributes(LookupEntityRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
     }
 
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
@@ -340,7 +353,7 @@ internal record RelationOrAttributeTuple
         : AttributeTuple!.EntityType;
 }
 
-public enum RelationOrAttributeType
+internal enum RelationOrAttributeType
 {
     Attribute,
     Relation

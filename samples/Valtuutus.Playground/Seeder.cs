@@ -1,7 +1,6 @@
 ﻿using System.Data;
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
-using Valtuutus.Core.Data;
 using Valtuutus.Data.Configuration;
 using Bogus;
 using Dapper;
