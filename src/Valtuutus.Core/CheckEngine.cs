@@ -2,7 +2,6 @@
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
-using Microsoft.Extensions.Logging;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
 namespace Valtuutus.Core;

@@ -11,6 +11,7 @@
       <PackageReference Include="Dapper.SqlBuilder" />
       <PackageReference Include="IdGen.DependencyInjection" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
       <PackageReference Include="Sqids" />
     </ItemGroup>
 

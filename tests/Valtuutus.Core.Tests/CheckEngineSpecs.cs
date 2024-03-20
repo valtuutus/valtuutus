@@ -1,7 +1,5 @@
 using Valtuutus.Core.Schemas;
 using Valtuutus.Tests.Shared;
-using Microsoft.Extensions.Logging;
-using NSubstitute;
 
 namespace Valtuutus.Core.Tests;
 

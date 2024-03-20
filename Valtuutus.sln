@@ -15,10 +15,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		docker-compose.yml = docker-compose.yml
 		README.md = README.md
-		.github\workflows\build.yml = .github\workflows\build.yml
-		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		src\Directory.Build.props = src\Directory.Build.props
 		src\Directory.Packages.props = src\Directory.Packages.props
+		build.cake = build.cake
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Core.Tests", "tests\Valtuutus.Core.Tests\Valtuutus.Core.Tests.csproj", "{D074253B-9547-493D-A2E8-DCF0DB1D3204}"
@@ -38,6 +37,13 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{62CDC085-2DF2-4389-B65B-CB893B15A2C1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Data.Tests.Shared", "tests\Valtuutus.Data.Tests.Shared\Valtuutus.Data.Tests.Shared.csproj", "{9FA14311-F75A-473E-9042-E9A3F9187300}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{BB859DDD-7E7F-4F97-B033-635432F127A5}"
+	ProjectSection(SolutionItems) = preProject
+		.github\workflows\build.yml = .github\workflows\build.yml
+		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
+		.github\workflows\publish.yml = .github\workflows\publish.yml
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -100,5 +106,6 @@ Global
 		{954D9B3C-A6BF-4211-9EB5-B205093593A6} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 		{C45DF205-1484-49D5-A8C0-5AEADCC144D3} = {62CDC085-2DF2-4389-B65B-CB893B15A2C1}
 		{9FA14311-F75A-473E-9042-E9A3F9187300} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
+		{BB859DDD-7E7F-4F97-B033-635432F127A5} = {D7A6602B-1ADA-48CB-B6BC-DD7BDB273068}
 	EndGlobalSection
 EndGlobal
