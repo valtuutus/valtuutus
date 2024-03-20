@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core.Data;
+﻿using System.Diagnostics;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using Microsoft.Extensions.Logging;
@@ -15,7 +16,7 @@ public enum RelationType
     
 }
 
-public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogger<CheckEngine> logger)
+public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
 {
     
     /// <summary>
@@ -26,8 +27,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     /// <returns>True if the subject has the permission on the entity</returns>
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        return await CheckInternal(req)(ct);
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
+        var val =  await CheckInternal(req)(ct);
+        activity?.AddEvent(new ActivityEvent("CheckFinished", tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
+        return val;
+
+    }
+
+    private static IEnumerable<KeyValuePair<string, object?>> CreateCheckResultAttributes(bool result)
+    {
+        yield return new KeyValuePair<string, object?>("CheckResult", result);
+    }
+    private static IEnumerable<KeyValuePair<string, object?>> CreateCheckSpanAttributes(CheckRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("CheckRequest", req);
     }
     
     
@@ -40,7 +53,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     /// <returns>A dictionary containing every permission for the entity and if the subject has access to it</returns>
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateSubjectPermissionSpanAttributes(req));
         var permission = schema.GetPermissions(req.EntityType);
 
         var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
@@ -53,8 +66,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         })(ct))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
-        return new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished", tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
+        return dict;
 
+    }
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateSubjectPermissionResultAttributes(Dictionary<string, bool> result)
+    {
+        foreach(var (k, v) in result)
+            yield return new KeyValuePair<string, object?>(k, v);
+    }
+    private static IEnumerable<KeyValuePair<string, object?>> CreateSubjectPermissionSpanAttributes(SubjectPermissionRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("SubjectPermissionRequest", req);
     }
 
     private static CheckFunction Fail()
