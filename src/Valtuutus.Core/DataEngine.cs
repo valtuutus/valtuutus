@@ -11,6 +11,14 @@ public sealed class DataEngine
         _writerProvider = writerProvider;
     }
 
+    /// <summary>
+    /// The Write function provides a way to insert relations and attributes to the data store.
+    /// </summary>
+    /// <param name="relations">List of relations</param>
+    /// <param name="attributes">List of attributes</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>SnapToken containing the information of the last transaction created</returns>
+    /// <exception cref="InvalidOperationException">If you provide two empty lists</exception>
     public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
         CancellationToken ct)
     {
@@ -21,6 +29,14 @@ public sealed class DataEngine
         return _writerProvider.Write(relationTuples, attributeTuples, ct);
     }
 
+    
+    /// <summary>
+    /// The Delete function provides a way to delete relations and attributes from the data store.
+    /// </summary>
+    /// <param name="filter">The filter containing information for deletion of attributes and relations</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>SnapToken containing the information of the last transaction created</returns>
+    /// <exception cref="InvalidOperationException">If you provide only empty filters</exception>
     public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         if (filter.Relations.Length == 0 && filter.Attributes.Length == 0)

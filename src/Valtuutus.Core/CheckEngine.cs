@@ -17,13 +17,27 @@ public enum RelationType
 
 public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogger<CheckEngine> logger)
 {
+    
+    /// <summary>
+    /// The check function walks through the schema graph to answer the question: "Can entity U perform action Y in resource Z?".
+    /// </summary>
+    /// <param name="req">Object containing the required information to evaluate the check</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if the subject has the permission on the entity</returns>
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        logger.LogDebug("Initializing check permission with request: {Req}", req);
         return await CheckInternal(req)(ct);
     }
     
+    
+    /// <summary>
+    /// The SubjectPermission function walks through the schema graph and evaluates every condition required to check, for each permission
+    /// if the provided subject with `SubjectId` and `SubjectType` on the entity with `EntityId` and `EntityType`.
+    /// </summary>
+    /// <param name="req">Object containing the required information to evaluate the check</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>A dictionary containing every permission for the entity and if the subject has access to it</returns>
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
@@ -50,8 +64,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
-        logger.LogDebug("Checking permission: {Req}", req);
-        
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
@@ -66,9 +78,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
 
         var permissionNode = permission!.Tree;
-
-        logger.LogDebug("Checking permission {Permission}", permission.Name);
-
+        
         return permissionNode.Type == PermissionNodeType.Expression
             ? CheckExpression(req, permissionNode)
             : CheckLeaf(req, permissionNode);
@@ -98,7 +108,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     private CheckFunction CheckExpression(CheckRequest req, PermissionNode node)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        logger.LogDebug("Checking permission expression: {Req} with node {Node}", req, node);
         return node.ExpressionNode!.Operation switch
         {
             PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, CheckIntersect),
@@ -115,7 +124,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         var checkFunctions = new List<Func<CancellationToken, Task<bool>>>(capacity: children.Count);
         foreach (var child in children)
         {
-            logger.LogDebug("Checking permission expression child: {Child}", child);
             switch (child.Type)
             {
                 case PermissionNodeType.Expression:
@@ -133,7 +141,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        logger.LogDebug("Checking leaf: {Node}", node);
         var perm = node.LeafNode!.Value;
 
         if (perm.Split('.') is [{ } userSet, { } computedUserSet])
@@ -189,7 +196,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-            logger.LogDebug("Checking relation {Relation} with req: {Req}", req.Permission, req);
             var relations = await reader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
@@ -203,7 +209,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
             {
                 if (relation.SubjectId == req.SubjectId)
                 {
-                    logger.LogDebug("Checking relation {Relation} with req: {Req}, returned {Value}", req.Permission, req, true);
                     return true;
                 }
 
@@ -239,24 +244,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
                     {
                         if (t.Result)
                         {
-                            logger.LogDebug("Checking union: a function returned: {Value}", true);
                             cancellationTokenSource.Cancel();
                         }
 
-                        logger.LogDebug("Checking union: a function returned: {Value}", false);
                         return t.Result;
                     }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
                 })).ConfigureAwait(false);
 
             if (Array.Exists(results, b => b))
             {
-                logger.LogDebug("Checking union: returned: {Value}", true);
                 return true;
             }
         }
         catch (OperationCanceledException)
         {
-            logger.LogDebug("Checking union: returned: {Value}, operation cancelled", true);
             return true;
         }
         finally
@@ -264,7 +265,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
             cancellationTokenSource.Dispose();
         }
 
-        logger.LogDebug("Checking union: returned: {Value}", false);
         return false;
     }
     
@@ -283,22 +283,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
                     {
                         if (!t.Result)
                         {
-                            logger.LogDebug("Checking intersection: a function returned: {Value}", false);
                             cancellationTokenSource.Cancel();
                         }
 
-                        logger.LogDebug("Checking intersection: a function returned: {Value}", true);
                         return t.Result;
                     }, cancellationToken);
                 })).ConfigureAwait(false);
 
             var result = Array.TrueForAll(results, b => b);
-            logger.LogDebug("Checking intersection: returned: {Value}", result);
             return result;
         }
         catch (OperationCanceledException)
         {
-            logger.LogDebug("Checking intersection: returned: {Value}, operation cancelled", false);
             return false;
         }
         finally

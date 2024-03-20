@@ -7,7 +7,7 @@ using LookupSubjectFunction =
 
 namespace Valtuutus.Core;
 
-public record LookupSubjectRequestInternal
+internal record LookupSubjectRequestInternal
 {
     public required string EntityType { get; init; }
     public required IList<string> EntitiesIds { get; init; }
@@ -23,7 +23,13 @@ public sealed class LookupSubjectEngine(
     Schema schema,
     IDataReaderProvider reader)
 {
-    public async Task<ConcurrentBag<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
+    /// <summary>
+    /// The LookupSubject lets you ask "Which subjects of type T can do action Y on entity:X?"
+    /// </summary>
+    /// <param name="req">The object containing information for which </param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>The list of ids of subjects of the provided type that has the permission on the specified entity.</returns>
+    public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         var internalReq = new LookupSubjectRequestInternal
@@ -38,7 +44,7 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(ct);
-        return new ConcurrentBag<string>(res.RelationsTuples!.Select(x => x.SubjectId).Distinct().OrderBy(x => x));
+        return new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
     }
 
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
@@ -295,7 +301,7 @@ public sealed class LookupSubjectEngine(
     }
 }
 
-public record RelationOrAttributeTuples
+internal record RelationOrAttributeTuples
 {
     public RelationOrAttributeTuples(List<RelationTuple> relationsTuples)
     {

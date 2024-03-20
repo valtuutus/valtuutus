@@ -6,7 +6,7 @@ namespace Valtuutus.Tests.Shared;
 
 public static class LookupSubjectEngineSpecList
 {
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         TopLevelChecks => new()
     {
         {
@@ -23,7 +23,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Groups.Admins),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice, TestsConsts.Users.Bob, TestsConsts.Users.Charlie,
             ])
         },
@@ -40,13 +40,13 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Groups.Admins),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice, TestsConsts.Users.Bob
             ])
         }
     };
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         IndirectRelationLookup => new()
     {
         {
@@ -66,7 +66,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Teams.OsMaisBrabos),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice, TestsConsts.Users.Bob, TestsConsts.Users.Charlie,
             ])
         },
@@ -90,13 +90,13 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Teams.OsMaisBrabos),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice, TestsConsts.Users.Bob, TestsConsts.Users.Charlie, TestsConsts.Users.Dan
             ])
         },
     };
         
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         SimplePermissionLookup => new()
     {
         {
@@ -110,7 +110,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PrivateWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice,
                 TestsConsts.Users.Bob,
             ])
@@ -126,13 +126,13 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PrivateWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice,
             ])
         }
     };
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
         {
@@ -152,7 +152,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Users.Alice, TestsConsts.Users.Bob, TestsConsts.Users.Charlie
             ])
         },
@@ -173,7 +173,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 
             ])
         },
@@ -193,7 +193,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 
             ])
         },
@@ -214,7 +214,7 @@ public static class LookupSubjectEngineSpecList
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PrivateWorkspace),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
             ])
         },
     };

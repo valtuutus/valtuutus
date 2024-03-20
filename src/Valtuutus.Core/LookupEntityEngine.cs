@@ -8,7 +8,7 @@ using LookupFunction =
 
 namespace Valtuutus.Core;
 
-public record LookupEntityRequestInternal
+internal record LookupEntityRequestInternal
 {
     public required string EntityType { get; init; }
     public required string Permission { get; init; }
@@ -23,7 +23,13 @@ public sealed class LookupEntityEngine(
     Schema schema,
     IDataReaderProvider reader)
 {
-    public async Task<ConcurrentBag<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
+    /// <summary>
+    /// The LookupEntity method lets you ask "Which resources of type T can entity:X do action Y?"
+    /// </summary>
+    /// <param name="req">The object containing information about the question being asked</param>
+    /// <param name="ct">Cancellation Token</param>
+    /// <returns>The list of ids of the entities</returns>
+    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         var internalReq = new LookupEntityRequestInternal
@@ -37,7 +43,7 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(ct);
-        return new ConcurrentBag<string>(res.Select(x => x.EntityId).Distinct().OrderBy(x => x));
+        return new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
     }
 
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
@@ -307,7 +313,7 @@ public sealed class LookupEntityEngine(
     }
 }
 
-public record RelationOrAttributeTuple
+internal record RelationOrAttributeTuple
 {
     public RelationOrAttributeTuple(RelationTuple relationTuple)
     {
