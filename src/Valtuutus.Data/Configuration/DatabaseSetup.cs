@@ -10,7 +10,14 @@ public delegate IDbConnection DbConnectionFactory();
 
 public static class DatabaseSetup
 {
-    public static IServiceCollection AddDatabaseSetup(this IServiceCollection  services, DbConnectionFactory factory, Action<IServiceCollection> configuring)
+    /// <summary>
+    /// Add Valtuutus database services
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="factory">This is a scoped connection factory. Can be used to set multitenant access to the database.</param>
+    /// <param name="configuring">Aditional configuration</param>
+    /// <returns></returns>
+    public static IServiceCollection AddValtuutusDatabase(this IServiceCollection  services, DbConnectionFactory factory, Action<IServiceCollection> configuring)
     {
         Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
         SqlMapper.AddTypeHandler(new JsonTypeHandler());

@@ -5,7 +5,13 @@ namespace Valtuutus.Core.Configuration;
 
 public static class ConfigureSchema
 {
-    public static IServiceCollection AddSchemaConfiguration(this IServiceCollection services, Action<SchemaBuilder> config)
+    /// <summary>
+    /// Add Core Valtuutus services
+    /// </summary>
+    /// <param name="services">Service colletion</param>
+    /// <param name="config">Action to configure the schema graph</param>
+    /// <returns></returns>
+    public static IServiceCollection AddValtuutusCore(this IServiceCollection services, Action<SchemaBuilder> config)
     {
         var builder = new SchemaBuilder();
         config(builder);
