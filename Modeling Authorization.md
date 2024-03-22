@@ -1,13 +1,12 @@
-# Modeling Authorization 
-Valtuutus has a api that you can model your authorization logic with it. The api allows to define arbitrary relations between users and objects, such as owner, editor, commenter or roles like admin, manager, member.
-You can define your entities, relations between them and access control decisions with using a FluentApi. 
-It includes set-algebraic operators such as intersection and union for specifying potentially complex access control policies in terms of those user-object relations.
+# Modeling Authorization
+
+Valtuutus has an API that you can model your authorization logic with. The API allows you to define arbitrary relations between users and objects, such as owner, editor, commenter, or roles like admin, manager, member. You can define your entities, relations between them, and access control decisions using a Fluent API. It includes set-algebraic operators such as intersection and union for specifying potentially complex access control policies in terms of those user-object relations.
 
 ## Developing a schema
+
 This guide will show how to develop a Valtuutus Schema from scratch with a simple example, yet it will show almost every aspect of our modeling capabilities.
 
-We’ll follow a simplified version of the GitHub access control system, where teams and organizations have control over the viewing, editing, or deleting access rights of repositories.
-First, lets see the full implementation of a simple Github access control example using Valtuutus Schema:
+We’ll follow a simplified version of the GitHub access control system, where teams and organizations have control over the viewing, editing, or deleting access rights of repositories. First, let's see the full implementation of a simple Github access control example using Valtuutus Schema:
 
 ```csharp
 builder.Services.AddValtuutusCore(c =>
@@ -34,11 +33,11 @@ builder.Services.AddValtuutusCore(c =>
 ```
 
 ## Defining entities
-The very first step to build Valtuutus Schema is creating your Entities. Entity is an object that defines your resources that held role in your permission system.
+The very first step to build Valtuutus Schema is creating your Entities. Entity is an object that defines your resources that hold a role in your permission system.
 
-Think of entities as tables in your database. We are strongly advice to name entities same as your database table name that its corresponds. In that way you can easily model and reason your authorization as well as eliminating the error possibility.
+Think of entities as tables in your database. We strongly advise naming entities the same as your database table name that it corresponds to. In that way, you can easily model and reason your authorization as well as eliminating the possibility of errors.
 
-You can create entities using the `WithEntity` method. Let’s create some entities according to our example GitHub authorization logic.
+You can create entities using the WithEntity method. Let’s create some entities according to our example GitHub authorization logic.
 
 
 ```csharp
@@ -52,22 +51,17 @@ builder.Services.AddValtuutusCore(c =>
 });
 ``` 
 
-Entities have 3 different options. These are;
-
-- relations
-- permissions (that can also represent actions like read, write, delete, etc.)
-- attributes
+Entities have three different options: relations, permissions (that can also represent actions like read, write, delete, etc.), and attributes.
 
 ## Defining Relations
 Relations represent relationships between entities. It’s probably the most critical part of the schema because Valtuutus is mostly based on relations between resources and their permissions.
 
-The `WithRelation` is used to create a entity relation with name and type attributes.
+The WithRelation is used to create an entity relation with name and type attributes.
 
 **Relation Attributes**:
-- name: relation name.
-- type: relation type, basically the entity it’s related to (e.g. user, organization, document, etc.)
 
-Lets turn back to our example and define our relations inside our entities:
+- name: relation name.
+- type: relation type, basically the entity it’s related to (e.g., user, organization, document, etc.)
 
 
 ### Roles and User Types
@@ -100,10 +94,10 @@ builder.Services.AddValtuutusCore(c =>
     ...
 });
 ```
-The parent relation is indicating the organization the team belongs to. This way we can achieve parent-child relationship within these entities.
+The parent relation indicates the organization the team belongs to. This way, we can achieve a parent-child relationship within these entities.
 
 ### Ownership
-In the Github workflow, organizations and users can have multiple repositories, so each repository is related with an organization and with users. We can define repository relations as follows:
+In the GitHub workflow, organizations and users can have multiple repositories, so each repository is related to an organization and with users. We can define repository relations as follows:
 ```csharp
 builder.Services.AddValtuutusCore(c =>
 {
