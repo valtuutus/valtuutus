@@ -26,7 +26,7 @@ The library is designed to be simple and easy to use. Each subset of functionali
 - [LookupSubjectEngine](src/Valtuutus.Core/LookupSubjectEngine.cs): The engine that can answer: `Which subjects of type T have permission Y on entity:X?` For that, use the `Lookup` function.
 - [LookupEntityEngine](src/Valtuutus.Core/LookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function.
 
-## Adding to your project
+## Usage
 Install the package from NuGet:
 
 ### If using Postgres:
@@ -41,8 +41,10 @@ dotnet add package Valtuutus.Data.SqlServer
 ## Adding to DI:
 ```csharp
 builder.Services.AddValtuutusCore(c =>
-        ... define your schema here
+        ... 
 ```
+See examples of how to define your schema [here](Schema.md).
+
 ### If using Postgres:
 ```csharp
 builder.Services.AddValtuutusDatabase(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());

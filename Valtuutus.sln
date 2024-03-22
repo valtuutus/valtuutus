@@ -14,7 +14,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D7A6602B-1ADA-48CB-B6BC-DD7BDB273068}"
 	ProjectSection(SolutionItems) = preProject
 		docker-compose.yml = docker-compose.yml
-		README.md = README.md
 		src\Directory.Build.props = src\Directory.Build.props
 		src\Directory.Packages.props = src\Directory.Packages.props
 		build.cake = build.cake
@@ -43,6 +42,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{BB859D
 		.github\workflows\build.yml = .github\workflows\build.yml
 		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{CE52FA1C-E7A6-4D10-A446-1D9209C79DAF}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+		Modeling Authorization.md = Modeling Authorization.md
 	EndProjectSection
 EndProject
 Global
@@ -107,5 +112,6 @@ Global
 		{C45DF205-1484-49D5-A8C0-5AEADCC144D3} = {62CDC085-2DF2-4389-B65B-CB893B15A2C1}
 		{9FA14311-F75A-473E-9042-E9A3F9187300} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 		{BB859DDD-7E7F-4F97-B033-635432F127A5} = {D7A6602B-1ADA-48CB-B6BC-DD7BDB273068}
+		{CE52FA1C-E7A6-4D10-A446-1D9209C79DAF} = {D7A6602B-1ADA-48CB-B6BC-DD7BDB273068}
 	EndGlobalSection
 EndGlobal
