@@ -20,6 +20,7 @@ The implementation is based on the [permify](https://github.com/Permify/permify)
 ## Functionality
 The library is designed to be simple and easy to use. Each subset of functionality is divided in engines. The engines are:
 - [DataEngine](src/Valtuutus.Core/DataEngine.cs): The engine that handles the write and deletion of relation tuples and attributes.
+  - [Read here](Storing%20Data.md) about how the relational data is stored.
 - [CheckEngine](src/Valtuutus.Core/CheckEngine.cs): The engine that handles the answering of two questions:
   - `Can entity U perform action Y in resource Z`? For that, use the `Check` function.
   - `What permissions entity U have in resource Z`? For that, use the `SubjectPermission` function.
@@ -43,7 +44,7 @@ dotnet add package Valtuutus.Data.SqlServer
 builder.Services.AddValtuutusCore(c =>
         ... 
 ```
-See examples of how to define your schema [here](Schema.md).
+See examples of how to define your schema [here](Modeling%20Authorization.md).
 
 ### If using Postgres:
 ```csharp
