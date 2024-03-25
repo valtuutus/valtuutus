@@ -5,7 +5,7 @@
 The implementation is based on the [permify](https://github.com/Permify/permify) and other ReBac open source projects.
 
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=valtuutus_valtuutus&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=valtuutus_valtuutus)
+![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=valtuutus_valtuutus&metric=coverage)](https://sonarcloud.io/summary/new_code?id=valtuutus_valtuutus)
 [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=valtuutus_valtuutus&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=valtuutus_valtuutus)
 
