@@ -4,7 +4,6 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Data.Configuration;
 using Valtuutus.Tests.Shared;
-using Dapper;
 using FluentAssertions;
 using IdGen;
 using IdGen.DependencyInjection;
@@ -25,8 +24,8 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
     {
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddDatabaseSetup(_fixture.DbFactory, AddSpecificProvider)
-            .AddSchemaConfiguration(TestsConsts.Action);
+            .AddValtuutusDatabase(_fixture.DbFactory, AddSpecificProvider)
+            .AddValtuutusCore(TestsConsts.Action);
 
         serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
         serviceCollection.AddIdGen(0, () => new IdGeneratorOptions

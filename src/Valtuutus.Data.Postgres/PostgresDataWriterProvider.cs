@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text.Json;
-using Valtuutus.Core;
+﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Data.Configuration;
 using Valtuutus.Data.Postgres.Utils;

@@ -1,7 +1,7 @@
-﻿using Valtuutus.Core.Data;
+﻿using System.Diagnostics;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
-using Microsoft.Extensions.Logging;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
 namespace Valtuutus.Core;
@@ -15,18 +15,44 @@ public enum RelationType
     
 }
 
-public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogger<CheckEngine> logger)
+public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
 {
+    
+    /// <summary>
+    /// The check function walks through the schema graph to answer the question: "Can entity U perform action Y in resource Z?".
+    /// </summary>
+    /// <param name="req">Object containing the required information to evaluate the check</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>True if the subject has the permission on the entity</returns>
     public async Task<bool> Check(CheckRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        logger.LogDebug("Initializing check permission with request: {Req}", req);
-        return await CheckInternal(req)(ct);
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
+        var val =  await CheckInternal(req)(ct);
+        activity?.AddEvent(new ActivityEvent("CheckFinished", tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
+        return val;
+
+    }
+
+    private static IEnumerable<KeyValuePair<string, object?>> CreateCheckResultAttributes(bool result)
+    {
+        yield return new KeyValuePair<string, object?>("CheckResult", result);
+    }
+    private static IEnumerable<KeyValuePair<string, object?>> CreateCheckSpanAttributes(CheckRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("CheckRequest", req);
     }
     
+    
+    /// <summary>
+    /// The SubjectPermission function walks through the schema graph and evaluates every condition required to check, for each permission
+    /// if the provided subject with `SubjectId` and `SubjectType` on the entity with `EntityId` and `EntityType`.
+    /// </summary>
+    /// <param name="req">Object containing the required information to evaluate the check</param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>A dictionary containing every permission for the entity and if the subject has access to it</returns>
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateSubjectPermissionSpanAttributes(req));
         var permission = schema.GetPermissions(req.EntityType);
 
         var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
@@ -39,8 +65,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         })(ct))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
-        return new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished", tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
+        return dict;
 
+    }
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateSubjectPermissionResultAttributes(Dictionary<string, bool> result)
+    {
+        foreach(var (k, v) in result)
+            yield return new KeyValuePair<string, object?>(k, v);
+    }
+    private static IEnumerable<KeyValuePair<string, object?>> CreateSubjectPermissionSpanAttributes(SubjectPermissionRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("SubjectPermissionRequest", req);
     }
 
     private static CheckFunction Fail()
@@ -50,8 +88,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
-        logger.LogDebug("Checking permission: {Req}", req);
-        
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
@@ -66,9 +102,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
 
         var permissionNode = permission!.Tree;
-
-        logger.LogDebug("Checking permission {Permission}", permission.Name);
-
+        
         return permissionNode.Type == PermissionNodeType.Expression
             ? CheckExpression(req, permissionNode)
             : CheckLeaf(req, permissionNode);
@@ -98,7 +132,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     private CheckFunction CheckExpression(CheckRequest req, PermissionNode node)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        logger.LogDebug("Checking permission expression: {Req} with node {Node}", req, node);
         return node.ExpressionNode!.Operation switch
         {
             PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, CheckIntersect),
@@ -115,7 +148,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         var checkFunctions = new List<Func<CancellationToken, Task<bool>>>(capacity: children.Count);
         foreach (var child in children)
         {
-            logger.LogDebug("Checking permission expression child: {Child}", child);
             switch (child.Type)
             {
                 case PermissionNodeType.Expression:
@@ -133,7 +165,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
     private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        logger.LogDebug("Checking leaf: {Node}", node);
         var perm = node.LeafNode!.Value;
 
         if (perm.Split('.') is [{ } userSet, { } computedUserSet])
@@ -189,7 +220,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-            logger.LogDebug("Checking relation {Relation} with req: {Req}", req.Permission, req);
             var relations = await reader.GetRelations(new RelationTupleFilter
             {
                 EntityId = req.EntityId,
@@ -203,7 +233,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
             {
                 if (relation.SubjectId == req.SubjectId)
                 {
-                    logger.LogDebug("Checking relation {Relation} with req: {Req}, returned {Value}", req.Permission, req, true);
                     return true;
                 }
 
@@ -239,24 +268,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
                     {
                         if (t.Result)
                         {
-                            logger.LogDebug("Checking union: a function returned: {Value}", true);
                             cancellationTokenSource.Cancel();
                         }
 
-                        logger.LogDebug("Checking union: a function returned: {Value}", false);
                         return t.Result;
                     }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
                 })).ConfigureAwait(false);
 
             if (Array.Exists(results, b => b))
             {
-                logger.LogDebug("Checking union: returned: {Value}", true);
                 return true;
             }
         }
         catch (OperationCanceledException)
         {
-            logger.LogDebug("Checking union: returned: {Value}, operation cancelled", true);
             return true;
         }
         finally
@@ -264,7 +289,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
             cancellationTokenSource.Dispose();
         }
 
-        logger.LogDebug("Checking union: returned: {Value}", false);
         return false;
     }
     
@@ -283,22 +307,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema, ILogg
                     {
                         if (!t.Result)
                         {
-                            logger.LogDebug("Checking intersection: a function returned: {Value}", false);
                             cancellationTokenSource.Cancel();
                         }
 
-                        logger.LogDebug("Checking intersection: a function returned: {Value}", true);
                         return t.Result;
                     }, cancellationToken);
                 })).ConfigureAwait(false);
 
             var result = Array.TrueForAll(results, b => b);
-            logger.LogDebug("Checking intersection: returned: {Value}", result);
             return result;
         }
         catch (OperationCanceledException)
         {
-            logger.LogDebug("Checking intersection: returned: {Value}, operation cancelled", false);
             return false;
         }
         finally

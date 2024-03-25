@@ -1,12 +1,11 @@
-﻿using System.Collections.Concurrent;
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
 
 namespace Valtuutus.Tests.Shared;
 
 public static class LookupEntityEngineSpecList
 {
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         TopLevelChecks => new()
     {
         {
@@ -23,7 +22,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Groups.Admins, TestsConsts.Groups.Designers, TestsConsts.Groups.Developers
             ])
         },
@@ -37,7 +36,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([])
+            new HashSet<string>([])
         },
         {
             // Checks attribute
@@ -47,11 +46,11 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([])
+            new HashSet<string>([])
         },
     };
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         IndirectRelationLookup => new()
     {
         {
@@ -71,7 +70,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
             ])
@@ -91,14 +90,14 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
             ])
         },
     };
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         SimplePermissionLookup => new()
     {
         {
@@ -113,7 +112,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Workspaces.PublicWorkspace,
                 TestsConsts.Workspaces.PrivateWorkspace,
             ])
@@ -128,13 +127,13 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Workspaces.PrivateWorkspace,
             ])
         },
     };
     
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, ConcurrentBag<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
         {
@@ -150,7 +149,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([
+            new HashSet<string>([
                 TestsConsts.Workspaces.PublicWorkspace,
             ])
         },
@@ -166,7 +165,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([])
+            new HashSet<string>([])
         },
         {
             // without public attribute as false
@@ -181,7 +180,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new ConcurrentBag<string>([])
+            new HashSet<string>([])
         },
     };
 }

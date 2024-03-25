@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Valtuutus</Authors>
+    <VersionPrefix>0.1-alpha</VersionPrefix>
+    <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
+    <PackageLicenseUrl>https://github.com/valtuutus/valtuutus/blob/master/LICENSE</PackageLicenseUrl>
+    <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <PropertyGroup>
+    <PackageReleaseNotes>Version 0.1-alpha:
+      Initial release to begin testing
+    </PackageReleaseNotes>
+  </PropertyGroup>
+  <!-- SourceLink support para conseguir debugar caso necessário -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    <None Include="$(MSBuildThisFileDirectory)\..\README.md" Pack="true" Visible="false" PackagePath="\" />
+  </ItemGroup>
+  <PropertyGroup>
+    <!--<PublishRepositoryUrl>true</PublishRepositoryUrl>-->
+    <RepositoryUrl>https://github.com/valtuutus/valtuutus</RepositoryUrl>
+    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+</Project>

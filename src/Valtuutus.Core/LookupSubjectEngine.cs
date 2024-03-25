@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
@@ -7,7 +7,7 @@ using LookupSubjectFunction =
 
 namespace Valtuutus.Core;
 
-public record LookupSubjectRequestInternal
+internal record LookupSubjectRequestInternal
 {
     public required string EntityType { get; init; }
     public required IList<string> EntitiesIds { get; init; }
@@ -23,9 +23,15 @@ public sealed class LookupSubjectEngine(
     Schema schema,
     IDataReaderProvider reader)
 {
-    public async Task<ConcurrentBag<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
+    /// <summary>
+    /// The LookupSubject lets you ask "Which subjects of type T can do action Y on entity:X?"
+    /// </summary>
+    /// <param name="req">The object containing information for which </param>
+    /// <param name="ct">Cancellation token</param>
+    /// <returns>The list of ids of subjects of the provided type that has the permission on the specified entity.</returns>
+    public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupSubjectSpanAttributes(req));
         var internalReq = new LookupSubjectRequestInternal
         {
             Permission = req.Permission,
@@ -38,7 +44,21 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(ct);
-        return new ConcurrentBag<string>(res.RelationsTuples!.Select(x => x.SubjectId).Distinct().OrderBy(x => x));
+        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
+
+        activity?.AddEvent(new ActivityEvent("LookupSubjectResult", tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
+        return hs;
+    }
+    
+        
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupSubjectResultAttributes(HashSet<string> result)
+    {
+        yield return new KeyValuePair<string, object?>("LookupSubjectResultCount", result.Count);
+    }
+    
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupSubjectSpanAttributes(LookupSubjectRequest req)
+    {
+        yield return new KeyValuePair<string, object?>("LookupSubjectRequest", req);
     }
 
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
@@ -295,7 +315,7 @@ public sealed class LookupSubjectEngine(
     }
 }
 
-public record RelationOrAttributeTuples
+internal record RelationOrAttributeTuples
 {
     public RelationOrAttributeTuples(List<RelationTuple> relationsTuples)
     {

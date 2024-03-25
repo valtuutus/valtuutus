@@ -1,7 +1,6 @@
 ﻿using System.Data;
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
-using Valtuutus.Core.Data;
 using Valtuutus.Data.Configuration;
 using Bogus;
 using Dapper;
@@ -133,11 +132,12 @@ public static class Seeder
 
     }
 
-    public static async Task SeedSqlServer(IConfiguration configuration)
+    public static async Task SeedSqlServer(IServiceProvider provider)
     {
-        var connString = configuration.GetConnectionString("SqlServerDb");
+        using var scope = provider.CreateScope();
+        var factory = scope.ServiceProvider.GetRequiredService<DbConnectionFactory>();
 
-        await using var connection = new SqlConnection(connString);
+        await using var connection = (SqlConnection)factory();
         await connection.OpenAsync();
 
         var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from dbo.relation_tuples");
@@ -151,6 +151,8 @@ public static class Seeder
 
         var (relations, attributes) = GenerateData();
 
+        var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
+
         var relationsChunks = relations.Chunk(10_000);
 
         var count = 0;
@@ -159,13 +161,10 @@ public static class Seeder
         {
             try
             {
-                var relationsTable = chunk.ToDataTable(count * 10_000);
-
-                var sqlBulkRelations = new SqlBulkCopy(connection);
-                sqlBulkRelations.DestinationTableName = "relation_tuples";
 
                 Console.WriteLine("Writing relations to the db");
-                await sqlBulkRelations.WriteToServerAsync(relationsTable);
+                await writer.Write(chunk, [], default);
+
                 count++;
                 Console.WriteLine($"[Done] Writing relations to the db! Missing {chunksCount - count}");
             }
@@ -176,69 +175,9 @@ public static class Seeder
 
         }
 
-        var attributesTable = attributes.ToDataTable(0);
-
-        var sqlBulkAttributes = new SqlBulkCopy(connection);
-        sqlBulkAttributes.DestinationTableName = "attributes";
-
         Console.WriteLine("Writing attributes to the db");
-        await sqlBulkAttributes.WriteToServerAsync(attributesTable);
+        await writer.Write([], attributes, default);
         Console.WriteLine("[Done] Writing attributes to the db");
     }
 
-
-    private static DataTable ToDataTable(this IEnumerable<RelationTuple> items, int idOffset)
-    {
-        var dataTable = new DataTable("relation_tuples");
-        
-        dataTable.Columns.Add("id", typeof(long));
-        dataTable.Columns.Add("entity_type", typeof(string));
-        dataTable.Columns.Add("entity_id", typeof(string));
-        dataTable.Columns.Add("relation", typeof(string));
-        dataTable.Columns.Add("subject_type", typeof(string));
-        dataTable.Columns.Add("subject_id", typeof(string));
-        dataTable.Columns.Add("subject_relation", typeof(string));
-        
-        int count = 1; 
-        foreach (var tuple in items)
-        {
-            var row = dataTable.NewRow();
-            row["id"] = idOffset + count;
-            row["entity_type"] = tuple.EntityType;
-            row["entity_id"] = tuple.EntityId;
-            row["relation"] = tuple.Relation;
-            row["subject_type"] = tuple.SubjectType;
-            row["subject_id"] = tuple.SubjectId;
-            row["subject_relation"] = tuple.SubjectRelation;
-            dataTable.Rows.Add(row);
-        }
-
-        return dataTable;
-    }
-    
-    private static DataTable ToDataTable(this IEnumerable<AttributeTuple> items, int idOffset)
-    {
-        var dataTable = new DataTable("attributes");
-        
-        dataTable.Columns.Add("id", typeof(long));
-        dataTable.Columns.Add("entity_type", typeof(string));
-        dataTable.Columns.Add("entity_id", typeof(string));
-        dataTable.Columns.Add("attribute", typeof(string));
-        dataTable.Columns.Add("value", typeof(string));
-
-        int count = 1; 
-        foreach (var tuple in items)
-        {
-            var row = dataTable.NewRow();
-            row["id"] = idOffset + count;
-            row["entity_type"] = tuple.EntityType;
-            row["entity_id"] = tuple.EntityId;
-            row["attribute"] = tuple.Attribute;
-            row["value"] = tuple.Value.ToJsonString();
-            dataTable.Rows.Add(row);
-            count++;
-        }
-
-        return dataTable;
-    }
 }

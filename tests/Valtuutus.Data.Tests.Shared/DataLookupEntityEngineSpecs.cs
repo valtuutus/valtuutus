@@ -22,8 +22,8 @@ public abstract class DataLookupEntityEngineSpecs : BaseLookupEntityEngineSpecs,
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupEntityEngine>>())
-            .AddDatabaseSetup(_fixture.DbFactory, AddSpecificProvider)
-            .AddSchemaConfiguration(TestsConsts.Action);
+            .AddValtuutusDatabase(_fixture.DbFactory, AddSpecificProvider)
+            .AddValtuutusCore(TestsConsts.Action);
         if (schema != null)
         {
             var serviceDescriptor = serviceCollection.First(descriptor => descriptor.ServiceType == typeof(Schema));
