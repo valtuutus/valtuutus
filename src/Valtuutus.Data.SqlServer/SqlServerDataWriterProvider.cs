@@ -10,7 +10,7 @@ using Sqids;
 
 namespace Valtuutus.Data.SqlServer;
 
-internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
+public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IIdGenerator<long> _idGenerator;

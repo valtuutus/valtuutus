@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Valtuutus.Data.Postgres;
 
-internal sealed class PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
+public sealed class PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
     : IDataReaderProvider
 {
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)

@@ -24,7 +24,7 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
     {
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddValtuutusDatabase(_fixture.DbFactory, AddSpecificProvider)
+            .AddValtuutusDatabase(_ => _fixture.DbFactory, AddSpecificProvider)
             .AddValtuutusCore(TestsConsts.Action);
 
         serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));

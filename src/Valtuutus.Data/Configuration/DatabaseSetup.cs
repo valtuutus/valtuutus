@@ -15,13 +15,13 @@ public static class DatabaseSetup
     /// </summary>
     /// <param name="services">Service collection</param>
     /// <param name="factory">This is a scoped connection factory. Can be used to set multitenant access to the database.</param>
-    /// <param name="configuring">Aditional configuration</param>
+    /// <param name="configuring">Additional configuration</param>
     /// <returns></returns>
-    public static IServiceCollection AddValtuutusDatabase(this IServiceCollection  services, DbConnectionFactory factory, Action<IServiceCollection> configuring)
+    public static IServiceCollection AddValtuutusDatabase(this IServiceCollection  services, Func<IServiceProvider, DbConnectionFactory> factory, Action<IServiceCollection> configuring)
     {
         Dapper.DefaultTypeMap.MatchNamesWithUnderscores = true;
         SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        services.AddScoped<DbConnectionFactory>(_ => factory);
+        services.AddScoped(factory);
         services.AddSingleton<SqidsEncoder<long>>();
         services.AddIdGen(1);
 

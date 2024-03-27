@@ -1,0 +1,19 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0", FrameworkDisplayName=".NET 8.0")]
+namespace Valtuutus.Data.Configuration
+{
+    public static class DatabaseSetup
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusDatabase(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Configuration.DbConnectionFactory> factory, System.Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> configuring) { }
+    }
+    public delegate System.Data.IDbConnection DbConnectionFactory();
+}
+namespace Valtuutus.Data
+{
+    public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
+    {
+        public JsonTypeHandler() { }
+        public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
+        public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
+    }
+}
