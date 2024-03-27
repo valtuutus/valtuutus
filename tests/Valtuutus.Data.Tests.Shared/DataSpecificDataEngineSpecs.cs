@@ -107,28 +107,28 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
             
             // Should delete every attribute of the specified entityId.
             {
-                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "1", "public", JsonValue.Create(true)),
-                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)),
-                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test"))], new DeleteFilter
+                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "1", "public", JsonValue.Create(true)!),
+                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
+                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)], new DeleteFilter
                 {
                     Attributes = new []{ new DeleteAttributesFilter
                     {
                         EntityType = "project",
                         EntityId = "1"
                     }}
-                }, [], [new AttributeTuple("project", "2", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test"))]
+                }, [], [new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)]
             },
             
             // Should only delete the attribute with name public of the specified entityId.
             {
-                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "1", "public", JsonValue.Create(true)),
-                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)),
-                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test"))], new DeleteFilter
+                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "1", "public", JsonValue.Create(true)!),
+                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
+                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)], new DeleteFilter
                 {
                     Attributes = new []{ new DeleteAttributesFilter
                     {
@@ -136,10 +136,10 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
                         EntityId = "1",
                         Attribute = "public"
                     }}
-                }, [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)),
-                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test"))]
+                }, [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
+                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)]
             },
         };
 
