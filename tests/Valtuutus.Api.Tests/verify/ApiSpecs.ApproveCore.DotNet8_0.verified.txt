@@ -1,0 +1,373 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0", FrameworkDisplayName=".NET 8.0")]
+namespace Valtuutus.Core
+{
+    public class AttributeTuple : System.IEquatable<Valtuutus.Core.AttributeTuple>
+    {
+        protected AttributeTuple() { }
+        public AttributeTuple(string entityType, string entityId, string attribute, System.Text.Json.Nodes.JsonValue value) { }
+        public string Attribute { get; }
+        public string EntityId { get; }
+        public string EntityType { get; }
+        public System.Text.Json.Nodes.JsonValue Value { get; }
+    }
+    public sealed class CheckEngine
+    {
+        public CheckEngine(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema) { }
+        public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.CheckRequest req, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.SubjectPermissionRequest req, System.Threading.CancellationToken ct) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.CheckRequest>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public CheckRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null) { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    public sealed class DataEngine
+    {
+        public DataEngine(Valtuutus.Core.Data.IDataWriterProvider writerProvider) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
+    }
+    public sealed class LookupEntityEngine
+    {
+        public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.LookupEntityRequest req, System.Threading.CancellationToken ct) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.LookupEntityRequest>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public LookupEntityRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId) { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+    public sealed class LookupSubjectEngine
+    {
+        public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.LookupSubjectRequest req, System.Threading.CancellationToken ct) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.LookupSubjectRequest>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public LookupSubjectRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId) { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+    public class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
+    {
+        protected RelationTuple() { }
+        public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null) { }
+        public string EntityId { get; }
+        public string EntityType { get; }
+        public string Relation { get; }
+        public string SubjectId { get; }
+        public string SubjectRelation { get; }
+        public string SubjectType { get; }
+        public bool IsDirectSubject() { }
+    }
+    public enum RelationType
+    {
+        None = 0,
+        DirectRelation = 1,
+        Permission = 2,
+        Attribute = 3,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.SubjectPermissionRequest>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public SubjectPermissionRequest() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Configuration
+{
+    public static class ConfigureSchema
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Action<Valtuutus.Core.Schemas.SchemaBuilder> config) { }
+    }
+}
+namespace Valtuutus.Core.Data
+{
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class AttributeFilter
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public AttributeFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Attribute { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public struct DeleteAttributesFilter : System.IEquatable<Valtuutus.Core.Data.DeleteAttributesFilter>
+    {
+        public string? Attribute { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    public class DeleteFilter : System.IEquatable<Valtuutus.Core.Data.DeleteFilter>
+    {
+        public DeleteFilter() { }
+        public Valtuutus.Core.Data.DeleteAttributesFilter[] Attributes { get; init; }
+        public Valtuutus.Core.Data.DeleteRelationsFilter[] Relations { get; init; }
+    }
+    public struct DeleteRelationsFilter : System.IEquatable<Valtuutus.Core.Data.DeleteRelationsFilter>
+    {
+        public string? EntityId { get; init; }
+        public string? EntityType { get; init; }
+        public string? Relation { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class EntityAttributeFilter
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public EntityAttributeFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Attribute { get; init; }
+        public string? EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public EntityRelationFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Relation { get; init; }
+    }
+    public interface IDataReaderProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entitiesIds, string? subjectRelation, System.Threading.CancellationToken ct);
+    }
+    public interface IDataWriterProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public RelationTupleFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Relation { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    public struct SnapToken : System.IEquatable<Valtuutus.Core.Data.SnapToken>
+    {
+        public SnapToken(string Value) { }
+        public string Value { get; set; }
+    }
+}
+namespace Valtuutus.Core.Observability
+{
+    public static class DefaultActivitySource
+    {
+        public const string SourceName = "Valtuutus";
+        public const string SourceNameInternal = "Valtuutus.Internal";
+        public static System.Diagnostics.ActivitySource Instance { get; }
+        public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
+    }
+}
+namespace Valtuutus.Core.Schemas
+{
+    public class Attribute : System.IEquatable<Valtuutus.Core.Schemas.Attribute>
+    {
+        public Attribute(string Name, System.Type Type) { }
+        public string Name { get; init; }
+        public System.Type Type { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class Entity
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public Entity() { }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Attribute> Attributes { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Permission> Permissions { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Relation> Relations { get; init; }
+    }
+    public class EntitySchemaBuilder
+    {
+        public EntitySchemaBuilder(string name, Valtuutus.Core.Schemas.SchemaBuilder schemaBuilder) { }
+        public Valtuutus.Core.Schemas.SchemaBuilder SchemaBuilder { get; }
+        public Valtuutus.Core.Schemas.Entity Build() { }
+        public Valtuutus.Core.Schemas.EntitySchemaBuilder WithAttribute(string attrName, System.Type attrType) { }
+        public Valtuutus.Core.Schemas.EntitySchemaBuilder WithEntity(string entityName) { }
+        public Valtuutus.Core.Schemas.EntitySchemaBuilder WithPermission(string permissionName, Valtuutus.Core.Schemas.PermissionNode permissionTree) { }
+        public Valtuutus.Core.Schemas.EntitySchemaBuilder WithRelation(string relationName, System.Action<Valtuutus.Core.Schemas.RelationSchemaBuilder> config) { }
+    }
+    public class Permission : System.IEquatable<Valtuutus.Core.Schemas.Permission>
+    {
+        public Permission(string Name, Valtuutus.Core.Schemas.PermissionNode Tree) { }
+        public string Name { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNode Tree { get; init; }
+    }
+    public class PermissionNode : System.IEquatable<Valtuutus.Core.Schemas.PermissionNode>
+    {
+        public PermissionNode(Valtuutus.Core.Schemas.PermissionNodeType Type) { }
+        public Valtuutus.Core.Schemas.PermissionNodeOperation? ExpressionNode { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeLeaf? LeafNode { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeType Type { get; init; }
+        public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, string right) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, Valtuutus.Core.Schemas.PermissionNode right) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Leaf(string value) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Union(params string[] checks) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Union(params Valtuutus.Core.Schemas.PermissionNode[] nodes) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Union(string left, string right) { }
+    }
+    public class PermissionNodeLeaf : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeaf>
+    {
+        public PermissionNodeLeaf(string Value) { }
+        public string Value { get; init; }
+    }
+    public class PermissionNodeOperation : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeOperation>
+    {
+        public PermissionNodeOperation(Valtuutus.Core.Schemas.PermissionOperation Operation, System.Collections.Generic.List<Valtuutus.Core.Schemas.PermissionNode> Children) { }
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.PermissionNode> Children { get; init; }
+        public Valtuutus.Core.Schemas.PermissionOperation Operation { get; init; }
+    }
+    public enum PermissionNodeType
+    {
+        Leaf = 0,
+        Expression = 1,
+    }
+    public enum PermissionOperation
+    {
+        Intersect = 0,
+        Union = 1,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class Relation : System.IEquatable<Valtuutus.Core.Schemas.Relation>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public Relation() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.RelationEntity> Entities { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class RelationEntity : System.IEquatable<Valtuutus.Core.Schemas.RelationEntity>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public RelationEntity() { }
+        public string? Relation { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Type { get; init; }
+    }
+    public class RelationSchemaBuilder
+    {
+        public RelationSchemaBuilder(string name) { }
+        public Valtuutus.Core.Schemas.Relation Build() { }
+        public Valtuutus.Core.Schemas.RelationSchemaBuilder WithEntityType(string entityType, string? entityTypeRelation = null) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class Rule : System.IEquatable<Valtuutus.Core.Schemas.Rule>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public Rule() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string RuleFn { get; init; }
+    }
+    public class Schema : System.IEquatable<Valtuutus.Core.Schemas.Schema>
+    {
+        public Schema(System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities) { }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities { get; init; }
+        public Valtuutus.Core.Schemas.Attribute GetAttribute(string entityType, string attribute) { }
+        public Valtuutus.Core.Schemas.Permission GetPermission(string entityType, string permission) { }
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.Permission> GetPermissions(string entityType) { }
+        public Valtuutus.Core.Schemas.Relation GetRelation(string entityType, string relation) { }
+        public Valtuutus.Core.RelationType GetRelationType(string entityType, string permission) { }
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.Relation> GetRelations(string entityType) { }
+    }
+    public class SchemaBuilder
+    {
+        public SchemaBuilder() { }
+        public Valtuutus.Core.Schemas.Schema Build() { }
+        public Valtuutus.Core.Schemas.EntitySchemaBuilder WithEntity(string entityName) { }
+    }
+}

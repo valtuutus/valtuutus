@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Valtuutus.Data.SqlServer;
 
-internal sealed class SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
+public sealed class SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger)
     : IDataReaderProvider
 {
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)

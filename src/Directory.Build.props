@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.1-alpha</VersionPrefix>
+    <VersionPrefix>0.2-alpha</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <PackageLicenseUrl>https://github.com/valtuutus/valtuutus/blob/master/LICENSE</PackageLicenseUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
@@ -9,16 +9,18 @@
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
+    <NetLibVersion>net7.0;net8.0</NetLibVersion>
   </PropertyGroup>
   <PropertyGroup>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.1-alpha:
-      Initial release to begin testing
+    <PackageReleaseNotes>Version 0.2-alpha:
+      - Added support for .NET 7.0
+      - Improved DI registration
+      - Added API contract tests
     </PackageReleaseNotes>
   </PropertyGroup>
-  <!-- SourceLink support para conseguir debugar caso necessário -->
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
     <None Include="$(MSBuildThisFileDirectory)\..\README.md" Pack="true" Visible="false" PackagePath="\" />

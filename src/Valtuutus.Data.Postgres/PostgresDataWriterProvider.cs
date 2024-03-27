@@ -10,7 +10,7 @@ using Sqids;
 
 namespace Valtuutus.Data.Postgres;
 
-internal sealed class PostgresDataWriterProvider : IDataWriterProvider
+public sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IIdGenerator<long> _idGenerator;

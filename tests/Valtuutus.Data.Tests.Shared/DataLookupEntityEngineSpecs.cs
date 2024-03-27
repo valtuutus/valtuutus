@@ -22,7 +22,7 @@ public abstract class DataLookupEntityEngineSpecs : BaseLookupEntityEngineSpecs,
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupEntityEngine>>())
-            .AddValtuutusDatabase(_fixture.DbFactory, AddSpecificProvider)
+            .AddValtuutusDatabase(_ => _fixture.DbFactory, AddSpecificProvider)
             .AddValtuutusCore(TestsConsts.Action);
         if (schema != null)
         {

@@ -21,7 +21,7 @@ public abstract class DataCheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetim
         var serviceCollection = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
-            .AddValtuutusDatabase(_fixture.DbFactory, AddSpecificProvider)
+            .AddValtuutusDatabase(_ => _fixture.DbFactory, AddSpecificProvider)
             .AddValtuutusCore(TestsConsts.Action);
         if (schema != null)
         {

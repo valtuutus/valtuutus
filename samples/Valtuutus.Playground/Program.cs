@@ -23,10 +23,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 #if postgres
-builder.Services.AddValtuutusDatabase(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
+builder.Services.AddValtuutusDatabase(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
 
 #else 
-builder.Services.AddValtuutusDatabase(() => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
+builder.Services.AddValtuutusDatabase(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
 #endif
 
 builder.Services.AddValtuutusCore(c =>

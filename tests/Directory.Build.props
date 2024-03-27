@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <Authors>Valtuutus</Authors>
+    <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <NetLibVersion>net7.0;net8.0</NetLibVersion>
+  </PropertyGroup>
+ 
+</Project>
