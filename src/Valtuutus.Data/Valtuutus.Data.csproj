@@ -4,6 +4,8 @@
         <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Description>Valtuutus data abstractions; $(Description)</Description>
+        <PackageTags>$(PackageTags)</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>

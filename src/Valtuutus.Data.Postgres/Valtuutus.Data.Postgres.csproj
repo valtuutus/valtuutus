@@ -4,6 +4,9 @@
         <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <Description>Valtuutus Postgres support; $(Description)</Description>
+        <PackageTags>$(PackageTags);postgresql;postgres</PackageTags>
+
     </PropertyGroup>
 
     <ItemGroup>

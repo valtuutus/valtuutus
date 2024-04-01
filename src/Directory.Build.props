@@ -6,6 +6,9 @@
     <PackageLicenseUrl>https://github.com/valtuutus/valtuutus/blob/master/LICENSE</PackageLicenseUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Valtuutus provides a developer-focused, modern library for creating ReBAC without complexity.</Description>
+    <PackageTags>Valtuutus;rebac;zanzibar;authorization</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
