@@ -10,46 +10,51 @@ public static class TestsConsts
         schemaBuilder
             .WithEntity("user")
             .WithEntity("group")
-            .WithRelation("member", rc =>
-                rc.WithEntityType("user")
-            )
+                .WithRelation("member", rc =>
+                    rc.WithEntityType("user")
+                )
             .WithEntity("workspace")
-            .WithRelation("owner", rc =>
-                rc.WithEntityType("user"))
-            .WithRelation("admin", rc =>
-                rc.WithEntityType("user"))
-            .WithRelation("member", rc =>
-                rc.WithEntityType("user"))
-            .WithAttribute("public", typeof(bool))
-            .WithPermission("comment", PermissionNode.Intersect("member", PermissionNode.Leaf("public")))
-            .WithPermission("delete", PermissionNode.Leaf("owner"))
-            .WithPermission("view", PermissionNode.Union(
-                PermissionNode.Leaf("public"), PermissionNode.Leaf("owner"),
-                PermissionNode.Leaf("member"), PermissionNode.Leaf("admin"))
-            )
+                .WithRelation("owner", rc =>
+                    rc.WithEntityType("user"))
+                .WithRelation("admin", rc =>
+                    rc.WithEntityType("user"))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType("user"))
+                .WithAttribute("public", typeof(bool))
+                .WithPermission("comment", PermissionNode.Intersect("member", PermissionNode.Leaf("public")))
+                .WithPermission("delete", PermissionNode.Leaf("owner"))
+                .WithPermission("view", PermissionNode.Union(
+                    PermissionNode.Leaf("public"), PermissionNode.Leaf("owner"),
+                    PermissionNode.Leaf("member"), PermissionNode.Leaf("admin"))
+                )
             .WithEntity("team")
-            .WithRelation("lead", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc =>
-                rc.WithEntityType("user")
-                    .WithEntityType("group", "member"))
+                .WithRelation("lead", rc => rc.WithEntityType("user"))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType("user")
+                        .WithEntityType("group", "member"))
             .WithEntity("project")
-            .WithRelation("parent", rc => rc.WithEntityType("workspace"))
-            .WithRelation("team", rc => rc.WithEntityType("team"))
-            .WithRelation("member", rc =>
-                rc.WithEntityType("user")
-                    .WithEntityType("team", "member"))
-            .WithRelation("lead", rc => rc.WithEntityType("team", "lead"))
-            .WithAttribute("public", typeof(bool))
-            .WithPermission("view", PermissionNode.Union(
-                PermissionNode.Leaf("member"), PermissionNode.Leaf("lead"),
-                PermissionNode.Intersect("public", "parent.view"))
-            )
+                .WithRelation("parent", rc => rc.WithEntityType("workspace"))
+                .WithRelation("team", rc => rc.WithEntityType("team"))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType("user")
+                        .WithEntityType("team", "member"))
+                .WithRelation("lead", rc => rc.WithEntityType("team", "lead"))
+                .WithAttribute("public", typeof(bool))
+                .WithAttribute("status", typeof(int))
+                .WithPermission("view", PermissionNode.Union(
+                    PermissionNode.Leaf("member"), PermissionNode.Leaf("lead"),
+                    PermissionNode.Intersect("public", "parent.view"))
+                )
+                .WithPermission("edit", PermissionNode.Intersect(
+                    PermissionNode.Union("parent.admin", "team.member"),
+                    PermissionNode.AttributeIntExpression("status", status => status == 1))
+                )
             .WithEntity("task")
-            .WithRelation("parent", rc => rc.WithEntityType("project"))
-            .WithRelation("assignee", rc =>
-                rc.WithEntityType("user")
-                    .WithEntityType("group", "member"))
-            .WithPermission("view", PermissionNode.Leaf("parent.view"));
+                .WithRelation("parent", rc => rc.WithEntityType("project"))
+                .WithRelation("assignee", rc =>
+                    rc.WithEntityType("user")
+                        .WithEntityType("group", "member"))
+                .WithPermission("view", PermissionNode.Leaf("parent.view"));
     };
     public static Schema Schemas
     {

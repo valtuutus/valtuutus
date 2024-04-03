@@ -81,4 +81,22 @@ public abstract class BaseLookupSubjectEngineSpecs
         // assert
         result.Should().BeEquivalentTo(expected);
     }
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
+        IntersectAttributeExpWithOtherNodesPermissionLookup = LookupSubjectEngineSpecList.IntersectAttributeExpWithOtherNodes;
+    
+    [Theory]
+    [MemberData(nameof(IntersectAttributeExpWithOtherNodesPermissionLookup))]
+    public async Task IntersectAttributeExpWithOtherNodesLookupShouldReturnExpectedResult(RelationTuple[] tuples,
+        AttributeTuple[] attributes, LookupSubjectRequest request, HashSet<string> expected)
+    {
+        // Arrange
+        var engine = await CreateEngine(tuples, attributes);
+
+        // Act
+        var result = await engine.Lookup(request, default);
+
+        // assert
+        result.Should().BeEquivalentTo(expected);
+    }
 }

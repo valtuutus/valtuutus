@@ -35,6 +35,10 @@ public abstract class BaseCheckEngineSpecs
     
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> NestedPermissionsData =
         CheckEngineSpecList.NestedPermissionsData;
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool>
+        IntersectionBetweenAttributeExpAndOtherNodes =
+            CheckEngineSpecList.IntersectionBetweenAttributeExpAndOtherNodes;
     
     
     [Theory]
@@ -254,7 +258,21 @@ public abstract class BaseCheckEngineSpecs
         // assert
         result.Should().Be(expected);
     }
-    
+
+    [Theory]
+    [MemberData(nameof(IntersectionBetweenAttributeExpAndOtherNodes))]
+    public async Task CheckIntersectionBetweenAttributeExpAndOtherNodes(RelationTuple[] tuples,
+        AttributeTuple[] attributes, CheckRequest request, bool expected)
+    {
+        // Arrange
+        var engine = await CreateEngine(tuples, attributes);
+        
+        // Act
+        var result = await engine.Check(request, default);
+        
+        // assert
+        result.Should().Be(expected);
+    }
     
     
     [Fact]

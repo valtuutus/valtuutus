@@ -118,16 +118,56 @@ public sealed class LookupSubjectEngine(
 
     private LookupSubjectFunction LookupLeaf(LookupSubjectRequestInternal req, PermissionNodeLeaf node)
     {
-        var perm = node.Value;
+        return node.Type switch
+        {
+            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!),
+            PermissionNodeLeafType.AttributeExpression => CheckLeafAttributeExp(req, node.ExpressionNode!),
+            _ => throw new InvalidOperationException()
+        };
+    }
     
+    private LookupSubjectFunction CheckLeafPermission(LookupSubjectRequestInternal req, PermissionNodeLeafPermission node)
+    {
+        var perm = node.Permission;
+
         if (perm.Split('.') is [{ } userSet, { } computedUserSet])
         {
             // Indirect Relation
             return CheckTupleToUserSet(req, userSet, computedUserSet);
         }
-    
+
         // Direct Relation
         return LookupComputedUserSet(req, perm);
+    }
+    
+    private LookupSubjectFunction CheckLeafAttributeExp(LookupSubjectRequestInternal req, PermissionNodeLeafAttributeExp node)
+    {
+        return async (ct) =>
+        {
+            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+            var attrName = node.AttributeName;
+
+            var res = (await reader.GetAttributes(new AttributeFilter
+                {
+                    Attribute = attrName,
+                    EntityType = req.EntityType
+                }, req.EntitiesIds, ct))
+                .Where(AttrEvaluator)
+                .ToList();
+
+            return new RelationOrAttributeTuples(res);
+
+            bool AttrEvaluator(AttributeTuple attrTuple)
+            {
+                return node.Type switch
+                {
+                    AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
+                    AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
+                    AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
+                    _ => throw new InvalidOperationException()
+                };
+            }
+        };
     }
 
     private LookupSubjectFunction CheckTupleToUserSet(LookupSubjectRequestInternal req, string tupleSetRelation,
@@ -179,11 +219,13 @@ public sealed class LookupSubjectEngine(
     {
         return async (ct) =>
         {
-            var res = await reader.GetAttributes(new AttributeFilter
+            var res = (await reader.GetAttributes(new AttributeFilter
             {
                 Attribute = attribute.Name,
                 EntityType = req.EntityType
-            }, req.EntitiesIds, ct);
+            }, req.EntitiesIds, ct))
+            .Where(x => x.Value.TryGetValue<bool>(out var b) && b)
+            .ToList();
             
             return new RelationOrAttributeTuples(res);
         };
@@ -289,7 +331,7 @@ public sealed class LookupSubjectEngine(
         {
             if (result.Type == RelationOrAttributeType.Attribute)
             {
-                if (result.AttributesTuples!.Exists(x => x.Value.TryGetValue<bool>(out var b) && b))
+                if (result.AttributesTuples!.Any())
                 {
                     continue;
                 }

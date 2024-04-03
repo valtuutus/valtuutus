@@ -249,6 +249,12 @@ namespace Valtuutus.Core.Schemas
         public string Name { get; init; }
         public System.Type Type { get; init; }
     }
+    public enum AttributeTypes
+    {
+        Int = 0,
+        String = 1,
+        Decimal = 2,
+    }
     [System.Runtime.CompilerServices.RequiredMember]
     public class Entity
     {
@@ -284,17 +290,42 @@ namespace Valtuutus.Core.Schemas
         public Valtuutus.Core.Schemas.PermissionNodeOperation? ExpressionNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeLeaf? LeafNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeType Type { get; init; }
+        public static Valtuutus.Core.Schemas.PermissionNode AttributeDecimalExpression(string attrName, System.Func<decimal, bool> exp) { }
+        public static Valtuutus.Core.Schemas.PermissionNode AttributeIntExpression(string attrName, System.Func<int, bool> exp) { }
+        public static Valtuutus.Core.Schemas.PermissionNode AttributeStringExpression(string attrName, System.Func<string, bool> exp) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Intersect(params Valtuutus.Core.Schemas.PermissionNode[] nodes) { }
         public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, string right) { }
         public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, Valtuutus.Core.Schemas.PermissionNode right) { }
-        public static Valtuutus.Core.Schemas.PermissionNode Leaf(string value) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Leaf(string permName) { }
         public static Valtuutus.Core.Schemas.PermissionNode Union(params string[] checks) { }
         public static Valtuutus.Core.Schemas.PermissionNode Union(params Valtuutus.Core.Schemas.PermissionNode[] nodes) { }
         public static Valtuutus.Core.Schemas.PermissionNode Union(string left, string right) { }
     }
     public class PermissionNodeLeaf : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeaf>
     {
-        public PermissionNodeLeaf(string Value) { }
-        public string Value { get; init; }
+        public PermissionNodeLeaf(Valtuutus.Core.Schemas.PermissionNodeLeafType Type) { }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafAttributeExp? ExpressionNode { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafPermission? PermissionNode { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafType Type { get; init; }
+    }
+    public class PermissionNodeLeafAttributeExp : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafAttributeExp>
+    {
+        public PermissionNodeLeafAttributeExp(string AttributeName, Valtuutus.Core.Schemas.AttributeTypes Type) { }
+        public string AttributeName { get; init; }
+        public System.Func<decimal, bool>? DecimalExpression { get; init; }
+        public System.Func<int, bool>? IntExpression { get; init; }
+        public System.Func<string, bool>? StringExpression { get; init; }
+        public Valtuutus.Core.Schemas.AttributeTypes Type { get; init; }
+    }
+    public class PermissionNodeLeafPermission : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafPermission>
+    {
+        public PermissionNodeLeafPermission(string Permission) { }
+        public string Permission { get; init; }
+    }
+    public enum PermissionNodeLeafType
+    {
+        Permission = 0,
+        AttributeExpression = 1,
     }
     public class PermissionNodeOperation : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeOperation>
     {
