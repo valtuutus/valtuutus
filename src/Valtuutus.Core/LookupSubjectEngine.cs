@@ -331,7 +331,7 @@ public sealed class LookupSubjectEngine(
         {
             if (result.Type == RelationOrAttributeType.Attribute)
             {
-                if (result.AttributesTuples!.Any())
+                if (result.AttributesTuples!.Count != 0)
                 {
                     continue;
                 }
