@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core;
+﻿using System.Text.Json.Nodes;
+using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
 
@@ -97,5 +98,72 @@ public abstract class BaseLookupEntityEngineSpecs
 
         // assert
         result.Should().BeEquivalentTo(expected);
+    }
+    
+        [Fact]
+    public async Task TestStringBasedAttributeExpression()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+            .WithAttribute("status", typeof(string))
+            .WithPermission("edit", PermissionNode.AttributeStringExpression("status", s => s == "active"));
+
+        var schema = entity.SchemaBuilder.Build();
+
+        // act
+        var engine = await CreateEngine([], [
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "status",
+                JsonValue.Create("active")!),
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "status",
+                JsonValue.Create("active")!),
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, "1", "status",
+                JsonValue.Create("archived")!),
+        ], schema);
+
+        // Act
+        var result = await engine.LookupEntity(new LookupEntityRequest(TestsConsts.Workspaces.Identifier,
+            "edit", "user", "1"), default);
+
+        // assert
+        result.Should().BeEquivalentTo([TestsConsts.Workspaces.PublicWorkspace, TestsConsts.Workspaces.PrivateWorkspace]);
+    }
+
+    [Fact]
+    public async Task TestDecimalBasedAttributeExpression()
+    {
+        // arrange
+        var entity = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity("account")
+            .WithRelation("owner", c => c.WithEntityType(TestsConsts.Users.Identifier))
+            .WithAttribute("balance", typeof(decimal))
+            .WithPermission("withdraw", PermissionNode.Intersect(
+                PermissionNode.Leaf("owner"),
+                PermissionNode.AttributeDecimalExpression("balance", b => b >= 500m)
+            ));
+
+        var schema = entity.SchemaBuilder.Build();
+
+        // act
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("account", "1", "owner", TestsConsts.Users.Identifier, "1"),
+                new RelationTuple("account", "2", "owner", TestsConsts.Users.Identifier, "1")
+            ],
+            [
+                new AttributeTuple("account", "1", "balance",
+                    JsonValue.Create(872.54m)),
+                new AttributeTuple("account", "2", "balance",
+                    JsonValue.Create(12.11m)),
+            ], schema);
+
+        // Act
+        var result = await engine.LookupEntity(new LookupEntityRequest("account",
+            "withdraw", "user", "1"), default);
+
+        // assert
+        result.Should().BeEquivalentTo(["1"]);
     }
 }
