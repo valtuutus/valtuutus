@@ -114,7 +114,17 @@ public sealed class LookupEntityEngine(
 
     private LookupFunction LookupLeaf(LookupEntityRequestInternal req, PermissionNodeLeaf node)
     {
-        var perm = node.Value;
+        return node.Type switch
+        {
+            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!),
+            PermissionNodeLeafType.AttributeExpression => CheckLeafAttributeExp(req, node.ExpressionNode!),
+            _ => throw new InvalidOperationException()
+        };
+    }
+    
+    private LookupFunction CheckLeafPermission(LookupEntityRequestInternal req, PermissionNodeLeafPermission node)
+    {
+        var perm = node.Permission;
 
         if (perm.Split('.') is [{ } userSet, { } computedUserSet])
         {
@@ -124,6 +134,35 @@ public sealed class LookupEntityEngine(
 
         // Direct Relation
         return LookupComputedUserSet(req, perm);
+    }
+    
+    private LookupFunction CheckLeafAttributeExp(LookupEntityRequestInternal req, PermissionNodeLeafAttributeExp node)
+    {
+        return async (ct) =>
+        {
+            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+            var attrName = node.AttributeName;
+
+            return (await reader.GetAttributes(new EntityAttributeFilter
+                {
+                    Attribute = attrName,
+                    EntityType = req.EntityType
+                }, ct))
+                .Where(AttrEvaluator)
+                .Select(x => new RelationOrAttributeTuple(x))
+                .ToList();
+
+            bool AttrEvaluator(AttributeTuple attrTuple)
+            {
+                return node.Type switch
+                {
+                    AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
+                    AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
+                    AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
+                    _ => throw new InvalidOperationException()
+                };
+            }
+        };
     }
 
     private LookupFunction CheckTupleToUserSet(LookupEntityRequestInternal req, string tupleSetRelation,

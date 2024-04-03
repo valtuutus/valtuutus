@@ -49,13 +49,17 @@ builder.Services.AddValtuutusCore(c =>
             .WithRelation("team", rc => rc.WithEntityType("team"))
             .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
             .WithAttribute("public", typeof(bool))
+            .WithAttribute("status", typeof(string))
             .WithPermission("view",  
             PermissionNode.Union(
                 PermissionNode.Leaf("org.admin"), 
                 PermissionNode.Leaf("member"), 
                 PermissionNode.Intersect("public", "org.member"))
             )
-            .WithPermission("edit", PermissionNode.Union("org.admin", "team.member"))
+            .WithPermission("edit", PermissionNode.Intersect(
+                PermissionNode.Union("org.admin", "team.member"),
+                PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
+            )
             .WithPermission("delete", PermissionNode.Leaf("team.member"));
 });
 

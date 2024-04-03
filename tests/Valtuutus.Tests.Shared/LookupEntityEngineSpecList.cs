@@ -49,7 +49,7 @@ public static class LookupEntityEngineSpecList
             new HashSet<string>([])
         },
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         IndirectRelationLookup => new()
     {
@@ -60,7 +60,7 @@ public static class LookupEntityEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member"),
-                
+
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsBrabos, "member",
@@ -82,7 +82,7 @@ public static class LookupEntityEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member"),
-                
+
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsBrabos, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
             ],
@@ -96,7 +96,7 @@ public static class LookupEntityEngineSpecList
             ])
         },
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         SimplePermissionLookup => new()
     {
@@ -132,7 +132,7 @@ public static class LookupEntityEngineSpecList
             ])
         },
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
@@ -145,7 +145,8 @@ public static class LookupEntityEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
             ],
             [
-                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                    JsonValue.Create(true))
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
@@ -176,11 +177,76 @@ public static class LookupEntityEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
             ],
             [
-                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(false))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                    JsonValue.Create(false))
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
             new HashSet<string>([])
         },
     };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+        IntersectAttributeExpressionWithOtherNodes = new()
+        {
+            {
+                [
+                    new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                        TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                    new("project", "1", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "2", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "3", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                ],
+                [
+                    new("project", "1", "status", JsonValue.Create(1)),
+                    new("project", "2", "status", JsonValue.Create(1)),
+                    new("project", "3", "status", JsonValue.Create(1)),
+                    new("project", "4", "status", JsonValue.Create(2)),
+                ],
+                new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
+                    TestsConsts.Users.Alice),
+                ["1", "2", "3"]
+            },
+            {
+                [
+                    new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                        TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                    new("project", "1", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "2", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "3", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                ],
+                [
+                    new("project", "1", "status", JsonValue.Create(2)),
+                    new("project", "2", "status", JsonValue.Create(2)),
+                    new("project", "3", "status", JsonValue.Create(2)),
+                    new("project", "4", "status", JsonValue.Create(2)),
+                ],
+                new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
+                    TestsConsts.Users.Alice),
+                []
+            },
+            {
+                [
+                    new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                        TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                    new("project", "1", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "2", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                    new("project", "3", "parent", TestsConsts.Workspaces.Identifier,
+                        TestsConsts.Workspaces.PrivateWorkspace),
+                ],
+                [
+                ],
+                new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
+                    TestsConsts.Users.Alice),
+                []
+            },
+        };
 }

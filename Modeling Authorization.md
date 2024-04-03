@@ -130,7 +130,7 @@ The basic form of authorization check in Valtuutus is `Can the entity U perform 
 The Valtuutus Schema supports Intersect and Union operators. These operators are used to combine multiple permissions, relations and attributes into a single permission.
 
 #### Union
-You can define permissions as relations to union all rules that permissions have. Here is an simple demonstration on how to achieve permission union in our FluentApi,
+You can define permissions as union operations that returns true if at least one relation or attribute checks evaluates to true. Here is an simple demonstration on how to achieve permission union in our FluentApi,
 ```csharp
 builder.Services.AddValtuutusCore(c =>
 {
@@ -153,15 +153,48 @@ builder.Services.AddValtuutusCore(c =>
             ...
             .WithPermission("read", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "maintainer", "org.member")));
 });
-
 ```
 You can see that you can compose complex permissions by using this two operators to achieve your desired access control logic.
 
 ## Attribute Based Permissions (ABAC)
 To support Attribute Based Access Control (ABAC) in Valtuutus, you can define attributes for entities and use them in your permissions.
 ### Defining Attributes
-Attributes are used to define properties for entities. As of now, Valtuutus only allow boolean attributes.
+Attributes are used to define properties for entities. As of now, Valtuutus only allow boolean, string, integer and decimal attributes.
+
+Boolean attributes can be used directly as a `PermissionNode.Leaf`, but the remaining types requires the use of an attribute expression.
+See the examples bellow:
+
+```csharp
+ // Boolean attribute
+builder.Services.AddValtuutusCore(c =>
+{
+    c
+        .WithEntity("repository")
+            ...
+            .WithAttribute("public", typeof(bool))
+            .WithPermission("read", PermissionNode.Intersect(
+                "org.admin", PermissionNode.Union("owner", "maintainer", "org.member", "public")
+                )
+            );
+});
+```
+
+```csharp
+ // String attribute
+builder.Services.AddValtuutusCore(c =>
+{
+    c
+        .WithEntity("repository")
+            ...
+            .WithAttribute("status", typeof(string))
+            .WithPermission("write", PermissionNode.Intersect(
+                "org.admin", PermissionNode.Union(PermissionNode.Leaf("owner"), PermissionNode.Leaf("maintainer"), 
+                PermissionNode.Leaf("org.member"), PermissionNode.AttributeStringExpression("status", s => s == "active")
+                )
+            );
+});
+```
 
 ```
-⛔ If you don’t create the related attribute data, Valtuutus accounts boolean as FALSE
+⛔ If you don’t create the related attribute data, Valtuutus accounts the attributes checks as FALSE
 ```

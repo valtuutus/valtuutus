@@ -32,7 +32,8 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Alice),
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Admins, "member", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Bob),
-                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier,
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
+                    TestsConsts.Users.Identifier,
                     TestsConsts.Users.Charlie)
             ],
             [
@@ -44,7 +45,7 @@ public static class LookupSubjectEngineSpecList
             ])
         }
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         IndirectRelationLookup => new()
     {
@@ -57,7 +58,7 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie),
-                
+
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member")
             ],
@@ -78,10 +79,10 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie),
-                
+
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member"),
-                
+
                 new(TestsConsts.Teams.Identifier, TestsConsts.Teams.OsMaisBrabos, "member",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Dan)
             ],
@@ -94,7 +95,7 @@ public static class LookupSubjectEngineSpecList
             ])
         },
     };
-        
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         SimplePermissionLookup => new()
     {
@@ -130,7 +131,7 @@ public static class LookupSubjectEngineSpecList
             ])
         }
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
@@ -147,7 +148,8 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie)
             ],
             [
-                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                    JsonValue.Create(true))
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
@@ -168,12 +170,12 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie)
             ],
             [
-                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(false))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                    JsonValue.Create(false))
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
             new HashSet<string>([
-                
             ])
         },
         {
@@ -193,7 +195,6 @@ public static class LookupSubjectEngineSpecList
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PublicWorkspace),
             new HashSet<string>([
-                
             ])
         },
         {
@@ -209,12 +210,68 @@ public static class LookupSubjectEngineSpecList
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie)
             ],
             [
-                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public", JsonValue.Create(true))
+                new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                    JsonValue.Create(true))
             ],
             new LookupSubjectRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Workspaces.PrivateWorkspace),
             new HashSet<string>([
             ])
+        },
+    };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
+        IntersectAttributeExpWithOtherNodes => new()
+    {
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Charlie),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+                new AttributeTuple("project", "1", "status", JsonValue.Create(1))
+            ],
+            new LookupSubjectRequest("project", "edit", TestsConsts.Users.Identifier,
+                "1"),
+            [TestsConsts.Users.Alice, TestsConsts.Users.Bob, TestsConsts.Users.Charlie]
+        },
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Charlie),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+                new AttributeTuple("project", "1", "status", JsonValue.Create(2))
+            ],
+            new LookupSubjectRequest("project", "edit", TestsConsts.Users.Identifier,
+                "1"),
+            []
+        },
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Charlie),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+            ],
+            new LookupSubjectRequest("project", "edit", TestsConsts.Users.Identifier,
+                "1"),
+            []
         },
     };
 }

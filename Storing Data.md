@@ -20,7 +20,7 @@ For certain use cases, using relationships (ReBAC) or roles (RBAC) might not be 
 Attribute-Based Access Control takes a more contextual approach, allowing you to define access rights based on the context around subjects and objects in an application.
 
 
-**Having said that, as of now, Valtuutus only supports boolean attributes.**
+**Having said that, as of now, Valtuutus only supports boolean, string, integer and decimal attributes.**
 
 ## Creating Authorization Data
 Relationships and attributes can be created simply by calling the `DataEngine` function `Write`.

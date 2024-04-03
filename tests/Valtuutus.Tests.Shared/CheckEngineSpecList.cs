@@ -473,7 +473,41 @@ public static class CheckEngineSpecList
             new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
-
-        
+    };
+    
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionBetweenAttributeExpAndOtherNodes => new()
+    {
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+                new("project", "1", "status", JsonValue.Create(1)),
+            ],
+            new CheckRequest("project", "1", "edit",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            true
+        },
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+                new("project", "1", "status", JsonValue.Create(2)),
+            ],
+            new CheckRequest("project", "1", "edit",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            false
+        },
+        {
+            [
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "admin", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "parent", TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace),
+            ],
+            [
+            ],
+            new CheckRequest("project", "1", "edit",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            false
+        }
     };
 }
