@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.2-alpha</VersionPrefix>
+    <VersionPrefix>0.3-alpha</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <PackageLicenseUrl>https://github.com/valtuutus/valtuutus/blob/master/LICENSE</PackageLicenseUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
@@ -18,10 +18,8 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.2-alpha:
-      - Added support for .NET 7.0
-      - Improved DI registration
-      - Added API contract tests
+    <PackageReleaseNotes>Version 0.3-alpha:
+      - Added support for more attribute types (integer, string and decimal)
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
