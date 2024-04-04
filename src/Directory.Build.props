@@ -3,7 +3,6 @@
     <Authors>Valtuutus</Authors>
     <VersionPrefix>0.3-alpha</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
-    <PackageLicenseUrl>https://github.com/valtuutus/valtuutus/blob/master/LICENSE</PackageLicenseUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Description>Valtuutus provides a developer-focused, modern library for creating ReBAC without complexity.</Description>
@@ -27,7 +26,6 @@
     <None Include="$(MSBuildThisFileDirectory)\..\README.md" Pack="true" Visible="false" PackagePath="\" />
   </ItemGroup>
   <PropertyGroup>
-    <!--<PublishRepositoryUrl>true</PublishRepositoryUrl>-->
     <RepositoryUrl>https://github.com/valtuutus/valtuutus</RepositoryUrl>
     <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
