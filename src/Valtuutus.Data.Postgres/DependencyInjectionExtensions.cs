@@ -9,7 +9,7 @@ public static class DependencyInjectionExtensions
 {
     public static void AddPostgres(this IServiceCollection services, int maxConcurrentQueries = 5)
     {
-        services.AddScoped<IDataReaderProvider>(sp => new PostgresDataReaderProvider(sp.GetRequiredService<DbConnectionFactory>(), sp.GetRequiredService<ILogger<PostgresDataReaderProvider>>(), maxConcurrentQueries));
+        services.AddScoped<IDataReaderProvider>(sp => new PostgresDataReaderProvider(sp.GetRequiredService<DbConnectionFactory>(), sp.GetRequiredService<ILogger<IDataReaderProvider>>(), maxConcurrentQueries));
         services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
     }
     

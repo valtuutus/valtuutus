@@ -9,7 +9,7 @@ public static class DependencyInjectionExtensions
 {
     public static void AddSqlServer(this IServiceCollection services, int maxConcurrentQueries = 5)
     {
-        services.AddScoped<IDataReaderProvider>(sp => new SqlServerDataReaderProvider(sp.GetRequiredService<DbConnectionFactory>(), sp.GetRequiredService<ILogger<SqlServerDataReaderProvider>>(),maxConcurrentQueries));
+        services.AddScoped<IDataReaderProvider>(sp => new SqlServerDataReaderProvider(sp.GetRequiredService<DbConnectionFactory>(), sp.GetRequiredService<ILogger<IDataReaderProvider>>(),maxConcurrentQueries));
         services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
 
     }

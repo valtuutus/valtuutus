@@ -4,11 +4,12 @@ namespace Valtuutus.Data.SqlServer
 {
     public static class DependencyInjectionExtensions
     {
-        public static void AddSqlServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+        public static void AddSqlServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, int maxConcurrentQueries = 5) { }
     }
-    public sealed class SqlServerDataReaderProvider : Valtuutus.Core.Data.IDataReaderProvider
+    public sealed class SqlServerDataReaderProvider : System.IDisposable, Valtuutus.Core.Data.IDataReaderProvider
     {
-        public SqlServerDataReaderProvider(Valtuutus.Data.Configuration.DbConnectionFactory connectionFactory, Microsoft.Extensions.Logging.ILogger<Valtuutus.Core.Data.IDataReaderProvider> logger) { }
+        public SqlServerDataReaderProvider(Valtuutus.Data.Configuration.DbConnectionFactory connectionFactory, Microsoft.Extensions.Logging.ILogger<Valtuutus.Core.Data.IDataReaderProvider> logger, int maxConcurrentQueries) { }
+        public void Dispose() { }
         public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken ct) { }
