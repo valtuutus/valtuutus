@@ -104,37 +104,31 @@ public static class SqlBuilderExtensions
                 {$"@EntityType{i}", new DbString
                 {
                     Value = filters[i].EntityType,
-                    IsAnsi = true,
                     Length = 256
                 }},
                 {$"@EntityId{i}",  new DbString
                 {
                     Value = filters[i].EntityId,
-                    IsAnsi = true,
                     Length = 64
                 }},
                 {$"@SubjectType{i}", new DbString
                 {
                     Value = filters[i].SubjectType,
-                    IsAnsi = true,
                     Length = 256
                 }},
                 {$"@SubjectId{i}", new DbString
                 {
                     Value = filters[i].SubjectId,
-                    IsAnsi = true,
                     Length = 64
                 }},
                 {$"@Relation{i}", new DbString
                 {
                     Value = filters[i].Relation,
-                    IsAnsi = true,
                     Length = 64
                 }},
                 {$"@SubjectRelation{i}", new DbString
                 {
                     Value = filters[i].SubjectRelation,
-                    IsAnsi = true,
                     Length = 64
                 }},
                 

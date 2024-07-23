@@ -1,5 +1,5 @@
 -- Create "attributes" table
-CREATE TABLE [attributes] ([id] bigint IDENTITY (1, 1) NOT NULL, [entity_type] varchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [entity_id] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [attribute] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [value] varchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [created_tx_id] bigint NOT NULL, CONSTRAINT [PK_attributes] PRIMARY KEY CLUSTERED ([id] ASC));
+CREATE TABLE [attributes] ([id] bigint IDENTITY (1, 1) NOT NULL, [entity_type] nvarchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [entity_id] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [attribute] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [value] nvarchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [created_tx_id] bigint NOT NULL, CONSTRAINT [PK_attributes] PRIMARY KEY CLUSTERED ([id] ASC));
 CREATE NONCLUSTERED INDEX [idx_attributes_entity_id_entity_type_attribute] ON [dbo].[attributes]
        (
        	[entity_id] ASC,
@@ -17,7 +17,7 @@ CREATE NONCLUSTERED INDEX [idx_attributes_entity_id_entity_type_attribute] ON [d
               
               
        -- Create "relation_tuples" table
-CREATE TABLE [relation_tuples] ([id] bigint IDENTITY (1, 1) NOT NULL, [entity_type] varchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [entity_id] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [relation] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_type] varchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_id] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_relation] varchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NULL, [created_tx_id] bigint NOT NULL, CONSTRAINT [PK_relation_tuples] PRIMARY KEY CLUSTERED ([id] ASC));
+CREATE TABLE [relation_tuples] ([id] bigint IDENTITY (1, 1) NOT NULL, [entity_type] nvarchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [entity_id] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [relation] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_type] nvarchar(256) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_id] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL, [subject_relation] nvarchar(64) COLLATE SQL_Latin1_General_CP1_CI_AS NULL, [created_tx_id] bigint NOT NULL, CONSTRAINT [PK_relation_tuples] PRIMARY KEY CLUSTERED ([id] ASC));
 
 CREATE NONCLUSTERED INDEX [idx_relation_tuples_entity_type_relation_subject_type_subject_id] ON [dbo].[relation_tuples]
        (
@@ -65,7 +65,7 @@ CREATE NONCLUSTERED INDEX [idx_relation_tuples_entity_type_relation_subject_type
        -- Create custom type to be used as a list of ids - entity or subject
 CREATE TYPE TVP_ListIds AS TABLE
     (
-    [id] [VARCHAR](64) NOT NULL,
+    [id] [NVARCHAR](64) NOT NULL,
     index tvp_id (id)
     );
 
