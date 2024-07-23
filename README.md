@@ -58,6 +58,15 @@ builder.Services.AddValtuutusData()
     .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
 ```
 
+### Using check concurrent limiting
+It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the AddConcurrentQueryLimit method, for example:
+```csharp
+builder.Services.AddValtuutusData()
+    .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
+    .AddConcurrentQueryLimit(10);
+```
+Change your data provider according to your database.
+
 ## Telemetry
 The library uses [OpenTelemetry](https://opentelemetry.io/) to provide telemetry data. To enable it, just add a source with the name "Valtuutus":
 ```csharp
