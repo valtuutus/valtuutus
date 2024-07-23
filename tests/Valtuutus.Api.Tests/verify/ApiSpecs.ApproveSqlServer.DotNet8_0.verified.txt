@@ -4,12 +4,11 @@ namespace Valtuutus.Data.SqlServer
 {
     public static class DependencyInjectionExtensions
     {
-        public static void AddSqlServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, int maxConcurrentQueries = 5) { }
+        public static Valtuutus.Data.IValtuutusDataBuilder AddSqlServer(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Func<System.IServiceProvider, Valtuutus.Data.DbConnectionFactory> factory) { }
     }
-    public sealed class SqlServerDataReaderProvider : System.IDisposable, Valtuutus.Core.Data.IDataReaderProvider
+    public sealed class SqlServerDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider
     {
-        public SqlServerDataReaderProvider(Valtuutus.Data.Configuration.DbConnectionFactory connectionFactory, Microsoft.Extensions.Logging.ILogger<Valtuutus.Core.Data.IDataReaderProvider> logger, int maxConcurrentQueries) { }
-        public void Dispose() { }
+        public SqlServerDataReaderProvider(Valtuutus.Data.DbConnectionFactory connectionFactory, Microsoft.Extensions.Logging.ILogger<Valtuutus.Core.Data.IDataReaderProvider> logger, Valtuutus.Data.ValtuutusDataOptions options) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken ct) { }
@@ -19,7 +18,7 @@ namespace Valtuutus.Data.SqlServer
     }
     public sealed class SqlServerDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider
     {
-        public SqlServerDataWriterProvider(Valtuutus.Data.Configuration.DbConnectionFactory factory, IdGen.IIdGenerator<long> idGenerator, Sqids.SqidsEncoder<long> encoder) { }
+        public SqlServerDataWriterProvider(Valtuutus.Data.DbConnectionFactory factory, IdGen.IIdGenerator<long> idGenerator, Sqids.SqidsEncoder<long> encoder) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
     }

@@ -6,13 +6,15 @@ using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Data.Postgres;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Valtuutus.Data;
+using Valtuutus.Data.SqlServer;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,13 +23,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
-#if postgres
-builder.Services.AddValtuutusDatabase(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
-
-#else 
-builder.Services.AddValtuutusDatabase(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
-#endif
 
 builder.Services.AddValtuutusCore(c =>
 {
@@ -61,7 +56,14 @@ builder.Services.AddValtuutusCore(c =>
                 PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
             )
             .WithPermission("delete", PermissionNode.Leaf("team.member"));
-});
+})
+.AddValtuutusData()
+.AddConcurrentQueryLimit(3)
+#if postgres
+.AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!));
+#else
+.AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
+#endif
 
 Activity.DefaultIdFormat = ActivityIdFormat.W3C;
 
@@ -133,6 +135,6 @@ app.MapPost("/subject-permission",
 #if postgres
 _ = Task.Run(async () => await Seeder.SeedPostgres(app.Services)); 
 #else
-_ = Task.Run(async () => await Seeder.SeedSqlServer(builder.Configuration)); 
+_ = Task.Run(async () => await Seeder.SeedSqlServer(app.Services)); 
 #endif
 app.Run();

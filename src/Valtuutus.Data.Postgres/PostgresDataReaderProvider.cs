@@ -3,32 +3,29 @@ using System.Text.Json;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Data.Postgres.Utils;
 using Dapper;
 using Microsoft.Extensions.Logging;
 
 namespace Valtuutus.Data.Postgres;
 
-public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposable
+public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private readonly DbConnectionFactory _connectionFactory;
     private readonly ILogger<IDataReaderProvider> _logger;
-    private readonly SemaphoreSlim _semaphore;
 
-    public PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger, int maxConcurrentQueries)
+    public PostgresDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger,
+        ValtuutusDataOptions options) : base(options)
     {
         _connectionFactory = connectionFactory;
         _logger = logger;
-        _semaphore = new SemaphoreSlim(maxConcurrentQueries, maxConcurrentQueries);
     }
 
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
             using var connection = _connectionFactory();
 
@@ -55,20 +52,15 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-
+        }, ct);
     }
     
     public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+
+        return await ExecuteWithRateLimit(async () =>
         {
             using var connection = _connectionFactory();
 
@@ -98,20 +90,14 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-
+        }, ct);
     }
     
     public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
             using var connection = _connectionFactory();
 
@@ -142,20 +128,14 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
 #endif
 
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-
+        }, ct);
     }
     
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
             using var connection = _connectionFactory();
 
@@ -174,11 +154,7 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: ct));
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
 
     }
 
@@ -186,8 +162,7 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
             using var connection = _connectionFactory();
 
@@ -205,11 +180,7 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
 
     }
 
@@ -217,10 +188,8 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
-
             using var connection = _connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -237,15 +206,6 @@ public sealed class PostgresDataReaderProvider : IDataReaderProvider, IDisposabl
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    public void Dispose()
-    {
-        _semaphore.Dispose();
+        }, ct);
     }
 }

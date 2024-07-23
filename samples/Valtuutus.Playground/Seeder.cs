@@ -1,11 +1,10 @@
-﻿using System.Data;
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
-using Valtuutus.Data.Configuration;
 using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
+using Valtuutus.Data;
 
 namespace Valtuutus.Api;
 

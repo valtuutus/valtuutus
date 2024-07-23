@@ -12,9 +12,9 @@ namespace Valtuutus.Data.Postgres.Tests;
 [Collection("PostgreSqlSpec")]
 public class DataEngineSpecs : DataSpecificDataEngineSpecs
 {
-    protected override void AddSpecificProvider(IServiceCollection services)
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        services.AddPostgres();
+        builder.AddPostgres(_ => _fixture.DbFactory);
     }
     public DataEngineSpecs(PostgresFixture fixture)
     {

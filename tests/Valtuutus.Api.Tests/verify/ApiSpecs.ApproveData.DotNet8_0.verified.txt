@@ -1,19 +1,33 @@
 ﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0", FrameworkDisplayName=".NET 8.0")]
-namespace Valtuutus.Data.Configuration
-{
-    public static class DatabaseSetup
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusDatabase(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Configuration.DbConnectionFactory> factory, System.Action<Microsoft.Extensions.DependencyInjection.IServiceCollection> configuring) { }
-    }
-    public delegate System.Data.IDbConnection DbConnectionFactory();
-}
 namespace Valtuutus.Data
 {
+    public delegate System.Data.IDbConnection DbConnectionFactory();
+    public static class DependencyInjectionExtensions
+    {
+        public static Valtuutus.Data.IValtuutusDataBuilder AddConcurrentQueryLimit(this Valtuutus.Data.IValtuutusDataBuilder builder, int limit) { }
+        public static Valtuutus.Data.IValtuutusDataBuilder AddValtuutusData(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
+    public interface IValtuutusDataBuilder
+    {
+        Valtuutus.Data.ValtuutusDataOptions Options { get; }
+        Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
+    }
     public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
     {
         public JsonTypeHandler() { }
         public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
         public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
+    }
+    public abstract class RateLimiterExecuter : System.IDisposable
+    {
+        protected RateLimiterExecuter(Valtuutus.Data.ValtuutusDataOptions options) { }
+        public void Dispose() { }
+        protected System.Threading.Tasks.Task<T> ExecuteWithRateLimit<T>(System.Func<System.Threading.Tasks.Task<T>> action, System.Threading.CancellationToken ct) { }
+    }
+    public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
+    {
+        public ValtuutusDataOptions() { }
+        public int MaxConcurrentQueries { get; }
     }
 }

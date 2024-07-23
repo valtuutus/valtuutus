@@ -90,9 +90,9 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         newTransaction.Should().BeTrue();
     }
 
-    protected override void AddSpecificProvider(IServiceCollection services)
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        services.AddSqlServer();
+        builder.AddSqlServer(_ => _fixture.DbFactory);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()

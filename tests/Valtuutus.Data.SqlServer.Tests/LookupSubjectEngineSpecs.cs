@@ -1,5 +1,4 @@
 ﻿using Valtuutus.Data.Tests.Shared;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
@@ -12,8 +11,8 @@ public sealed class LookupSubjectEngineSpecs : DataLookupSubjectEngineSpecs
         _fixture = fixture;
     }
 
-    protected override void AddSpecificProvider(IServiceCollection services)
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        services.AddSqlServer();
+        builder.AddSqlServer(_ => _fixture.DbFactory);
     }
 }

@@ -1,5 +1,4 @@
-﻿using Valtuutus.Data.Configuration;
-using Valtuutus.Data.Tests.Shared;
+﻿using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using Npgsql;
 using Respawn;
