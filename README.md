@@ -48,12 +48,14 @@ See examples of how to define your schema [here](Modeling%20Authorization.md).
 
 ### If using Postgres:
 ```csharp
-builder.Services.AddValtuutusDatabase(() => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!), a => a.AddPostgres());
+builder.Services.AddValtuutusData()
+    .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!));
 ```
 
 ### If using SqlServer:
 ```csharp
-builder.Services.AddValtuutusDatabase(() => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!), a => a.AddSqlServer());
+builder.Services.AddValtuutusData()
+    .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
 ```
 
 ## Telemetry
