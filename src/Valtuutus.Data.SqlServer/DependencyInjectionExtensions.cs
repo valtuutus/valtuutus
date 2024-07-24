@@ -1,17 +1,28 @@
-﻿using Valtuutus.Core.Data;
+﻿using Dapper;
+using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Valtuutus.Data.Configuration;
 
 namespace Valtuutus.Data.SqlServer;
 
 public static class DependencyInjectionExtensions
 {
-    public static void AddSqlServer(this IServiceCollection services, int maxConcurrentQueries = 5)
+    
+    /// <summary>
+    /// Adds SqlServer data reader and writer to the service collection
+    /// </summary>
+    /// <param name="builder">Valtuutus data builder</param>
+    /// <param name="factory">This is a scoped connection factory. Can be used to set multitenant access to the database.</param>
+    /// <returns></returns>
+    public static IValtuutusDataBuilder AddSqlServer(this IValtuutusDataBuilder builder, Func<IServiceProvider, DbConnectionFactory> factory)
     {
-        services.AddScoped<IDataReaderProvider>(sp => new SqlServerDataReaderProvider(sp.GetRequiredService<DbConnectionFactory>(), sp.GetRequiredService<ILogger<IDataReaderProvider>>(),maxConcurrentQueries));
-        services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
+        DefaultTypeMap.MatchNamesWithUnderscores = true;
+        builder.Services.AddScoped(factory);
+        SqlMapper.AddTypeHandler(new JsonTypeHandler());
+        builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
+        builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
 
+        return builder;
     }
     
 }

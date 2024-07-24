@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.3-alpha</VersionPrefix>
+    <VersionPrefix>0.4-alpha</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,8 +17,9 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.3-alpha:
-      - Added support for more attribute types (integer, string and decimal)
+    <PackageReleaseNotes>Version 0.4-alpha:
+      - Improved DI using a builder instead of an extension on top of IServiceCollection
+      - Relaxed Microsoft.Extensions.DependencyInjection.* version
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>

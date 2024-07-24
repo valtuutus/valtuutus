@@ -2,7 +2,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Tests.Shared;
 using FluentAssertions;
 using IdGen;
@@ -18,15 +17,17 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture _fixture = null!;
 
-    protected abstract void AddSpecificProvider(IServiceCollection services);
+    protected abstract void AddSpecificProvider(IValtuutusDataBuilder builder);
     
     protected ServiceProvider CreateServiceProvider()
     {
-        var serviceCollection = new ServiceCollection()
+        var builder = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddValtuutusDatabase(_ => _fixture.DbFactory, AddSpecificProvider)
-            .AddValtuutusCore(TestsConsts.Action);
-
+            .AddValtuutusCore(TestsConsts.Action)
+            .AddValtuutusData();
+        
+        AddSpecificProvider(builder);
+        var serviceCollection = builder.Services;
         serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
         serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
         {

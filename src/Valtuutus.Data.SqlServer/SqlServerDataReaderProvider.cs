@@ -3,36 +3,30 @@ using System.Text.Json;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace Valtuutus.Data.SqlServer;
-public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposable
+public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private readonly DbConnectionFactory _connectionFactory;
     private readonly ILogger<IDataReaderProvider> _logger;
-    private readonly SemaphoreSlim _semaphore;
 
-    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger, int maxConcurrentQueries)
+    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger,
+        ValtuutusDataOptions options) : base(options)
     {
         _connectionFactory = connectionFactory;
         _logger = logger;
-        _semaphore = new SemaphoreSlim(maxConcurrentQueries, maxConcurrentQueries);
     }
 
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-
-        try
-        {
+        return await ExecuteWithRateLimit(async () => { 
             await using var connection = (SqlConnection)_connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(@"SELECT TOP 1
@@ -47,21 +41,15 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: ct));
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-        
+        }, ct);
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
-        {
+        return await ExecuteWithRateLimit(async () => { 
+
             await using var connection = (SqlConnection)_connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -78,11 +66,7 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
     
     }
 
@@ -91,10 +75,8 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
 
-        await _semaphore.WaitAsync(ct);
+        return await ExecuteWithRateLimit(async () => { 
 
-        try
-        {
             await using var connection = (SqlConnection)_connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -111,11 +93,7 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
         
     }
     
@@ -123,9 +101,8 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
-        {
+        return await ExecuteWithRateLimit(async () => { 
+
             await using var connection = (SqlConnection)_connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -151,11 +128,7 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
        
     }
     
@@ -163,9 +136,9 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
+        return await ExecuteWithRateLimit(async () =>
         {
+
             await using var connection = (SqlConnection)_connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -180,22 +153,21 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
                 FROM relation_tuples with (NOLOCK) /**where**/");
 
 #if DEBUG
-            _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql, JsonSerializer.Serialize(new {entityRelationFilter, subjectType, entitiesIds, subjectRelation}));
+            _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
+                JsonSerializer.Serialize(new { entityRelationFilter, subjectType, entitiesIds, subjectRelation }));
             var start = Stopwatch.GetTimestamp();
 #endif
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters, cancellationToken: ct)))
+            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        
-        
+
+
 #if DEBUG
-            _logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items", Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
+            _logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items",
+                Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
 
     }
     
@@ -203,9 +175,8 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        await _semaphore.WaitAsync(ct);
-        try
-        {
+        return await ExecuteWithRateLimit(async () => { 
+
             await using var connection = (SqlConnection)_connectionFactory();
 
             var queryTemplate = new SqlBuilder()
@@ -235,16 +206,7 @@ public sealed class SqlServerDataReaderProvider : IDataReaderProvider, IDisposab
 #endif
 
             return res;
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
+        }, ct);
         
-    }
-
-    public void Dispose()
-    {
-        _semaphore.Dispose();
     }
 }
