@@ -52,9 +52,9 @@ internal class AttributesActor : ReceiveActor
         {
             foreach (var filter in msg.Filters)
             {
-                _attributesTuples.RemoveAll(x => filter.EntityId == x.EntityId
-                                               || filter.EntityType == x.EntityType
-                                               || filter.Attribute == x.Attribute);
+                _attributesTuples.RemoveAll(x => (filter.EntityId == x.EntityId || string.IsNullOrWhiteSpace(filter.EntityId))
+                                                 && (filter.EntityType == x.EntityType || string.IsNullOrWhiteSpace(filter.EntityType))
+                                                 && (filter.Attribute == x.Attribute || string.IsNullOrWhiteSpace(filter.Attribute)));
             }
         });
         

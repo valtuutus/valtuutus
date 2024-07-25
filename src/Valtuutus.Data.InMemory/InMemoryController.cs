@@ -49,18 +49,16 @@ public sealed class InMemoryController : IDisposable
         return _attributes.Ask<List<AttributeTuple>>(new AttributesActor.Commands.GetAttributesWithEntitiesIds(filter, entitiesIds), ct);
     }
 
-    public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    public void Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
         _relations.Tell(new RelationsActor.Commands.WriteRelations(relations));
         _attributes.Tell(new AttributesActor.Commands.WriteAttributes(attributes));
-        return Task.FromResult(default(SnapToken));
     }
 
-    public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
+    public void Delete(DeleteFilter filter, CancellationToken ct)
     {
         _attributes.Tell(new AttributesActor.Commands.DeleteAttributes(filter.Attributes));
         _relations.Tell(new RelationsActor.Commands.DeleteRelations(filter.Relations));
-        return Task.FromResult(default(SnapToken));
     }
     
     

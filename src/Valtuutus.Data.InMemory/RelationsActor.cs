@@ -67,12 +67,12 @@ internal class RelationsActor : ReceiveActor
         {
             foreach (var filter in msg.FilterRelations)
             {
-                _relationTuples.RemoveAll(x => filter.EntityId == x.EntityId
-                                              || filter.EntityType == x.EntityType
-                                              || filter.SubjectId == x.SubjectId
-                                              || filter.SubjectType == x.SubjectType
-                                              || filter.SubjectRelation == x.SubjectRelation
-                                              || filter.Relation == x.Relation);
+                _relationTuples.RemoveAll(x => (filter.EntityId == x.EntityId || string.IsNullOrWhiteSpace(filter.EntityId))
+                                              && (filter.EntityType == x.EntityType || string.IsNullOrWhiteSpace(filter.EntityType))
+                                              && (filter.SubjectId == x.SubjectId || string.IsNullOrWhiteSpace(filter.SubjectId))
+                                              && (filter.SubjectType == x.SubjectType || string.IsNullOrWhiteSpace(filter.SubjectType))
+                                              && (filter.SubjectRelation == x.SubjectRelation || string.IsNullOrWhiteSpace(filter.SubjectRelation))
+                                              && (filter.Relation == x.Relation || string.IsNullOrWhiteSpace(filter.Relation)));
             }
         });
         
