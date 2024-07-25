@@ -5,7 +5,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
+public sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
     private readonly InMemoryController _controller;
     private readonly IIdGenerator<long> _idGenerator;
