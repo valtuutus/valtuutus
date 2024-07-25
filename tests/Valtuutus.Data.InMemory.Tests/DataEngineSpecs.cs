@@ -1,8 +1,9 @@
-﻿using Valtuutus.Core.Data;
-using FluentAssertions;
+﻿using FluentAssertions;
 using NSubstitute;
+using Valtuutus.Core;
+using Valtuutus.Core.Data;
 
-namespace Valtuutus.Core.Tests;
+namespace Valtuutus.Data.InMemory.Tests;
 
 
 public sealed class DataEngineSpecs

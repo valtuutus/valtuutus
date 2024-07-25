@@ -1,17 +1,16 @@
-﻿using Valtuutus.Core.Data;
+﻿using Valtuutus.Core;
+using Valtuutus.Core.Data;
 
-namespace Valtuutus.Core.Tests;
+namespace Valtuutus.Data.InMemory;
 
-public sealed class InMemoryReaderProvider : IDataReaderProvider
+internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
     private readonly RelationTuple[] _relationTuples;
     private readonly AttributeTuple[] _attributesTuples;
-
-
-    public InMemoryReaderProvider(RelationTuple[] relationTuples, AttributeTuple[] attributesTuples)
+    
+    
+    public InMemoryProvider(InMemoryController controller, ValtuutusDataOptions options) : base(options)
     {
-        _relationTuples = relationTuples;
-        _attributesTuples = attributesTuples;
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
@@ -93,5 +92,16 @@ public sealed class InMemoryReaderProvider : IDataReaderProvider
                         && x.Attribute == filter.Attribute
                         && entitiesIds.Contains(x.EntityId))
             .ToList());
+    }
+
+
+    public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
+    {
+        throw new NotImplementedException();
     }
 }
