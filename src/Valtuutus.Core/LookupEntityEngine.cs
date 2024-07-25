@@ -293,7 +293,7 @@ public sealed class LookupEntityEngine(
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            return (await reader.GetRelations(
+            return (await reader.GetRelationsWithSubjectsIds(
                     new EntityRelationFilter
                     {
                         Relation = req.Permission,

@@ -5,103 +5,61 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
-    private readonly RelationTuple[] _relationTuples;
-    private readonly AttributeTuple[] _attributesTuples;
-    
+    private readonly InMemoryController _controller;
     
     public InMemoryProvider(InMemoryController controller, ValtuutusDataOptions options) : base(options)
     {
+        _controller = controller;
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
     {
-        var result = _relationTuples
-            .Where(x => x.EntityType == tupleFilter.EntityType
-                        && x.EntityId == tupleFilter.EntityId
-                        && x.Relation == tupleFilter.Relation);
-
-        if (!string.IsNullOrEmpty(tupleFilter.SubjectId))
-            result = result.Where(x => x.SubjectId == tupleFilter.SubjectId);
-
-        if (!string.IsNullOrEmpty(tupleFilter.SubjectRelation))
-            result = result.Where(x => x.SubjectRelation == tupleFilter.SubjectRelation);
-
-        if (!string.IsNullOrEmpty(tupleFilter.SubjectType))
-            result = result.Where(x => x.SubjectType == tupleFilter.SubjectType);
-
-        return Task.FromResult(result.ToList());
+        return _controller.GetRelations(tupleFilter, ct);
     }
 
-    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType,
-        IEnumerable<string> entitiesIds,
+    public Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
+        IEnumerable<string> entityIds,
         string? subjectRelation, CancellationToken ct)
     {
-        return Task.FromResult(_relationTuples
-            .Where(x => x.EntityType == entityRelationFilter.EntityType
-                        && x.Relation == entityRelationFilter.Relation
-                        && x.SubjectType == subjectType && entitiesIds.Contains(x.EntityId)
-            )
-            .ToList());
+        return _controller.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, ct);
     }
 
-    public Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter,
+    public Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
         IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
-        var result = _relationTuples.AsEnumerable();
-
-        if (!string.IsNullOrEmpty(entityFilter.EntityType))
-            result = result.Where(x => x.EntityType == entityFilter.EntityType);
-
-        if (!string.IsNullOrEmpty(entityFilter.Relation))
-            result = result.Where(x => x.Relation == entityFilter.Relation);
-
-
-        result = result.Where(x => x.SubjectType == subjectType);
-        return Task.FromResult(result.Where(x =>
-                subjectsIds.Any(y => x.SubjectId == y))
-            .ToList()
-        );
+        return _controller.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, ct);
     }
     
     public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
     {
-        var res = _attributesTuples.Where(x =>
-            x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
+        return _controller.GetAttribute(filter, ct);
 
-        if (!string.IsNullOrWhiteSpace(filter.EntityId))
-            res = res.Where(x => x.EntityId == filter.EntityId);
-        
-        return Task.FromResult(res.FirstOrDefault());
     }
 
     public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
     {
-        var res = _attributesTuples.Where(x =>
-            x.EntityType == filter.EntityType && x.Attribute == filter.Attribute);
+        return _controller.GetAttributes(filter, ct);
 
-        if (!string.IsNullOrWhiteSpace(filter.EntityId))
-            res = res.Where(x => x.EntityId == filter.EntityId);
-
-        return Task.FromResult(res.ToList());
     }
 
     public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
     {
-        return Task.FromResult(_attributesTuples
-            .Where(x => x.EntityType == filter.EntityType
-                        && x.Attribute == filter.Attribute
-                        && entitiesIds.Contains(x.EntityId))
-            .ToList());
+        return _controller.GetAttributes(filter, entitiesIds, ct);
     }
 
 
     public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        throw new NotImplementedException();
+        return _controller.Write(relations, attributes, ct);
     }
 
     public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        throw new NotImplementedException();
+        return _controller.Delete(filter, ct);
+    }
+    
+    public Task<(RelationTuple[], AttributeTuple[])> Dump(CancellationToken ct)
+    {
+        return _controller.Dump(ct);
     }
 }

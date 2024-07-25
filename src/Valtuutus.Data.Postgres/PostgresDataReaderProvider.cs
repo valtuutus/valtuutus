@@ -55,7 +55,7 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
         }, ct);
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -65,7 +65,7 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
             using var connection = _connectionFactory();
 
             var queryTemplate = new SqlBuilder()
-                .FilterRelations(entityRelationFilter, subjectType, entitiesIds, subjectRelation)
+                .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(@"SELECT 
                     entity_type,
                     entity_id,
@@ -77,7 +77,7 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
 
 #if DEBUG
             _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
-                JsonSerializer.Serialize(new { entityRelationFilter, subjectType, entitiesIds, subjectRelation }));
+                JsonSerializer.Serialize(new { entityRelationFilter, subjectType, entitiesIds = entityIds, subjectRelation }));
             var start = Stopwatch.GetTimestamp();
 #endif
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -93,7 +93,7 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
         }, ct);
     }
     
-    public async Task<List<RelationTuple>> GetRelations(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 

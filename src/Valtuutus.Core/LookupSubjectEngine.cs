@@ -181,7 +181,7 @@ public sealed class LookupSubjectEngine(
     
             foreach (var entity in relation.Entities)
             {
-                var relations = await reader.GetRelations(
+                var relations = await reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
                         Relation = relation.Name,
@@ -254,7 +254,7 @@ public sealed class LookupSubjectEngine(
 
                 if (subRelation is not null)
                 {
-                    var relations = await reader.GetRelations(
+                    var relations = await reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
                             Relation = req.Permission,
@@ -284,7 +284,7 @@ public sealed class LookupSubjectEngine(
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var res = await reader.GetRelations(
+            var res = await reader.GetRelationsWithEntityIds(
                 new EntityRelationFilter
                 {
                     Relation = req.Permission,

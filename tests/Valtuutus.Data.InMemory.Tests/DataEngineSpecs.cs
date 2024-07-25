@@ -1,41 +1,28 @@
-﻿using FluentAssertions;
-using NSubstitute;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
-using Valtuutus.Core.Data;
+using Valtuutus.Data.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
 
-public sealed class DataEngineSpecs
+[Collection("InMemorySpecs")]
+public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
 {
-    private static DataEngine CreateEngine()
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        return new DataEngine(Substitute.For<IDataWriterProvider>());
+        builder.AddInMemory();
+    }
+
+    protected override Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
+    {
+        var controller = _provider.GetRequiredService<InMemoryController>();
+        return controller.Dump(default);
+    }
+
+    public DataEngineSpecs(InMemoryFixture fixture)
+    {
+        _fixture = fixture;
     }
     
-    [Fact]
-    public async Task Writing_empty_data_should_throw()
-    {
-        // arrange
-        var dataEngine = CreateEngine();
-
-        // act
-        Func<Task> act = async () => await dataEngine.Write(Array.Empty<RelationTuple>(), Array.Empty<AttributeTuple>(), default);
-
-        // assert
-        await act.Should().ThrowAsync<InvalidOperationException>();
-    }
     
-    [Fact]
-    public async Task Deleting_empty_data_should_throw()
-    {
-        // arrange
-        var dataEngine = CreateEngine();
-
-        // act
-        Func<Task> act = async () => await dataEngine.Delete(new DeleteFilter(), default);
-
-        // assert
-        await act.Should().ThrowAsync<InvalidOperationException>();
-    }
 }
