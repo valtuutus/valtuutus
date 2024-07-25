@@ -19,7 +19,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture
 
     
     private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
-	    .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+	    .WithImage("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
 	    .WithPassword("Valtuutus123!")
 	    .WithName($"mssql-integration-tests-{Guid.NewGuid()}")
 	    .Build();
