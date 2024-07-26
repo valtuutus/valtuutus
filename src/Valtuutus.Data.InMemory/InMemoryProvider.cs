@@ -19,39 +19,39 @@ public sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider,
         _encoder = encoder;
     }
 
-    public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
+    public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        return _controller.GetRelations(tupleFilter, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetRelations(tupleFilter, ct), cancellationToken);
     }
 
     public Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entityIds,
-        string? subjectRelation, CancellationToken ct)
+        string? subjectRelation, CancellationToken cancellationToken)
     {
-        return _controller.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, ct), cancellationToken);
     }
 
     public Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        IList<string> subjectsIds, string subjectType, CancellationToken ct)
+        IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
-        return _controller.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, ct), cancellationToken);
     }
     
-    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
+    public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        return _controller.GetAttribute(filter, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetAttribute(filter, ct), cancellationToken);
 
     }
 
-    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
+    public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        return _controller.GetAttributes(filter, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, ct), cancellationToken);
 
     }
 
-    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        return _controller.GetAttributes(filter, entitiesIds, ct);
+        return ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, entitiesIds, ct), cancellationToken);
     }
 
 

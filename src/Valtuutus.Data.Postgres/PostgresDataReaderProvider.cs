@@ -21,11 +21,11 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
         _logger = logger;
     }
 
-    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -52,15 +52,15 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }, ct);
+        }, cancellationToken);
     }
     
-    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -90,14 +90,14 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }, ct);
+        }, cancellationToken);
     }
     
-    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -128,14 +128,14 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
 #endif
 
             return res;
-        }, ct);
+        }, cancellationToken);
     }
     
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
+    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -154,15 +154,15 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: ct));
-        }, ct);
+        }, cancellationToken);
 
     }
 
-    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
+    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -180,15 +180,15 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }, ct);
+        }, cancellationToken);
 
     }
 
-    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
 
@@ -206,6 +206,6 @@ public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReade
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }, ct);
+        }, cancellationToken);
     }
 }

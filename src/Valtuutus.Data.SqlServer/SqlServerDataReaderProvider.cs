@@ -21,11 +21,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
         _logger = logger;
     }
 
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken ct)
+    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () => { 
+        return await ExecuteWithRateLimit(async (ct) => { 
             await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
@@ -34,21 +34,21 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     entity_id,
                     attribute,
                     value
-                FROM attributes with (NOLOCK) /**where**/");
+                FROM attributes /**where**/");
 
             _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: ct));
-        }, ct);
+        }, cancellationToken);
     }
 
-    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken ct)
+    public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () => { 
+        return await ExecuteWithRateLimit(async (ct) => { 
 
             await using var connection = (SqlConnection)_connectionFactory();
 
@@ -59,23 +59,23 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     entity_id,
                     attribute,
                     value
-                FROM attributes with (NOLOCK) /**where**/");
+                FROM attributes /**where**/");
 
             _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }, ct);
+        }, cancellationToken);
     
     }
 
-    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    public async Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
 
-        return await ExecuteWithRateLimit(async () => { 
+        return await ExecuteWithRateLimit(async (ct) => { 
 
             await using var connection = (SqlConnection)_connectionFactory();
 
@@ -86,22 +86,22 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     entity_id,
                     attribute,
                     value
-                FROM attributes with (NOLOCK) /**where**/");
+                FROM attributes /**where**/");
 
             _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-        }, ct);
+        }, cancellationToken);
         
     }
     
-    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () => { 
+        return await ExecuteWithRateLimit(async (ct) => { 
 
             await using var connection = (SqlConnection)_connectionFactory();
 
@@ -114,7 +114,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples with (NOLOCK) /**where**/");
+                FROM relation_tuples /**where**/");
 
 #if DEBUG
             _logger.LogDebug("Querying relations tuples with filter: {filter}", JsonSerializer.Serialize(tupleFilter));
@@ -128,15 +128,15 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }, ct);
+        }, cancellationToken);
        
     }
     
-    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () =>
+        return await ExecuteWithRateLimit(async (ct) =>
         {
 
             await using var connection = (SqlConnection)_connectionFactory();
@@ -150,7 +150,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples with (NOLOCK) /**where**/");
+                FROM relation_tuples /**where**/");
 
 #if DEBUG
             _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
@@ -167,15 +167,15 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                 Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
 #endif
             return res;
-        }, ct);
+        }, cancellationToken);
 
     }
     
-    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken ct)
+    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        return await ExecuteWithRateLimit(async () => { 
+        return await ExecuteWithRateLimit(async (ct) => { 
 
             await using var connection = (SqlConnection)_connectionFactory();
 
@@ -188,7 +188,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples with (NOLOCK) /**where**/");
+                FROM relation_tuples /**where**/");
 
 #if DEBUG
             _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
@@ -206,7 +206,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
 #endif
 
             return res;
-        }, ct);
+        }, cancellationToken);
         
     }
 }

@@ -9,12 +9,12 @@ public abstract class RateLimiterExecuter : IDisposable
         _semaphore = new SemaphoreSlim(options.MaxConcurrentQueries, options.MaxConcurrentQueries);
     }
     
-    protected async Task<T> ExecuteWithRateLimit<T>(Func<Task<T>> action, CancellationToken ct)
+    protected async Task<T> ExecuteWithRateLimit<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
         await _semaphore.WaitAsync(ct);
         try
         {
-            return await action();
+            return await action(ct);
         }
         finally
         {
