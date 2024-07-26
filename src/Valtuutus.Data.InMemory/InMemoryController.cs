@@ -4,7 +4,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-public sealed class InMemoryController : IDisposable
+public sealed class InMemoryController
 {
     private readonly ActorSystem _actorSystem;
     private readonly IActorRef _relations;
@@ -64,16 +64,10 @@ public sealed class InMemoryController : IDisposable
     
     public async Task<(RelationTuple[], AttributeTuple[])> Dump(CancellationToken ct)
     {
-        var relations = _relations.Ask<RelationTuple[]>(new RelationsActor.Commands.DumpRelations(), ct);
-        var attributes = _attributes.Ask<AttributeTuple[]>(new AttributesActor.Commands.DumpAttributes(), ct);
+        var relations = _relations.Ask<RelationTuple[]>(RelationsActor.Commands.DumpRelations.Instance, ct);
+        var attributes = _attributes.Ask<AttributeTuple[]>(AttributesActor.Commands.DumpAttributes.Instance, ct);
         return (await relations, await attributes);
 
     }
-    
-    public void Dispose()
-    {
-        _actorSystem.Dispose();
-    }
-
 
 }
