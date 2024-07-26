@@ -1,6 +1,4 @@
-﻿using IdGen;
-using Sqids;
-using Valtuutus.Core;
+﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
@@ -8,15 +6,11 @@ namespace Valtuutus.Data.InMemory;
 public sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
     private readonly InMemoryController _controller;
-    private readonly IIdGenerator<long> _idGenerator;
-    private readonly SqidsEncoder<long> _encoder;
 
-    public InMemoryProvider(InMemoryController controller, IIdGenerator<long> idGenerator, SqidsEncoder<long> encoder,
+    public InMemoryProvider(InMemoryController controller,
         ValtuutusDataOptions options) : base(options)
     {
         _controller = controller;
-        _idGenerator = idGenerator;
-        _encoder = encoder;
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
@@ -57,15 +51,15 @@ public sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider,
 
     public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        var transactId = _idGenerator.CreateId();
+        var transactId = Ulid.NewUlid().ToString();
         _controller.Write(relations, attributes, ct);
-        return Task.FromResult(new SnapToken(_encoder.Encode(transactId)));
+        return Task.FromResult(new SnapToken(transactId));
     }
 
     public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        var transactId = _idGenerator.CreateId();
+        var transactId = Ulid.NewUlid().ToString();
         _controller.Delete(filter, ct);
-        return Task.FromResult(new SnapToken(_encoder.Encode(transactId)));
+        return Task.FromResult(new SnapToken(transactId));
     }
 }

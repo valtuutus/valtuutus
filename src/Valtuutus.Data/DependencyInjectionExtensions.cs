@@ -1,7 +1,5 @@
 ﻿using System.Data;
-using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
-using Sqids;
 
 namespace Valtuutus.Data;
 
@@ -17,14 +15,6 @@ public static class DependencyInjectionExtensions
     public static IValtuutusDataBuilder AddValtuutusData(this IServiceCollection services)
     {
         var builder = new ValtuutusDataBuilder(services);
-#if NETSTANDARD2_0
-        services.AddSingleton<SqidsEncoder>();
-#else
-        services.AddSingleton<SqidsEncoder<long>>();
-#endif        
-        
-        
-        services.AddIdGen(1);
         services.AddSingleton(builder.Options);
         return builder;
     }

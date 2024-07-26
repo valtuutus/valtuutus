@@ -18,7 +18,6 @@ public abstract class DataLookupSubjectEngineSpecs : BaseLookupSubjectEngineSpec
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var builder = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<LookupSubjectEngine>>())
             .AddValtuutusCore(TestsConsts.Action)
             .AddValtuutusData();

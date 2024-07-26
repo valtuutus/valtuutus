@@ -3,30 +3,28 @@ using Valtuutus.Core.Data;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using FastMember;
-using IdGen;
 using Microsoft.Data.SqlClient;
-using Sqids;
 
 namespace Valtuutus.Data.SqlServer;
 
 public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
-    private readonly IIdGenerator<long> _idGenerator;
-    private readonly SqidsEncoder<long> _encoder;
 
-    public SqlServerDataWriterProvider(DbConnectionFactory factory, IIdGenerator<long> idGenerator, SqidsEncoder<long> encoder)
+    public SqlServerDataWriterProvider(DbConnectionFactory factory)
     {
         _factory = factory;
-        _idGenerator = idGenerator;
-        _encoder = encoder;
     }
     
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        var transactionId = _idGenerator.CreateId();
+        var transactionId = Ulid.NewUlid();
         
+#if NETSTANDARD2_0
+        using var db = (SqlConnection) _factory();
+#else
         await using var db = (SqlConnection) _factory();
+#endif
         await db.OpenAsync(ct);
         var transaction = db.BeginTransaction();
         
@@ -35,7 +33,11 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
         var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = "relation_tuples";
 
-        await using var relationsReader = ObjectReader.Create(relations.Select(x => new
+#if NETSTANDARD2_0
+#else
+        await 
+#endif
+        using var relationsReader = ObjectReader.Create(relations.Select(x => new
         {
             x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId
         }));
@@ -52,7 +54,12 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
         using var attributesBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "attributes";
 
-        await using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
+#if NETSTANDARD2_0
+#else
+        await 
+#endif
+            
+            using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
             TransactionId = transactionId }));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
@@ -63,17 +70,25 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 
         await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
 
+#if NETSTANDARD2_0
+        transaction.Commit();
+#else
         await transaction.CommitAsync(ct);
+#endif
         
-        return new SnapToken(_encoder.Encode(transactionId));
+        return new SnapToken(transactionId.ToString());
     }
     
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        var transactId = _idGenerator.CreateId();
-        
+        var transactId = Ulid.NewUlid();
+
+#if NETSTANDARD2_0
+        using var db = (SqlConnection) _factory();
+#else
         await using var db = (SqlConnection) _factory();
+#endif
         await db.OpenAsync(ct);
         var transaction = db.BeginTransaction();
         await InsertTransaction(db, transactId, transaction, ct);
@@ -99,12 +114,16 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
                 cancellationToken: ct, transaction: transaction));
             
         }
-        
+
+#if NETSTANDARD2_0
+        transaction.Commit();
+#else
         await transaction.CommitAsync(ct);
-        return new SnapToken(_encoder.Encode(transactId));
+#endif
+        return new SnapToken(transactId.ToString());
     }
     
-    private static async Task InsertTransaction(SqlConnection db, long transactId, SqlTransaction transaction, CancellationToken ct)
+    private static async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction, CancellationToken ct)
     {
         await db.ExecuteAsync( new CommandDefinition("INSERT INTO transactions (id, created_at) VALUES (@id, @created_at)", new
         {

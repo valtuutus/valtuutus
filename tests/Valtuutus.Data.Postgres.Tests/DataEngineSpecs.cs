@@ -4,7 +4,6 @@ using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Sqids;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
@@ -28,8 +27,7 @@ public class DataEngineSpecs : DataSpecificDataEngineSpecs
         // act
         var dataEngine = _provider.GetRequiredService<DataEngine>();
         var snapToken = await dataEngine.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
-        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
-        var transactionId = decoder.Decode(snapToken.Value).Single();
+        var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
         using var db = _fixture.DbFactory();
@@ -51,7 +49,6 @@ public class DataEngineSpecs : DataSpecificDataEngineSpecs
         var dataEngine = _provider.GetRequiredService<DataEngine>();
         
         // act
-        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
         var newSnapToken = await dataEngine.Delete(new DeleteFilter
         {
             Relations = new[] { new DeleteRelationsFilter
@@ -68,8 +65,8 @@ public class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         // assert
         using var db = _fixture.DbFactory();
-        
-        var newTransactionId = decoder.Decode(newSnapToken.Value).Single();
+
+        var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
         var newTransaction = await db.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT 1 FROM public.transactions WHERE id = @id)", 
             new { id = newTransactionId });

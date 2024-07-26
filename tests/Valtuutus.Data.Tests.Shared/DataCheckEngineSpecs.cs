@@ -18,7 +18,6 @@ public abstract class DataCheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetim
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var builder = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
             .AddValtuutusCore(TestsConsts.Action)
             .AddValtuutusData()

@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text.Json;
+﻿
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
@@ -12,13 +11,11 @@ namespace Valtuutus.Data.SqlServer;
 public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private readonly DbConnectionFactory _connectionFactory;
-    private readonly ILogger<IDataReaderProvider> _logger;
 
-    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, ILogger<IDataReaderProvider> logger,
+    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
         ValtuutusDataOptions options) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _logger = logger;
     }
 
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
@@ -26,7 +23,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         return await ExecuteWithRateLimit(async (ct) => { 
-            await using var connection = (SqlConnection)_connectionFactory();
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(@"SELECT TOP 1
@@ -35,9 +36,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     attribute,
                     value
                 FROM attributes /**where**/");
-
-            _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
-
+            
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: ct));
@@ -50,8 +49,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-            await using var connection = (SqlConnection)_connectionFactory();
-
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(@"SELECT
@@ -60,9 +62,7 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     attribute,
                     value
                 FROM attributes /**where**/");
-
-            _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
-
+            
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
@@ -77,8 +77,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-            await using var connection = (SqlConnection)_connectionFactory();
-
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(@"SELECT
@@ -88,7 +91,6 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     value
                 FROM attributes /**where**/");
 
-            _logger.LogDebug("Querying attributes tuples with filter: {filter}", filter);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -103,8 +105,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-            await using var connection = (SqlConnection)_connectionFactory();
-
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
                 .AddTemplate(@"SELECT
@@ -115,18 +120,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_id, 
                     subject_relation 
                 FROM relation_tuples /**where**/");
-
-#if DEBUG
-            _logger.LogDebug("Querying relations tuples with filter: {filter}", JsonSerializer.Serialize(tupleFilter));
-            var start = Stopwatch.GetTimestamp();
-#endif
+            
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-#if DEBUG
-            _logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items",
-                Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
-#endif
+
             return res;
         }, cancellationToken);
        
@@ -139,8 +137,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
         return await ExecuteWithRateLimit(async (ct) =>
         {
 
-            await using var connection = (SqlConnection)_connectionFactory();
-
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(@"SELECT
@@ -151,21 +152,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_id, 
                     subject_relation 
                 FROM relation_tuples /**where**/");
-
-#if DEBUG
-            _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
-                JsonSerializer.Serialize(new { entityRelationFilter, subjectType, entitiesIds = entityIds, subjectRelation }));
-            var start = Stopwatch.GetTimestamp();
-#endif
+            
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
 
-
-#if DEBUG
-            _logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items",
-                Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
-#endif
             return res;
         }, cancellationToken);
 
@@ -177,8 +168,11 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-            await using var connection = (SqlConnection)_connectionFactory();
-
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection) _connectionFactory();
+#else
+            await using var connection = (SqlConnection) _connectionFactory();
+#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(@"SELECT
@@ -190,20 +184,9 @@ public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRead
                     subject_relation 
                 FROM relation_tuples /**where**/");
 
-#if DEBUG
-            _logger.LogDebug("Querying relations tuples with filter {sql}, with params: {params}", queryTemplate.RawSql,
-                JsonSerializer.Serialize(new { entityFilter, subjectsIds }));
-            var start = Stopwatch.GetTimestamp();
-#endif
-
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
-
-#if DEBUG
-            _logger.LogDebug("Queried relations in {QueryDuration}ms, returned {QueryItemCount} items",
-                Stopwatch.GetElapsedTime(start).TotalMilliseconds, res.Count);
-#endif
 
             return res;
         }, cancellationToken);

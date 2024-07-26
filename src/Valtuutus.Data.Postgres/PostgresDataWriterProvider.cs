@@ -2,32 +2,29 @@
 using Valtuutus.Core.Data;
 using Valtuutus.Data.Postgres.Utils;
 using Dapper;
-using IdGen;
 using Npgsql;
 using NpgsqlTypes;
-using Sqids;
 
 namespace Valtuutus.Data.Postgres;
 
 public sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
-    private readonly IIdGenerator<long> _idGenerator;
-    private readonly SqidsEncoder<long> _encoder;
 
-    public PostgresDataWriterProvider(DbConnectionFactory factory, IIdGenerator<long> idGenerator, SqidsEncoder<long> encoder)
+    public PostgresDataWriterProvider(DbConnectionFactory factory)
     {
         _factory = factory;
-        _idGenerator = idGenerator;
-        _encoder = encoder;
     }
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
         await using var db = (NpgsqlConnection) _factory();
         await db.OpenAsync(ct);
+#if NETSTANDARD2_0
+        await using var transaction = db.BeginTransaction();
+#else
         await using var transaction = await db.BeginTransactionAsync(ct);
-
-        var transactId = _idGenerator.CreateId();
+#endif
+        var transactId = Ulid.NewUlid();
         
         await InsertTransaction(db, transactId, transaction, ct);
         
@@ -67,10 +64,10 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await transaction.CommitAsync(ct);
 
-        return new SnapToken(_encoder.Encode(transactId));
+        return new SnapToken(transactId.ToString());
     }
 
-    private static async Task InsertTransaction(NpgsqlConnection db, long transactId,
+    private static async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
         await db.ExecuteAsync(new CommandDefinition("INSERT INTO public.transactions (id, created_at) VALUES (@id, @created_at)", new
@@ -82,11 +79,15 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        var transactId = _idGenerator.CreateId();
+        var transactId = Ulid.NewUlid();
         await using var db = (NpgsqlConnection) _factory();
         await db.OpenAsync(ct);
+        
+#if NETSTANDARD2_0
+        await using var transaction = db.BeginTransaction();
+#else
         await using var transaction = await db.BeginTransactionAsync(ct);
-
+#endif
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
@@ -111,6 +112,6 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await InsertTransaction(db, transactId, transaction, ct);
         await transaction.CommitAsync(ct);
-        return new SnapToken(_encoder.Encode(transactId));
+        return new SnapToken(transactId.ToString());
     }
 }

@@ -4,8 +4,6 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Tests.Shared;
 using FluentAssertions;
-using IdGen;
-using IdGen.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
@@ -28,17 +26,11 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
     private ServiceProvider CreateServiceProvider()
     {
         var builder = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
             .AddValtuutusCore(TestsConsts.Action)
             .AddValtuutusData();
         
         AddSpecificProvider(builder);
         var serviceCollection = builder.Services;
-        serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
-        serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
-        {
-            TimeSource = new MockAutoIncrementingIntervalTimeSource(1)
-        });
 
         return serviceCollection.BuildServiceProvider();
     }
