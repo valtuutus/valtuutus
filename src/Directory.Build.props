@@ -19,7 +19,9 @@
   <PropertyGroup>
     <PackageReleaseNotes>Version 0.4-alpha:
       - Improved DI using a builder instead of an extension on top of IServiceCollection
-      - Relaxed Microsoft.Extensions.DependencyInjection.* version
+      - Exposed InMemoryProvider for testing purposes
+      - Updated dependencies
+      - Sql Server columns are now NVARCHAR (to allow for unicode characters)
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>

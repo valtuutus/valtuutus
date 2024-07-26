@@ -16,10 +16,16 @@ namespace Valtuutus.Data.Tests.Shared;
 public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture _fixture = null!;
+    protected readonly ServiceProvider _provider = null!;
+
+    protected DataSpecificDataEngineSpecs()
+    {
+        _provider = CreateServiceProvider();
+    }
 
     protected abstract void AddSpecificProvider(IValtuutusDataBuilder builder);
-    
-    protected ServiceProvider CreateServiceProvider()
+
+    private ServiceProvider CreateServiceProvider()
     {
         var builder = new ServiceCollection()
             .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
@@ -150,8 +156,7 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         DeleteFilter filter, RelationTuple[] expectedTuples, AttributeTuple[] expectedAttributes)
     {
         // arrange
-        var provider = CreateServiceProvider();
-        var engine = provider.GetRequiredService<DataEngine>();
+        var engine = _provider.GetRequiredService<DataEngine>();
         await engine.Write(seedRelations, seedAttributes, default);
         
         // act
