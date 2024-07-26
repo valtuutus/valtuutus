@@ -12,27 +12,27 @@ table "relation_tuples" {
   }
   column "entity_type" {
     null = false
-    type = varchar(256)
+    type = nvarchar(256)
   }
   column "entity_id" {
     null = false
-    type = varchar(64)
+    type = nvarchar(64)
   }
   column "relation" {
     null = false
-    type = varchar(64)
+    type = nvarchar(64)
   }
   column "subject_type" {
     null = false
-    type = varchar(256)
+    type = nvarchar(256)
   }
   column "subject_id" {
     null = false
-    type = varchar(64)
+    type = nvarchar(64)
   }
   column "subject_relation" {
     null = true
-    type = varchar(64)
+    type = nvarchar(64)
   }
 
   primary_key {
@@ -72,19 +72,19 @@ table "attributes" {
   }
   column "entity_type" {
     null = false
-    type = varchar(256)
+    type = nvarchar(256)
   }
   column "entity_id" {
     null = false
-    type = varchar(64)
+    type = nvarchar(64)
   }
   column "attribute" {
     null = false
-    type = varchar(64)
+    type = nvarchar(64)
   }
   column "value" {
     null = false
-    type = varchar(256)
+    type = nvarchar(256)
   }
 
   primary_key {

@@ -1,18 +1,18 @@
 ﻿using Valtuutus.Data.Tests.Shared;
 
-namespace Valtuutus.Data.SqlServer.Tests;
+namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("SqlServerSpec")]
+[Collection("InMemorySpecs")]
 public sealed class LookupSubjectEngineSpecs : DataLookupSubjectEngineSpecs
 {
 
-    public LookupSubjectEngineSpecs(SqlServerFixture fixture)
+    public LookupSubjectEngineSpecs(InMemoryFixture fixture)
     {
         _fixture = fixture;
     }
 
     protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        builder.AddSqlServer(_ => _fixture.DbFactory);
+        builder.AddInMemory();
     }
 }

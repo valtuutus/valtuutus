@@ -1,5 +1,4 @@
 ﻿using Valtuutus.Data.Tests.Shared;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
@@ -11,8 +10,8 @@ public sealed class CheckEngineSpecs : DataCheckEngineSpecs
         _fixture = fixture;
     }
 
-    protected override void AddSpecificProvider(IServiceCollection services)
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        services.AddPostgres();
+        builder.AddPostgres(_ => _fixture.DbFactory);
     }
 }

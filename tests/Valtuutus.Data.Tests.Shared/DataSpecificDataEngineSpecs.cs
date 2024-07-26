@@ -2,7 +2,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Tests.Shared;
 using FluentAssertions;
 using IdGen;
@@ -17,16 +16,24 @@ namespace Valtuutus.Data.Tests.Shared;
 public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture _fixture = null!;
+    protected readonly ServiceProvider _provider = null!;
 
-    protected abstract void AddSpecificProvider(IServiceCollection services);
-    
-    protected ServiceProvider CreateServiceProvider()
+    protected DataSpecificDataEngineSpecs()
     {
-        var serviceCollection = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddValtuutusDatabase(_ => _fixture.DbFactory, AddSpecificProvider)
-            .AddValtuutusCore(TestsConsts.Action);
+        _provider = CreateServiceProvider();
+    }
 
+    protected abstract void AddSpecificProvider(IValtuutusDataBuilder builder);
+
+    private ServiceProvider CreateServiceProvider()
+    {
+        var builder = new ServiceCollection()
+            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
+            .AddValtuutusCore(TestsConsts.Action)
+            .AddValtuutusData();
+        
+        AddSpecificProvider(builder);
+        var serviceCollection = builder.Services;
         serviceCollection.Remove(serviceCollection.First(descriptor => descriptor.ServiceType == typeof(IIdGenerator<long>)));
         serviceCollection.AddIdGen(0, () => new IdGeneratorOptions
         {
@@ -149,8 +156,7 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         DeleteFilter filter, RelationTuple[] expectedTuples, AttributeTuple[] expectedAttributes)
     {
         // arrange
-        var provider = CreateServiceProvider();
-        var engine = provider.GetRequiredService<DataEngine>();
+        var engine = _provider.GetRequiredService<DataEngine>();
         await engine.Write(seedRelations, seedAttributes, default);
         
         // act

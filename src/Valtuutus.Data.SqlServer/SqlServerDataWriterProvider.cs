@@ -1,6 +1,5 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Configuration;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using FastMember;

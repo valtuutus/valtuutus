@@ -1,17 +1,17 @@
 ﻿using Valtuutus.Data.Tests.Shared;
 
-namespace Valtuutus.Data.Postgres.Tests;
+namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("PostgreSqlSpec")]
+[Collection("InMemorySpecs")]
 public sealed class LookupEntityEngineSpecs : DataLookupEntityEngineSpecs
 {
-    public LookupEntityEngineSpecs(PostgresFixture fixture)
+    public LookupEntityEngineSpecs(InMemoryFixture fixture)
     {
         _fixture = fixture;
     }
 
     protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        builder.AddPostgres(_ => _fixture.DbFactory);
+        builder.AddInMemory();
     }
 }

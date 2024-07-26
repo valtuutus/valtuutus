@@ -21,13 +21,11 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
     [Fact]
     public async Task WritingData_ShouldAssociateRelationWithTransactionId()
     {
-        // arrange
-        var provider = CreateServiceProvider();
         
         // act
-        var dataEngine = provider.GetRequiredService<DataEngine>();
+        var dataEngine = _provider.GetRequiredService<DataEngine>();
         var snapToken = await dataEngine.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
-        var decoder = provider.GetRequiredService<SqidsEncoder<long>>();
+        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
         var transactionId = decoder.Decode(snapToken.Value).Single();
 
         // assert
@@ -53,11 +51,10 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
     public async Task DeletingData_ShouldReturnTransactionId()
     {
         // arrange
-        var provider = CreateServiceProvider();
-        var dataEngine = provider.GetRequiredService<DataEngine>();
+        var dataEngine = _provider.GetRequiredService<DataEngine>();
         
         // act
-        var decoder = provider.GetRequiredService<SqidsEncoder<long>>();
+        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
         var newSnapToken = await dataEngine.Delete(new DeleteFilter
         {
             Relations = new[] { new DeleteRelationsFilter
@@ -90,9 +87,9 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         newTransaction.Should().BeTrue();
     }
 
-    protected override void AddSpecificProvider(IServiceCollection services)
+    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
     {
-        services.AddSqlServer();
+        builder.AddSqlServer(_ => _fixture.DbFactory);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()

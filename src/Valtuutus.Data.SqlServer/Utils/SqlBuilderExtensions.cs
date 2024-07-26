@@ -11,19 +11,16 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = tupleFilter.EntityType,
-            IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
         {
             Value = tupleFilter.EntityId,
-            IsAnsi = true,
             Length = 64
         }});
         builder = builder.Where("relation = @Relation", new {Relation = new DbString()
         {
             Value = tupleFilter.Relation,
-            IsAnsi = true,
             Length = 64
         }});
 
@@ -31,7 +28,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_id = @SubjectId", new {SubjectId = new DbString()
             {
                 Value = tupleFilter.SubjectId,
-                IsAnsi = true,
                 Length = 64
             }});
         
@@ -39,7 +35,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_relation = @SubjectRelation", new {SubjectRelation =new DbString()
             {
                 Value = tupleFilter.SubjectRelation,
-                IsAnsi = true,
                 Length = 64
             }});
         
@@ -47,7 +42,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
             {
                 Value = tupleFilter.SubjectType,
-                IsAnsi = true,
                 Length = 256
             }});
         
@@ -63,7 +57,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
             {
                 Value = subjectType,
-                IsAnsi = true,
                 Length = 256
             }});
         
@@ -71,7 +64,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
             {
                 Value = entityRelationFilter.EntityType,
-                IsAnsi = true,
                 Length = 256
             }});
         
@@ -79,7 +71,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {Relation = new DbString()
             {
                 Value = entityRelationFilter.Relation,
-                IsAnsi = true,
                 Length = 64
             }});
 
@@ -96,7 +87,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("subject_relation = @subjectRelation", new {subjectRelation = new DbString()
             {
                 Value = subjectRelation,
-                IsAnsi = true,
                 Length = 64
             }});
         
@@ -109,7 +99,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
             {
                 Value = entityFilter.EntityType,
-                IsAnsi = true,
                 Length = 256
             }});
         
@@ -117,14 +106,12 @@ public static class SqlBuilderExtensions
             builder = builder.Where("relation = @Relation", new {Relation = new DbString()
             {
                 Value = entityFilter.Relation,
-                IsAnsi = true,
                 Length = 64
             }});
         
         builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
         {
             Value = subjectType,
-            IsAnsi = true,
             Length = 256
         }});
 
@@ -146,13 +133,11 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
-            IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("attribute = @Attribute", new {Attribute =new DbString()
         {
             Value = filter.Attribute,
-            IsAnsi = true,
             Length = 64
         }});
         
@@ -160,7 +145,6 @@ public static class SqlBuilderExtensions
             builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
             {
                 Value = filter.EntityId,
-                IsAnsi = true,
                 Length = 64
             }});
         
@@ -174,13 +158,11 @@ public static class SqlBuilderExtensions
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
-            IsAnsi = true,
             Length = 256
         }});
         builder = builder.Where("attribute = @Attribute", new {Attribute = new DbString()
         {
             Value = filter.Attribute,
-            IsAnsi = true,
             Length = 64
         }});
 
@@ -214,37 +196,31 @@ public static class SqlBuilderExtensions
                     {$"@EntityType{i}", new DbString
                     {
                         Value = filters[i].EntityType,
-                        IsAnsi = true,
                         Length = 256
                     }},
                     {$"@EntityId{i}",  new DbString
                     {
                         Value = filters[i].EntityId,
-                        IsAnsi = true,
                         Length = 64
                     }},
                     {$"@SubjectType{i}", new DbString
                     {
                         Value = filters[i].SubjectType,
-                        IsAnsi = true,
                         Length = 256
                     }},
                     {$"@SubjectId{i}", new DbString
                     {
                         Value = filters[i].SubjectId,
-                        IsAnsi = true,
                         Length = 64
                     }},
                     {$"@Relation{i}", new DbString
                     {
                         Value = filters[i].Relation,
-                        IsAnsi = true,
                         Length = 64
                     }},
                     {$"@SubjectRelation{i}", new DbString
                     {
                         Value = filters[i].SubjectRelation,
-                        IsAnsi = true,
                         Length = 64
                     }},
                 

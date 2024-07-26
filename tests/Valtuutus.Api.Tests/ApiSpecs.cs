@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Data;
+using Valtuutus.Data.InMemory;
 using Valtuutus.Data.Postgres;
 using Valtuutus.Data.SqlServer;
 using Valtuutus.Tests.Shared;
@@ -29,5 +30,11 @@ public class ApiSpecs
     public Task ApproveSqlServer()
     {
         return ApiSpecExtensions.VerifyAssembly<SqlServerDataWriterProvider>();
+    }
+    
+    [Fact]
+    public Task ApproveInMemory()
+    {
+        return ApiSpecExtensions.VerifyAssembly<InMemoryProvider>();
     }
 }
