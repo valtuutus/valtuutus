@@ -344,9 +344,9 @@ public sealed class LookupSubjectEngine(
             overlappingItems = count >= 1
                 ? overlappingItems
                     .Select(x => x)
-                    .IntersectBy(
-                    relations.Select(x => new { Type = x.SubjectType, Id = x.SubjectId }),
-                    x => new { Type = x.SubjectType, Id = x.SubjectId })
+                    .Intersect(
+                    relations,
+                    RelationTupleComparer.Instance)
                 : relations;
 
             count++;

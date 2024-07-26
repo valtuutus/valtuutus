@@ -352,9 +352,8 @@ public sealed class LookupEntityEngine(
         foreach (var result in results)
         {
             overlappingItems = count >= 1
-                ? overlappingItems.IntersectBy(
-                    result.Select(x => new { Type = x.EntityType, Id = x.EntityId }),
-                    x => new { Type = x.EntityType, Id = x.EntityId })
+                ? overlappingItems.Intersect(
+                    result, RelationOrAttributeComparer.Instance)
                 : result;
 
             count++;
@@ -390,6 +389,29 @@ internal record RelationOrAttributeTuple
     public string EntityType => Type == RelationOrAttributeType.Relation
         ? RelationTuple!.EntityType
         : AttributeTuple!.EntityType;
+}
+
+internal sealed class RelationOrAttributeComparer : IEqualityComparer<RelationOrAttributeTuple>
+{
+    private RelationOrAttributeComparer()
+    {
+    }
+
+    internal static IEqualityComparer<RelationOrAttributeTuple> Instance { get; } = new RelationOrAttributeComparer();
+
+    public bool Equals(RelationOrAttributeTuple x, RelationOrAttributeTuple y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (ReferenceEquals(x, null)) return false;
+        if (ReferenceEquals(y, null)) return false;
+        if (x.GetType() != y.GetType()) return false;
+        return x.EntityType == y.EntityType && x.EntityId == y.EntityId;
+    }
+
+    public int GetHashCode(RelationOrAttributeTuple obj)
+    {
+        return (int)obj.Type;
+    }
 }
 
 internal enum RelationOrAttributeType
