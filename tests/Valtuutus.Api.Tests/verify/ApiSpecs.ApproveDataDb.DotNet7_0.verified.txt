@@ -1,0 +1,18 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v7.0", FrameworkDisplayName=".NET 7.0")]
+namespace Valtuutus.Data.Db
+{
+    public delegate System.Data.IDbConnection DbConnectionFactory();
+    public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
+    {
+        public JsonTypeHandler() { }
+        public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
+        public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
+    }
+    public class UlidTypeHandler : Dapper.SqlMapper.TypeHandler<System.Ulid>
+    {
+        public UlidTypeHandler() { }
+        public override System.Ulid Parse(object value) { }
+        public override void SetValue(System.Data.IDbDataParameter parameter, System.Ulid value) { }
+    }
+}

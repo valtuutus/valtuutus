@@ -2,7 +2,7 @@
 using System.Text.Json.Nodes;
 using Dapper;
 
-namespace Valtuutus.Data;
+namespace Valtuutus.Data.Db;
 
 public class JsonTypeHandler : SqlMapper.TypeHandler<JsonValue>
 {

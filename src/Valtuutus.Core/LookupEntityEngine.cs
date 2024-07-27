@@ -399,7 +399,7 @@ internal sealed class RelationOrAttributeComparer : IEqualityComparer<RelationOr
 
     internal static IEqualityComparer<RelationOrAttributeTuple> Instance { get; } = new RelationOrAttributeComparer();
 
-    public bool Equals(RelationOrAttributeTuple x, RelationOrAttributeTuple y)
+    public bool Equals(RelationOrAttributeTuple? x, RelationOrAttributeTuple? y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;
@@ -410,7 +410,10 @@ internal sealed class RelationOrAttributeComparer : IEqualityComparer<RelationOr
 
     public int GetHashCode(RelationOrAttributeTuple obj)
     {
-        return (int)obj.Type;
+        unchecked
+        {
+            return (obj.EntityType.GetHashCode() * 397) ^ obj.EntityId.GetHashCode();
+        }
     }
 }
 

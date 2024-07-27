@@ -5,7 +5,6 @@ using Valtuutus.Core.Data;
 using Valtuutus.Tests.Shared;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Valtuutus.Data.Tests.Shared;
@@ -21,18 +20,16 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
         _provider = CreateServiceProvider();
     }
 
-    protected abstract void AddSpecificProvider(IValtuutusDataBuilder builder);
+    protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
 
     private ServiceProvider CreateServiceProvider()
     {
-        var builder = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action)
-            .AddValtuutusData();
+        var services = new ServiceCollection()
+            .AddValtuutusCore(TestsConsts.Action);
         
-        AddSpecificProvider(builder);
-        var serviceCollection = builder.Services;
+        AddSpecificProvider(services);
 
-        return serviceCollection.BuildServiceProvider();
+        return services.BuildServiceProvider();
     }
 
     protected abstract Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples();

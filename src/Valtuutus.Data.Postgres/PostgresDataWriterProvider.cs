@@ -4,10 +4,11 @@ using Valtuutus.Data.Postgres.Utils;
 using Dapper;
 using Npgsql;
 using NpgsqlTypes;
+using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-public sealed class PostgresDataWriterProvider : IDataWriterProvider
+internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
 
@@ -19,7 +20,7 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
     {
         await using var db = (NpgsqlConnection) _factory();
         await db.OpenAsync(ct);
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
         await using var transaction = db.BeginTransaction();
 #else
         await using var transaction = await db.BeginTransactionAsync(ct);
@@ -39,7 +40,7 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
             await relationsWriter.WriteAsync(record.SubjectType, ct);
             await relationsWriter.WriteAsync(record.SubjectId, ct);
             await relationsWriter.WriteAsync(record.SubjectRelation, ct);
-            await relationsWriter.WriteAsync(transactId, ct);
+            await relationsWriter.WriteAsync(transactId.ToString(), NpgsqlDbType.Char, ct);
         }
 
         await relationsWriter.CompleteAsync(ct);
@@ -54,7 +55,7 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
             await attributesWriter.WriteAsync(record.EntityId, ct);
             await attributesWriter.WriteAsync(record.Attribute, ct);
             await attributesWriter.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb, ct);
-            await attributesWriter.WriteAsync(transactId, ct);
+            await attributesWriter.WriteAsync(transactId.ToString(), NpgsqlDbType.Char, ct);
         }
 
         
@@ -83,7 +84,7 @@ public sealed class PostgresDataWriterProvider : IDataWriterProvider
         await using var db = (NpgsqlConnection) _factory();
         await db.OpenAsync(ct);
         
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
         await using var transaction = db.BeginTransaction();
 #else
         await using var transaction = await db.BeginTransactionAsync(ct);

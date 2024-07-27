@@ -7,14 +7,20 @@
         <Description>Valtuutus SqlServer support; $(Description)</Description>
         <PackageTags>$(PackageTags);sqlserver;mssql</PackageTags>
     </PropertyGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
-    </ItemGroup>
-
+    
     <ItemGroup>
       <PackageReference Include="FastMember" />
       <PackageReference Include="Microsoft.Data.SqlClient" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Api.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\Valtuutus.Data.Db\Valtuutus.Data.Db.csproj" />
     </ItemGroup>
 
 </Project>

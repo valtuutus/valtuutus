@@ -4,7 +4,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-public sealed class InMemoryController
+internal sealed class InMemoryController
 {
     private readonly ActorSystem _actorSystem;
     private readonly IActorRef _relations;

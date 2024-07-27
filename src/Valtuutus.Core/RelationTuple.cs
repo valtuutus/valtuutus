@@ -35,7 +35,7 @@ internal class RelationTupleComparer : IEqualityComparer<RelationTuple> {
 
     internal static IEqualityComparer<RelationTuple> Instance { get; } = new RelationTupleComparer();
 
-    public bool Equals(RelationTuple x, RelationTuple y)
+    public bool Equals(RelationTuple? x, RelationTuple? y)
     {
         if (ReferenceEquals(x, y)) return true;
         if (ReferenceEquals(x, null)) return false;

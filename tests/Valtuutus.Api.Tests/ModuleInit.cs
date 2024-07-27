@@ -8,6 +8,7 @@ public static class ModuleInit
     public static void Initialize()
     {
         VerifierSettings.ScrubLinesContaining("[assembly: ReleaseDateAttribute(");
+        VerifierSettings.ScrubLinesContaining("[assembly: System.Runtime.CompilerServices.InternalsVisibleTo(");
         UseProjectRelativeDirectory("verify");
         VerifierSettings.UniqueForTargetFrameworkAndVersion();
         VerifierSettings.InitializePlugins();    

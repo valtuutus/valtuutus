@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Description>Valtuutus relational db data abstractions; $(Description)</Description>
+        <PackageTags>$(PackageTags);db</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Dapper" />
+      <PackageReference Include="Dapper.SqlBuilder" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
+    </ItemGroup>
+
+</Project>

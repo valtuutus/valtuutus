@@ -2,7 +2,6 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0", FrameworkDisplayName=".NET 8.0")]
 namespace Valtuutus.Data
 {
-    public delegate System.Data.IDbConnection DbConnectionFactory();
     public static class DependencyInjectionExtensions
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddConcurrentQueryLimit(this Valtuutus.Data.IValtuutusDataBuilder builder, int limit) { }
@@ -13,17 +12,11 @@ namespace Valtuutus.Data
         Valtuutus.Data.ValtuutusDataOptions Options { get; }
         Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
     }
-    public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
-    {
-        public JsonTypeHandler() { }
-        public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
-        public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
-    }
     public abstract class RateLimiterExecuter : System.IDisposable
     {
         protected RateLimiterExecuter(Valtuutus.Data.ValtuutusDataOptions options) { }
         public void Dispose() { }
-        protected System.Threading.Tasks.Task<T> ExecuteWithRateLimit<T>(System.Func<System.Threading.Tasks.Task<T>> action, System.Threading.CancellationToken ct) { }
+        protected System.Threading.Tasks.Task<T> ExecuteWithRateLimit<T>(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<T>> action, System.Threading.CancellationToken ct) { }
     }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
     {

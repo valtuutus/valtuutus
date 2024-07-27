@@ -27,7 +27,7 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
-        using var db = _fixture.DbFactory();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
         var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id)", 
             new { id = transactionId });
         var exists = await db.ExecuteScalarAsync<bool>("""
@@ -67,7 +67,7 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         
         // assert
-        using var db = _fixture.DbFactory();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
 
         var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
@@ -84,14 +84,14 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         newTransaction.Should().BeTrue();
     }
 
-    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
+    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        builder.AddSqlServer(_ => _fixture.DbFactory);
+        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = _fixture.DbFactory();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
         var relations = (await db.QueryAsync<RelationTuple>("""
             SELECT  entity_type,
                     entity_id,

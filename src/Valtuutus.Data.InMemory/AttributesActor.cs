@@ -4,7 +4,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-internal class AttributesActor : ReceiveActor
+internal sealed class AttributesActor : ReceiveActor
 {
     private readonly List<AttributeTuple> _attributesTuples;
 

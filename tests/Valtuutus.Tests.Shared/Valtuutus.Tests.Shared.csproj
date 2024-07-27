@@ -21,8 +21,4 @@
       <ProjectReference Include="..\..\src\Valtuutus.Core\Valtuutus.Core.csproj" />
     </ItemGroup>
 
-    <ItemGroup>
-      <None Remove="ApiSpecs.ApproveCore.DotNet8_0.received.txt" />
-    </ItemGroup>
-
 </Project>

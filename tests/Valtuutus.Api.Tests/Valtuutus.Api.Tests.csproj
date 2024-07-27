@@ -4,7 +4,6 @@
         <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-
         <IsPackable>false</IsPackable>
         <IsTestProject>true</IsTestProject>
     </PropertyGroup>
@@ -12,7 +11,6 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
     </ItemGroup>
-
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.InMemory\Valtuutus.Data.InMemory.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />

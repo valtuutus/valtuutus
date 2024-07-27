@@ -25,13 +25,13 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddValtuutusCore(c =>
-{
-    c
-        .WithEntity("user")
-        .WithEntity("organization")
+    {
+        c
+            .WithEntity("user")
+            .WithEntity("organization")
             .WithRelation("admin", rc => rc.WithEntityType("user"))
             .WithRelation("member", rc => rc.WithEntityType("user"))
-        .WithEntity("team")
+            .WithEntity("team")
             .WithRelation("owner", rc => rc.WithEntityType("user"))
             .WithRelation("member", rc => rc.WithEntityType("user"))
             .WithRelation("org", rc => rc.WithEntityType("organization"))
@@ -39,31 +39,30 @@ builder.Services.AddValtuutusCore(c =>
             .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
             .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
             .WithPermission("remove_user", PermissionNode.Leaf("owner"))
-        .WithEntity("project")
+            .WithEntity("project")
             .WithRelation("org", rc => rc.WithEntityType("organization"))
             .WithRelation("team", rc => rc.WithEntityType("team"))
             .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
             .WithAttribute("public", typeof(bool))
             .WithAttribute("status", typeof(string))
-            .WithPermission("view",  
-            PermissionNode.Union(
-                PermissionNode.Leaf("org.admin"), 
-                PermissionNode.Leaf("member"), 
-                PermissionNode.Intersect("public", "org.member"))
+            .WithPermission("view",
+                PermissionNode.Union(
+                    PermissionNode.Leaf("org.admin"),
+                    PermissionNode.Leaf("member"),
+                    PermissionNode.Intersect("public", "org.member"))
             )
             .WithPermission("edit", PermissionNode.Intersect(
                 PermissionNode.Union("org.admin", "team.member"),
                 PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
             )
             .WithPermission("delete", PermissionNode.Leaf("team.member"));
-})
-.AddValtuutusData()
-.AddConcurrentQueryLimit(3)
+    })
 #if postgres
-.AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!));
+    .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
 #else
-.AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
+.AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!))
 #endif
+    .AddConcurrentQueryLimit(3);
 
 Activity.DefaultIdFormat = ActivityIdFormat.W3C;
 

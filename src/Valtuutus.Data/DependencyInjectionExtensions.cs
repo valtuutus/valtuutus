@@ -1,9 +1,7 @@
-﻿using System.Data;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Valtuutus.Data;
-
-public delegate IDbConnection DbConnectionFactory();
 
 public static class DependencyInjectionExtensions
 {
@@ -15,7 +13,7 @@ public static class DependencyInjectionExtensions
     public static IValtuutusDataBuilder AddValtuutusData(this IServiceCollection services)
     {
         var builder = new ValtuutusDataBuilder(services);
-        services.AddSingleton(builder.Options);
+        services.TryAddSingleton(builder.Options);
         return builder;
     }
 

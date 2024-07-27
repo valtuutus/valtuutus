@@ -4,10 +4,11 @@ using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using FastMember;
 using Microsoft.Data.SqlClient;
+using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
 
-public sealed class SqlServerDataWriterProvider : IDataWriterProvider
+internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
 
@@ -20,7 +21,7 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
     {
         var transactionId = Ulid.NewUlid();
         
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
         using var db = (SqlConnection) _factory();
 #else
         await using var db = (SqlConnection) _factory();
@@ -33,13 +34,13 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
         var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = "relation_tuples";
 
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
 #else
         await 
 #endif
         using var relationsReader = ObjectReader.Create(relations.Select(x => new
         {
-            x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId
+            x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId.ToString()
         }));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
@@ -60,7 +61,7 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 #endif
             
             using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
-            TransactionId = transactionId }));
+            TransactionId = transactionId.ToString() }));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
@@ -70,7 +71,7 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
 
         await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
 
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
         transaction.Commit();
 #else
         await transaction.CommitAsync(ct);
@@ -115,7 +116,7 @@ public sealed class SqlServerDataWriterProvider : IDataWriterProvider
             
         }
 
-#if NETSTANDARD2_0
+#if !NETCOREAPP3_0_OR_GREATER
         transaction.Commit();
 #else
         await transaction.CommitAsync(ct);

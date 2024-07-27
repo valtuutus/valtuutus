@@ -3,10 +3,11 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Data.Postgres.Utils;
 using Dapper;
+using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-public sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private readonly DbConnectionFactory _connectionFactory;
 

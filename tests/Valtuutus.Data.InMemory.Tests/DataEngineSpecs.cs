@@ -8,9 +8,9 @@ namespace Valtuutus.Data.InMemory.Tests;
 [Collection("InMemorySpecs")]
 public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
 {
-    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
+    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        builder.AddInMemory();
+       return services.AddInMemory();
     }
 
     protected override Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()

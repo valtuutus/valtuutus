@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\..\src\Valtuutus.Data.Db\Valtuutus.Data.Db.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data\Valtuutus.Data.csproj" />
       <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
     </ItemGroup>

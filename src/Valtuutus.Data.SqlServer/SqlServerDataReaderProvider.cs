@@ -5,10 +5,10 @@ using Valtuutus.Core.Observability;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Logging;
+using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
-public sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private readonly DbConnectionFactory _connectionFactory;
 
