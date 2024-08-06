@@ -10,11 +10,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Api.Tests</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Npgsql" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Valtuutus.Data.Db\Valtuutus.Data.Db.csproj" />
     </ItemGroup>
 
 </Project>

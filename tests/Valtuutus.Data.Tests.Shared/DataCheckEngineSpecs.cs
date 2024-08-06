@@ -4,7 +4,6 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Tests.Shared;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NSubstitute;
 
 namespace Valtuutus.Data.Tests.Shared;
@@ -13,28 +12,25 @@ public abstract class DataCheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetim
 {
     protected IDatabaseFixture _fixture = null!;
 
-    protected abstract void AddSpecificProvider(IValtuutusDataBuilder builder);
+    protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
     
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
-        var builder = new ServiceCollection()
-            .AddSingleton(Substitute.For<ILogger<IDataReaderProvider>>())
-            .AddSingleton(Substitute.For<ILogger<CheckEngine>>())
-            .AddValtuutusCore(TestsConsts.Action)
-            .AddValtuutusData()
+        var services = new ServiceCollection()
+            .AddValtuutusCore(TestsConsts.Action);
+        
+        AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
+
         
-        AddSpecificProvider(builder);
-        
-        var serviceCollection = builder.Services;
         if (schema != null)
         {
-            var serviceDescriptor = serviceCollection.First(descriptor => descriptor.ServiceType == typeof(Schema));
-            serviceCollection.Remove(serviceDescriptor);
-            serviceCollection.AddSingleton(schema);
+            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
+            services.Remove(serviceDescriptor);
+            services.AddSingleton(schema);
         }
 
-        return serviceCollection.BuildServiceProvider();
+        return services.BuildServiceProvider();
     }
     
     protected sealed override async ValueTask<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)

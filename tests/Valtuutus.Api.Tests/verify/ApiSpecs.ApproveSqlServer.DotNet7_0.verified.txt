@@ -4,35 +4,6 @@ namespace Valtuutus.Data.SqlServer
 {
     public static class DependencyInjectionExtensions
     {
-        public static Valtuutus.Data.IValtuutusDataBuilder AddSqlServer(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Func<System.IServiceProvider, Valtuutus.Data.DbConnectionFactory> factory) { }
-    }
-    public sealed class SqlServerDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider
-    {
-        public SqlServerDataReaderProvider(Valtuutus.Data.DbConnectionFactory connectionFactory, Microsoft.Extensions.Logging.ILogger<Valtuutus.Core.Data.IDataReaderProvider> logger, Valtuutus.Data.ValtuutusDataOptions options) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType, System.Threading.CancellationToken ct) { }
-    }
-    public sealed class SqlServerDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider
-    {
-        public SqlServerDataWriterProvider(Valtuutus.Data.DbConnectionFactory factory, IdGen.IIdGenerator<long> idGenerator, Sqids.SqidsEncoder<long> encoder) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
-    }
-}
-namespace Valtuutus.Data.SqlServer.Utils
-{
-    public static class SqlBuilderExtensions
-    {
-        public static Dapper.SqlBuilder FilterAttributes(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.EntityAttributeFilter filter) { }
-        public static Dapper.SqlBuilder FilterAttributes(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds) { }
-        public static Dapper.SqlBuilder FilterDeleteAttributes(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.DeleteAttributesFilter[] filters) { }
-        public static Dapper.SqlBuilder FilterDeleteRelations(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.DeleteRelationsFilter[] filters) { }
-        public static Dapper.SqlBuilder FilterRelations(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
-        public static Dapper.SqlBuilder FilterRelations(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType) { }
-        public static Dapper.SqlBuilder FilterRelations(this Dapper.SqlBuilder builder, Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entitiesIds, string? subjectRelation) { }
+        public static Valtuutus.Data.IValtuutusDataBuilder AddSqlServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory) { }
     }
 }

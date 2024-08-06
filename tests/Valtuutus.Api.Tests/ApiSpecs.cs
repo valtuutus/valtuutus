@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Data;
+using Valtuutus.Data.Db;
 using Valtuutus.Data.InMemory;
 using Valtuutus.Data.Postgres;
 using Valtuutus.Data.SqlServer;
@@ -18,8 +19,15 @@ public class ApiSpecs
     [Fact]
     public Task ApproveData()
     {
+        return ApiSpecExtensions.VerifyAssembly<RateLimiterExecuter>();
+    }
+    
+    [Fact]
+    public Task ApproveDataDb()
+    {
         return ApiSpecExtensions.VerifyAssembly<JsonTypeHandler>();
     }
+
 
     [Fact]
     public Task ApprovePostgres()

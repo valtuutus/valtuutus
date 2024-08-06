@@ -3,7 +3,7 @@ using Dapper;
 
 namespace Valtuutus.Data.Postgres.Utils;
 
-public static class SqlBuilderExtensions
+internal static class SqlBuilderExtensions
 {
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter tupleFilter)
     {

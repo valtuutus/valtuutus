@@ -4,7 +4,6 @@ using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using Sqids;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
@@ -25,11 +24,10 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         // act
         var dataEngine = _provider.GetRequiredService<DataEngine>();
         var snapToken = await dataEngine.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
-        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
-        var transactionId = decoder.Decode(snapToken.Value).Single();
+        var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
-        using var db = _fixture.DbFactory();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
         var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id)", 
             new { id = transactionId });
         var exists = await db.ExecuteScalarAsync<bool>("""
@@ -54,7 +52,6 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         var dataEngine = _provider.GetRequiredService<DataEngine>();
         
         // act
-        var decoder = _provider.GetRequiredService<SqidsEncoder<long>>();
         var newSnapToken = await dataEngine.Delete(new DeleteFilter
         {
             Relations = new[] { new DeleteRelationsFilter
@@ -70,9 +67,9 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         
         // assert
-        using var db = _fixture.DbFactory();
-        
-        var newTransactionId = decoder.Decode(newSnapToken.Value).Single();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+
+        var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
         var newTransaction = await db.ExecuteScalarAsync<bool>("""
                                                                SELECT
@@ -87,14 +84,14 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         newTransaction.Should().BeTrue();
     }
 
-    protected override void AddSpecificProvider(IValtuutusDataBuilder builder)
+    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        builder.AddSqlServer(_ => _fixture.DbFactory);
+        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = _fixture.DbFactory();
+        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
         var relations = (await db.QueryAsync<RelationTuple>("""
             SELECT  entity_type,
                     entity_id,

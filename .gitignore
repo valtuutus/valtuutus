@@ -477,6 +477,8 @@ $RECYCLE.BIN/
 *.msm
 *.msp
 
+*.received.txt
+
 # Windows shortcuts
 *.lnk
 

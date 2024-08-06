@@ -4,17 +4,13 @@
         <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <Description>Valtuutus data abstractions; $(Description)</Description>
+        <Description>Valtuutus data access abstractions; $(Description)</Description>
         <PackageTags>$(PackageTags)</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Dapper" />
-      <PackageReference Include="Dapper.SqlBuilder" />
-      <PackageReference Include="IdGen.DependencyInjection" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-      <PackageReference Include="Sqids" />
+      <PackageReference Include="Ulid" />
     </ItemGroup>
 
     <ItemGroup>

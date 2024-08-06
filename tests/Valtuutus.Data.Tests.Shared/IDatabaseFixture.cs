@@ -1,8 +1,13 @@
+using Valtuutus.Data.Db;
+
 namespace Valtuutus.Data.Tests.Shared;
 
 public interface IDatabaseFixture
 {
-     DbConnectionFactory DbFactory { get; }
 
     Task ResetDatabaseAsync();
+}
+public interface IWithDbConnectionFactory
+{
+    DbConnectionFactory DbFactory { get; }
 }

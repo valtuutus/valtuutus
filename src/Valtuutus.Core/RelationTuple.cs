@@ -27,3 +27,28 @@ public record RelationTuple
         return SubjectRelation == "";
     }
 }
+
+internal class RelationTupleComparer : IEqualityComparer<RelationTuple> {
+    private RelationTupleComparer()
+    {
+    }
+
+    internal static IEqualityComparer<RelationTuple> Instance { get; } = new RelationTupleComparer();
+
+    public bool Equals(RelationTuple? x, RelationTuple? y)
+    {
+        if (ReferenceEquals(x, y)) return true;
+        if (ReferenceEquals(x, null)) return false;
+        if (ReferenceEquals(y, null)) return false;
+        if (x.GetType() != y.GetType()) return false;
+        return x.SubjectType == y.SubjectType && x.SubjectId == y.SubjectId;
+    }
+
+    public int GetHashCode(RelationTuple obj)
+    {
+        unchecked
+        {
+            return (obj.SubjectType.GetHashCode() * 397) ^ obj.SubjectId.GetHashCode();
+        }
+    }
+}
