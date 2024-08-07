@@ -2,6 +2,7 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
+using Valtuutus.Core.Engines.Check;
 
 namespace Valtuutus.Tests.Shared;
 

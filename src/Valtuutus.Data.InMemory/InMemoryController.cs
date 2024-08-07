@@ -15,6 +15,7 @@ internal sealed class InMemoryController
         _actorSystem = ActorSystem.Create("InMemoryController");
         _relations = _actorSystem.ActorOf<RelationsActor>("relations");
         _attributes = _actorSystem.ActorOf<AttributesActor>("attributes");
+        //_transactions = _actorSystem.ActorOf<TransactionsActor>("transactions");
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
@@ -70,4 +71,8 @@ internal sealed class InMemoryController
 
     }
 
+    public Task<SnapToken?> GetLatestSnapToken(CancellationToken ct)
+    {
+        return Task.FromResult<SnapToken?>(SnapToken.Empty); 
+    }
 }

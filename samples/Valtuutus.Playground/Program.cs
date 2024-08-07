@@ -13,6 +13,9 @@ using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
 using Valtuutus.Data.SqlServer;
 

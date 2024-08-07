@@ -4,7 +4,7 @@ using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.Check;
 
 public enum RelationType
 {
@@ -14,7 +14,7 @@ public enum RelationType
     Attribute
 }
 
-public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
+public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICheckEngine
 {
     /// <summary>
     /// The check function walks through the schema graph to answer the question: "Can entity U perform action Y in resource Z?".

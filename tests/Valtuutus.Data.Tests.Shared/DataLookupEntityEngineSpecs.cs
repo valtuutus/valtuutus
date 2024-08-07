@@ -5,6 +5,7 @@ using Valtuutus.Core.Schemas;
 using Valtuutus.Tests.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Valtuutus.Core.Engines.LookupEntity;
 
 namespace Valtuutus.Data.Tests.Shared;
 

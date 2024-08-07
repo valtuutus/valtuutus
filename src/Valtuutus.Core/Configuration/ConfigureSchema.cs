@@ -1,5 +1,8 @@
 ﻿using Valtuutus.Core.Schemas;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 
 namespace Valtuutus.Core.Configuration;
 

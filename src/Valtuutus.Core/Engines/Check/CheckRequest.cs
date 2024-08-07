@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Valtuutus.Core.Data;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.Check;
 
 public record CheckRequest
 {
@@ -10,6 +11,8 @@ public record CheckRequest
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
+    
+    public SnapToken? SnapToken { get; init; }
     
     public CheckRequest() {}
     

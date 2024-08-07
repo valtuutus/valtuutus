@@ -98,7 +98,22 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         }, cancellationToken);
         
     }
-    
+
+    public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var query = @"SELECT TOP 1 id FROM dbo.transactions ORDER BY created_at DESC";
+
+            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query, cancellationToken: ct));
+            return res != null ? new SnapToken(res) : (SnapToken?)null;
+        }, cancellationToken);
+    }
+
     public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

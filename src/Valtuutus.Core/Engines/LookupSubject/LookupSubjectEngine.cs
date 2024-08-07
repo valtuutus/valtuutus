@@ -1,11 +1,13 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using LookupSubjectFunction =
-    System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Valtuutus.Core.RelationOrAttributeTuples>>;
+    System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupSubject.RelationOrAttributeTuples>>;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.LookupSubject;
 
 internal record LookupSubjectRequestInternal
 {
@@ -21,7 +23,7 @@ internal record LookupSubjectRequestInternal
 
 public sealed class LookupSubjectEngine(
     Schema schema,
-    IDataReaderProvider reader)
+    IDataReaderProvider reader) : ILookupSubjectEngine
 {
     /// <summary>
     /// The LookupSubject lets you ask "Which subjects of type T can do action Y on entity:X?"
