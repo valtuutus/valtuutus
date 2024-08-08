@@ -57,6 +57,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     public Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
         var transactId = Ulid.NewUlid().ToString();
+        _controller.CreateTransaction(transactId);
         _controller.Write(relations, attributes, ct);
         return Task.FromResult(new SnapToken(transactId));
     }
@@ -64,6 +65,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     public Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         var transactId = Ulid.NewUlid().ToString();
+        _controller.CreateTransaction(transactId);
         _controller.Delete(filter, ct);
         return Task.FromResult(new SnapToken(transactId));
     }

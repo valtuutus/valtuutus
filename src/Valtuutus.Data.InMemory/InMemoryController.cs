@@ -9,13 +9,15 @@ internal sealed class InMemoryController
     private readonly ActorSystem _actorSystem;
     private readonly IActorRef _relations;
     private readonly IActorRef _attributes;
+    private readonly IActorRef _transactions;
+
     
     public InMemoryController()
     {
         _actorSystem = ActorSystem.Create("InMemoryController");
         _relations = _actorSystem.ActorOf<RelationsActor>("relations");
         _attributes = _actorSystem.ActorOf<AttributesActor>("attributes");
-        //_transactions = _actorSystem.ActorOf<TransactionsActor>("transactions");
+        _transactions = _actorSystem.ActorOf<TransactionsActor>("transactions");
     }
 
     public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken ct)
@@ -71,8 +73,14 @@ internal sealed class InMemoryController
 
     }
 
-    public Task<SnapToken?> GetLatestSnapToken(CancellationToken ct)
+    public async Task<SnapToken?> GetLatestSnapToken(CancellationToken ct)
     {
-        return Task.FromResult<SnapToken?>(SnapToken.Empty); 
+        var id = await _transactions.Ask<string?>(TransactionsActor.Commands.GetLatest.Instance);
+        return id is null ? null : new SnapToken(id);
+    }
+
+    public void CreateTransaction(string id)
+    {
+        _transactions.Tell(new TransactionsActor.Commands.Create(id));
     }
 }
