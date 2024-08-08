@@ -2,12 +2,13 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
+using Valtuutus.Core.Engines.LookupEntity;
 
 namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseLookupEntityEngineSpecs
 {
-    protected abstract ValueTask<LookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+    protected abstract ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         Schema? schema = null);
     
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>

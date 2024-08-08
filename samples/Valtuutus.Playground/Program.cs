@@ -13,7 +13,11 @@ using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
+using Valtuutus.Data.Caching;
 using Valtuutus.Data.SqlServer;
 
 
@@ -23,6 +27,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddFusionCache();
 
 builder.Services.AddValtuutusCore(c =>
     {
@@ -62,7 +68,8 @@ builder.Services.AddValtuutusCore(c =>
 #else
 .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!))
 #endif
-    .AddConcurrentQueryLimit(3);
+    .AddConcurrentQueryLimit(3)
+    .AddCaching();
 
 Activity.DefaultIdFormat = ActivityIdFormat.W3C;
 
@@ -78,6 +85,8 @@ builder.Services
         telemetry
             .AddSource(DefaultActivitySource.SourceName)
             .AddSource(DefaultActivitySource.SourceNameInternal)
+            .AddNpgsql()
+            .AddFusionCacheInstrumentation()
             .AddAspNetCoreInstrumentation(o =>
             {
                 o.RecordException = true;
@@ -111,22 +120,22 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        async ([AsParameters] CheckRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.Check(req, ct))
+        async ([AsParameters] CheckRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => await service.Check(req, ct))
     .WithName("Check Relation")
     .WithOpenApi();
 
 app.MapPost("/lookup-entity",
-        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEntityEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+        async ([FromBody] LookupEntityRequest req, [FromServices] ILookupEntityEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
     .WithName("Lookup entity")
     .WithOpenApi();
 
 app.MapPost("/lookup-subject",
-        async ([FromBody] LookupSubjectRequest req, [FromServices] LookupSubjectEngine service, CancellationToken ct) => await service.Lookup(req, ct))
+        async ([FromBody] LookupSubjectRequest req, [FromServices] ILookupSubjectEngine service, CancellationToken ct) => await service.Lookup(req, ct))
     .WithName("Lookup subject")
     .WithOpenApi();
 
 app.MapPost("/subject-permission",
-        async ([FromBody] SubjectPermissionRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
+        async ([FromBody] SubjectPermissionRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
     .WithName("Subject permission")
     .WithOpenApi();
 

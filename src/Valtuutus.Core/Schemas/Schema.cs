@@ -1,4 +1,6 @@
-﻿namespace Valtuutus.Core.Schemas;
+﻿using Valtuutus.Core.Engines.Check;
+
+namespace Valtuutus.Core.Schemas;
 
 public record Schema(Dictionary<string, Entity> Entities)
 {

@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Description>Valtuutus relational caching abstractions; $(Description)</Description>
+        <PackageTags>$(PackageTags);cache</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Valtuutus.Core\Valtuutus.Core.csproj" />
+      <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="ZiggyCreatures.FusionCache" />
+    </ItemGroup>
+
+</Project>

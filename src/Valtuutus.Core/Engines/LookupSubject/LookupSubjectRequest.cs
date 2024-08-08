@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using Valtuutus.Core.Data;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.LookupSubject;
 
 public record LookupSubjectRequest
 {
@@ -20,4 +21,7 @@ public record LookupSubjectRequest
     public required string EntityId { get; init; }
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
+    
+    public SnapToken? SnapToken { get; init; }
+
 }

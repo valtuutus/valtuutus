@@ -5,6 +5,7 @@ using Valtuutus.Core.Schemas;
 using Valtuutus.Tests.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Valtuutus.Core.Engines.LookupEntity;
 
 namespace Valtuutus.Data.Tests.Shared;
 
@@ -32,11 +33,11 @@ public abstract class DataLookupEntityEngineSpecs : BaseLookupEntityEngineSpecs,
         return services.BuildServiceProvider();
     }
     
-    protected sealed override async ValueTask<LookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    protected sealed override async ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
-        var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<LookupEntityEngine>();
+        var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
         if(tuples.Length == 0 && attributes.Length == 0) return lookupEntityEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);

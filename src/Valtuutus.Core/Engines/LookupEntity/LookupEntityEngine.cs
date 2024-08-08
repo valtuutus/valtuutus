@@ -1,12 +1,13 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using LookupFunction =
     System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<
-        System.Collections.Generic.List<Valtuutus.Core.RelationOrAttributeTuple>>>;
+        System.Collections.Generic.List<Valtuutus.Core.Engines.LookupEntity.RelationOrAttributeTuple>>>;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.LookupEntity;
 
 internal record LookupEntityRequestInternal
 {
@@ -21,7 +22,7 @@ internal record LookupEntityRequestInternal
 
 public sealed class LookupEntityEngine(
     Schema schema,
-    IDataReaderProvider reader)
+    IDataReaderProvider reader) : ILookupEntityEngine
 {
     /// <summary>
     /// The LookupEntity method lets you ask "Which resources of type T can entity:X do action Y?"
