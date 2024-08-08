@@ -12,12 +12,12 @@ public record CheckRequest
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
     
-    public SnapToken? SnapToken { get; init; }
+    public string? SnapToken { get; init; }
     
     public CheckRequest() {}
     
     [SetsRequiredMembers]
-    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null)
+    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, string? snapToken = null)
     {
         EntityType = entityType;
         EntityId = entityId;
@@ -25,5 +25,6 @@ public record CheckRequest
         SubjectType = subjectType;
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
+        SnapToken = snapToken;
     }
 }

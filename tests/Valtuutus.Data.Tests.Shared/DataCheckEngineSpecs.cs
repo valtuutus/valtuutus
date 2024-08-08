@@ -34,11 +34,11 @@ public abstract class DataCheckEngineSpecs : BaseCheckEngineSpecs, IAsyncLifetim
         return services.BuildServiceProvider();
     }
     
-    protected sealed override async ValueTask<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    protected sealed override async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
-        var checkEngine = scope.ServiceProvider.GetRequiredService<CheckEngine>();
+        var checkEngine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
         if(tuples.Length == 0 && attributes.Length == 0) return checkEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);

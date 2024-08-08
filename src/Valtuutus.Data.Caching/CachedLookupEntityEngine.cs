@@ -21,7 +21,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
     // <inheritdoc />
     public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        req = req.SnapToken is not null ? req with { SnapToken = await _reader.GetLatestSnapToken(cancellationToken) } : req;
+        req = req.SnapToken is null ? req with { SnapToken = await _reader.GetLatestSnapToken(cancellationToken) } : req;
         return await _cache.GetOrSetAsync(GetLookupCacheKey(req), ct => _engine.LookupEntity(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
     

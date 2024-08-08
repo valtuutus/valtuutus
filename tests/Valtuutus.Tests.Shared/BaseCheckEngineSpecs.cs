@@ -8,7 +8,7 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseCheckEngineSpecs
 {
-    protected abstract ValueTask<CheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+    protected abstract ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         Schema? schema = null);
 
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> TopLevelChecks =
