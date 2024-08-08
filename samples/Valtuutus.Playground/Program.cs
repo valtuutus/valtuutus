@@ -85,6 +85,8 @@ builder.Services
         telemetry
             .AddSource(DefaultActivitySource.SourceName)
             .AddSource(DefaultActivitySource.SourceNameInternal)
+            .AddNpgsql()
+            .AddFusionCacheInstrumentation()
             .AddAspNetCoreInstrumentation(o =>
             {
                 o.RecordException = true;
