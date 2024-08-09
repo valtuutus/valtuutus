@@ -22,5 +22,6 @@ namespace Valtuutus.Data
     {
         public ValtuutusDataOptions() { }
         public int MaxConcurrentQueries { get; }
+        public System.Func<System.IServiceProvider, Valtuutus.Core.Data.SnapToken, System.Threading.Tasks.Task>? OnDataWritten { get; set; }
     }
 }
