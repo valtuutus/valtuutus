@@ -21,6 +21,6 @@ public record LookupEntityRequest
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
-    public SnapToken? SnapToken { get; init; }
+    public SnapToken? SnapToken { get; set; }
     
 }

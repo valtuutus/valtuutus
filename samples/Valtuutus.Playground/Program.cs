@@ -1,5 +1,6 @@
 #define postgres
 
+
 using System.Diagnostics;
 using Valtuutus.Api;
 using Valtuutus.Core;
@@ -9,16 +10,22 @@ using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Postgres;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using StackExchange.Redis;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
 using Valtuutus.Data.Caching;
 using Valtuutus.Data.SqlServer;
+using ZiggyCreatures.Caching.Fusion;
+using ZiggyCreatures.Caching.Fusion.Backplane.StackExchangeRedis;
+using ZiggyCreatures.Caching.Fusion.Serialization.SystemTextJson;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,7 +35,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddFusionCache();
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis")!;
+
+var muxxer = ConnectionMultiplexer.Connect(redisConnectionString);
+builder.Services.AddFusionCache()
+    .WithSerializer(
+        new FusionCacheSystemTextJsonSerializer()
+        )
+    .WithDistributedCache(
+        new RedisCache(new RedisCacheOptions()
+        {
+            ConnectionMultiplexerFactory = () => Task.FromResult((IConnectionMultiplexer)muxxer)
+        }))
+    .WithBackplane(
+        new RedisBackplane(new RedisBackplaneOptions()
+        {
+            ConnectionMultiplexerFactory = () => Task.FromResult((IConnectionMultiplexer)muxxer)
+        }));
 
 builder.Services.AddValtuutusCore(c =>
     {
@@ -139,6 +162,12 @@ app.MapPost("/subject-permission",
     .WithName("Subject permission")
     .WithOpenApi();
 
+app.MapPost("/write",
+        async ([FromBody] WriteRequest request, [FromServices] IDataWriterProvider writer, CancellationToken ct) => await writer.Write(request.Relations, request.Attributes, ct))
+    .WithName("Write data")
+    .WithOpenApi();
+
+
 
 #if postgres
 _ = Task.Run(async () => await Seeder.SeedPostgres(app.Services)); 
@@ -146,3 +175,5 @@ _ = Task.Run(async () => await Seeder.SeedPostgres(app.Services));
 _ = Task.Run(async () => await Seeder.SeedSqlServer(app.Services)); 
 #endif
 app.Run();
+
+record WriteRequest(List<RelationTuple> Relations, List<AttributeTuple> Attributes);

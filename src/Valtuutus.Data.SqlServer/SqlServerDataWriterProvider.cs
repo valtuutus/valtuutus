@@ -11,10 +11,14 @@ namespace Valtuutus.Data.SqlServer;
 internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
+    private readonly ValtuutusDataOptions _options;
+    private readonly IServiceProvider _provider;
 
-    public SqlServerDataWriterProvider(DbConnectionFactory factory)
+    public SqlServerDataWriterProvider(DbConnectionFactory factory, ValtuutusDataOptions options, IServiceProvider provider)
     {
-        _factory = factory;
+            _factory = factory;
+            _options = options;
+            _provider = provider;
     }
     
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
@@ -76,8 +80,10 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 #else
         await transaction.CommitAsync(ct);
 #endif
-        
-        return new SnapToken(transactionId.ToString());
+
+            var snapToken = new SnapToken(transactionId.ToString());    
+            await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+            return snapToken;        
     }
     
 
@@ -121,7 +127,10 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 #else
         await transaction.CommitAsync(ct);
 #endif
-        return new SnapToken(transactId.ToString());
+            
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;
     }
     
     private static async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction, CancellationToken ct)

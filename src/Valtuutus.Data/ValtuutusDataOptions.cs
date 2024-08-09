@@ -1,4 +1,6 @@
-﻿namespace Valtuutus.Data;
+﻿using Valtuutus.Core.Data;
+
+namespace Valtuutus.Data;
 
 /// <summary>
 /// POCO that stores the options for the Valtuutus.Data library.
@@ -9,4 +11,6 @@ public record ValtuutusDataOptions
     /// The amount of concurrent queries that a Check Request can evaluate at the same time.
     /// </summary>
     public int MaxConcurrentQueries { get; internal set; } = 5;
+    
+    public Func<IServiceProvider, SnapToken, Task>? OnDataWritten { get; set; }
 }

@@ -8,5 +8,5 @@ public record SubjectPermissionRequest
     public required string EntityId { get; init; }
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
-    public SnapToken? SnapToken { get; init; }
+    public SnapToken? SnapToken { get; set; }
 };

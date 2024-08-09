@@ -11,10 +11,14 @@ namespace Valtuutus.Data.Postgres;
 internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
+    private readonly IServiceProvider _provider;
+    private readonly ValtuutusDataOptions _options;
 
-    public PostgresDataWriterProvider(DbConnectionFactory factory)
+    public PostgresDataWriterProvider(DbConnectionFactory factory, IServiceProvider provider, ValtuutusDataOptions options)
     {
         _factory = factory;
+        _provider = provider;
+        _options = options;
     }
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
@@ -65,8 +69,9 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await transaction.CommitAsync(ct);
 
-        return new SnapToken(transactId.ToString());
-    }
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;    }
 
     private static async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
@@ -113,6 +118,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await InsertTransaction(db, transactId, transaction, ct);
         await transaction.CommitAsync(ct);
-        return new SnapToken(transactId.ToString());
-    }
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;    }
 }

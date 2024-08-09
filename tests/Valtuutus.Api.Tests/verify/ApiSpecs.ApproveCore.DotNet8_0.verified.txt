@@ -154,14 +154,14 @@ namespace Valtuutus.Core.Engines.Check
         [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public CheckRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
-        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null) { }
+        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, string? snapToken = null) { }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Permission { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
+        public string? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }

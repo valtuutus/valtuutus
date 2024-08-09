@@ -1,6 +1,7 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Observability;
 using ZiggyCreatures.Caching.Fusion;
 
 namespace Valtuutus.Data.Caching;
@@ -21,7 +22,13 @@ public sealed class CachedCheckEngine : ICheckEngine
     /// <inheritdoc />
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
-        req = req.SnapToken is null ? req with { SnapToken = (await _reader.GetLatestSnapToken(cancellationToken))?.Value } : req;
+        using var activity = DefaultActivitySource.Instance.StartActivity("CachedCheck");
+
+        if (req.SnapToken is null)
+        {
+            var latest = await _cache.GetOrSetAsync(Consts.LatestSnapTokenKey, ct => _reader.GetLatestSnapToken(ct), TimeSpan.FromMinutes(5), cancellationToken);
+            req.SnapToken = latest?.Value;
+        }
         return await _cache.GetOrSetAsync(GetCheckCacheKey(req), ct => _engine.Check(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
 
@@ -29,7 +36,13 @@ public sealed class CachedCheckEngine : ICheckEngine
     /// <inheritdoc />
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
-        req = req.SnapToken is null ? req with { SnapToken = await _reader.GetLatestSnapToken(cancellationToken) } : req;
+        using var activity = DefaultActivitySource.Instance.StartActivity("CachedSubjectPermission");
+
+        if (req.SnapToken is null)
+        {
+            var latest = await _cache.GetOrSetAsync(Consts.LatestSnapTokenKey, ct => _reader.GetLatestSnapToken(ct), TimeSpan.FromMinutes(5), cancellationToken);
+            req.SnapToken = latest;
+        }
         return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(req), ct => _engine.SubjectPermission(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
     

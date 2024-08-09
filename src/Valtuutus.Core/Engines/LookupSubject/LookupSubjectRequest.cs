@@ -22,6 +22,6 @@ public record LookupSubjectRequest
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
     
-    public SnapToken? SnapToken { get; init; }
+    public SnapToken? SnapToken { get; set; }
 
 }

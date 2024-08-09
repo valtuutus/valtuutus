@@ -12,7 +12,7 @@ public record CheckRequest
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
     
-    public string? SnapToken { get; init; }
+    public string? SnapToken { get; set; }
     
     public CheckRequest() {}
     

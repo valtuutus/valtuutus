@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
+using ZiggyCreatures.Caching.Fusion;
 
 namespace Valtuutus.Data.Caching;
 
@@ -24,6 +25,15 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<ICheckEngine, CachedCheckEngine>();
         builder.Services.AddScoped<ILookupEntityEngine, CachedLookupEntityEngine>();
         builder.Services.AddScoped<ILookupSubjectEngine, CachedLookupSubjectEngine>();
+
+        builder.Options.OnDataWritten = async (sp, st) =>
+        {
+            var cache = sp.GetRequiredService<IFusionCache>();
+            await cache.SetAsync(Consts.LatestSnapTokenKey, st, options =>
+            {
+                options.AllowBackgroundBackplaneOperations = false;
+            });
+        };
 
         return builder;
     }
