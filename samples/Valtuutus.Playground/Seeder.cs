@@ -4,7 +4,6 @@ using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
-using Valtuutus.Data;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Api;

@@ -4,7 +4,7 @@ using Valtuutus.Core.Data;
 namespace Valtuutus.Core.Engines.LookupEntity;
 
 
-public record LookupEntityRequest
+public record LookupEntityRequest : IWithSnapToken
 {
     [SetsRequiredMembers]
     public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId)

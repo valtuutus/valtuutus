@@ -1,5 +1,4 @@
-﻿using Valtuutus.Core;
-using Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
 using ZiggyCreatures.Caching.Fusion;
@@ -24,25 +23,17 @@ public sealed class CachedCheckEngine : ICheckEngine
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedCheck");
 
-        if (req.SnapToken is null)
-        {
-            var latest = await _cache.GetOrSetAsync(Consts.LatestSnapTokenKey, ct => _reader.GetLatestSnapToken(ct), TimeSpan.FromMinutes(5), cancellationToken);
-            req.SnapToken = latest?.Value;
-        }
+        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
         return await _cache.GetOrSetAsync(GetCheckCacheKey(req), ct => _engine.Check(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
 
-    
+
     /// <inheritdoc />
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedSubjectPermission");
 
-        if (req.SnapToken is null)
-        {
-            var latest = await _cache.GetOrSetAsync(Consts.LatestSnapTokenKey, ct => _reader.GetLatestSnapToken(ct), TimeSpan.FromMinutes(5), cancellationToken);
-            req.SnapToken = latest;
-        }
+        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
         return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(req), ct => _engine.SubjectPermission(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
     

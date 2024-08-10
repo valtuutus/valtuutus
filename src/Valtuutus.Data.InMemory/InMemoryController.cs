@@ -75,7 +75,7 @@ internal sealed class InMemoryController
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken ct)
     {
-        var id = await _transactions.Ask<string?>(TransactionsActor.Commands.GetLatest.Instance);
+        var id = await _transactions.Ask<string?>(TransactionsActor.Commands.GetLatest.Instance, ct);
         return id is null ? null : new SnapToken(id);
     }
 

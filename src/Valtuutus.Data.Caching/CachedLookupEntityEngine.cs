@@ -1,5 +1,4 @@
-﻿using Valtuutus.Core;
-using Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using ZiggyCreatures.Caching.Fusion;
@@ -24,11 +23,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookupEntity");
 
-        if (req.SnapToken is null)
-        {
-            var latest = await _cache.GetOrSetAsync(Consts.LatestSnapTokenKey, ct => _reader.GetLatestSnapToken(ct), TimeSpan.FromMinutes(5), cancellationToken);
-            req.SnapToken = latest;
-        }
+        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
         return await _cache.GetOrSetAsync(GetLookupCacheKey(req), ct => _engine.LookupEntity(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
     

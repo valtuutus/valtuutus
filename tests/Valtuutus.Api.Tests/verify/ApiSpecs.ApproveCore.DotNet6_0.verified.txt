@@ -126,13 +126,13 @@ namespace Valtuutus.Core.Engines.Check
         public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken ct) { }
     }
-    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public CheckRequest() { }
-        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, string? snapToken = null) { }
-        public string? SnapToken { get; set; }
+        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default) { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Permission { get; init; }
@@ -142,8 +142,8 @@ namespace Valtuutus.Core.Engines.Check
     }
     public interface ICheckEngine
     {
-        System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken ct);
-        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public enum RelationType
     {
@@ -152,7 +152,7 @@ namespace Valtuutus.Core.Engines.Check
         Permission = 2,
         Attribute = 3,
     }
-    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>
+    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -164,18 +164,25 @@ namespace Valtuutus.Core.Engines.Check
         public string SubjectType { get; init; }
     }
 }
+namespace Valtuutus.Core.Engines
+{
+    public interface IWithSnapToken
+    {
+        Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+    }
+}
 namespace Valtuutus.Core.Engines.LookupEntity
 {
     public interface ILookupEntityEngine
     {
-        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public sealed class LookupEntityEngine : Valtuutus.Core.Engines.LookupEntity.ILookupEntityEngine
     {
         public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken ct) { }
     }
-    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -192,14 +199,14 @@ namespace Valtuutus.Core.Engines.LookupSubject
 {
     public interface ILookupSubjectEngine
     {
-        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public sealed class LookupSubjectEngine : Valtuutus.Core.Engines.LookupSubject.ILookupSubjectEngine
     {
         public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken ct) { }
     }
-    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]

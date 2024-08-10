@@ -3,7 +3,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.Check;
 
-public record CheckRequest
+public record CheckRequest : IWithSnapToken
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -12,12 +12,12 @@ public record CheckRequest
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
     
-    public string? SnapToken { get; set; }
+    public SnapToken? SnapToken { get; set; }
     
     public CheckRequest() {}
     
     [SetsRequiredMembers]
-    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, string? snapToken = null)
+    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, SnapToken? snapToken = null)
     {
         EntityType = entityType;
         EntityId = entityId;

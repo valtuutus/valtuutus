@@ -2,7 +2,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.Check;
 
-public record SubjectPermissionRequest
+public record SubjectPermissionRequest : IWithSnapToken
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
