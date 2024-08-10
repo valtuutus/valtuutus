@@ -24,13 +24,8 @@ public sealed class LookupEntityEngine(
     Schema schema,
     IDataReaderProvider reader) : ILookupEntityEngine
 {
-    /// <summary>
-    /// The LookupEntity method lets you ask "Which resources of type T can entity:X do action Y?"
-    /// </summary>
-    /// <param name="req">The object containing information about the question being asked</param>
-    /// <param name="ct">Cancellation Token</param>
-    /// <returns>The list of ids of the entities</returns>
-    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupEntitySpanAttributes(req));
         var internalReq = new LookupEntityRequestInternal
@@ -43,7 +38,7 @@ public sealed class LookupEntityEngine(
             FinalSubjectId = req.SubjectId
         };
 
-        var res = await LookupEntityInternal(internalReq)(ct);
+        var res = await LookupEntityInternal(internalReq)(cancellationToken);
         var hs =  new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
         activity?.AddEvent(new ActivityEvent("LookupEntityResult", tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;

@@ -141,27 +141,35 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        async ([AsParameters] CheckRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => await service.Check(req, ct))
+        ([FromQuery] string entityType, 
+        [FromQuery] string entityId, 
+        [FromQuery] string permission, 
+        [FromQuery] string subjectType, 
+        [FromQuery] string subjectId, 
+        [FromQuery] string? subjectRelation, 
+        [FromQuery] string? snapToken, 
+        [FromServices] ICheckEngine service, CancellationToken ct) => service.Check(new CheckRequest(entityType, entityId, permission
+            ,subjectType, subjectId, subjectRelation, snapToken is null ? null : new SnapToken(snapToken)), ct))
     .WithName("Check Relation")
     .WithOpenApi();
 
 app.MapPost("/lookup-entity",
-        async ([FromBody] LookupEntityRequest req, [FromServices] ILookupEntityEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+        ([FromBody] LookupEntityRequest req, [FromServices] ILookupEntityEngine service, CancellationToken ct) => service.LookupEntity(req, ct))
     .WithName("Lookup entity")
     .WithOpenApi();
 
 app.MapPost("/lookup-subject",
-        async ([FromBody] LookupSubjectRequest req, [FromServices] ILookupSubjectEngine service, CancellationToken ct) => await service.Lookup(req, ct))
+        ([FromBody] LookupSubjectRequest req, [FromServices] ILookupSubjectEngine service, CancellationToken ct) => service.Lookup(req, ct))
     .WithName("Lookup subject")
     .WithOpenApi();
 
 app.MapPost("/subject-permission",
-        async ([FromBody] SubjectPermissionRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
+        ([FromBody] SubjectPermissionRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => service.SubjectPermission(req, ct))
     .WithName("Subject permission")
     .WithOpenApi();
 
 app.MapPost("/write",
-        async ([FromBody] WriteRequest request, [FromServices] IDataWriterProvider writer, CancellationToken ct) => await writer.Write(request.Relations, request.Attributes, ct))
+        ([FromBody] WriteRequest request, [FromServices] IDataWriterProvider writer, CancellationToken ct) => writer.Write(request.Relations, request.Attributes, ct))
     .WithName("Write data")
     .WithOpenApi();
 

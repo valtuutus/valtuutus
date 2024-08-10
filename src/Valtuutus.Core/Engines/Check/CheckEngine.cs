@@ -16,17 +16,12 @@ public enum RelationType
 
 public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICheckEngine
 {
-    /// <summary>
-    /// The check function walks through the schema graph to answer the question: "Can entity U perform action Y in resource Z?".
-    /// </summary>
-    /// <param name="req">Object containing the required information to evaluate the check</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>True if the subject has the permission on the entity</returns>
-    public async Task<bool> Check(CheckRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
-        var val = await CheckInternal(req)(ct);
+        var val = await CheckInternal(req)(cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
         return val;
@@ -43,14 +38,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     }
 
 
-    /// <summary>
-    /// The SubjectPermission function walks through the schema graph and evaluates every condition required to check, for each permission
-    /// if the provided subject with `SubjectId` and `SubjectType` on the entity with `EntityId` and `EntityType`.
-    /// </summary>
-    /// <param name="req">Object containing the required information to evaluate the check</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>A dictionary containing every permission for the entity and if the subject has access to it</returns>
-    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
@@ -63,7 +52,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             Permission = x.Name,
             SubjectType = req.SubjectType,
             SubjectId = req.SubjectId
-        })(ct))).ToArray();
+        })(cancellationToken))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
         var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));

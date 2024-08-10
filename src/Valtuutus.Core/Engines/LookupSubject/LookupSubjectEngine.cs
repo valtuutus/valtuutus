@@ -25,13 +25,9 @@ public sealed class LookupSubjectEngine(
     Schema schema,
     IDataReaderProvider reader) : ILookupSubjectEngine
 {
-    /// <summary>
-    /// The LookupSubject lets you ask "Which subjects of type T can do action Y on entity:X?"
-    /// </summary>
-    /// <param name="req">The object containing information for which </param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>The list of ids of subjects of the provided type that has the permission on the specified entity.</returns>
-    public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken ct)
+
+    //<inheritdoc/>
+    public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupSubjectSpanAttributes(req));
         var internalReq = new LookupSubjectRequestInternal
@@ -45,7 +41,7 @@ public sealed class LookupSubjectEngine(
             RootEntityType = req.EntityType
         };
 
-        var res = await LookupInternal(internalReq)(ct);
+        var res = await LookupInternal(internalReq)(cancellationToken);
         var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult", tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
