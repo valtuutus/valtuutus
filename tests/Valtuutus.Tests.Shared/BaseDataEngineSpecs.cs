@@ -1,21 +1,20 @@
 ﻿using System.Text.Json.Nodes;
+using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
-using Valtuutus.Tests.Shared;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
+using Valtuutus.Data;
 
-namespace Valtuutus.Data.Tests.Shared;
+namespace Valtuutus.Tests.Shared;
 
 
-public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
+public abstract class BaseDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture _fixture = null!;
     protected readonly ServiceProvider _provider = null!;
 
-    protected DataSpecificDataEngineSpecs()
+    protected BaseDataEngineSpecs()
     {
         _provider = CreateServiceProvider();
     }

@@ -1,6 +1,6 @@
 using Valtuutus.Data.Db;
 
-namespace Valtuutus.Data.Tests.Shared;
+namespace Valtuutus.Tests.Shared;
 
 public interface IDatabaseFixture
 {

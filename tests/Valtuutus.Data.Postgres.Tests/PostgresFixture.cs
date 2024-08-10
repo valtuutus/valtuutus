@@ -1,9 +1,9 @@
-﻿using Valtuutus.Data.Tests.Shared;
-using Dapper;
+﻿using Dapper;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
 using Valtuutus.Data.Db;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 

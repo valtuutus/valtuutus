@@ -1,10 +1,10 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Valtuutus.Data.Tests.Shared;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
 [Collection("SqlServerSpec")]
-public sealed class CheckEngineSpecs : DataCheckEngineSpecs
+public sealed class CheckEngineSpecs : BaseCheckEngineSpecs
 {
     public CheckEngineSpecs(SqlServerFixture fixture)
     {

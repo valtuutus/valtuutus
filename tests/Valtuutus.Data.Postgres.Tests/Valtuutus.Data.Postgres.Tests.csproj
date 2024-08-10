@@ -25,7 +25,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
-      <ProjectReference Include="..\Valtuutus.Data.Tests.Shared\Valtuutus.Data.Tests.Shared.csproj" />
+        <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
+
     </ItemGroup>
 
 </Project>

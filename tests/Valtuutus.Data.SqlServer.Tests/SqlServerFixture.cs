@@ -1,9 +1,9 @@
-﻿using Valtuutus.Data.Tests.Shared;
-using Dapper;
+﻿using Dapper;
 using Microsoft.Data.SqlClient;
 using Respawn;
 using Testcontainers.MsSql;
 using Valtuutus.Data.Db;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 

@@ -1,15 +1,15 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
 
 [Collection("PostgreSqlSpec")]
-public class DataEngineSpecs : DataSpecificDataEngineSpecs
+public class DataEngineSpecs : BaseDataEngineSpecs
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

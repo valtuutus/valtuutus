@@ -2,14 +2,60 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.Check;
+using Valtuutus.Data;
 
 namespace Valtuutus.Tests.Shared;
 
-public abstract class BaseCheckEngineSpecs
+public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 {
-    protected abstract ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
-        Schema? schema = null);
+    
+    protected IDatabaseFixture _fixture = null!;
+
+    protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
+    
+    private ServiceProvider CreateServiceProvider(Schema? schema = null)
+    {
+        var services = new ServiceCollection()
+            .AddValtuutusCore(TestsConsts.Action);
+        
+        AddSpecificProvider(services)
+            .AddConcurrentQueryLimit(3);
+
+        
+        if (schema != null)
+        {
+            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
+            services.Remove(serviceDescriptor);
+            services.AddSingleton(schema);
+        }
+
+        return services.BuildServiceProvider();
+    }
+
+    private async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    {
+        var serviceProvider = CreateServiceProvider(schema);
+        var scope = serviceProvider.CreateScope();
+        var checkEngine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
+        if(tuples.Length == 0 && attributes.Length == 0) return checkEngine;
+        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await dataEngine.Write(tuples, attributes, default);
+        return checkEngine;
+    }
+    
+    public Task InitializeAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _fixture.ResetDatabaseAsync();
+    }
+    
 
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> TopLevelChecks =
         CheckEngineSpecList.TopLevelChecks;

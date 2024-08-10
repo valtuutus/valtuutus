@@ -1,15 +1,15 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
 
 [Collection("SqlServerSpec")]
-public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
+public sealed class DataEngineSpecs : BaseDataEngineSpecs
 {
 
     public DataEngineSpecs(SqlServerFixture fixture)

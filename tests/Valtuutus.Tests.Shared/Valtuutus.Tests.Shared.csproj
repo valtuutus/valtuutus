@@ -11,14 +11,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="FluentAssertions" />
-      <PackageReference Include="PublicApiGenerator" />
-      <PackageReference Include="Verify.Xunit" />
-      <PackageReference Include="xunit" />
+        <PackageReference Include="FluentAssertions" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+        <PackageReference Include="PublicApiGenerator" />
+        <PackageReference Include="Verify.Xunit" />
+        <PackageReference Include="xunit" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Core\Valtuutus.Core.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Data.Db\Valtuutus.Data.Db.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Data\Valtuutus.Data.csproj" />
     </ItemGroup>
 
 </Project>

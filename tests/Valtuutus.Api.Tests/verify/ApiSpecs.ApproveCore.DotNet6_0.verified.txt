@@ -132,10 +132,10 @@ namespace Valtuutus.Core.Engines.Check
             "your compiler.", true)]
         public CheckRequest() { }
         public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, string? snapToken = null) { }
+        public string? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Permission { get; init; }
-        public string? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
@@ -157,9 +157,9 @@ namespace Valtuutus.Core.Engines.Check
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public SubjectPermissionRequest() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string SubjectId { get; init; }
         public string SubjectType { get; init; }
     }
@@ -181,9 +181,9 @@ namespace Valtuutus.Core.Engines.LookupEntity
             "your compiler.", true)]
         public LookupEntityRequest() { }
         public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId) { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityType { get; init; }
         public string Permission { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string SubjectId { get; init; }
         public string SubjectType { get; init; }
     }
@@ -205,10 +205,10 @@ namespace Valtuutus.Core.Engines.LookupSubject
             "your compiler.", true)]
         public LookupSubjectRequest() { }
         public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId) { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Permission { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string SubjectType { get; init; }
     }
 }
