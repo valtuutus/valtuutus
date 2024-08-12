@@ -28,7 +28,9 @@ internal sealed class RelationsActor : ReceiveActor
 
     private void DumpRelationsHandler(Commands.DumpRelations _)
     {
-        Sender.Tell(_relationTuples.Where(x => x.deletedTxId is null).ToArray());
+        Sender.Tell(_relationTuples.Where(x => x.deletedTxId is null)
+            .Select(x => x.rel)
+            .ToArray());
     }
 
     private void DeleteRelationsHandler(Commands.DeleteRelations msg)
@@ -63,7 +65,7 @@ internal sealed class RelationsActor : ReceiveActor
         {
             result = result.Where(x =>  string.Compare(x.createdTxId, msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        Sender.Tell(result.ToList());
+        Sender.Tell(result.Select(x => x.rel).ToList());
     }
 
     private void GetRelationsWithEntityIdsHandler(Commands.GetRelationsWithEntityIds msg)
@@ -81,7 +83,7 @@ internal sealed class RelationsActor : ReceiveActor
         
         if (!string.IsNullOrEmpty(msg.SubjectRelation)) result = result.Where(x => x.rel.SubjectRelation == msg.SubjectRelation);
 
-        Sender.Tell(result.ToList());
+        Sender.Tell(result.Select(x => x.rel).ToList());
     }
 
     private void GetRelationsHandler(Commands.GetRelations msg)
@@ -101,7 +103,7 @@ internal sealed class RelationsActor : ReceiveActor
 
         if (!string.IsNullOrEmpty(msg.Filter.SubjectType)) result = result.Where(x => x.rel.SubjectType == msg.Filter.SubjectType);
 
-        Sender.Tell(result.ToList());
+        Sender.Tell(result.Select(x => x.rel).ToList());
     }
 
     internal static class Commands

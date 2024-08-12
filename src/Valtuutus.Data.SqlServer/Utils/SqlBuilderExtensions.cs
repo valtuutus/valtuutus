@@ -10,7 +10,7 @@ internal static class SqlBuilderExtensions
     {
         if (tupleFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = tupleFilter.SnapToken!.Value };
+            var parameters = new { SnapToken = tupleFilter.SnapToken!.Value.Value };
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -61,7 +61,7 @@ internal static class SqlBuilderExtensions
         
         if (entityRelationFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = entityRelationFilter.SnapToken!.Value };
+            var parameters = new { SnapToken = entityRelationFilter.SnapToken!.Value.Value };
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -111,7 +111,7 @@ internal static class SqlBuilderExtensions
         
         if (entityFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = entityFilter.SnapToken!.Value };
+            var parameters = new { SnapToken = entityFilter.SnapToken!.Value.Value };
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -153,7 +153,7 @@ internal static class SqlBuilderExtensions
         
         if (filter.SnapToken != null)
         {
-            var parameters = new { SnapToken = filter.SnapToken!.Value };
+            var parameters = new { SnapToken = filter.SnapToken!.Value.Value };
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -185,7 +185,7 @@ internal static class SqlBuilderExtensions
         
         if (filter.SnapToken != null)
         {
-            var parameters = new { SnapToken = filter.SnapToken!.Value };
+            var parameters = new { SnapToken = filter.SnapToken!.Value.Value };
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }

@@ -44,14 +44,14 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         return lookupEntityEngine;
     }
     
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    public async Task DisposeAsync()
+    public async Task InitializeAsync()
     {
         await _fixture.ResetDatabaseAsync();
+    }
+
+    public Task DisposeAsync()
+    {
+        return Task.CompletedTask;
     }
     
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>

@@ -28,7 +28,9 @@ internal sealed class AttributesActor : ReceiveActor
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
     {
-        Sender.Tell(_attributesTuples.Where(x => x.deletedTxId is null).ToArray());
+        Sender.Tell(_attributesTuples.Where(x => x.deletedTxId is null)
+            .Select(x => x.attr)
+            .ToArray());
     }
 
     private void DeleteAttributesHandler(Commands.DeleteAttributes msg)
@@ -59,7 +61,7 @@ internal sealed class AttributesActor : ReceiveActor
         {
             res = res.Where(x =>  string.Compare(x.createdTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        Sender.Tell(res
+        Sender.Tell(res.Select(x => x.attr)
             .ToList());
     }
 
@@ -73,7 +75,7 @@ internal sealed class AttributesActor : ReceiveActor
         }
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.attr.EntityId == msg.Filter.EntityId);
 
-        Sender.Tell(res.ToList());
+        Sender.Tell(res.Select(x => x.attr).ToList());
     }
 
     private void GetAttributeHandler(Commands.GetAttribute msg)
@@ -86,7 +88,7 @@ internal sealed class AttributesActor : ReceiveActor
         }
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.attr.EntityId == msg.Filter.EntityId);
 
-        Sender.Tell(res.FirstOrDefault());
+        Sender.Tell(res.Select(x => x.attr).FirstOrDefault());
     }
 
     internal static class Commands

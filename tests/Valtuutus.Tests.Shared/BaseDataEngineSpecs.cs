@@ -171,13 +171,13 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
     }
     
     
-    public Task InitializeAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    public async Task DisposeAsync()
+    public async Task InitializeAsync()
     {
         await _fixture.ResetDatabaseAsync();
+    }
+
+    public Task DisposeAsync()
+    {
+        return Task.CompletedTask;
     }
 }
