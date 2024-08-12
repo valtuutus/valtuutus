@@ -18,6 +18,7 @@ internal record LookupEntityRequestInternal
     public string? SubjectRelation { get; init; }
     public required string FinalSubjectType { get; init; }
     public required string FinalSubjectId { get; init; }
+    public SnapToken? SnapToken { get; set; }
 }
 
 public sealed class LookupEntityEngine(
@@ -28,6 +29,8 @@ public sealed class LookupEntityEngine(
     public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupEntitySpanAttributes(req));
+        
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -35,7 +38,8 @@ public sealed class LookupEntityEngine(
             SubjectType = req.SubjectType,
             SubjectsIds = [req.SubjectId],
             FinalSubjectType = req.SubjectType,
-            FinalSubjectId = req.SubjectId
+            FinalSubjectId = req.SubjectId,
+            SnapToken = req.SnapToken
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
@@ -142,7 +146,8 @@ public sealed class LookupEntityEngine(
             return (await reader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attrName,
-                    EntityType = req.EntityType
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
                 }, ct))
                 .Where(AttrEvaluator)
                 .Select(x => new RelationOrAttributeTuple(x))
@@ -219,7 +224,8 @@ public sealed class LookupEntityEngine(
             return (await reader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attribute.Name,
-                    EntityType = req.EntityType
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
                 }, ct))
                 .Where(a => a.Value.TryGetValue(out bool b) && b)
                 .Select(x => new RelationOrAttributeTuple(x))
@@ -293,7 +299,8 @@ public sealed class LookupEntityEngine(
                     new EntityRelationFilter
                     {
                         Relation = req.Permission,
-                        EntityType = req.EntityType
+                        EntityType = req.EntityType,
+                        SnapToken = req.SnapToken
                     },
                     req.SubjectsIds,
                     req.SubjectType,

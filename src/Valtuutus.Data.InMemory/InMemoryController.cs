@@ -52,10 +52,11 @@ internal sealed class InMemoryController
         return _attributes.Ask<List<AttributeTuple>>(new AttributesActor.Commands.GetAttributesWithEntitiesIds(filter, entitiesIds), ct);
     }
 
-    public void Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    public void Write(string transactId, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
+        CancellationToken ct)
     {
-        _relations.Tell(new RelationsActor.Commands.WriteRelations(relations));
-        _attributes.Tell(new AttributesActor.Commands.WriteAttributes(attributes));
+        _relations.Tell(new RelationsActor.Commands.WriteRelations(transactId, relations));
+        _attributes.Tell(new AttributesActor.Commands.WriteAttributes(transactId, attributes));
     }
 
     public void Delete(DeleteFilter filter, CancellationToken ct)

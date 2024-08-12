@@ -8,6 +8,12 @@ internal static class SqlBuilderExtensions
 {
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter tupleFilter)
     {
+        if (tupleFilter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = tupleFilter.SnapToken!.Value };
+            builder = builder.Where("created_tx_id <= @SnapToken", parameters);
+            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+        }
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = tupleFilter.EntityType,
@@ -53,6 +59,13 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
         
+        if (entityRelationFilter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = entityRelationFilter.SnapToken!.Value };
+            builder = builder.Where("created_tx_id <= @SnapToken", parameters);
+            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+        }
+        
         if (!string.IsNullOrEmpty(subjectType))
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = new DbString()
             {
@@ -95,6 +108,13 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType)
     {
+        
+        if (entityFilter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = entityFilter.SnapToken!.Value };
+            builder = builder.Where("created_tx_id <= @SnapToken", parameters);
+            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+        }
         if (!string.IsNullOrEmpty(entityFilter.EntityType))
             builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
             {
@@ -130,6 +150,14 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributeFilter filter)
     {
+        
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = filter.SnapToken!.Value };
+            builder = builder.Where("created_tx_id <= @SnapToken", parameters);
+            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+        }
+        
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
@@ -155,6 +183,12 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
         
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = filter.SnapToken!.Value };
+            builder = builder.Where("created_tx_id <= @SnapToken", parameters);
+            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+        }
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
@@ -181,6 +215,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterDeleteRelations(this SqlBuilder builder, DeleteRelationsFilter[] filters)
     {
+        builder.Where("deleted_tx_id IS NULL");
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"""
@@ -232,7 +267,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterDeleteAttributes(this SqlBuilder builder, DeleteAttributesFilter[] filters)
     {
-        builder.Where("1 = 1");
+        builder.Where("deleted_tx_id IS NULL");
         for (int i = 0; i < filters.Length; i++)
         {
             builder.OrWhere($"entity_type = @EntityType{i} AND entity_id = @EntityId{i}",  new Dictionary<string, object>

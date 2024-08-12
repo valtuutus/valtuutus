@@ -21,6 +21,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
+
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
         var val = await CheckInternal(req)(cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
@@ -44,6 +46,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
         var permission = schema.GetPermissions(req.EntityType);
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
         var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
         {
@@ -110,7 +113,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             {
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
-                EntityType = req.EntityType
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
             }, ct);
 
             if (attribute is null)
@@ -178,7 +182,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             {
                 Attribute = attrName,
                 EntityId = req.EntityId,
-                EntityType = req.EntityType
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
             }, ct);
 
             if (attribute is null)
@@ -231,7 +236,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                Relation = tupleSetRelation
+                Relation = tupleSetRelation,
+                SnapToken = req.SnapToken
             }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
@@ -259,6 +265,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = req.Permission,
+                SnapToken = req.SnapToken
             }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
