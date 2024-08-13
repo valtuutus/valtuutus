@@ -17,7 +17,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
-            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+            builder = builder.Where("(deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)", parameters);
         }
 
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
@@ -74,7 +74,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
-            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+            builder = builder.Where("(deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)", parameters);
         }
 
         if (!string.IsNullOrEmpty(subjectType))
@@ -107,7 +107,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
-            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+            builder = builder.Where("(deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)", parameters);
         }
         
         if (!string.IsNullOrEmpty(filter.EntityType))
@@ -136,7 +136,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
-            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+            builder = builder.Where("(deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)", parameters);
         }
         
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
@@ -173,7 +173,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
-            builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
+            builder = builder.Where("(deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)", parameters);
         }
           
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
