@@ -10,7 +10,12 @@ internal static class SqlBuilderExtensions
     {
         if (tupleFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = tupleFilter.SnapToken!.Value.Value };
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = tupleFilter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -61,7 +66,12 @@ internal static class SqlBuilderExtensions
         
         if (entityRelationFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = entityRelationFilter.SnapToken!.Value.Value };
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = entityRelationFilter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -108,10 +118,14 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType)
     {
-        
         if (entityFilter.SnapToken != null)
         {
-            var parameters = new { SnapToken = entityFilter.SnapToken!.Value.Value };
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = entityFilter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -153,7 +167,12 @@ internal static class SqlBuilderExtensions
         
         if (filter.SnapToken != null)
         {
-            var parameters = new { SnapToken = filter.SnapToken!.Value.Value };
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
@@ -185,10 +204,16 @@ internal static class SqlBuilderExtensions
         
         if (filter.SnapToken != null)
         {
-            var parameters = new { SnapToken = filter.SnapToken!.Value.Value };
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
             builder = builder.Where("created_tx_id <= @SnapToken", parameters);
             builder = builder.Where("deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken", parameters);
         }
+        
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
         {
             Value = filter.EntityType,
