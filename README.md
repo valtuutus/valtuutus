@@ -34,6 +34,7 @@ Install the package from NuGet:
 ```shell
 dotnet add package Valtuutus.Data.Postgres
 ```
+
 ### If using SqlServer:
 ```shell
 dotnet add package Valtuutus.Data.SqlServer
@@ -53,26 +54,26 @@ See examples of how to define your schema [here](Modeling%20Authorization.md).
 
 ### If using Postgres:
 ```csharp
-builder.Services.
+builder.Services
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!));
 ```
 
 ### If using SqlServer:
 ```csharp
-builder.Services.
+builder.Services
     .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
 ```
 
 ### If using InMemory:
 ```csharp
-builder.Services.
+builder.Services
     .AddInMemory();
 ```
 
 ### Using check concurrent limiting
-It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the AddConcurrentQueryLimit method, for example:
+It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:
 ```csharp
-builder.Services.
+builder.Services
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!)) // Replace this with any provider you want
     .AddConcurrentQueryLimit(10);
 ```
@@ -88,5 +89,4 @@ builder.Services
         telemetry
             .AddSource("Valtuutus")
             ...
-
 ```
