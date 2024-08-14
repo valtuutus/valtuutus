@@ -48,6 +48,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
+            WithReseed = true
         });
     }
     

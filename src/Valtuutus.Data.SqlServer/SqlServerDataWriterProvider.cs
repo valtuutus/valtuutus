@@ -100,11 +100,22 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         var transaction = db.BeginTransaction();
         await InsertTransaction(db, transactId, transaction, ct);
         
+        var snapTokenParam = new
+        {
+                SnapToken = new DbString
+                {
+                        Length = 26,
+                        Value = transactId.ToString(),
+                        IsFixedLength = true
+                }
+
+        };
+        
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM relation_tuples /**where**/");
+            var queryTemplate = relationsBuilder.AddTemplate(@"UPDATE relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction:transaction));
@@ -115,7 +126,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         {
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM attributes /**where**/");
+            var queryTemplate = attributesBuilder.AddTemplate(@"UPDATE attributes set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));

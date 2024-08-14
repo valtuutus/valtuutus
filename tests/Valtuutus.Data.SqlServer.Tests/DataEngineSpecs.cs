@@ -98,10 +98,10 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
                     relation,
                     subject_type,
                     subject_id, 
-                    subject_relation from relation_tuples
+                    subject_relation from relation_tuples where deleted_tx_id is null
             """)).ToArray();
         var attributes =
-            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from attributes")).ToArray();
+            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from attributes where deleted_tx_id is null")).ToArray();
         
         return (relations, attributes);
 

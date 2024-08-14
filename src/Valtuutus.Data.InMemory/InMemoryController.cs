@@ -59,10 +59,10 @@ internal sealed class InMemoryController
         _attributes.Tell(new AttributesActor.Commands.WriteAttributes(transactId, attributes));
     }
 
-    public void Delete(DeleteFilter filter, CancellationToken ct)
+    public void Delete(string transactId, DeleteFilter filter, CancellationToken ct)
     {
-        _attributes.Tell(new AttributesActor.Commands.DeleteAttributes(filter.Attributes));
-        _relations.Tell(new RelationsActor.Commands.DeleteRelations(filter.Relations));
+        _attributes.Tell(new AttributesActor.Commands.DeleteAttributes(transactId, filter.Attributes));
+        _relations.Tell(new RelationsActor.Commands.DeleteRelations(transactId, filter.Relations));
     }
     
     

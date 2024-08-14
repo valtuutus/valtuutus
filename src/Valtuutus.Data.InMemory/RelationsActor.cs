@@ -7,7 +7,12 @@ namespace Valtuutus.Data.InMemory;
 internal sealed class RelationsActor : ReceiveActor
 {
 
-    private readonly List<(RelationTuple rel, string createdTxId, string? deletedTxId)> _relationTuples;
+    private record InMemoryTuple(RelationTuple Relation, string CreatedTxId, string? DeletedTxId)
+    {
+        public string? DeletedTxId { get; set; } = DeletedTxId;
+    }
+
+    private readonly List<InMemoryTuple> _relationTuples;
 
     public RelationsActor()
     {
@@ -28,82 +33,87 @@ internal sealed class RelationsActor : ReceiveActor
 
     private void DumpRelationsHandler(Commands.DumpRelations _)
     {
-        Sender.Tell(_relationTuples.Where(x => x.deletedTxId is null)
-            .Select(x => x.rel)
+        Sender.Tell(_relationTuples.Where(x => x.DeletedTxId is null)
+            .Select(x => x.Relation)
             .ToArray());
     }
 
     private void DeleteRelationsHandler(Commands.DeleteRelations msg)
     {
         foreach (var filter in msg.FilterRelations)
-        {
-            _relationTuples.RemoveAll(x =>
-                x.deletedTxId is null &&
-                (filter.EntityId == x.rel.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
-                (filter.EntityType == x.rel.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
-                (filter.SubjectId == x.rel.SubjectId || string.IsNullOrWhiteSpace(filter.SubjectId)) &&
-                (filter.SubjectType == x.rel.SubjectType || string.IsNullOrWhiteSpace(filter.SubjectType)) &&
-                (filter.SubjectRelation == x.rel.SubjectRelation || string.IsNullOrWhiteSpace(filter.SubjectRelation)) &&
-                (filter.Relation == x.rel.Relation || string.IsNullOrWhiteSpace(filter.Relation)));
+        { 
+            var relations = _relationTuples.Where(x =>
+                x.DeletedTxId is null &&
+                (filter.EntityId == x.Relation.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
+                (filter.EntityType == x.Relation.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
+                (filter.SubjectId == x.Relation.SubjectId || string.IsNullOrWhiteSpace(filter.SubjectId)) &&
+                (filter.SubjectType == x.Relation.SubjectType || string.IsNullOrWhiteSpace(filter.SubjectType)) &&
+                (filter.SubjectRelation == x.Relation.SubjectRelation || string.IsNullOrWhiteSpace(filter.SubjectRelation)) &&
+                (filter.Relation == x.Relation.Relation || string.IsNullOrWhiteSpace(filter.Relation)));
+
+            foreach (var relation in relations)
+            {
+                relation.DeletedTxId = msg.TransactId;
+            }
         }
     }
 
     private void WriteRelationsHandler(Commands.WriteRelations msg)
     {
-        _relationTuples.AddRange(msg.Relations.Select(x => (x, msg.TransactId, (string?)null)));
+        _relationTuples.AddRange(msg.Relations.Select(x => new InMemoryTuple(x, msg.TransactId, null)));
     }
 
     private void GetRelationsWithSubjectIdsHandler(Commands.GetRelationsWithSubjectIds msg)
     {
         var result = _relationTuples.Where(x =>
-            x.rel.EntityType == msg.EntityRelationFilter.EntityType &&
-            x.rel.Relation == msg.EntityRelationFilter.Relation &&
-            x.rel.SubjectType == msg.SubjectType &&
-            msg.SubjectsIds.Contains(x.rel.SubjectId));
+            x.Relation.EntityType == msg.EntityRelationFilter.EntityType &&
+            x.Relation.Relation == msg.EntityRelationFilter.Relation &&
+            x.Relation.SubjectType == msg.SubjectType &&
+            msg.SubjectsIds.Contains(x.Relation.SubjectId));
 
         if (msg.EntityRelationFilter.SnapToken != null)
         {
-            result = result.Where(x =>  string.Compare(x.createdTxId, msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            result = result.Where(x =>  string.Compare(x.CreatedTxId, msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        Sender.Tell(result.Select(x => x.rel).ToList());
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     private void GetRelationsWithEntityIdsHandler(Commands.GetRelationsWithEntityIds msg)
     {
         var result = _relationTuples.Where(x =>
-            x.rel.EntityType == msg.EntityRelationFilter.EntityType &&
-            x.rel.Relation == msg.EntityRelationFilter.Relation &&
-            x.rel.SubjectType == msg.SubjectType &&
-            msg.EntitiesIds.Contains(x.rel.EntityId));
+            x.Relation.EntityType == msg.EntityRelationFilter.EntityType &&
+            x.Relation.Relation == msg.EntityRelationFilter.Relation &&
+            x.Relation.SubjectType == msg.SubjectType &&
+            msg.EntitiesIds.Contains(x.Relation.EntityId));
 
         if (msg.EntityRelationFilter.SnapToken != null)
         {
-            result = result.Where(x =>  string.Compare(x.createdTxId, msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            result = result.Where(x =>  string.Compare(x.CreatedTxId, msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
         
-        if (!string.IsNullOrEmpty(msg.SubjectRelation)) result = result.Where(x => x.rel.SubjectRelation == msg.SubjectRelation);
+        if (!string.IsNullOrEmpty(msg.SubjectRelation)) result = result.Where(x => x.Relation.SubjectRelation == msg.SubjectRelation);
 
-        Sender.Tell(result.Select(x => x.rel).ToList());
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     private void GetRelationsHandler(Commands.GetRelations msg)
     {
         var result = _relationTuples.Where(x =>
-            x.rel.EntityType == msg.Filter.EntityType &&
-            x.rel.EntityId == msg.Filter.EntityId &&
-            x.rel.Relation == msg.Filter.Relation);
+            x.Relation.EntityType == msg.Filter.EntityType &&
+            x.Relation.EntityId == msg.Filter.EntityId &&
+            x.Relation.Relation == msg.Filter.Relation);
 
         if (msg.Filter.SnapToken != null)
         {
-            result = result.Where(x =>  string.Compare(x.createdTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            result = result.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectId)) result = result.Where(x => x.rel.SubjectId == msg.Filter.SubjectId);
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectId)) result = result.Where(x => x.Relation.SubjectId == msg.Filter.SubjectId);
 
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectRelation)) result = result.Where(x => x.rel.SubjectRelation == msg.Filter.SubjectRelation);
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectRelation)) result = result.Where(x => x.Relation.SubjectRelation == msg.Filter.SubjectRelation);
 
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectType)) result = result.Where(x => x.rel.SubjectType == msg.Filter.SubjectType);
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectType)) result = result.Where(x => x.Relation.SubjectType == msg.Filter.SubjectType);
 
-        Sender.Tell(result.Select(x => x.rel).ToList());
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     internal static class Commands
@@ -128,6 +138,6 @@ internal sealed class RelationsActor : ReceiveActor
         
         public record WriteRelations(string TransactId, IEnumerable<RelationTuple> Relations);
 
-        public record DeleteRelations(DeleteRelationsFilter[] FilterRelations);
+        public record DeleteRelations(string TransactId, DeleteRelationsFilter[] FilterRelations);
     }
 }

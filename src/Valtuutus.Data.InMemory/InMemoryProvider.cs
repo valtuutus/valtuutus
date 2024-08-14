@@ -87,7 +87,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         using var activity = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid().ToString();
         _controller.CreateTransaction(transactId);
-        _controller.Delete(filter, ct);
+        _controller.Delete(transactId, filter, ct);
         var snapToken = new SnapToken(transactId);    
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;

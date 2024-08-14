@@ -6,11 +6,16 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class AttributesActor : ReceiveActor
 {
-    private readonly List<(AttributeTuple attr, string createdTxId, string? deletedTxId)> _attributesTuples;
+    private record InMemoryTuple(AttributeTuple Attribute, string CreatedTxId, string? DeletedTxId)
+    {
+        public string? DeletedTxId { get; set; } = DeletedTxId;
+    }
+
+    private readonly List<InMemoryTuple> _attributesTuples;
 
     public AttributesActor()
     {
-        _attributesTuples = new List<(AttributeTuple attr, string createdTxId, string? deletedTxId)>();
+        _attributesTuples = new();
         
         Receive<Commands.GetAttribute>(GetAttributeHandler);
         
@@ -28,8 +33,8 @@ internal sealed class AttributesActor : ReceiveActor
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
     {
-        Sender.Tell(_attributesTuples.Where(x => x.deletedTxId is null)
-            .Select(x => x.attr)
+        Sender.Tell(_attributesTuples.Where(x => x.DeletedTxId is null)
+            .Select(x => x.Attribute)
             .ToArray());
     }
 
@@ -37,58 +42,63 @@ internal sealed class AttributesActor : ReceiveActor
     {
         foreach (var filter in msg.Filters)
         {
-            _attributesTuples.RemoveAll(x =>
-                x.deletedTxId is null &&
-                (filter.EntityId == x.attr.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
-                (filter.EntityType == x.attr.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
-                (filter.Attribute == x.attr.Attribute || string.IsNullOrWhiteSpace(filter.Attribute)));
+            var attributes = _attributesTuples.Where(x =>
+                x.DeletedTxId is null &&
+                (filter.EntityId == x.Attribute.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
+                (filter.EntityType == x.Attribute.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
+                (filter.Attribute == x.Attribute.Attribute || string.IsNullOrWhiteSpace(filter.Attribute)));
+
+            foreach (var attribute in attributes)
+            {
+                attribute.DeletedTxId = msg.TransactId;
+            }
         }
     }
 
     private void WriteAttributesHandler(Commands.WriteAttributes msg)
     {
-        _attributesTuples.AddRange(msg.Attributes.Select(x => (x, msg.TransactId, (string?)null)));
+        _attributesTuples.AddRange(msg.Attributes.Select(x =>new InMemoryTuple(x, msg.TransactId, null)));
     }
 
     private void GetAttributesWithEntitiesIdsHandler(Commands.GetAttributesWithEntitiesIds msg)
     {
         var res = _attributesTuples.Where(x =>
-            x.attr.EntityType == msg.Filter.EntityType &&
-            x.attr.Attribute == msg.Filter.Attribute &&
-            msg.EntitiesIds.Contains(x.attr.EntityId));
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            x.Attribute.Attribute == msg.Filter.Attribute &&
+            msg.EntitiesIds.Contains(x.Attribute.EntityId));
         
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.createdTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        Sender.Tell(res.Select(x => x.attr)
+        Sender.Tell(res.Select(x => x.Attribute)
             .ToList());
     }
 
     private void GetAttributesHandler(Commands.GetAttributes msg)
     {
-        var res = _attributesTuples.Where(x => x.attr.EntityType == msg.Filter.EntityType && x.attr.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x => x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.createdTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.attr.EntityId == msg.Filter.EntityId);
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
-        Sender.Tell(res.Select(x => x.attr).ToList());
+        Sender.Tell(res.Select(x => x.Attribute).ToList());
     }
 
     private void GetAttributeHandler(Commands.GetAttribute msg)
     {
-        var res = _attributesTuples.Where(x => x.attr.EntityType == msg.Filter.EntityType && x.attr.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x => x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.createdTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
         }
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.attr.EntityId == msg.Filter.EntityId);
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
-        Sender.Tell(res.Select(x => x.attr).FirstOrDefault());
+        Sender.Tell(res.Select(x => x.Attribute).FirstOrDefault());
     }
 
     internal static class Commands
@@ -101,7 +111,7 @@ internal sealed class AttributesActor : ReceiveActor
         
         public record WriteAttributes(string TransactId, IEnumerable<AttributeTuple> Attributes);
 
-        public record DeleteAttributes(DeleteAttributesFilter[] Filters);
+        public record DeleteAttributes(string TransactId, DeleteAttributesFilter[] Filters);
         
         public record DumpAttributes
         {
