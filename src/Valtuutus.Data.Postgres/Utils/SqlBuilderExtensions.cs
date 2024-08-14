@@ -17,7 +17,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR (deleted_tx_id IS NOT NULL AND deleted_tx_id >= @SnapToken))",
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)",
                 parameters);
         }
 
@@ -75,7 +75,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR (deleted_tx_id IS NOT NULL AND deleted_tx_id >= @SnapToken))",
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)",
                 parameters);
         }
 
@@ -109,7 +109,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR (deleted_tx_id IS NOT NULL AND deleted_tx_id >= @SnapToken))",
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)",
                 parameters);
         }
         
@@ -139,7 +139,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR (deleted_tx_id IS NOT NULL AND deleted_tx_id >= @SnapToken))",
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)",
                 parameters);
         }
         
@@ -177,7 +177,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR (deleted_tx_id IS NOT NULL AND deleted_tx_id >= @SnapToken))",
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id >= @SnapToken)",
                 parameters);
         }
           
