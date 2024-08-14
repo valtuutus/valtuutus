@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core;
+﻿using System.Data;
+using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
@@ -8,7 +9,7 @@ using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
 
-internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
+internal sealed class SqlServerDataWriterProvider : IDataWriterProvider, IDbDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly ValtuutusDataOptions _options;
@@ -35,45 +36,9 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         
         await InsertTransaction(db, transactionId, transaction, ct);
         
-        var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
-        relationsBulkCopy.DestinationTableName = "relation_tuples";
+        await WriteRelations(relations, db, transaction, transactionId, ct);
 
-#if !NETCOREAPP3_0_OR_GREATER
-#else
-        await 
-#endif
-        using var relationsReader = ObjectReader.Create(relations.Select(x => new
-        {
-            x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId.ToString()
-        }));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Relation", "relation"));
-        relationsBulkCopy.ColumnMappings.Add( new SqlBulkCopyColumnMapping("SubjectType", "subject_type"));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectId", "subject_id"));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectRelation", "subject_relation"));
-        relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
-        
-        await relationsBulkCopy.WriteToServerAsync(relationsReader, ct);
-        
-        using var attributesBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
-        attributesBulkCopy.DestinationTableName = "attributes";
-
-#if NETSTANDARD2_0
-#else
-        await 
-#endif
-            
-            using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
-            TransactionId = transactionId.ToString() }));
-        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
-        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
-        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
-        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Value", "value"));
-        attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
-
-
-        await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
+        await WriteAttributes(attributes, db, transaction, transactionId, ct);
 
 #if !NETCOREAPP3_0_OR_GREATER
         transaction.Commit();
@@ -85,7 +50,64 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
             return snapToken;        
     }
-    
+
+    private static async Task WriteAttributes(IEnumerable<AttributeTuple> attributes, SqlConnection db, SqlTransaction transaction,
+            Ulid transactionId, CancellationToken ct)
+    {
+            using var attributesBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
+            attributesBulkCopy.DestinationTableName = "attributes";
+
+#if NETSTANDARD2_0
+#else
+        await 
+#endif
+            
+            using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
+                    TransactionId = transactionId.ToString() }));
+            attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
+            attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
+            attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
+            attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Value", "value"));
+            attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
+
+
+            await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
+    }
+
+    private static async Task WriteRelations(IEnumerable<RelationTuple> relations, SqlConnection db,
+            SqlTransaction transaction, Ulid transactionId, CancellationToken ct)
+    {
+            var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
+            relationsBulkCopy.DestinationTableName = "relation_tuples";
+
+#if !NETCOREAPP3_0_OR_GREATER
+#else
+        await
+#endif
+            using var relationsReader = ObjectReader.Create(relations.Select(x => new
+            {
+                    x.EntityType, x.EntityId, x.SubjectType, x.SubjectId, x.Relation, x.SubjectRelation, TransactionId = transactionId.ToString()
+            }));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Relation", "relation"));
+            relationsBulkCopy.ColumnMappings.Add( new SqlBulkCopyColumnMapping("SubjectType", "subject_type"));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectId", "subject_id"));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("SubjectRelation", "subject_relation"));
+            relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
+        
+            await relationsBulkCopy.WriteToServerAsync(relationsReader, ct);
+    }
+
+    public Task<SnapToken> WriteRelations(IEnumerable<RelationTuple> relations, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteAttributes(IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
@@ -152,5 +174,46 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             created_at = DateTimeOffset.UtcNow
         }, transaction: transaction, cancellationToken: ct));
     }
-    
+
+    public Task<SnapToken> Write(IDbConnection connection, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteRelations(IDbConnection connection, IEnumerable<RelationTuple> relations, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteAttributes(IDbConnection connection, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> Delete(IDbConnection connection, DeleteFilter filter, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> Write(IDbConnection connection, IDbTransaction transaction, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
+            CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteRelations(IDbConnection connection, IDbTransaction transaction, IEnumerable<RelationTuple> relations, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteAttributes(IDbConnection connection, IDbTransaction transaction, IEnumerable<AttributeTuple> attributes,
+            CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> Delete(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
+    {
+            throw new NotImplementedException();
+    }
 }

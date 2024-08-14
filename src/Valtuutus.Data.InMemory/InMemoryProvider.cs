@@ -82,6 +82,16 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         return snapToken;
     }
 
+    public Task<SnapToken> WriteRelations(IEnumerable<RelationTuple> relations, CancellationToken ct)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<SnapToken> WriteAttributes(IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
