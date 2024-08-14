@@ -12,6 +12,11 @@ namespace Valtuutus.Data.SqlServer.Tests;
 public sealed class DataEngineSpecs : BaseDataEngineSpecs
 {
 
+    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
+    {
+        return services.AddSqlServer(_ =>  ((IWithDbConnectionFactory)_fixture).DbFactory);
+    }
+    
     public DataEngineSpecs(SqlServerFixture fixture)
     {
         _fixture = fixture;
@@ -83,12 +88,7 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         
         newTransaction.Should().BeTrue();
     }
-
-    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
-    {
-        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
-    }
-
+    
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
         using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
