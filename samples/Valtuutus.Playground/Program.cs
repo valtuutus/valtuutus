@@ -1,4 +1,4 @@
-#define postgres
+//#define postgres
 
 
 using System.Diagnostics;
@@ -9,6 +9,7 @@ using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Postgres;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Npgsql;
 using OpenTelemetry.Metrics;
@@ -21,6 +22,7 @@ using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
 using Valtuutus.Data.Caching;
+using Valtuutus.Data.SqlServer;
 using ZiggyCreatures.Caching.Fusion;
 using ZiggyCreatures.Caching.Fusion.Backplane.StackExchangeRedis;
 using ZiggyCreatures.Caching.Fusion.Serialization.SystemTextJson;
@@ -90,7 +92,8 @@ builder.Services.AddValtuutusCore(c =>
 .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!))
 #endif
     .AddConcurrentQueryLimit(3)
-    .AddCaching();
+    //.AddCaching()
+;
 
 Activity.DefaultIdFormat = ActivityIdFormat.W3C;
 
@@ -172,6 +175,11 @@ app.MapPost("/write",
         ([FromBody] WriteRequest request, [FromServices] IDataWriterProvider writer, CancellationToken ct) => writer.Write(request.Relations, request.Attributes, ct))
     .WithName("Write data")
     .WithOpenApi();
+
+
+app.MapPost("/delete",
+    ([FromBody] DeleteFilter request, [FromServices] IDataWriterProvider writer, CancellationToken ct) =>
+        writer.Delete(request, ct));
 
 
 
