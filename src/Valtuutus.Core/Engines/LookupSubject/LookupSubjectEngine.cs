@@ -148,7 +148,7 @@ public sealed class LookupSubjectEngine(
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
             var attrName = node.AttributeName;
 
-            var res = (await reader.GetAttributes(new AttributeFilter
+            var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
                 {
                     Attribute = attrName,
                     EntityType = req.EntityType,
@@ -222,7 +222,7 @@ public sealed class LookupSubjectEngine(
     {
         return async (ct) =>
         {
-            var res = (await reader.GetAttributes(new AttributeFilter
+            var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
             {
                 Attribute = attribute.Name,
                 EntityType = req.EntityType,
