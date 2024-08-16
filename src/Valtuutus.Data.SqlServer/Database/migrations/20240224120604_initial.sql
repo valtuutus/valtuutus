@@ -62,7 +62,40 @@ CREATE NONCLUSTERED INDEX [idx_relation_tuples_entity_type_relation_subject_type
           )
           INCLUDE([entity_id],[subject_relation]);       
               
-              -- Create custom type to be used as a list of ids - entity or subject
+create nonclustered index [idx_relationtuples_entitytype_entityid_relation_createdtxid_deletedtxid_id] on [dbo].[relation_tuples]
+(
+ [entity_type] asc,
+ [entity_id] asc,
+ [relation] asc,
+ [created_tx_id] asc,
+ [deleted_tx_id] asc,
+ [id] asc
+)
+include([subject_type],[subject_id],[subject_relation])
+
+create nonclustered index [idx_relationtuples_relation_createdtxid_subjecttype] on [dbo].[relation_tuples]
+(
+ [relation] asc,
+ [created_tx_id] asc,
+ [subject_type] asc
+)
+include([id],[entity_type],[entity_id],[subject_id],[subject_relation],[deleted_tx_id])
+
+create nonclustered index [idx_relationtuples_relation_createdtxid_subjecttype_noinclude] on [dbo].[relation_tuples]
+(
+ [relation] asc,
+ [created_tx_id] asc,
+ [subject_type] asc
+)
+create nonclustered index [idx_relationtuples_subjecttype_subjectid_relation] on [dbo].[relation_tuples]
+(
+ [subject_type] asc,
+ [subject_id] asc,
+ [relation] asc
+)
+include([id],[entity_type],[entity_id],[subject_relation],[created_tx_id],[deleted_tx_id])
+       
+-- Create custom type to be used as a list of ids - entity or subject
 CREATE TYPE TVP_ListIds AS TABLE
     (
     [id] [NVARCHAR](64) NOT NULL,

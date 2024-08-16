@@ -8,7 +8,7 @@ public record RelationTupleFilter
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
-    public SnapToken? SnapToken { get; set; }
+    public required SnapToken? SnapToken { get; init; }
 }
 
 public record EntityRelationFilter

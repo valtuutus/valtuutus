@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core.Data;
+﻿using System.Diagnostics;
+using Valtuutus.Core.Data;
 using Dapper;
 
 namespace Valtuutus.Data.Postgres.Utils;
@@ -7,7 +8,6 @@ internal static class SqlBuilderExtensions
 {
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter filter)
     {
-
         if (filter.SnapToken != null)
         {
             var parameters = new { SnapToken = new DbString()

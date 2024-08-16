@@ -1,4 +1,4 @@
-//#define postgres
+#define postgres
 
 
 using System.Diagnostics;

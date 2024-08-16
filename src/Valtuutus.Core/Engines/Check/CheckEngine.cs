@@ -54,7 +54,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             EntityId = req.EntityId,
             Permission = x.Name,
             SubjectType = req.SubjectType,
-            SubjectId = req.SubjectId
+            SubjectId = req.SubjectId,
+            SnapToken = req.SnapToken
         })(cancellationToken))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
@@ -246,6 +247,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     {
                         EntityType = relation.SubjectType, EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
+                        SnapToken = req.SnapToken
                     }, computedUserSetRelation)
                 )
             );
@@ -285,6 +287,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                         EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation,
                         SubjectId = req.SubjectId,
+                        SnapToken = req.SnapToken
                     }));
                 }
             }

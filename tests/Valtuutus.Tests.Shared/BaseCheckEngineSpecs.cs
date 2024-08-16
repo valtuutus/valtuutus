@@ -345,7 +345,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             Permission = "view",
             EntityId = "1",
             SubjectId = "1",
-            SubjectType = "user"
+            SubjectType = "user",
+            SnapToken = null
         }, default);
 
 
