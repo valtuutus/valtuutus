@@ -92,7 +92,7 @@ namespace Valtuutus.Core.Data
     {
         System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
@@ -108,10 +108,10 @@ namespace Valtuutus.Core.Data
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public RelationTupleFilter() { }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Relation { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }

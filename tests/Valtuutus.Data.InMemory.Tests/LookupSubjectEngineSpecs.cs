@@ -7,10 +7,7 @@ namespace Valtuutus.Data.InMemory.Tests;
 public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
 {
 
-    public LookupSubjectEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupSubjectEngineSpecs(InMemoryFixture fixture) : base(fixture) {}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

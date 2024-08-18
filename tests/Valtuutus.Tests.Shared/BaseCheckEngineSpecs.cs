@@ -11,8 +11,13 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 {
-    
-    protected IDatabaseFixture _fixture = null!;
+
+    protected BaseCheckEngineSpecs(IDatabaseFixture fixture)
+    {
+        Fixture = fixture;
+    }
+
+    protected IDatabaseFixture Fixture { get; }
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
     
@@ -48,7 +53,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     
     public async Task InitializeAsync()
     {
-        await _fixture.ResetDatabaseAsync();
+        await Fixture.ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()

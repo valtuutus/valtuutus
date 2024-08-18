@@ -11,10 +11,13 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 {
-    
+    protected BaseLookupEntityEngineSpecs(IDatabaseFixture fixture)
+    {
+        Fixture = fixture;
+    }
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
     
-    protected IDatabaseFixture _fixture = null!;
+    protected IDatabaseFixture Fixture { get; }
     
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
@@ -46,7 +49,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     
     public async Task InitializeAsync()
     {
-        await _fixture.ResetDatabaseAsync();
+        await Fixture.ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()

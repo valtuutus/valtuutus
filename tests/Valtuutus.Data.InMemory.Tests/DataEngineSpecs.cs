@@ -19,10 +19,7 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         return controller.Dump(default);
     }
 
-    public DataEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public DataEngineSpecs(InMemoryFixture fixture) : base(fixture) {}
     
     
 }

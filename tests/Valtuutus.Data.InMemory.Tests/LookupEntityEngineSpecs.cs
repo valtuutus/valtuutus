@@ -6,10 +6,7 @@ namespace Valtuutus.Data.InMemory.Tests;
 [Collection("InMemorySpecs")]
 public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
 {
-    public LookupEntityEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupEntityEngineSpecs(InMemoryFixture fixture) : base(fixture){}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

@@ -6,10 +6,7 @@ namespace Valtuutus.Data.InMemory.Tests;
 [Collection("InMemorySpecs")]
 public sealed class CheckEngineSpecs : BaseCheckEngineSpecs
 {
-    public CheckEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public CheckEngineSpecs(InMemoryFixture fixture) : base(fixture){}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

@@ -7,13 +7,10 @@ namespace Valtuutus.Data.SqlServer.Tests;
 public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
 {
 
-    public LookupSubjectEngineSpecs(SqlServerFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupSubjectEngineSpecs(SqlServerFixture fixture) : base(fixture){}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
+        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)Fixture).DbFactory);
     }
 }

@@ -13,13 +13,9 @@ public class DataEngineSpecs : BaseDataEngineSpecs
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        return services.AddPostgres(_ =>  ((IWithDbConnectionFactory)_fixture).DbFactory);
+        return services.AddPostgres(_ =>  ((IWithDbConnectionFactory)Fixture).DbFactory);
     }
-    public DataEngineSpecs(PostgresFixture fixture)
-    {
-        _fixture = fixture;
-    }
-   
+    public DataEngineSpecs(PostgresFixture fixture) : base(fixture){}
     
     [Fact]
     public async Task WritingData_ShouldAssociateRelationWithTransactionId()
@@ -30,7 +26,7 @@ public class DataEngineSpecs : BaseDataEngineSpecs
         var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
         var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM public.relation_tuples WHERE created_tx_id = @id) = 1", 
             new { id = transactionId });
         
@@ -64,7 +60,7 @@ public class DataEngineSpecs : BaseDataEngineSpecs
         
         
         // assert
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
 
         var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
@@ -76,7 +72,7 @@ public class DataEngineSpecs : BaseDataEngineSpecs
     
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
         var relations = (await db.QueryAsync<RelationTuple>("""
                                                             SELECT  entity_type,
                                                                     entity_id,

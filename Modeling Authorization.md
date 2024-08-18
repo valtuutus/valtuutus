@@ -1,4 +1,3 @@
-```markdown
 # Modeling Authorization
 
 Valtuutus has an API that you can model your authorization logic with. The API allows you to define arbitrary relations between users and objects, such as owner, editor, commenter, or roles like admin, manager, member. You can define your entities, relations between them, and access control decisions using a Fluent API. It includes set-algebraic operators such as intersection and union for specifying potentially complex access control policies in terms of those user-object relations.
@@ -194,5 +193,4 @@ builder.Services.AddValtuutusCore(c =>
 
 ```
 ⛔ If you don’t create the related attribute data, Valtuutus accounts the attributes checks as FALSE
-```
 ```
