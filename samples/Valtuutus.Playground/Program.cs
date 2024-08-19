@@ -58,33 +58,33 @@ builder.Services.AddValtuutusCore(c =>
         c
             .WithEntity("user")
             .WithEntity("organization")
-            .WithRelation("admin", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc => rc.WithEntityType("user"))
+                .WithRelation("admin", rc => rc.WithEntityType("user"))
+                .WithRelation("member", rc => rc.WithEntityType("user"))
             .WithEntity("team")
-            .WithRelation("owner", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc => rc.WithEntityType("user"))
-            .WithRelation("org", rc => rc.WithEntityType("organization"))
-            .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
-            .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
-            .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
-            .WithPermission("remove_user", PermissionNode.Leaf("owner"))
+                .WithRelation("owner", rc => rc.WithEntityType("user"))
+                .WithRelation("member", rc => rc.WithEntityType("user"))
+                .WithRelation("org", rc => rc.WithEntityType("organization"))
+                .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
+                .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
+                .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
+                .WithPermission("remove_user", PermissionNode.Leaf("owner"))
             .WithEntity("project")
-            .WithRelation("org", rc => rc.WithEntityType("organization"))
-            .WithRelation("team", rc => rc.WithEntityType("team"))
-            .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
-            .WithAttribute("public", typeof(bool))
-            .WithAttribute("status", typeof(string))
-            .WithPermission("view",
-                PermissionNode.Union(
-                    PermissionNode.Leaf("org.admin"),
-                    PermissionNode.Leaf("member"),
-                    PermissionNode.Intersect("public", "org.member"))
-            )
-            .WithPermission("edit", PermissionNode.Intersect(
-                PermissionNode.Union("org.admin", "team.member"),
-                PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
-            )
-            .WithPermission("delete", PermissionNode.Leaf("team.member"));
+                .WithRelation("org", rc => rc.WithEntityType("organization"))
+                .WithRelation("team", rc => rc.WithEntityType("team"))
+                .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
+                .WithAttribute("public", typeof(bool))
+                .WithAttribute("status", typeof(string))
+                .WithPermission("view",
+                    PermissionNode.Union(
+                        PermissionNode.Leaf("org.admin"),
+                        PermissionNode.Leaf("member"),
+                        PermissionNode.Intersect("public", "org.member"))
+                )
+                .WithPermission("edit", PermissionNode.Intersect(
+                    PermissionNode.Union("org.admin", "team.member"),
+                    PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
+                )
+                .WithPermission("delete", PermissionNode.Leaf("team.member"));
     })
 #if postgres
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
