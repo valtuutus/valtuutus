@@ -16,19 +16,18 @@ internal sealed class AttributesActor : ReceiveActor
     public AttributesActor()
     {
         _attributesTuples = new();
-        
+
         Receive<Commands.GetAttribute>(GetAttributeHandler);
-        
+
         Receive<Commands.GetAttributes>(GetAttributesHandler);
-        
+
         Receive<Commands.GetAttributesWithEntitiesIds>(GetAttributesWithEntitiesIdsHandler);
-        
+
         Receive<Commands.WriteAttributes>(WriteAttributesHandler);
-        
+
         Receive<Commands.DeleteAttributes>(DeleteAttributesHandler);
-        
+
         Receive<Commands.DumpAttributes>(DumpAttributesHandler);
-        
     }
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
@@ -57,7 +56,7 @@ internal sealed class AttributesActor : ReceiveActor
 
     private void WriteAttributesHandler(Commands.WriteAttributes msg)
     {
-        _attributesTuples.AddRange(msg.Attributes.Select(x =>new InMemoryTuple(x, msg.TransactId, null)));
+        _attributesTuples.AddRange(msg.Attributes.Select(x => new InMemoryTuple(x, msg.TransactId, null)));
     }
 
     private void GetAttributesWithEntitiesIdsHandler(Commands.GetAttributesWithEntitiesIds msg)
@@ -66,37 +65,57 @@ internal sealed class AttributesActor : ReceiveActor
             x.Attribute.EntityType == msg.Filter.EntityType &&
             x.Attribute.Attribute == msg.Filter.Attribute &&
             msg.EntitiesIds.Contains(x.Attribute.EntityId));
-        
+
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res
+                .Where(x => string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
+                    StringComparison.InvariantCulture) <= 0)
+                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
+                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
         }
+
         Sender.Tell(res.Select(x => x.Attribute)
             .ToList());
     }
 
     private void GetAttributesHandler(Commands.GetAttributes msg)
     {
-        var res = _attributesTuples.Where(x => x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res
+                .Where(x => string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
+                    StringComparison.InvariantCulture) <= 0)
+                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
+                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
+            ;
         }
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
+
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
+            res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
         Sender.Tell(res.Select(x => x.Attribute).ToList());
     }
 
     private void GetAttributeHandler(Commands.GetAttribute msg)
     {
-        var res = _attributesTuples.Where(x => x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>  string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) <= 0);
+            res = res.Where(x =>
+                    string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
+                        StringComparison.InvariantCulture) <= 0)
+                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
+                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
         }
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
+
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
+            res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
         Sender.Tell(res.Select(x => x.Attribute).FirstOrDefault());
     }
@@ -104,15 +123,15 @@ internal sealed class AttributesActor : ReceiveActor
     internal static class Commands
     {
         public record GetAttribute(EntityAttributeFilter Filter);
-        
+
         public record GetAttributes(EntityAttributeFilter Filter);
-        
+
         public record GetAttributesWithEntitiesIds(AttributeFilter Filter, IEnumerable<string> EntitiesIds);
-        
+
         public record WriteAttributes(string TransactId, IEnumerable<AttributeTuple> Attributes);
 
         public record DeleteAttributes(string TransactId, DeleteAttributesFilter[] Filters);
-        
+
         public record DumpAttributes
         {
             private DumpAttributes()
@@ -122,5 +141,4 @@ internal sealed class AttributesActor : ReceiveActor
             public static DumpAttributes Instance { get; } = new();
         }
     }
-
 }

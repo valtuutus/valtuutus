@@ -74,10 +74,10 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
 	    sqlBuilder.TrustServerCertificate = true;
 	    sqlBuilder.UserID = "sa";
 	    sqlBuilder.Password = "Valtuutus123!";
-	    sqlBuilder.DataSource = $"localhost,{_dbContainer.GetMappedPublicPort(1433)}";
+	    sqlBuilder.DataSource = //$"{_dbContainer.Hostname},{_dbContainer.GetMappedPublicPort(1433)}";
 	    sqlBuilder.InitialCatalog = "Valtuutus";
 
-	    return sqlBuilder.ConnectionString;
+	    return _dbContainer.GetConnectionString(); // sqlBuilder.ConnectionString;
     }
 
     private static string DbMigration = 
