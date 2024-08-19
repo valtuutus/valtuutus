@@ -10,7 +10,8 @@ public record CheckRequest
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
-    
+    public int Depth { get; set; } = 10;
+
     public CheckRequest() {}
     
     [SetsRequiredMembers]
@@ -23,4 +24,10 @@ public record CheckRequest
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
     }
+
+    public bool CheckDepth() =>
+        Depth == 0;
+
+    public void DecreaseDepth() =>
+        Depth--;
 }

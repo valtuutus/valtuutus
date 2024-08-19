@@ -92,6 +92,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
+        if (req.CheckDepth())
+            return Fail();
+
+        req.DecreaseDepth();
+
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
@@ -289,6 +294,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                         EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation,
                         SubjectId = req.SubjectId,
+                        Depth = req.Depth
                     }));
                 }
             }
