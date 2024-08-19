@@ -17,6 +17,13 @@ internal record LookupEntityRequestInternal
     public string? SubjectRelation { get; init; }
     public required string FinalSubjectType { get; init; }
     public required string FinalSubjectId { get; init; }
+    public required int Depth { get; set; } = 10;
+
+    public bool CheckDepth() =>
+        Depth == 0;
+
+    public void DecreaseDepth() =>
+        Depth--;
 }
 
 public sealed class LookupEntityEngine(
@@ -39,7 +46,8 @@ public sealed class LookupEntityEngine(
             SubjectType = req.SubjectType,
             SubjectsIds = [req.SubjectId],
             FinalSubjectType = req.SubjectType,
-            FinalSubjectId = req.SubjectId
+            FinalSubjectId = req.SubjectId,
+            Depth = req.Depth
         };
 
         var res = await LookupEntityInternal(internalReq)(ct);
@@ -59,8 +67,18 @@ public sealed class LookupEntityEngine(
         yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
     }
 
+    private static LookupFunction Fail()
+    {
+        return (_) => Task.FromResult(new List<RelationOrAttributeTuple>());
+    }
+
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
     {
+        if (req.CheckDepth())
+            return Fail();
+
+        req.DecreaseDepth();
+
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
@@ -186,7 +204,8 @@ public sealed class LookupEntityEngine(
                             EntityType = req.EntityType,
                             SubjectType = entity.Type,
                             SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
-                            SubjectRelation = entity.Relation
+                            SubjectRelation = entity.Relation,
+                            Depth = req.Depth
                         });
                     }
 
@@ -246,7 +265,8 @@ public sealed class LookupEntityEngine(
                     lookupFunctions.Add(LookupRelationLeaf(req with
                     {
                         SubjectType = relationEntity.Type,
-                        SubjectsIds = [req.FinalSubjectId]
+                        SubjectsIds = [req.FinalSubjectId],
+                        Depth = req.Depth
                     }));
                     continue;
                 }
@@ -267,7 +287,8 @@ public sealed class LookupEntityEngine(
                                 EntityType = req.EntityType,
                                 SubjectType = relationEntity.Type,
                                 SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
-                                SubjectRelation = relationEntity.Relation
+                                SubjectRelation = relationEntity.Relation,
+                                Depth = req.Depth
                             });
                         }
 
