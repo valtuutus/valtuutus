@@ -516,7 +516,7 @@ public static class CheckEngineSpecList
         {
             [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "team", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
             ],
             [],
             new CheckRequest() {
@@ -532,7 +532,7 @@ public static class CheckEngineSpecList
         {
             [
                 new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "team", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
             ],
             [],
             new CheckRequest() {

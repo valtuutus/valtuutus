@@ -284,9 +284,9 @@ public abstract class BaseCheckEngineSpecs
                 .WithRelation("member", rc =>
                     rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("team", rc =>
-                    rc.WithEntityType(TestsConsts.Teams.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("team.member"))
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
 
         var engine = await CreateEngine(tuples, attributes, schema);
@@ -441,7 +441,7 @@ public abstract class BaseCheckEngineSpecs
         // Arrange
         var tuples = new RelationTuple[] {
             new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "team", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
         };
 
         var schema = new SchemaBuilder()
@@ -450,9 +450,9 @@ public abstract class BaseCheckEngineSpecs
                 .WithRelation("member", rc =>
                     rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("team", rc =>
-                    rc.WithEntityType(TestsConsts.Teams.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("team.member"))
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
 
         var engine = await CreateEngine(tuples, [], schema);
