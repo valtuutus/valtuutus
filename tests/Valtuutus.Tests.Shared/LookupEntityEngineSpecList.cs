@@ -249,4 +249,40 @@ public static class LookupEntityEngineSpecList
                 []
             },
         };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>> UnionRelationDepthLimit => new()
+    {
+        {
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            ],
+            [],
+            new LookupEntityRequest()
+            {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                Permission = "view",
+                SubjectType = TestsConsts.Users.Identifier,
+                SubjectId = TestsConsts.Users.Alice,
+                Depth = 1
+            },
+            new HashSet<string>()
+        },
+        {
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            ],
+            [],
+            new LookupEntityRequest()
+            {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                Permission = "view",
+                SubjectType = TestsConsts.Users.Identifier,
+                SubjectId = TestsConsts.Users.Alice,
+                Depth = 2
+            },
+            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+        }
+    };
 }
