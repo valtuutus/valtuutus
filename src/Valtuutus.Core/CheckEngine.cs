@@ -62,7 +62,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             EntityId = req.EntityId,
             Permission = x.Name,
             SubjectType = req.SubjectType,
-            SubjectId = req.SubjectId
+            SubjectId = req.SubjectId,
+            Depth = req.Depth
         })(ct))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
@@ -256,6 +257,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                     {
                         EntityType = relation.SubjectType, EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
+                        Depth = req.Depth
                     }, computedUserSetRelation)
                 )
             );
