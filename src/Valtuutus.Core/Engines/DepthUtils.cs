@@ -6,7 +6,8 @@ namespace Valtuutus.Core.Engines
 {
     public static class DepthUtils
     {
-        public static bool CheckDepth(this IWithDepth req) =>
+        public static int Depth;
+        public static bool CheckDepthLimit(this IWithDepth req) =>
             req.Depth == 0;
 
         public static void DecreaseDepth(this IWithDepth req) =>

@@ -94,7 +94,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
-        if (req.CheckDepth())
+        if (req.CheckDepthLimit())
             return Fail();
 
         req.DecreaseDepth();

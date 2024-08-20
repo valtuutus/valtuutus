@@ -71,7 +71,7 @@ public sealed class LookupSubjectEngine(
 
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
     {
-        if (req.CheckDepth())
+        if (req.CheckDepthLimit())
             return Fail();
 
         req.DecreaseDepth();

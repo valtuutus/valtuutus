@@ -69,7 +69,7 @@ public sealed class LookupEntityEngine(
 
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
     {
-        if (req.CheckDepth())
+        if (req.CheckDepthLimit())
             return Fail();
 
         req.DecreaseDepth();
