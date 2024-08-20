@@ -172,7 +172,7 @@ public abstract class BaseLookupEntityEngineSpecs
 
     [Theory]
     [MemberData(nameof(UnionRelationDepthLimit))]
-    public async Task LookupEntityWithCheckDepthLimit(RelationTuple[] tuples,
+    public async Task LookupEntityWithDepthLimit(RelationTuple[] tuples,
         AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
     {
         // Arrange

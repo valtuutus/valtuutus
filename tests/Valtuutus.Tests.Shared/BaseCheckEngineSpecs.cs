@@ -436,7 +436,7 @@ public abstract class BaseCheckEngineSpecs
     }
 
     [Fact]
-    public async Task SubjectPermissionWithCheckDepthLimit()
+    public async Task SubjectPermissionWithDepthLimit()
     {
         // Arrange
         var tuples = new RelationTuple[] {
