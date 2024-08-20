@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
@@ -143,23 +144,18 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         RelationTupleFilter initialFilter,
         List<RelationTuple> expectedRelationsAfterDeletion)
     {
-        // Arrange
         var providers = CreateProviders();
 
-        // Act - Initial Write
         var initialSnapToken = await providers.writer.Write(seedRelations, new List<AttributeTuple>(), default);
 
-        // Assert - Validate relations after initial write
         var initialRelations = await providers.reader.GetRelations(initialFilter with
         {
             SnapToken = initialSnapToken
         }, default);
         initialRelations.Should().BeEquivalentTo(seedRelations);
 
-        // Act - Perform deletion using the DeleteFilter
         var deleteSnapToken = await providers.writer.Delete(deleteFilter, default);
 
-        // Assert - Validate relations after deletion
         var relationsAfterDeletion = await providers.reader.GetRelations(initialFilter with
         {
             SnapToken = deleteSnapToken
@@ -171,7 +167,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         GetRelationsAfterWriteAndDeleteData => new()
     {
         {
-            // Seed Relations
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -179,7 +174,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Bob)
             },
-            // Delete Filter
             new DeleteFilter
             {
                 Relations = new[]
@@ -194,7 +188,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                     }
                 }
             },
-            // Initial Filter
             new RelationTupleFilter
             {
                 EntityType = TestsConsts.Workspaces.Identifier,
@@ -202,7 +195,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 Relation = "owner",
                 SnapToken = null
             },
-            // Expected Relations After Deletion
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -220,23 +212,18 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         List<RelationTuple> expectedRelationsWithOldSnapToken,
         List<RelationTuple> expectedRelationsWithNewSnapToken)
     {
-        // Arrange
         var providers = CreateProviders();
 
-        // Act - Initial Write
         var initialSnapToken = await providers.writer.Write(seedRelations, new List<AttributeTuple>(), default);
 
-        // Act - Add new relations
         var newSnapToken = await providers.writer.Write(newRelations, new List<AttributeTuple>(), default);
 
-        // Assert - Validate relations with the old snap token
         var relationsWithOldSnapToken = await providers.reader.GetRelations(filter with
         {
             SnapToken = initialSnapToken
         }, default);
         relationsWithOldSnapToken.Should().BeEquivalentTo(expectedRelationsWithOldSnapToken);
 
-        // Assert - Validate relations with the new snap token
         var relationsWithNewSnapToken = await providers.reader.GetRelations(filter with
         {
             SnapToken = newSnapToken
@@ -249,7 +236,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         GetRelationsWithOlderSnapTokenData => new()
     {
         {
-            // Seed Relations
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -257,21 +243,18 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Bob)
             },
-            // New Relations (added later)
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Charlie)
             },
-            // Filter to apply for both old and new snap tokens
             new RelationTupleFilter
             {
                 EntityType = TestsConsts.Workspaces.Identifier,
                 EntityId = TestsConsts.Workspaces.PublicWorkspace,
                 Relation = "owner",
-                SnapToken = null // We'll override this dynamically in the test
+                SnapToken = null
             },
-            // Expected Relations with the Old SnapToken
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -279,7 +262,6 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
                     TestsConsts.Users.Identifier, TestsConsts.Users.Bob)
             },
-            // Expected Relations with the New SnapToken
             new List<RelationTuple>
             {
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -292,93 +274,297 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         }
     };
 
-    [Theory]
-    [MemberData(nameof(GetRelationsWithEntityIdsData))]
-    public async Task GetRelationsWithEntityIds_Should_Respect_SnapToken(
-        List<RelationTuple> seedRelations,
-        EntityRelationFilter entityRelationFilter,
-        string subjectType,
-        List<string> entityIds,
-        string? subjectRelation,
-        List<RelationTuple> expectedRelations)
+    [Fact]
+    public async Task GetRelationsWithEntityIds_Should_Respect_SnapToken()
     {
-        // Arrange
         var providers = CreateProviders();
 
-        // Act - Initial Write
-        var initialSnapToken = await providers.writer.Write(seedRelations, new List<AttributeTuple>(), default);
+        var seed = new List<RelationTuple>
+        {
+            new("workspace", "public", "owner", "user", "alice"),
+            new("workspace", "private", "member", "user", "bob")
+        };
+        var filter = new EntityRelationFilter
+        {
+            EntityType = "workspace",
+            Relation = "owner",
+            SnapToken = null
+        };
+        var initialSnapToken = await providers.writer.Write(seed, new List<AttributeTuple>(), default);
 
-        // Assert - Validate relations after initial write
-        var initialRelations = await providers.reader.GetRelationsWithEntityIds(
-            entityRelationFilter with { SnapToken = initialSnapToken },
-            subjectType,
-            entityIds,
-            subjectRelation,
+        var newSnapToken = await providers.writer.Write(
+            [new RelationTuple("workspace", "private", "owner", "user", "charlie")], new List<AttributeTuple>(),
+            default);
+
+        // Assert that using an older token does not bring new data
+        var relationsWithOldToken = await providers.reader.GetRelationsWithEntityIds(
+            filter with { SnapToken = initialSnapToken },
+            "user",
+            new List<string> { "public", "private" },
+            null,
             default
         );
-        initialRelations.Should().BeEquivalentTo(seedRelations);
 
-        // Perform additional operations (e.g., deletion) here if needed and validate against older SnapTokens
-        // Assert - Validate relations for older SnapToken
-        var olderRelations = await providers.reader.GetRelationsWithEntityIds(
-            entityRelationFilter with { SnapToken = new SnapToken("older-token") }, // Simulate an older SnapToken
-            subjectType,
-            entityIds,
-            subjectRelation,
+        relationsWithOldToken.Should().BeEquivalentTo(new List<RelationTuple>
+        {
+            new("workspace", "public", "owner", "user", "alice"),
+        });
+
+        // Assert that the newer token returns the inserted data
+        var relationsWithNewToken = await providers.reader.GetRelationsWithEntityIds(
+            filter with { SnapToken = newSnapToken },
+            "user",
+            new List<string> { "public", "private" },
+            null,
             default
         );
-        olderRelations.Should().BeEquivalentTo(expectedRelations);
+        relationsWithNewToken.Should().BeEquivalentTo(new List<RelationTuple>
+        {
+            new("workspace", "public", "owner", "user", "alice"),
+            new("workspace", "private", "owner", "user", "charlie"),
+        });
     }
 
-    public static
-        TheoryData<List<RelationTuple>, EntityRelationFilter, string, List<string>, string?, List<RelationTuple>>
-        GetRelationsWithEntityIdsData =>
-        new()
+    [Fact]
+    public async Task GetRelationsWithSubjectsIds_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var seed = new List<RelationTuple>
         {
-            {
-                // Test Case 1: SnapToken includes all matching relations
-                new List<RelationTuple>
-                {
-                    new("workspace", "public", "owner", "user", "alice"),
-                    new("workspace", "private", "owner", "user", "charlie"),
-                    new("workspace", "private", "member", "user", "bob")
-                },
-                new EntityRelationFilter
-                {
-                    EntityType = "workspace",
-                    Relation = "owner",
-                    SnapToken = null // Latest SnapToken
-                },
-                "user", // subjectType
-                new List<string> { "public", "private" }, // entityIds
-                null, // subjectRelation
-                new List<RelationTuple>
-                {
-                    new("workspace", "public", "owner", "user", "alice"),
-                    new("workspace", "private", "owner", "user", "charlie"),
-                }
-            },
-            {
-                // Test Case 2: Older SnapToken excludes newer relations
-                new List<RelationTuple>
-                {
-                    new("workspace", "public", "owner", "user", "alice"),
-                },
-                new EntityRelationFilter
-                {
-                    EntityType = "workspace",
-                    Relation = "owner",
-                    SnapToken = null // Latest SnapToken
-                },
-                "user", // subjectType
-                new List<string> { "public" }, // entityIds
-                null, // subjectRelation
-                new List<RelationTuple>
-                {
-                    new("workspace", "public", "owner", "user", "alice")
-                }
-            }
+            new("workspace", "public", "owner", "user", "alice"),
+            new("workspace", "private", "member", "user", "bob")
         };
+        var filter = new EntityRelationFilter
+        {
+            EntityType = "workspace",
+            Relation = "owner",
+            SnapToken = null
+        };
+        var initialSnapToken = await providers.writer.Write(seed, new List<AttributeTuple>(), default);
+
+        var newSnapToken = await providers.writer.Write(
+            [new RelationTuple("workspace", "private", "owner", "user", "charlie")], new List<AttributeTuple>(),
+            default);
+
+        // Assert that using an older token does not bring new data
+        var relationsWithOldToken = await providers.reader.GetRelationsWithSubjectsIds(
+            filter with { SnapToken = initialSnapToken },
+            new List<string> { "charlie", "alice", "bob" },
+            "user",
+            default
+        );
+
+        relationsWithOldToken.Should().BeEquivalentTo(new List<RelationTuple>
+        {
+            new("workspace", "public", "owner", "user", "alice"),
+        });
+
+        // Assert that the newer token returns the inserted data
+        var relationsWithNewToken = await providers.reader.GetRelationsWithSubjectsIds(
+            filter with { SnapToken = newSnapToken },
+            new List<string> { "charlie", "alice", "bob" },
+            "user",
+            default
+        );
+        relationsWithNewToken.Should().BeEquivalentTo(new List<RelationTuple>
+        {
+            new("workspace", "public", "owner", "user", "alice"),
+            new("workspace", "private", "owner", "user", "charlie"),
+        });
+    }
+
+    [Fact]
+    public async Task GetAttribute_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var seed = new List<AttributeTuple>
+        {
+            new("workspace", "maneirinho", "public", JsonValue.Create(false)),
+        };
+
+        var initialSnapToken = await providers.writer.Write([], seed, default);
+
+        var newSnapToken = await providers.writer.Write(
+            [], [new AttributeTuple("workspace", "daora", "public", JsonValue.Create(false))],
+            default);
+
+        // Assert that using an older token does not bring new data
+        var attrWithOldToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = initialSnapToken,
+                EntityId = "daora"
+            },
+            default
+        );
+
+        attrWithOldToken.Should().BeNull();
+
+        // Assert that the newer token returns the inserted data
+        var attrWithNewToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = newSnapToken,
+                EntityId = "daora"
+            },
+            default
+        );
+        new
+        {
+            attrWithNewToken!.EntityType,
+            attrWithNewToken!.EntityId,
+            attrWithNewToken!.Attribute,
+            Value = attrWithNewToken!.Value.ToJsonString()
+        }.Should().BeEquivalentTo(new
+        {
+            EntityType = "workspace",
+            EntityId = "daora",
+            Attribute = "public",
+            Value = JsonValue.Create(false).ToJsonString()
+        });
+    }
+
+    [Fact]
+    public async Task GetAttributes_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var seed = new List<AttributeTuple>
+        {
+            new("workspace", "maneirinho", "public", JsonValue.Create(false)),
+        };
+
+        var initialSnapToken = await providers.writer.Write([], seed, default);
+
+        var newSnapToken = await providers.writer.Write(
+            [], [new AttributeTuple("workspace", "daora", "public", JsonValue.Create(false))],
+            default);
+
+        // Assert that using an older token does not bring new data
+        var attrWithOldToken = await providers.reader.GetAttributes(new EntityAttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = initialSnapToken,
+            },
+            default
+        );
+
+        attrWithOldToken
+            .Select(a => new { a.EntityId, a.Attribute, a.EntityType, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "maneirinho",
+                    Value = JsonValue.Create(false).ToJsonString()
+                }
+            ]);
+
+        // Assert that the newer token returns the inserted data
+        var attrWithNewToken = await providers.reader.GetAttributes(new EntityAttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = newSnapToken,
+            },
+            default
+        );
+        attrWithNewToken
+            .Select(a => new { a.EntityId, a.Attribute, a.EntityType, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "maneirinho",
+                    Value = JsonValue.Create(false).ToJsonString()
+                },
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "daora",
+                    Value = JsonValue.Create(false).ToJsonString()
+                },
+            ]);
+    }
+
+    [Fact]
+    public async Task GetAttributesWithEntityIds_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var seed = new List<AttributeTuple>
+        {
+            new("workspace", "maneirinho", "public", JsonValue.Create(false)),
+        };
+
+        var initialSnapToken = await providers.writer.Write([], seed, default);
+
+        var newSnapToken = await providers.writer.Write(
+            [], [new AttributeTuple("workspace", "daora", "public", JsonValue.Create(false))],
+            default);
+
+        // Assert that using an older token does not bring new data
+        var attrWithOldToken = await providers.reader.GetAttributesWithEntityIds(
+            new AttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = initialSnapToken,
+            },
+            ["daora", "maneirinho"],
+            default
+        );
+
+        attrWithOldToken
+            .Select(a => new { a.EntityId, a.Attribute, a.EntityType, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "maneirinho",
+                    Value = JsonValue.Create(false).ToJsonString()
+                }
+            ]);
+
+        // Assert that the newer token returns the inserted data
+        var attrWithNewToken = await providers.reader.GetAttributesWithEntityIds(
+            new AttributeFilter
+            {
+                EntityType = "workspace",
+                Attribute = "public",
+                SnapToken = newSnapToken,
+            },
+            ["daora", "maneirinho"],
+            default
+        );
+        attrWithNewToken
+            .Select(a => new { a.EntityId, a.Attribute, a.EntityType, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "maneirinho",
+                    Value = JsonValue.Create(false).ToJsonString()
+                },
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "daora",
+                    Value = JsonValue.Create(false).ToJsonString()
+                },
+            ]);
+    }
 
     public async Task InitializeAsync()
     {
