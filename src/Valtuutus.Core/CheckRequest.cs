@@ -2,7 +2,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Valtuutus.Core;
 
-public record CheckRequest
+public record CheckRequest : IWithDepth
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -24,10 +24,4 @@ public record CheckRequest
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
     }
-
-    public bool CheckDepth() =>
-        Depth == 0;
-
-    public void DecreaseDepth() =>
-        Depth--;
 }

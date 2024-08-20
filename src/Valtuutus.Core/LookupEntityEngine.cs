@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using LookupFunction =
@@ -8,7 +9,7 @@ using LookupFunction =
 
 namespace Valtuutus.Core;
 
-internal record LookupEntityRequestInternal
+internal record LookupEntityRequestInternal : IWithDepth
 {
     public required string EntityType { get; init; }
     public required string Permission { get; init; }
@@ -18,12 +19,6 @@ internal record LookupEntityRequestInternal
     public required string FinalSubjectType { get; init; }
     public required string FinalSubjectId { get; init; }
     public required int Depth { get; set; } = 10;
-
-    public bool CheckDepth() =>
-        Depth == 0;
-
-    public void DecreaseDepth() =>
-        Depth--;
 }
 
 public sealed class LookupEntityEngine(

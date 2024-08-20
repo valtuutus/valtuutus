@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Valtuutus.Core;
 
 
-public record LookupEntityRequest
+public record LookupEntityRequest : IWithDepth
 {
     [SetsRequiredMembers]
     public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10)
