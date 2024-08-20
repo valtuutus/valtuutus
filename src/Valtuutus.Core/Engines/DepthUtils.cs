@@ -1,16 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿namespace Valtuutus.Core.Engines;
 
-namespace Valtuutus.Core.Engines
+internal static class DepthUtils
 {
-    public static class DepthUtils
-    {
-        public static int Depth;
-        public static bool CheckDepthLimit(this IWithDepth req) =>
-            req.Depth == 0;
+    public static int Depth;
 
-        public static void DecreaseDepth(this IWithDepth req) =>
-            req.Depth--;
-    }
+    public static bool CheckDepthLimit(this IWithDepth req) =>
+        req.Depth == 0;
+
+    public static void DecreaseDepth(this IWithDepth req) =>
+        req.Depth--;
 }
