@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.4-alpha</VersionPrefix>
+    <VersionPrefix>0.5-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,11 +17,11 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.4-alpha:
-      - Improved DI using a builder instead of an extension on top of IServiceCollection
-      - Exposed InMemoryProvider for testing purposes
-      - Updated dependencies
-      - Sql Server columns are now NVARCHAR (to allow for unicode characters)
+    <PackageReleaseNotes>Version 0.5-beta:
+      - netstandard2.0, net6.0, net7.0 and net8.0 multitargeting
+      - Depth limit of requests
+      - Caching
+      - Snaptoken based querying
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
