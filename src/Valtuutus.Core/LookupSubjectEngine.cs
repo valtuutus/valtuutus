@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using LookupSubjectFunction =
@@ -7,7 +8,7 @@ using LookupSubjectFunction =
 
 namespace Valtuutus.Core;
 
-internal record LookupSubjectRequestInternal
+internal record LookupSubjectRequestInternal : IWithDepth
 {
     public required string EntityType { get; init; }
     public required IList<string> EntitiesIds { get; init; }
@@ -17,6 +18,7 @@ internal record LookupSubjectRequestInternal
     public required string FinalSubjectType { get; init; }
     public required string RootEntityType { get; init; }
     public required string RootEntityId { get; init; }
+    public required int Depth { get; set; } = 10;
 }
 
 public sealed class LookupSubjectEngine(
@@ -40,7 +42,8 @@ public sealed class LookupSubjectEngine(
             EntitiesIds = [req.EntityId],
             FinalSubjectType = req.SubjectType,
             RootEntityId = req.EntityId,
-            RootEntityType = req.EntityType
+            RootEntityType = req.EntityType,
+            Depth = req.Depth
         };
 
         var res = await LookupInternal(internalReq)(ct);
@@ -61,8 +64,18 @@ public sealed class LookupSubjectEngine(
         yield return new KeyValuePair<string, object?>("LookupSubjectRequest", req);
     }
 
+    private static LookupSubjectFunction Fail()
+    {
+        return (_) => Task.FromResult(new RelationOrAttributeTuples(Enumerable.Empty<RelationTuple>().ToList()));
+    }
+
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
     {
+        if (req.CheckDepthLimit())
+            return Fail();
+
+        req.DecreaseDepth();
+
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         return schema.GetRelationType(req.EntityType, req.Permission) switch

@@ -43,6 +43,10 @@ public abstract class BaseCheckEngineSpecs
         IntersectionBetweenAttributeExpAndOtherNodes =
             CheckEngineSpecList.IntersectionBetweenAttributeExpAndOtherNodes;
 
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool>
+        UnionRelationDepthLimit =
+            CheckEngineSpecList.UnionRelationDepthLimit;
+
 
     [Theory]
     [MemberData(nameof(TopLevelChecks))]
@@ -269,6 +273,32 @@ public abstract class BaseCheckEngineSpecs
     }
 
     [Theory]
+    [MemberData(nameof(UnionRelationDepthLimit))]
+    public async Task CheckingDepthLimit(RelationTuple[] tuples, AttributeTuple[] attributes,
+        CheckRequest request, bool expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Groups.Identifier)
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+            .SchemaBuilder.Build();
+
+        var engine = await CreateEngine(tuples, attributes, schema);
+
+        // Act
+        var result = await engine.Check(request, default);
+
+        // Assert
+        result.Should().Be(expected);
+    }
+
+    [Theory]
     [MemberData(nameof(IntersectionBetweenAttributeExpAndOtherNodes))]
     public async Task CheckIntersectionBetweenAttributeExpAndOtherNodes(RelationTuple[] tuples,
         AttributeTuple[] attributes, CheckRequest request, bool expected)
@@ -402,6 +432,43 @@ public abstract class BaseCheckEngineSpecs
         }, default);
 
         // assert
+        await Verifier.Verify(result);
+    }
+
+    [Fact]
+    public async Task SubjectPermissionWithDepthLimit()
+    {
+        // Arrange
+        var tuples = new RelationTuple[] {
+            new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+        };
+
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Groups.Identifier)
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+            .SchemaBuilder.Build();
+
+        var engine = await CreateEngine(tuples, [], schema);
+
+        // Act
+        var request = new SubjectPermissionRequest()
+        {
+            EntityType = TestsConsts.Workspaces.Identifier,
+            EntityId = TestsConsts.Workspaces.PublicWorkspace,
+            SubjectType = TestsConsts.Users.Identifier,
+            SubjectId = TestsConsts.Users.Alice,
+            Depth = 1
+        };
+        var result = await engine.SubjectPermission(request, default);
+
+        // Assert
         await Verifier.Verify(result);
     }
 

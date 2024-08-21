@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
@@ -62,7 +63,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             EntityId = req.EntityId,
             Permission = x.Name,
             SubjectType = req.SubjectType,
-            SubjectId = req.SubjectId
+            SubjectId = req.SubjectId,
+            Depth = req.Depth
         })(ct))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
@@ -92,6 +94,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
+        if (req.CheckDepthLimit())
+            return Fail();
+
+        req.DecreaseDepth();
+
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
@@ -251,6 +258,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                     {
                         EntityType = relation.SubjectType, EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
+                        Depth = req.Depth
                     }, computedUserSetRelation)
                 )
             );
@@ -289,6 +297,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                         EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation,
                         SubjectId = req.SubjectId,
+                        Depth = req.Depth
                     }));
                 }
             }
