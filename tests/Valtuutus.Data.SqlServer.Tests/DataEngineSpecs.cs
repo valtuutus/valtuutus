@@ -24,7 +24,7 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
     {
         
         // act
-        var dataEngine = _provider.GetRequiredService<DataEngine>();
+        var dataEngine = Provider.GetRequiredService<DataEngine>();
         var snapToken = await dataEngine.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
         var transactionId = Ulid.Parse(snapToken.Value);
 
@@ -51,7 +51,7 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
     public async Task DeletingData_ShouldReturnTransactionId()
     {
         // arrange
-        var dataEngine = _provider.GetRequiredService<DataEngine>();
+        var dataEngine = Provider.GetRequiredService<DataEngine>();
         
         // act
         var newSnapToken = await dataEngine.Delete(new DeleteFilter

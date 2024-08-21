@@ -12,11 +12,11 @@ namespace Valtuutus.Tests.Shared;
 public abstract class BaseDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture Fixture { get; }
-    protected readonly ServiceProvider _provider = null!;
+    protected readonly ServiceProvider Provider;
 
     protected BaseDataEngineSpecs(IDatabaseFixture fixture)
     {
-        _provider = CreateServiceProvider();
+        Provider = CreateServiceProvider();
         Fixture = fixture;
     }
 
@@ -145,7 +145,7 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
         DeleteFilter filter, RelationTuple[] expectedTuples, AttributeTuple[] expectedAttributes)
     {
         // arrange
-        var engine = _provider.GetRequiredService<DataEngine>();
+        var engine = Provider.GetRequiredService<DataEngine>();
         await engine.Write(seedRelations, seedAttributes, default);
         
         // act

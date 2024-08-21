@@ -29,7 +29,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
     {
 	    await _dbContainer.StartAsync();
 	    await CreateDatabase("Valtuutus");
-        DbFactory = () => new SqlConnection(GetContainerConnectionString());
+        DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
 	    await using var dbConnection = (SqlConnection)DbFactory();
         await dbConnection.ExecuteAsync(DbMigration);
         await SetupRespawnerAsync();
@@ -38,12 +38,12 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
     
     public async Task ResetDatabaseAsync()
     {
-	    await _respawner.ResetAsync(GetContainerConnectionString());
+	    await _respawner.ResetAsync(_dbContainer.GetConnectionString());
     }
     
     private async Task SetupRespawnerAsync()
     {
-	    _respawner = await Respawner.CreateAsync(GetContainerConnectionString(), new RespawnerOptions
+	    _respawner = await Respawner.CreateAsync(_dbContainer.GetConnectionString(), new RespawnerOptions
 	    {
 		    DbAdapter = DbAdapter.SqlServer,
 	    });
@@ -65,19 +65,6 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
 
 	    await _dbContainer.ExecScriptAsync(createDatabaseScript)
 		    .ConfigureAwait(false);
-    }
-
-    private string GetContainerConnectionString()
-    {
-	    var sqlBuilder = new SqlConnectionStringBuilder();
-
-	    sqlBuilder.TrustServerCertificate = true;
-	    sqlBuilder.UserID = "sa";
-	    sqlBuilder.Password = "Valtuutus123!";
-	    sqlBuilder.DataSource = //$"{_dbContainer.Hostname},{_dbContainer.GetMappedPublicPort(1433)}";
-	    sqlBuilder.InitialCatalog = "Valtuutus";
-
-	    return _dbContainer.GetConnectionString(); // sqlBuilder.ConnectionString;
     }
 
     private static string DbMigration = 

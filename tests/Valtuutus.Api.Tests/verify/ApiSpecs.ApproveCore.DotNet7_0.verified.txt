@@ -2,9 +2,8 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v7.0", FrameworkDisplayName=".NET 7.0")]
 namespace Valtuutus.Core
 {
-    public class AttributeTuple : System.IEquatable<Valtuutus.Core.AttributeTuple>
+    public sealed class AttributeTuple : System.IEquatable<Valtuutus.Core.AttributeTuple>
     {
-        protected AttributeTuple() { }
         public AttributeTuple(string entityType, string entityId, string attribute, System.Text.Json.Nodes.JsonValue value) { }
         public string Attribute { get; }
         public string EntityId { get; }
@@ -17,9 +16,8 @@ namespace Valtuutus.Core
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
     }
-    public class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
+    public sealed class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
     {
-        protected RelationTuple() { }
         public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null) { }
         public string EntityId { get; }
         public string EntityType { get; }

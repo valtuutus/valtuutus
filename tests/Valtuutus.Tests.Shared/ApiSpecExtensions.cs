@@ -1,7 +1,7 @@
 using static PublicApiGenerator.ApiGenerator;
 namespace Valtuutus.Tests.Shared;
 
-public class ApiSpecExtensions
+public static class ApiSpecExtensions
 {
     public static Task VerifyAssembly<T>()
     {

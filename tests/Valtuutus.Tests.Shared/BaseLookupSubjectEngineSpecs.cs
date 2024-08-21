@@ -187,7 +187,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
         // assert
         result.Should()
-            .BeEquivalentTo([TestsConsts.Users.Alice, TestsConsts.Users.Bob]);
+            .BeEquivalentTo(TestsConsts.Users.Alice, TestsConsts.Users.Bob);
     }
 
     [Fact]
@@ -224,7 +224,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             "withdraw", "user", "1"), default);
 
         // assert
-        result.Should().BeEquivalentTo([TestsConsts.Users.Alice]);
+        result.Should().BeEquivalentTo(TestsConsts.Users.Alice);
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>

@@ -174,7 +174,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             "edit", "user", "1"), default);
 
         // assert
-        result.Should().BeEquivalentTo([TestsConsts.Workspaces.PublicWorkspace, TestsConsts.Workspaces.PrivateWorkspace]);
+        result.Should().BeEquivalentTo(TestsConsts.Workspaces.PublicWorkspace, TestsConsts.Workspaces.PrivateWorkspace);
     }
 
     [Fact]
@@ -211,7 +211,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             "withdraw", "user", "1"), default);
 
         // assert
-        result.Should().BeEquivalentTo(["1"]);
+        result.Should().BeEquivalentTo("1");
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>

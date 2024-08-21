@@ -15,7 +15,7 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
 
     protected override Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        var controller = _provider.GetRequiredService<InMemoryController>();
+        var controller = Provider.GetRequiredService<InMemoryController>();
         return controller.Dump(default);
     }
 

@@ -2,7 +2,7 @@
 
 namespace Valtuutus.Core;
 
-public record AttributeTuple
+public sealed record AttributeTuple
 {
     public string EntityType { get; private init; } = null!;
     public string EntityId { get; private init; } = null!;
@@ -17,6 +17,4 @@ public record AttributeTuple
         Attribute = attribute;
         Value = value;
     }
-    
-    protected AttributeTuple() {}
 }
