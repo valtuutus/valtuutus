@@ -17,6 +17,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		src\Directory.Build.props = src\Directory.Build.props
 		src\Directory.Packages.props = src\Directory.Packages.props
 		build.cake = build.cake
+		.editorconfig = .editorconfig
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Data.InMemory.Tests", "tests\Valtuutus.Data.InMemory.Tests\Valtuutus.Data.InMemory.Tests.csproj", "{D074253B-9547-493D-A2E8-DCF0DB1D3204}"
