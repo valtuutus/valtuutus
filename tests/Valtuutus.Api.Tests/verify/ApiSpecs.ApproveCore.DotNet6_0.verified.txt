@@ -120,6 +120,7 @@ namespace Valtuutus.Core.Data
     {
         public SnapToken(string Value) { }
         public string Value { get; set; }
+        public static Valtuutus.Core.Data.SnapToken op_Implicit(string token) { }
     }
 }
 namespace Valtuutus.Core.Engines.Check
@@ -130,12 +131,13 @@ namespace Valtuutus.Core.Engines.Check
         public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken) { }
     }
-    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public CheckRequest() { }
         public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default) { }
+        public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
@@ -162,6 +164,7 @@ namespace Valtuutus.Core.Engines.Check
             "your compiler.", true)]
         public SubjectPermissionRequest() { }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public int Depth { get; init; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string SubjectId { get; init; }
@@ -170,6 +173,10 @@ namespace Valtuutus.Core.Engines.Check
 }
 namespace Valtuutus.Core.Engines
 {
+    public interface IWithDepth
+    {
+        int Depth { get; set; }
+    }
     public interface IWithSnapToken
     {
         Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
@@ -191,12 +198,13 @@ namespace Valtuutus.Core.Engines.LookupEntity
         public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken) { }
     }
-    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public LookupEntityRequest() { }
-        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId) { }
+        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10) { }
+        public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityType { get; init; }
         public string Permission { get; init; }
@@ -215,12 +223,13 @@ namespace Valtuutus.Core.Engines.LookupSubject
         public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken) { }
     }
-    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public LookupSubjectRequest() { }
-        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId) { }
+        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10) { }
+        public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
