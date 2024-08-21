@@ -11,10 +11,14 @@ namespace Valtuutus.Data.Postgres;
 internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
+    private readonly IServiceProvider _provider;
+    private readonly ValtuutusDataOptions _options;
 
-    public PostgresDataWriterProvider(DbConnectionFactory factory)
+    public PostgresDataWriterProvider(DbConnectionFactory factory, IServiceProvider provider, ValtuutusDataOptions options)
     {
         _factory = factory;
+        _provider = provider;
+        _options = options;
     }
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
@@ -65,8 +69,9 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await transaction.CommitAsync(ct);
 
-        return new SnapToken(transactId.ToString());
-    }
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;    }
 
     private static async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
@@ -83,17 +88,31 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         var transactId = Ulid.NewUlid();
         await using var db = (NpgsqlConnection) _factory();
         await db.OpenAsync(ct);
+
+
         
 #if !NETCOREAPP3_0_OR_GREATER
         await using var transaction = db.BeginTransaction();
 #else
         await using var transaction = await db.BeginTransactionAsync(ct);
+        
 #endif
+        
+        var snapTokenParam = new
+        {
+            SnapToken = new DbString
+            {
+                Length = 26,
+                Value = transactId.ToString(),
+                IsFixedLength = true
+            }
+
+        };
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM public.relation_tuples /**where**/");
+            var queryTemplate = relationsBuilder.AddTemplate(@"UPDATE public.relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
@@ -104,7 +123,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         {
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM public.attributes /**where**/");
+            var queryTemplate = attributesBuilder.AddTemplate(@"UPDATE public.attributes set deleted_tx_id = @SnapToken /**where**/",snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
@@ -113,6 +132,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await InsertTransaction(db, transactId, transaction, ct);
         await transaction.CommitAsync(ct);
-        return new SnapToken(transactId.ToString());
-    }
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;    }
 }

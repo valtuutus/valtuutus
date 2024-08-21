@@ -1,16 +1,13 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Valtuutus.Data.Tests.Shared;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
 [Collection("InMemorySpecs")]
-public sealed class LookupSubjectEngineSpecs : DataLookupSubjectEngineSpecs
+public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
 {
 
-    public LookupSubjectEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupSubjectEngineSpecs(InMemoryFixture fixture) : base(fixture) {}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

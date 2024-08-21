@@ -1,7 +1,6 @@
-﻿namespace Valtuutus.Core
+﻿namespace Valtuutus.Core.Engines;
+
+public interface IWithDepth
 {
-    public interface IWithDepth
-    {
-        public int Depth { get; set; }
-    }
+    public int Depth { get; set; }
 }

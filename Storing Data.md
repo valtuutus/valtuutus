@@ -7,10 +7,10 @@ In Valtuutus, you can store authorization data in two different forms: as relati
 Let’s examine relationships first.
 
 ## Relationships
-In Valtuutus, relationship between your entities and objects builds up a collection of access control lists (ACLs).
+In Valtuutus, relationships between your entities and objects build up a collection of access control lists (ACLs).
 
-These ACLs called relational tuples: the underlying data form that represents object-to-object and object-to-subject relations. 
-Each relational tuple represents an action that a specific entity can do on a resource and takes form of entity U has relation R to object O, where entity U could be a simple user or a user set such as team X members.
+These ACLs are called relational tuples: the underlying data form that represents object-to-object and object-to-subject relations.
+Each relational tuple represents an action that a specific entity can do on a resource and takes the form of entity U has relation R to object O, where entity U could be a simple user or a user set such as team X members.
 
 ## Attributes
 Besides creating and storing your authorization-related data as relationships, you can also create attributes along with your resources and users.
@@ -19,8 +19,7 @@ For certain use cases, using relationships (ReBAC) or roles (RBAC) might not be 
 
 Attribute-Based Access Control takes a more contextual approach, allowing you to define access rights based on the context around subjects and objects in an application.
 
-
-**Having said that, as of now, Valtuutus only supports boolean, string, integer and decimal attributes.**
+**Having said that, as of now, Valtuutus only supports boolean, string, integer, and decimal attributes.**
 
 ## Creating Authorization Data
 Relationships and attributes can be created simply by calling the `DataEngine` function `Write`.
@@ -60,8 +59,8 @@ await writer.Write([new RelationTuple("document", "2", "owner", "user", "1")], [
 In Valtuutus, each modification to the authorization data returns a snap token.
 ```json
 {
-  "snapToken": "VrP43"
+  "snapToken": "01J59G4294E1AR1AMCJTD0SPXW"
 }
 ```
-This token consists of an encoded timestamp, which in later versions will be used to get fresh results in access control queries.
+This token consists of an [ULID](https://github.com/ulid/spec) that can be used to get fresh or older results in access control queries.
 

@@ -1,12 +1,12 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
-using Valtuutus.Data.Tests.Shared;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
 
 [Collection("InMemorySpecs")]
-public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
+public sealed class DataEngineSpecs : BaseDataEngineSpecs
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
@@ -19,10 +19,7 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         return controller.Dump(default);
     }
 
-    public DataEngineSpecs(InMemoryFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public DataEngineSpecs(InMemoryFixture fixture) : base(fixture) {}
     
     
 }

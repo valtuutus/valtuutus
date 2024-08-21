@@ -4,7 +4,6 @@ using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
-using Valtuutus.Data;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Api;
@@ -45,12 +44,12 @@ public static class Seeder
         Randomizer.Seed = new Random(1500);
         var users = new Faker<User>()
             .RuleFor(x => x.Id, f => f.Random.Guid())
-            .Generate(100_000);
+            .Generate(50000);
 
         var organizations = new Faker<Organization>()
             .RuleFor(x => x.Id, f => f.Random.Guid())
             .RuleFor(x => x.Admins, f => f.PickRandom(users, f.Random.Int(5, 25)).ToArray())
-            .RuleFor(x => x.Members, f => f.PickRandom(users, f.Random.Int(1000, 50_000)).ToArray())
+            .RuleFor(x => x.Members, f => f.PickRandom(users, f.Random.Int(5, 100)).ToArray())
             .Generate(50);
 
         var teams = new Faker<Team>()
@@ -58,7 +57,7 @@ public static class Seeder
             .RuleFor(x => x.Org, f => f.PickRandom(organizations))
             .RuleFor(x => x.Owner, (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray()))
             .RuleFor(x => x.Members,
-                (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray(), f.Random.Int(20, 100)).ToArray())
+                (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray(), f.Random.Int(5, o.Org.Members.Length)).ToArray())
             .Generate(organizations.Count * 20);
 
         var projects = new Faker<Project>()
@@ -67,7 +66,7 @@ public static class Seeder
             .RuleFor(x => x.Public, f => f.Random.Bool())
             .RuleFor(x => x.Team, (f, o) => f.PickRandom(teams.Where(t => t.Org.Id == o.Org.Id)))
             .RuleFor(x => x.Members,
-                (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray(), f.Random.Int(50, 1000)).ToArray())
+                (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray(), f.Random.Int(5, o.Org.Members.Length)).ToArray())
             .Generate(organizations.Count * 100);
 
 
@@ -150,34 +149,9 @@ public static class Seeder
         }
 
         var (relations, attributes) = GenerateData();
-
+        
         var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
-
-        var relationsChunks = relations.Chunk(10_000);
-
-        var count = 0;
-        var chunksCount = relations.Count / 10_000;
-        foreach (var chunk in relationsChunks)
-        {
-            try
-            {
-
-                Console.WriteLine("Writing relations to the db");
-                await writer.Write(chunk, [], default);
-
-                count++;
-                Console.WriteLine($"[Done] Writing relations to the db! Missing {chunksCount - count}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex);
-            }
-
-        }
-
-        Console.WriteLine("Writing attributes to the db");
-        await writer.Write([], attributes, default);
-        Console.WriteLine("[Done] Writing attributes to the db");
+        await writer.Write(relations, attributes, default);
     }
 
 }

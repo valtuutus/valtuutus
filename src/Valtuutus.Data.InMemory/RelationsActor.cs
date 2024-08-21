@@ -6,77 +6,138 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class RelationsActor : ReceiveActor
 {
+    private sealed record InMemoryTuple(RelationTuple Relation, Ulid CreatedTxId, Ulid? DeletedTxId)
+    {
+        public Ulid? DeletedTxId { get; set; } = DeletedTxId;
+    }
 
-    private readonly List<RelationTuple> _relationTuples;
+    private readonly List<InMemoryTuple> _relationTuples;
 
     public RelationsActor()
     {
-        _relationTuples = new List<RelationTuple>();
-        
+        _relationTuples = new();
+
         Receive<Commands.GetRelations>(GetRelationsHandler);
-        
+
         Receive<Commands.GetRelationsWithEntityIds>(GetRelationsWithEntityIdsHandler);
-        
+
         Receive<Commands.GetRelationsWithSubjectIds>(GetRelationsWithSubjectIdsHandler);
-        
+
         Receive<Commands.WriteRelations>(WriteRelationsHandler);
 
         Receive<Commands.DeleteRelations>(DeleteRelationsHandler);
-        
+
         Receive<Commands.DumpRelations>(DumpRelationsHandler);
     }
 
     private void DumpRelationsHandler(Commands.DumpRelations _)
     {
-        Sender.Tell(_relationTuples.ToArray());
+        Sender.Tell(_relationTuples.Where(x => x.DeletedTxId is null)
+            .Select(x => x.Relation)
+            .ToArray());
     }
 
     private void DeleteRelationsHandler(Commands.DeleteRelations msg)
     {
         foreach (var filter in msg.FilterRelations)
         {
-            _relationTuples.RemoveAll(x => (filter.EntityId == x.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) && (filter.EntityType == x.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) && (filter.SubjectId == x.SubjectId || string.IsNullOrWhiteSpace(filter.SubjectId)) && (filter.SubjectType == x.SubjectType || string.IsNullOrWhiteSpace(filter.SubjectType)) && (filter.SubjectRelation == x.SubjectRelation || string.IsNullOrWhiteSpace(filter.SubjectRelation)) && (filter.Relation == x.Relation || string.IsNullOrWhiteSpace(filter.Relation)));
+            var relations = _relationTuples.Where(x =>
+                x.DeletedTxId is null &&
+                (filter.EntityId == x.Relation.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
+                (filter.EntityType == x.Relation.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
+                (filter.SubjectId == x.Relation.SubjectId || string.IsNullOrWhiteSpace(filter.SubjectId)) &&
+                (filter.SubjectType == x.Relation.SubjectType || string.IsNullOrWhiteSpace(filter.SubjectType)) &&
+                (filter.SubjectRelation == x.Relation.SubjectRelation ||
+                 string.IsNullOrWhiteSpace(filter.SubjectRelation)) &&
+                (filter.Relation == x.Relation.Relation || string.IsNullOrWhiteSpace(filter.Relation)));
+
+            foreach (var relation in relations)
+            {
+                relation.DeletedTxId = msg.TransactId;
+            }
         }
     }
 
     private void WriteRelationsHandler(Commands.WriteRelations msg)
     {
-        _relationTuples.AddRange(msg.Relations);
+        _relationTuples.AddRange(msg.Relations.Select(x => new InMemoryTuple(x, msg.TransactId, null)));
     }
 
     private void GetRelationsWithSubjectIdsHandler(Commands.GetRelationsWithSubjectIds msg)
     {
-        var result = _relationTuples.Where(x => x.EntityType == msg.EntityRelationFilter.EntityType && x.Relation == msg.EntityRelationFilter.Relation && x.SubjectType == msg.SubjectType && msg.SubjectsIds.Contains(x.SubjectId));
+        var result = _relationTuples.Where(x =>
+            x.Relation.EntityType == msg.EntityRelationFilter.EntityType &&
+            x.Relation.Relation == msg.EntityRelationFilter.Relation &&
+            x.Relation.SubjectType == msg.SubjectType &&
+            msg.SubjectsIds.Contains(x.Relation.SubjectId));
 
-        Sender.Tell(result.ToList());
+        if (msg.EntityRelationFilter.SnapToken != null)
+        {
+            result = result
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
+                            0);
+        }
+
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     private void GetRelationsWithEntityIdsHandler(Commands.GetRelationsWithEntityIds msg)
     {
-        var result = _relationTuples.Where(x => x.EntityType == msg.EntityRelationFilter.EntityType && x.Relation == msg.EntityRelationFilter.Relation && x.SubjectType == msg.SubjectType && msg.EntitiesIds.Contains(x.EntityId));
+        var result = _relationTuples.Where(x =>
+            x.Relation.EntityType == msg.EntityRelationFilter.EntityType &&
+            x.Relation.Relation == msg.EntityRelationFilter.Relation &&
+            x.Relation.SubjectType == msg.SubjectType &&
+            msg.EntitiesIds.Contains(x.Relation.EntityId));
 
-        if (!string.IsNullOrEmpty(msg.SubjectRelation)) result = result.Where(x => x.SubjectRelation == msg.SubjectRelation);
+        if (msg.EntityRelationFilter.SnapToken != null)
+        {
+            result = result
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
+                            0);
+        }
 
-        Sender.Tell(result.ToList());
+        if (!string.IsNullOrEmpty(msg.SubjectRelation))
+            result = result.Where(x => x.Relation.SubjectRelation == msg.SubjectRelation);
+
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     private void GetRelationsHandler(Commands.GetRelations msg)
     {
-        var result = _relationTuples.Where(x => x.EntityType == msg.Filter.EntityType && x.EntityId == msg.Filter.EntityId && x.Relation == msg.Filter.Relation);
+        var result = _relationTuples.Where(x =>
+            x.Relation.EntityType == msg.Filter.EntityType &&
+            x.Relation.EntityId == msg.Filter.EntityId &&
+            x.Relation.Relation == msg.Filter.Relation);
 
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectId)) result = result.Where(x => x.SubjectId == msg.Filter.SubjectId);
+        if (msg.Filter.SnapToken != null)
+        {
+            result = result
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
 
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectRelation)) result = result.Where(x => x.SubjectRelation == msg.Filter.SubjectRelation);
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectId))
+            result = result.Where(x => x.Relation.SubjectId == msg.Filter.SubjectId);
 
-        if (!string.IsNullOrEmpty(msg.Filter.SubjectType)) result = result.Where(x => x.SubjectType == msg.Filter.SubjectType);
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectRelation))
+            result = result.Where(x => x.Relation.SubjectRelation == msg.Filter.SubjectRelation);
 
-        Sender.Tell(result.ToList());
+        if (!string.IsNullOrEmpty(msg.Filter.SubjectType))
+            result = result.Where(x => x.Relation.SubjectType == msg.Filter.SubjectType);
+
+        Sender.Tell(result.Select(x => x.Relation).ToList());
     }
 
     internal static class Commands
     {
         public record GetRelations(RelationTupleFilter Filter);
-        
+
         public record DumpRelations()
         {
             public static DumpRelations Instance { get; } = new();
@@ -87,14 +148,14 @@ internal sealed class RelationsActor : ReceiveActor
             string SubjectType,
             IEnumerable<string> EntitiesIds,
             string? SubjectRelation);
-        
+
         public record GetRelationsWithSubjectIds(
             EntityRelationFilter EntityRelationFilter,
             IEnumerable<string> SubjectsIds,
             string SubjectType);
-        
-        public record WriteRelations(IEnumerable<RelationTuple> Relations);
 
-        public record DeleteRelations(DeleteRelationsFilter[] FilterRelations);
+        public record WriteRelations(Ulid TransactId, IEnumerable<RelationTuple> Relations);
+
+        public record DeleteRelations(Ulid TransactId, DeleteRelationsFilter[] FilterRelations);
     }
 }

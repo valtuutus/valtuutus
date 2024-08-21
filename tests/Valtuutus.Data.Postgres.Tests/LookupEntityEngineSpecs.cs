@@ -1,18 +1,15 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Valtuutus.Data.Tests.Shared;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
 [Collection("PostgreSqlSpec")]
-public sealed class LookupEntityEngineSpecs : DataLookupEntityEngineSpecs
+public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
 {
-    public LookupEntityEngineSpecs(PostgresFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupEntityEngineSpecs(PostgresFixture fixture) : base(fixture){}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        return services.AddPostgres(_ =>  ((IWithDbConnectionFactory)_fixture).DbFactory);
+        return services.AddPostgres(_ =>  ((IWithDbConnectionFactory)Fixture).DbFactory);
     }
 }

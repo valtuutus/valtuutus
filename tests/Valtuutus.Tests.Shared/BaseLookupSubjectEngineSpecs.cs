@@ -2,13 +2,61 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Core.Configuration;
+using Valtuutus.Core.Engines.LookupSubject;
+using Valtuutus.Data;
 
 namespace Valtuutus.Tests.Shared;
 
-public abstract class BaseLookupSubjectEngineSpecs
+public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 {
-    protected abstract ValueTask<LookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
-        Schema? schema = null);
+    protected BaseLookupSubjectEngineSpecs(IDatabaseFixture fixture)
+    {
+        Fixture = fixture;
+    }
+    protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
+    
+    protected IDatabaseFixture Fixture { get; }
+    
+    private ServiceProvider CreateServiceProvider(Schema? schema = null)
+    {
+        var services = new ServiceCollection()
+            .AddValtuutusCore(TestsConsts.Action);
+        AddSpecificProvider(services)
+            .AddConcurrentQueryLimit(3);
+        if (schema != null)
+        {
+            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
+            services.Remove(serviceDescriptor);
+            services.AddSingleton(schema);
+        }
+
+        return services.BuildServiceProvider();
+    }
+    
+    
+    private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    {
+        var serviceProvider = CreateServiceProvider(schema);
+        var scope = serviceProvider.CreateScope();
+        var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
+        if(tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
+        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        await dataEngine.Write(tuples, attributes, default);
+        return lookupSubjectEngine;
+    }
+    
+    
+    public async Task InitializeAsync()
+    {
+        await Fixture.ResetDatabaseAsync();
+    }
+
+    public Task DisposeAsync()
+    {
+        return Task.CompletedTask;
+    }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
         TopLevelChecks => LookupSubjectEngineSpecList.TopLevelChecks;

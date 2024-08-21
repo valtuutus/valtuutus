@@ -4,7 +4,6 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>Valtuutus.Api</RootNamespace>
     <UserSecretsId>6114138a-bdfb-452c-b317-dbdb2c961423</UserSecretsId>
     <IsPackable>false</IsPackable>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
@@ -13,13 +12,19 @@
   <ItemGroup>
     <PackageReference Include="Bogus" Version="35.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.7" />
+    <PackageReference Include="Npgsql.OpenTelemetry" Version="8.0.3" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.9.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.9.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="ZiggyCreatures.FusionCache.Backplane.StackExchangeRedis" Version="1.3.0" />
+    <PackageReference Include="ZiggyCreatures.FusionCache.OpenTelemetry" Version="1.3.0" />
+    <PackageReference Include="ZiggyCreatures.FusionCache.Serialization.SystemTextJson" Version="1.3.0" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Valtuutus.Data.Caching\Valtuutus.Data.Caching.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
   </ItemGroup>

@@ -24,7 +24,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
-      <ProjectReference Include="..\Valtuutus.Data.Tests.Shared\Valtuutus.Data.Tests.Shared.csproj" />
+      <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
     </ItemGroup>
 
 </Project>

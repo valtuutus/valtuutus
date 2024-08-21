@@ -1,11 +1,10 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
-using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.Check;
 
 public enum RelationType
 {
@@ -15,19 +14,16 @@ public enum RelationType
     Attribute
 }
 
-public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
+public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICheckEngine
 {
-    /// <summary>
-    /// The check function walks through the schema graph to answer the question: "Can entity U perform action Y in resource Z?".
-    /// </summary>
-    /// <param name="req">Object containing the required information to evaluate the check</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>True if the subject has the permission on the entity</returns>
-    public async Task<bool> Check(CheckRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
-        var val = await CheckInternal(req)(ct);
+
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var val = await CheckInternal(req)(cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
         return val;
@@ -44,18 +40,13 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
     }
 
 
-    /// <summary>
-    /// The SubjectPermission function walks through the schema graph and evaluates every condition required to check, for each permission
-    /// if the provided subject with `SubjectId` and `SubjectType` on the entity with `EntityId` and `EntityType`.
-    /// </summary>
-    /// <param name="req">Object containing the required information to evaluate the check</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>A dictionary containing every permission for the entity and if the subject has access to it</returns>
-    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
         var permission = schema.GetPermissions(req.EntityType);
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
         var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
         {
@@ -64,8 +55,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             Permission = x.Name,
             SubjectType = req.SubjectType,
             SubjectId = req.SubjectId,
+            SnapToken = req.SnapToken,
             Depth = req.Depth
-        })(ct))).ToArray();
+        })(cancellationToken))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
         var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
@@ -128,7 +120,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             {
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
-                EntityType = req.EntityType
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
             }, ct);
 
             if (attribute is null)
@@ -196,7 +189,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             {
                 Attribute = attrName,
                 EntityId = req.EntityId,
-                EntityType = req.EntityType
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
             }, ct);
 
             if (attribute is null)
@@ -249,7 +243,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
             {
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                Relation = tupleSetRelation
+                Relation = tupleSetRelation,
+                SnapToken = req.SnapToken
             }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
@@ -258,6 +253,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                     {
                         EntityType = relation.SubjectType, EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
+                        SnapToken = req.SnapToken,
                         Depth = req.Depth
                     }, computedUserSetRelation)
                 )
@@ -278,6 +274,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = req.Permission,
+                SnapToken = req.SnapToken
             }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
@@ -297,6 +294,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema)
                         EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation,
                         SubjectId = req.SubjectId,
+                        SnapToken = req.SnapToken,
                         Depth = req.Depth
                     }));
                 }

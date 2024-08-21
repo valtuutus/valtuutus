@@ -1,13 +1,13 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
-using Valtuutus.Core.Engines;
+using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using LookupFunction =
     System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<
-        System.Collections.Generic.List<Valtuutus.Core.RelationOrAttributeTuple>>>;
+        System.Collections.Generic.List<Valtuutus.Core.Engines.LookupEntity.RelationOrAttributeTuple>>>;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.LookupEntity;
 
 internal record LookupEntityRequestInternal : IWithDepth
 {
@@ -18,22 +18,20 @@ internal record LookupEntityRequestInternal : IWithDepth
     public string? SubjectRelation { get; init; }
     public required string FinalSubjectType { get; init; }
     public required string FinalSubjectId { get; init; }
+    public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
 }
 
 public sealed class LookupEntityEngine(
     Schema schema,
-    IDataReaderProvider reader)
+    IDataReaderProvider reader) : ILookupEntityEngine
 {
-    /// <summary>
-    /// The LookupEntity method lets you ask "Which resources of type T can entity:X do action Y?"
-    /// </summary>
-    /// <param name="req">The object containing information about the question being asked</param>
-    /// <param name="ct">Cancellation Token</param>
-    /// <returns>The list of ids of the entities</returns>
-    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken ct)
+    //<inheritdoc/>
+    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupEntitySpanAttributes(req));
+        
+        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -42,10 +40,11 @@ public sealed class LookupEntityEngine(
             SubjectsIds = [req.SubjectId],
             FinalSubjectType = req.SubjectType,
             FinalSubjectId = req.SubjectId,
+            SnapToken = req.SnapToken,
             Depth = req.Depth
         };
 
-        var res = await LookupEntityInternal(internalReq)(ct);
+        var res = await LookupEntityInternal(internalReq)(cancellationToken);
         var hs =  new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
         activity?.AddEvent(new ActivityEvent("LookupEntityResult", tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
@@ -159,7 +158,8 @@ public sealed class LookupEntityEngine(
             return (await reader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attrName,
-                    EntityType = req.EntityType
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
                 }, ct))
                 .Where(AttrEvaluator)
                 .Select(x => new RelationOrAttributeTuple(x))
@@ -237,7 +237,8 @@ public sealed class LookupEntityEngine(
             return (await reader.GetAttributes(new EntityAttributeFilter
                 {
                     Attribute = attribute.Name,
-                    EntityType = req.EntityType
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
                 }, ct))
                 .Where(a => a.Value.TryGetValue(out bool b) && b)
                 .Select(x => new RelationOrAttributeTuple(x))
@@ -313,7 +314,8 @@ public sealed class LookupEntityEngine(
                     new EntityRelationFilter
                     {
                         Relation = req.Permission,
-                        EntityType = req.EntityType
+                        EntityType = req.EntityType,
+                        SnapToken = req.SnapToken
                     },
                     req.SubjectsIds,
                     req.SubjectType,

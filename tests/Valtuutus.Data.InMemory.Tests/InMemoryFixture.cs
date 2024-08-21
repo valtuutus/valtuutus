@@ -1,4 +1,4 @@
-﻿using Valtuutus.Data.Tests.Shared;
+﻿using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 

@@ -1,8 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
+using Valtuutus.Core.Data;
 
-namespace Valtuutus.Core;
+namespace Valtuutus.Core.Engines.Check;
 
-public record CheckRequest : IWithDepth
+public record CheckRequest : IWithDepth, IWithSnapToken
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -10,12 +11,13 @@ public record CheckRequest : IWithDepth
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
+    public SnapToken? SnapToken { get; set; }
     public int Depth { get; set; } = 10;
 
     public CheckRequest() {}
     
     [SetsRequiredMembers]
-    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null)
+    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, SnapToken? snapToken = null)
     {
         EntityType = entityType;
         EntityId = entityId;
@@ -23,5 +25,6 @@ public record CheckRequest : IWithDepth
         SubjectType = subjectType;
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
+        SnapToken = snapToken;
     }
 }

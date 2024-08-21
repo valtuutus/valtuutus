@@ -5,7 +5,7 @@
 The implementation is based on the [permify](https://github.com/Permify/permify) and other ReBac open source projects.
 
 
-![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)
+[![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)](https://www.nuget.org/packages?q=Valtuutus&includeComputedFrameworks=true&prerel=true&sortby=relevance)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=valtuutus_valtuutus&metric=coverage)](https://sonarcloud.io/summary/new_code?id=valtuutus_valtuutus)
 [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=valtuutus_valtuutus&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=valtuutus_valtuutus)
 
@@ -34,6 +34,7 @@ Install the package from NuGet:
 ```shell
 dotnet add package Valtuutus.Data.Postgres
 ```
+
 ### If using SqlServer:
 ```shell
 dotnet add package Valtuutus.Data.SqlServer
@@ -53,30 +54,50 @@ See examples of how to define your schema [here](Modeling%20Authorization.md).
 
 ### If using Postgres:
 ```csharp
-builder.Services.
+builder.Services
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!));
 ```
 
 ### If using SqlServer:
 ```csharp
-builder.Services.
+builder.Services
     .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
 ```
 
 ### If using InMemory:
 ```csharp
-builder.Services.
+builder.Services
     .AddInMemory();
 ```
 
-### Using check concurrent limiting
-It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the AddConcurrentQueryLimit method, for example:
+## Database migrations
+If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function.
+- [Postgres](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql)
+- [SqlServer](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
+## Using query concurrent limiting
+It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:
 ```csharp
-builder.Services.
+builder.Services
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!)) // Replace this with any provider you want
     .AddConcurrentQueryLimit(10);
 ```
 Change your data provider according to your database.
+
+## Caching
+Valtuutus supports caching the calls to the engines through the Valtuutus.Data.Caching package.
+To use it, install like:
+```shell
+dotnet add package Valtuutus.Data.Caching
+```
+In your DI setup, add the caching component:
+```csharp
+builder.Services
+    .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!)) // Replace this with any provider you want
+    .AddCaching(); // <-- This line
+```
+
+This packages requires that you setup the amazing [FusionCache library](https://github.com/ZiggyCreatures/FusionCache).
+[Click here](Caching.md) for more information.
 
 ## Telemetry
 The library uses [OpenTelemetry](https://opentelemetry.io/) to provide telemetry data. To enable it, just add a source with the name "Valtuutus":
@@ -88,5 +109,4 @@ builder.Services
         telemetry
             .AddSource("Valtuutus")
             ...
-
 ```

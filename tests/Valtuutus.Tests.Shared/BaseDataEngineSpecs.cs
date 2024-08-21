@@ -1,23 +1,23 @@
 ﻿using System.Text.Json.Nodes;
+using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
-using Valtuutus.Tests.Shared;
-using FluentAssertions;
-using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
+using Valtuutus.Data;
 
-namespace Valtuutus.Data.Tests.Shared;
+namespace Valtuutus.Tests.Shared;
 
 
-public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
+public abstract class BaseDataEngineSpecs : IAsyncLifetime
 {
-    protected IDatabaseFixture _fixture = null!;
+    protected IDatabaseFixture Fixture { get; }
     protected readonly ServiceProvider _provider = null!;
 
-    protected DataSpecificDataEngineSpecs()
+    protected BaseDataEngineSpecs(IDatabaseFixture fixture)
     {
         _provider = CreateServiceProvider();
+        Fixture = fixture;
     }
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
@@ -172,13 +172,13 @@ public abstract class DataSpecificDataEngineSpecs : IAsyncLifetime
     }
     
     
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        return Task.CompletedTask;
+        await Fixture.ResetDatabaseAsync();
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        await _fixture.ResetDatabaseAsync();
+        return Task.CompletedTask;
     }
 }

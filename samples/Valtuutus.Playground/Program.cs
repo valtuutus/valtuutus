@@ -1,5 +1,6 @@
 #define postgres
 
+
 using System.Diagnostics;
 using Valtuutus.Api;
 using Valtuutus.Core;
@@ -9,12 +10,22 @@ using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Postgres;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using StackExchange.Redis;
+using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
+using Valtuutus.Data.Caching;
 using Valtuutus.Data.SqlServer;
+using ZiggyCreatures.Caching.Fusion;
+using ZiggyCreatures.Caching.Fusion.Backplane.StackExchangeRedis;
+using ZiggyCreatures.Caching.Fusion.Serialization.SystemTextJson;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,45 +35,65 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+var redisConnectionString = builder.Configuration.GetConnectionString("Redis")!;
+
+var muxxer = await ConnectionMultiplexer.ConnectAsync(redisConnectionString);
+builder.Services.AddFusionCache()
+    .WithSerializer(
+        new FusionCacheSystemTextJsonSerializer()
+        )
+    .WithDistributedCache(
+        new RedisCache(new RedisCacheOptions()
+        {
+            ConnectionMultiplexerFactory = () => Task.FromResult((IConnectionMultiplexer)muxxer)
+        }))
+    .WithBackplane(
+        new RedisBackplane(new RedisBackplaneOptions()
+        {
+            ConnectionMultiplexerFactory = () => Task.FromResult((IConnectionMultiplexer)muxxer)
+        }));
+
 builder.Services.AddValtuutusCore(c =>
     {
         c
             .WithEntity("user")
             .WithEntity("organization")
-            .WithRelation("admin", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc => rc.WithEntityType("user"))
+                .WithRelation("admin", rc => rc.WithEntityType("user"))
+                .WithRelation("member", rc => rc.WithEntityType("user"))
             .WithEntity("team")
-            .WithRelation("owner", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc => rc.WithEntityType("user"))
-            .WithRelation("org", rc => rc.WithEntityType("organization"))
-            .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
-            .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
-            .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
-            .WithPermission("remove_user", PermissionNode.Leaf("owner"))
+                .WithRelation("owner", rc => rc.WithEntityType("user"))
+                .WithRelation("member", rc => rc.WithEntityType("user"))
+                .WithRelation("org", rc => rc.WithEntityType("organization"))
+                .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
+                .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
+                .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
+                .WithPermission("remove_user", PermissionNode.Leaf("owner"))
             .WithEntity("project")
-            .WithRelation("org", rc => rc.WithEntityType("organization"))
-            .WithRelation("team", rc => rc.WithEntityType("team"))
-            .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
-            .WithAttribute("public", typeof(bool))
-            .WithAttribute("status", typeof(string))
-            .WithPermission("view",
-                PermissionNode.Union(
-                    PermissionNode.Leaf("org.admin"),
-                    PermissionNode.Leaf("member"),
-                    PermissionNode.Intersect("public", "org.member"))
-            )
-            .WithPermission("edit", PermissionNode.Intersect(
-                PermissionNode.Union("org.admin", "team.member"),
-                PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
-            )
-            .WithPermission("delete", PermissionNode.Leaf("team.member"));
+                .WithRelation("org", rc => rc.WithEntityType("organization"))
+                .WithRelation("team", rc => rc.WithEntityType("team"))
+                .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
+                .WithAttribute("public", typeof(bool))
+                .WithAttribute("status", typeof(string))
+                .WithPermission("view",
+                    PermissionNode.Union(
+                        PermissionNode.Leaf("org.admin"),
+                        PermissionNode.Leaf("member"),
+                        PermissionNode.Intersect("public", "org.member"))
+                )
+                .WithPermission("edit", PermissionNode.Intersect(
+                    PermissionNode.Union("org.admin", "team.member"),
+                    PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
+                )
+                .WithPermission("delete", PermissionNode.Leaf("team.member"));
     })
 #if postgres
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
 #else
 .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!))
 #endif
-    .AddConcurrentQueryLimit(3);
+    .AddConcurrentQueryLimit(3)
+    //.AddCaching()
+;
 
 Activity.DefaultIdFormat = ActivityIdFormat.W3C;
 
@@ -78,6 +109,8 @@ builder.Services
         telemetry
             .AddSource(DefaultActivitySource.SourceName)
             .AddSource(DefaultActivitySource.SourceNameInternal)
+            .AddNpgsql()
+            .AddFusionCacheInstrumentation()
             .AddAspNetCoreInstrumentation(o =>
             {
                 o.RecordException = true;
@@ -111,24 +144,43 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 app.MapGet("/check",
-        async ([AsParameters] CheckRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.Check(req, ct))
+        ([FromQuery] string entityType, 
+        [FromQuery] string entityId, 
+        [FromQuery] string permission, 
+        [FromQuery] string subjectType, 
+        [FromQuery] string subjectId, 
+        [FromQuery] string? subjectRelation, 
+        [FromQuery] string? snapToken, 
+        [FromServices] ICheckEngine service, CancellationToken ct) => service.Check(new CheckRequest(entityType, entityId, permission
+            ,subjectType, subjectId, subjectRelation, snapToken is null ? null : new SnapToken(snapToken)), ct))
     .WithName("Check Relation")
     .WithOpenApi();
 
 app.MapPost("/lookup-entity",
-        async ([FromBody] LookupEntityRequest req, [FromServices] LookupEntityEngine service, CancellationToken ct) => await service.LookupEntity(req, ct))
+        ([FromBody] LookupEntityRequest req, [FromServices] ILookupEntityEngine service, CancellationToken ct) => service.LookupEntity(req, ct))
     .WithName("Lookup entity")
     .WithOpenApi();
 
 app.MapPost("/lookup-subject",
-        async ([FromBody] LookupSubjectRequest req, [FromServices] LookupSubjectEngine service, CancellationToken ct) => await service.Lookup(req, ct))
+        ([FromBody] LookupSubjectRequest req, [FromServices] ILookupSubjectEngine service, CancellationToken ct) => service.Lookup(req, ct))
     .WithName("Lookup subject")
     .WithOpenApi();
 
 app.MapPost("/subject-permission",
-        async ([FromBody] SubjectPermissionRequest req, [FromServices] CheckEngine service, CancellationToken ct) => await service.SubjectPermission(req, ct))
+        ([FromBody] SubjectPermissionRequest req, [FromServices] ICheckEngine service, CancellationToken ct) => service.SubjectPermission(req, ct))
     .WithName("Subject permission")
     .WithOpenApi();
+
+app.MapPost("/write",
+        ([FromBody] WriteRequest request, [FromServices] IDataWriterProvider writer, CancellationToken ct) => writer.Write(request.Relations, request.Attributes, ct))
+    .WithName("Write data")
+    .WithOpenApi();
+
+
+app.MapPost("/delete",
+    ([FromBody] DeleteFilter request, [FromServices] IDataWriterProvider writer, CancellationToken ct) =>
+        writer.Delete(request, ct));
+
 
 
 #if postgres
@@ -137,3 +189,5 @@ _ = Task.Run(async () => await Seeder.SeedPostgres(app.Services));
 _ = Task.Run(async () => await Seeder.SeedSqlServer(app.Services)); 
 #endif
 app.Run();
+
+record WriteRequest(List<RelationTuple> Relations, List<AttributeTuple> Attributes);

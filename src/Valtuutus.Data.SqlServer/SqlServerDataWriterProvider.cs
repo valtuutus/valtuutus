@@ -11,10 +11,14 @@ namespace Valtuutus.Data.SqlServer;
 internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
+    private readonly ValtuutusDataOptions _options;
+    private readonly IServiceProvider _provider;
 
-    public SqlServerDataWriterProvider(DbConnectionFactory factory)
+    public SqlServerDataWriterProvider(DbConnectionFactory factory, ValtuutusDataOptions options, IServiceProvider provider)
     {
-        _factory = factory;
+            _factory = factory;
+            _options = options;
+            _provider = provider;
     }
     
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
@@ -76,8 +80,10 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 #else
         await transaction.CommitAsync(ct);
 #endif
-        
-        return new SnapToken(transactionId.ToString());
+
+            var snapToken = new SnapToken(transactionId.ToString());    
+            await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+            return snapToken;        
     }
     
 
@@ -94,11 +100,22 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         var transaction = db.BeginTransaction();
         await InsertTransaction(db, transactId, transaction, ct);
         
+        var snapTokenParam = new
+        {
+                SnapToken = new DbString
+                {
+                        Length = 26,
+                        Value = transactId.ToString(),
+                        IsFixedLength = true
+                }
+
+        };
+        
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate = relationsBuilder.AddTemplate(@"DELETE FROM relation_tuples /**where**/");
+            var queryTemplate = relationsBuilder.AddTemplate(@"UPDATE relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction:transaction));
@@ -109,7 +126,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         {
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate = attributesBuilder.AddTemplate(@"DELETE FROM attributes /**where**/");
+            var queryTemplate = attributesBuilder.AddTemplate(@"UPDATE attributes set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
@@ -121,7 +138,10 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
 #else
         await transaction.CommitAsync(ct);
 #endif
-        return new SnapToken(transactId.ToString());
+            
+        var snapToken = new SnapToken(transactId.ToString());    
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;
     }
     
     private static async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction, CancellationToken ct)

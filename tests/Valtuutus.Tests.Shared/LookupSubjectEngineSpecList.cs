@@ -1,5 +1,6 @@
 ﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
+using Valtuutus.Core.Engines.LookupSubject;
 
 namespace Valtuutus.Tests.Shared;
 

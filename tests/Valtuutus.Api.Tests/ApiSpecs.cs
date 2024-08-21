@@ -1,4 +1,4 @@
-using Valtuutus.Core;
+using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data;
 using Valtuutus.Data.Db;
 using Valtuutus.Data.InMemory;

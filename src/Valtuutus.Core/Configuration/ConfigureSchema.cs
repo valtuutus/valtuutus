@@ -1,5 +1,8 @@
 ﻿using Valtuutus.Core.Schemas;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 
 namespace Valtuutus.Core.Configuration;
 
@@ -17,9 +20,9 @@ public static class ConfigureSchema
         config(builder);
         var schema = builder.Build();
         services.AddSingleton(schema);
-        services.AddScoped<CheckEngine>();
-        services.AddScoped<LookupEntityEngine>();
-        services.AddScoped<LookupSubjectEngine>();
+        services.AddScoped<ICheckEngine, CheckEngine>();
+        services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
+        services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
         services.AddScoped<DataEngine>();
 
         return services;

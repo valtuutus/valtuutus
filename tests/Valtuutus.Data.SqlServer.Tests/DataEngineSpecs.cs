@@ -1,21 +1,23 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Tests.Shared;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
 
 [Collection("SqlServerSpec")]
-public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
+public sealed class DataEngineSpecs : BaseDataEngineSpecs
 {
 
-    public DataEngineSpecs(SqlServerFixture fixture)
+    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        _fixture = fixture;
+        return services.AddSqlServer(_ =>  ((IWithDbConnectionFactory)Fixture).DbFactory);
     }
+    
+    public DataEngineSpecs(SqlServerFixture fixture) : base(fixture){}
     
     [Fact]
     public async Task WritingData_ShouldAssociateRelationWithTransactionId()
@@ -27,7 +29,7 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
         var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id)", 
             new { id = transactionId });
         var exists = await db.ExecuteScalarAsync<bool>("""
@@ -67,7 +69,7 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         
         // assert
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
 
         var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
@@ -83,25 +85,20 @@ public sealed class DataEngineSpecs : DataSpecificDataEngineSpecs
         
         newTransaction.Should().BeTrue();
     }
-
-    protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
-    {
-        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
-    }
-
+    
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = ((IWithDbConnectionFactory)_fixture).DbFactory();
+        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
         var relations = (await db.QueryAsync<RelationTuple>("""
             SELECT  entity_type,
                     entity_id,
                     relation,
                     subject_type,
                     subject_id, 
-                    subject_relation from relation_tuples
+                    subject_relation from relation_tuples where deleted_tx_id is null
             """)).ToArray();
         var attributes =
-            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from attributes")).ToArray();
+            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from attributes where deleted_tx_id is null")).ToArray();
         
         return (relations, attributes);
 

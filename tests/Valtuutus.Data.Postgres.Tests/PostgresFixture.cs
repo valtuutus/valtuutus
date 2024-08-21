@@ -1,9 +1,9 @@
-﻿using Valtuutus.Data.Tests.Shared;
-using Dapper;
+﻿using Dapper;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
 using Valtuutus.Data.Db;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
@@ -48,6 +48,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
+            WithReseed = true,
         });
     }
     
@@ -61,11 +62,11 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
     private static string DbMigration = 
         """
         -- Create "attributes" table
-        CREATE TABLE "public"."attributes" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "attribute" character varying(64) NOT NULL, "value" jsonb NOT NULL, created_tx_id char(26) NOT NULL, PRIMARY KEY ("id"));
+        CREATE TABLE "public"."attributes" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "attribute" character varying(64) NOT NULL, "value" jsonb NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
         -- Create index "idx_attributes" to table: "attributes"
         CREATE INDEX "idx_attributes" ON "public"."attributes" ("entity_type", "entity_id", "attribute");
         -- Create "relation_tuples" table
-        CREATE TABLE "public"."relation_tuples" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "relation" character varying(64) NOT NULL, "subject_type" character varying(256) NOT NULL, "subject_id" character varying(64) NOT NULL, "subject_relation" character varying(64) NOT NULL, created_tx_id char(26) NOT NULL, PRIMARY KEY ("id"));
+        CREATE TABLE "public"."relation_tuples" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "relation" character varying(64) NOT NULL, "subject_type" character varying(256) NOT NULL, "subject_id" character varying(64) NOT NULL, "subject_relation" character varying(64) NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
         -- Create index "idx_tuples_entity_relation" to table: "relation_tuples"
         CREATE INDEX "idx_tuples_entity_relation" ON "public"."relation_tuples" ("entity_type", "relation");
         -- Create index "idx_tuples_subject_entities" to table: "relation_tuples"

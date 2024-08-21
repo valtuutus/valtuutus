@@ -6,80 +6,131 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class AttributesActor : ReceiveActor
 {
-    private readonly List<AttributeTuple> _attributesTuples;
+    private sealed record InMemoryTuple(AttributeTuple Attribute, Ulid CreatedTxId, Ulid? DeletedTxId)
+    {
+        public Ulid? DeletedTxId { get; set; } = DeletedTxId;
+    }
+
+    private readonly List<InMemoryTuple> _attributesTuples;
 
     public AttributesActor()
     {
-        _attributesTuples = new List<AttributeTuple>();
-        
+        _attributesTuples = new();
+
         Receive<Commands.GetAttribute>(GetAttributeHandler);
-        
+
         Receive<Commands.GetAttributes>(GetAttributesHandler);
-        
+
         Receive<Commands.GetAttributesWithEntitiesIds>(GetAttributesWithEntitiesIdsHandler);
-        
+
         Receive<Commands.WriteAttributes>(WriteAttributesHandler);
-        
+
         Receive<Commands.DeleteAttributes>(DeleteAttributesHandler);
-        
+
         Receive<Commands.DumpAttributes>(DumpAttributesHandler);
-        
     }
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
     {
-        Sender.Tell(_attributesTuples.ToArray());
+        Sender.Tell(_attributesTuples.Where(x => x.DeletedTxId is null)
+            .Select(x => x.Attribute)
+            .ToArray());
     }
 
     private void DeleteAttributesHandler(Commands.DeleteAttributes msg)
     {
         foreach (var filter in msg.Filters)
         {
-            _attributesTuples.RemoveAll(x => (filter.EntityId == x.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) && (filter.EntityType == x.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) && (filter.Attribute == x.Attribute || string.IsNullOrWhiteSpace(filter.Attribute)));
+            var attributes = _attributesTuples.Where(x =>
+                x.DeletedTxId is null &&
+                (filter.EntityId == x.Attribute.EntityId || string.IsNullOrWhiteSpace(filter.EntityId)) &&
+                (filter.EntityType == x.Attribute.EntityType || string.IsNullOrWhiteSpace(filter.EntityType)) &&
+                (filter.Attribute == x.Attribute.Attribute || string.IsNullOrWhiteSpace(filter.Attribute)));
+
+            foreach (var attribute in attributes)
+            {
+                attribute.DeletedTxId = msg.TransactId;
+            }
         }
     }
 
     private void WriteAttributesHandler(Commands.WriteAttributes msg)
     {
-        _attributesTuples.AddRange(msg.Attributes);
+        _attributesTuples.AddRange(msg.Attributes.Select(x => new InMemoryTuple(x, msg.TransactId, null)));
     }
 
     private void GetAttributesWithEntitiesIdsHandler(Commands.GetAttributesWithEntitiesIds msg)
     {
-        Sender.Tell(_attributesTuples.Where(x => x.EntityType == msg.Filter.EntityType && x.Attribute == msg.Filter.Attribute && msg.EntitiesIds.Contains(x.EntityId))
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            x.Attribute.Attribute == msg.Filter.Attribute &&
+            msg.EntitiesIds.Contains(x.Attribute.EntityId));
+
+        if (msg.Filter.SnapToken != null)
+        {
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
+
+        Sender.Tell(res.Select(x => x.Attribute)
             .ToList());
     }
 
     private void GetAttributesHandler(Commands.GetAttributes msg)
     {
-        var res = _attributesTuples.Where(x => x.EntityType == msg.Filter.EntityType && x.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.EntityId == msg.Filter.EntityId);
+        if (msg.Filter.SnapToken != null)
+        {
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
 
-        Sender.Tell(res.ToList());
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
+            res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
+
+        Sender.Tell(res.Select(x => x.Attribute).ToList());
     }
 
     private void GetAttributeHandler(Commands.GetAttribute msg)
     {
-        var res = _attributesTuples.Where(x => x.EntityType == msg.Filter.EntityType && x.Attribute == msg.Filter.Attribute);
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
-        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId)) res = res.Where(x => x.EntityId == msg.Filter.EntityId);
+        if (msg.Filter.SnapToken != null)
+        {
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
 
-        Sender.Tell(res.FirstOrDefault());
+        if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
+            res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
+
+        Sender.Tell(res.Select(x => x.Attribute).FirstOrDefault());
     }
 
     internal static class Commands
     {
         public record GetAttribute(EntityAttributeFilter Filter);
-        
-        public record GetAttributes(EntityAttributeFilter Filter);
-        
-        public record GetAttributesWithEntitiesIds(AttributeFilter Filter, IEnumerable<string> EntitiesIds);
-        
-        public record WriteAttributes(IEnumerable<AttributeTuple> Attributes);
 
-        public record DeleteAttributes(DeleteAttributesFilter[] Filters);
-        
+        public record GetAttributes(EntityAttributeFilter Filter);
+
+        public record GetAttributesWithEntitiesIds(AttributeFilter Filter, IEnumerable<string> EntitiesIds);
+
+        public record WriteAttributes(Ulid TransactId, IEnumerable<AttributeTuple> Attributes);
+
+        public record DeleteAttributes(Ulid TransactId, DeleteAttributesFilter[] Filters);
+
         public record DumpAttributes
         {
             private DumpAttributes()
@@ -89,5 +140,4 @@ internal sealed class AttributesActor : ReceiveActor
             public static DumpAttributes Instance { get; } = new();
         }
     }
-
 }

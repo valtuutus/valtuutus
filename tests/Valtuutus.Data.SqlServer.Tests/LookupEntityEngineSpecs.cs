@@ -1,19 +1,16 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using Valtuutus.Data.Tests.Shared;
+using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
 [Collection("SqlServerSpec")]
-public sealed class LookupEntityEngineSpecs : DataLookupEntityEngineSpecs
+public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
 {
 
-    public LookupEntityEngineSpecs(SqlServerFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public LookupEntityEngineSpecs(SqlServerFixture fixture) : base(fixture){}
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
-        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)_fixture).DbFactory);
+        return services.AddSqlServer(_ => ((IWithDbConnectionFactory)Fixture).DbFactory);
     }
 }
