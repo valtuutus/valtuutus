@@ -25,22 +25,26 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
     {
         var transactionId = Ulid.NewUlid();
         
-#if !NETCOREAPP3_0_OR_GREATER
+#if NETSTANDARD2_0
         using var db = (SqlConnection) _factory();
 #else
         await using var db = (SqlConnection) _factory();
 #endif
         await db.OpenAsync(ct);
-        var transaction = db.BeginTransaction();
-        
+
+#if NETSTANDARD2_0
+            var transaction = db.BeginTransaction();
+#else
+        var transaction = (SqlTransaction) await db.BeginTransactionAsync(ct);
+#endif
+
         await InsertTransaction(db, transactionId, transaction, ct);
         
         var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = "relation_tuples";
 
-#if !NETCOREAPP3_0_OR_GREATER
-#else
-        await 
+#if !NETSTANDARD2_0
+        await
 #endif
         using var relationsReader = ObjectReader.Create(relations.Select(x => new
         {
@@ -59,9 +63,8 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         using var attributesBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "attributes";
 
-#if NETSTANDARD2_0
-#else
-        await 
+#if !NETSTANDARD2_0
+        await
 #endif
             
             using var attributesReader = ObjectReader.Create(attributes.Select( t => new { t.EntityType, t.EntityId, t.Attribute, Value = t.Value.ToJsonString(),
@@ -97,7 +100,12 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         await using var db = (SqlConnection) _factory();
 #endif
         await db.OpenAsync(ct);
+
+#if NETSTANDARD2_0
         var transaction = db.BeginTransaction();
+#else
+        var transaction = (SqlTransaction) await db.BeginTransactionAsync(ct);
+#endif
         await InsertTransaction(db, transactId, transaction, ct);
         
         var snapTokenParam = new
@@ -133,7 +141,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             
         }
 
-#if !NETCOREAPP3_0_OR_GREATER
+#if NETSTANDARD2_0
         transaction.Commit();
 #else
         await transaction.CommitAsync(ct);

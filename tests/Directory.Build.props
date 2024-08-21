@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;xUnit1013;xUnit1044</NoWarn>
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
