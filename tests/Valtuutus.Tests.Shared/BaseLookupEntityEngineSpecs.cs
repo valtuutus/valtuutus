@@ -147,7 +147,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         result.Should().BeEquivalentTo(expected);
     }
     
-        [Fact]
+    [Fact]
     public async Task TestStringBasedAttributeExpression()
     {
         // arrange
@@ -212,5 +212,33 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         // assert
         result.Should().BeEquivalentTo(["1"]);
+    }
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+        UnionRelationDepthLimit = LookupEntityEngineSpecList.UnionRelationDepthLimit;
+
+    [Theory]
+    [MemberData(nameof(UnionRelationDepthLimit))]
+    public async Task LookupEntityWithDepthLimit(RelationTuple[] tuples,
+        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+    {
+        // Arrange
+        var schema = new SchemaBuilder()
+            .WithEntity(TestsConsts.Users.Identifier)
+            .WithEntity(TestsConsts.Groups.Identifier)
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithEntity(TestsConsts.Workspaces.Identifier)
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+            .SchemaBuilder.Build();
+        var engine = await CreateEngine(tuples, attributes, schema);
+
+        // Act
+        var result = await engine.LookupEntity(request, default);
+
+        // Assert
+        result.Should().BeEquivalentTo(expected);
     }
 }

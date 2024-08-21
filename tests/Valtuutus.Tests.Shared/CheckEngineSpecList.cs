@@ -511,4 +511,40 @@ public static class CheckEngineSpecList
             false
         }
     };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationDepthLimit => new()
+    {
+        {
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            ],
+            [],
+            new CheckRequest() {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                EntityId = TestsConsts.Workspaces.PublicWorkspace,
+                SubjectType = TestsConsts.Users.Identifier,
+                SubjectId = TestsConsts.Users.Alice,
+                Permission = "view",
+                Depth = 1
+            },
+            false
+        },
+        {
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            ],
+            [],
+            new CheckRequest() {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                EntityId = TestsConsts.Workspaces.PublicWorkspace,
+                SubjectType = TestsConsts.Users.Identifier,
+                SubjectId = TestsConsts.Users.Alice,
+                Permission = "view",
+                Depth = 2
+            },
+            true
+        }
+    };
 }

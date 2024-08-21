@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
@@ -55,7 +56,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             Permission = x.Name,
             SubjectType = req.SubjectType,
             SubjectId = req.SubjectId,
-            SnapToken = req.SnapToken
+            SnapToken = req.SnapToken,
+            Depth = req.Depth
         })(cancellationToken))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
@@ -85,6 +87,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
+        if (req.CheckDepthLimit())
+            return Fail();
+
+        req.DecreaseDepth();
+
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
@@ -247,7 +254,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     {
                         EntityType = relation.SubjectType, EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken
+                        SnapToken = req.SnapToken,
+                        Depth = req.Depth
                     }, computedUserSetRelation)
                 )
             );
@@ -287,7 +295,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                         EntityId = relation.SubjectId,
                         Permission = relation.SubjectRelation,
                         SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken
+                        SnapToken = req.SnapToken,
+                        Depth = req.Depth
                     }));
                 }
             }

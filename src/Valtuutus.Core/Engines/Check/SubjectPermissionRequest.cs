@@ -9,4 +9,5 @@ public record SubjectPermissionRequest : IWithSnapToken
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
     public SnapToken? SnapToken { get; set; }
+    public int Depth { get; init; } = 10;
 };
