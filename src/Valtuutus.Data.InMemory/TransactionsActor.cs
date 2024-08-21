@@ -4,11 +4,11 @@ namespace Valtuutus.Data.InMemory;
 
 internal class TransactionsActor : ReceiveActor
 {
-    private readonly List<string> _transactions;
+    private readonly List<Ulid> _transactions;
 
     public TransactionsActor()
     {
-        _transactions = new List<string>();
+        _transactions = new List<Ulid>();
         Receive<Commands.GetLatest>(GetLatestHandler);
         Receive<Commands.Create>(CreateHandler);
     }
@@ -30,7 +30,7 @@ internal class TransactionsActor : ReceiveActor
             public static GetLatest Instance { get; } = new();
         }
 
-        public record Create(string Id);
+        public record Create(Ulid Id);
     }
     
     

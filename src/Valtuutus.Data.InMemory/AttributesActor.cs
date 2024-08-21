@@ -6,9 +6,9 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class AttributesActor : ReceiveActor
 {
-    private record InMemoryTuple(AttributeTuple Attribute, string CreatedTxId, string? DeletedTxId)
+    private sealed record InMemoryTuple(AttributeTuple Attribute, Ulid CreatedTxId, Ulid? DeletedTxId)
     {
-        public string? DeletedTxId { get; set; } = DeletedTxId;
+        public Ulid? DeletedTxId { get; set; } = DeletedTxId;
     }
 
     private readonly List<InMemoryTuple> _attributesTuples;
@@ -69,10 +69,10 @@ internal sealed class AttributesActor : ReceiveActor
         if (msg.Filter.SnapToken != null)
         {
             res = res
-                .Where(x => string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
-                    StringComparison.InvariantCulture) <= 0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
         }
 
         Sender.Tell(res.Select(x => x.Attribute)
@@ -87,11 +87,10 @@ internal sealed class AttributesActor : ReceiveActor
         if (msg.Filter.SnapToken != null)
         {
             res = res
-                .Where(x => string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
-                    StringComparison.InvariantCulture) <= 0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
-            ;
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
         }
 
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
@@ -107,11 +106,11 @@ internal sealed class AttributesActor : ReceiveActor
 
         if (msg.Filter.SnapToken != null)
         {
-            res = res.Where(x =>
-                    string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
-                        StringComparison.InvariantCulture) <= 0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
         }
 
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
@@ -128,9 +127,9 @@ internal sealed class AttributesActor : ReceiveActor
 
         public record GetAttributesWithEntitiesIds(AttributeFilter Filter, IEnumerable<string> EntitiesIds);
 
-        public record WriteAttributes(string TransactId, IEnumerable<AttributeTuple> Attributes);
+        public record WriteAttributes(Ulid TransactId, IEnumerable<AttributeTuple> Attributes);
 
-        public record DeleteAttributes(string TransactId, DeleteAttributesFilter[] Filters);
+        public record DeleteAttributes(Ulid TransactId, DeleteAttributesFilter[] Filters);
 
         public record DumpAttributes
         {

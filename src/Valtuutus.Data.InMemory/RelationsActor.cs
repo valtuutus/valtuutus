@@ -6,9 +6,9 @@ namespace Valtuutus.Data.InMemory;
 
 internal sealed class RelationsActor : ReceiveActor
 {
-    private record InMemoryTuple(RelationTuple Relation, string CreatedTxId, string? DeletedTxId)
+    private sealed record InMemoryTuple(RelationTuple Relation, Ulid CreatedTxId, Ulid? DeletedTxId)
     {
-        public string? DeletedTxId { get; set; } = DeletedTxId;
+        public Ulid? DeletedTxId { get; set; } = DeletedTxId;
     }
 
     private readonly List<InMemoryTuple> _relationTuples;
@@ -74,10 +74,10 @@ internal sealed class RelationsActor : ReceiveActor
         if (msg.EntityRelationFilter.SnapToken != null)
         {
             result = result
-                .Where(x => string.Compare(x.CreatedTxId, msg.EntityRelationFilter.SnapToken.Value.Value,
-                    StringComparison.InvariantCulture) <= 0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
+                            0);
         }
 
         Sender.Tell(result.Select(x => x.Relation).ToList());
@@ -94,11 +94,10 @@ internal sealed class RelationsActor : ReceiveActor
         if (msg.EntityRelationFilter.SnapToken != null)
         {
             result = result
-                .Where(x => string.Compare(x.CreatedTxId, msg.EntityRelationFilter.SnapToken.Value.Value,
-                    StringComparison.InvariantCulture) <= 0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.EntityRelationFilter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
-            ;
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
+                            0);
         }
 
         if (!string.IsNullOrEmpty(msg.SubjectRelation))
@@ -117,12 +116,10 @@ internal sealed class RelationsActor : ReceiveActor
         if (msg.Filter.SnapToken != null)
         {
             result = result
-                .Where(x =>
-                    string.Compare(x.CreatedTxId, msg.Filter.SnapToken.Value.Value,
-                        StringComparison.InvariantCulture) <=
-                    0)
-                .Where(x => string.IsNullOrEmpty(x.DeletedTxId) || string.Compare(x.DeletedTxId,
-                    msg.Filter.SnapToken.Value.Value, StringComparison.InvariantCulture) > 0);
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
         }
 
         if (!string.IsNullOrEmpty(msg.Filter.SubjectId))
@@ -157,8 +154,8 @@ internal sealed class RelationsActor : ReceiveActor
             IEnumerable<string> SubjectsIds,
             string SubjectType);
 
-        public record WriteRelations(string TransactId, IEnumerable<RelationTuple> Relations);
+        public record WriteRelations(Ulid TransactId, IEnumerable<RelationTuple> Relations);
 
-        public record DeleteRelations(string TransactId, DeleteRelationsFilter[] FilterRelations);
+        public record DeleteRelations(Ulid TransactId, DeleteRelationsFilter[] FilterRelations);
     }
 }

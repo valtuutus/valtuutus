@@ -52,14 +52,14 @@ internal sealed class InMemoryController
         return _attributes.Ask<List<AttributeTuple>>(new AttributesActor.Commands.GetAttributesWithEntitiesIds(filter, entitiesIds), ct);
     }
 
-    public void Write(string transactId, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
+    public void Write(Ulid transactId, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
         CancellationToken ct)
     {
         _relations.Tell(new RelationsActor.Commands.WriteRelations(transactId, relations));
         _attributes.Tell(new AttributesActor.Commands.WriteAttributes(transactId, attributes));
     }
 
-    public void Delete(string transactId, DeleteFilter filter, CancellationToken ct)
+    public void Delete(Ulid transactId, DeleteFilter filter, CancellationToken ct)
     {
         _attributes.Tell(new AttributesActor.Commands.DeleteAttributes(transactId, filter.Attributes));
         _relations.Tell(new RelationsActor.Commands.DeleteRelations(transactId, filter.Relations));
@@ -80,7 +80,7 @@ internal sealed class InMemoryController
         return id is null ? null : new SnapToken(id);
     }
 
-    public void CreateTransaction(string id)
+    public void CreateTransaction(Ulid id)
     {
         _transactions.Tell(new TransactionsActor.Commands.Create(id));
     }

@@ -74,10 +74,11 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
-        var transactId = Ulid.NewUlid().ToString();
+        var transactId = Ulid.NewUlid();
+        await Task.Delay(10);
         _controller.CreateTransaction(transactId);
         _controller.Write(transactId, relations, attributes, ct);
-        var snapToken = new SnapToken(transactId);    
+        var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
     }
@@ -85,10 +86,10 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        var transactId = Ulid.NewUlid().ToString();
+        var transactId = Ulid.NewUlid();
         _controller.CreateTransaction(transactId);
         _controller.Delete(transactId, filter, ct);
-        var snapToken = new SnapToken(transactId);    
+        var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
         
