@@ -6,6 +6,8 @@ namespace Valtuutus.Data.SqlServer.Utils;
 
 internal static class SqlBuilderExtensions
 {
+    private const string SnapTokenFilter = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter tupleFilter)
     {
         if (tupleFilter.SnapToken != null)
@@ -17,7 +19,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
@@ -74,7 +76,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         
@@ -129,7 +131,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         if (!string.IsNullOrEmpty(entityFilter.EntityType))
@@ -177,7 +179,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         
@@ -215,7 +217,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         

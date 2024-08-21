@@ -2,7 +2,7 @@
 
 namespace Valtuutus.Core.Engines;
 
-public class SnapTokenUtils
+internal static class SnapTokenUtils
 {
     public static async Task LoadLatestSnapToken(IDataReaderProvider reader, IWithSnapToken req, CancellationToken cancellationToken)
     {

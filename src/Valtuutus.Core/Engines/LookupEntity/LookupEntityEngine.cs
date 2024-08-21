@@ -346,7 +346,7 @@ public sealed class LookupEntityEngine(
         return result;
     }
 
-    private async Task<List<RelationOrAttributeTuple>> UnionEntities(List<LookupFunction> functions,
+    private static async Task<List<RelationOrAttributeTuple>> UnionEntities(List<LookupFunction> functions,
         CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
@@ -358,7 +358,7 @@ public sealed class LookupEntityEngine(
         return results;
     }
 
-    private async Task<List<RelationOrAttributeTuple>> IntersectEntities(List<LookupFunction> functions,
+    private static async Task<List<RelationOrAttributeTuple>> IntersectEntities(List<LookupFunction> functions,
         CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();

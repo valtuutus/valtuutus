@@ -120,7 +120,7 @@ namespace Valtuutus.Core.Data
     {
         public SnapToken(string Value) { }
         public string Value { get; set; }
-        public static Valtuutus.Core.Data.SnapToken op_Implicit(string token) { }
+        public static Valtuutus.Core.Data.SnapToken? op_Implicit(string? token) { }
     }
 }
 namespace Valtuutus.Core.Engines.Check
@@ -180,11 +180,6 @@ namespace Valtuutus.Core.Engines
     public interface IWithSnapToken
     {
         Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
-    }
-    public class SnapTokenUtils
-    {
-        public SnapTokenUtils() { }
-        public static System.Threading.Tasks.Task LoadLatestSnapToken(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Engines.IWithSnapToken req, System.Threading.CancellationToken cancellationToken) { }
     }
 }
 namespace Valtuutus.Core.Engines.LookupEntity

@@ -2,8 +2,6 @@
 
 internal static class DepthUtils
 {
-    public static int Depth;
-
     public static bool CheckDepthLimit(this IWithDepth req) =>
         req.Depth == 0;
 

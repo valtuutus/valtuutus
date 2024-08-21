@@ -6,6 +6,9 @@ namespace Valtuutus.Data.Postgres.Utils;
 
 internal static class SqlBuilderExtensions
 {
+    private const string SnapTokenFilter = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+    private const string EntityTypeFilter = "entity_type = @EntityType";
+
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter filter)
     {
         if (filter.SnapToken != null)
@@ -17,11 +20,11 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
 
-        builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
+        builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
             Length = 256
@@ -75,7 +78,7 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
 
@@ -83,7 +86,7 @@ internal static class SqlBuilderExtensions
             builder = builder.Where("subject_type = @SubjectType", new {SubjectType = subjectType});
         
         if (!string.IsNullOrEmpty(filter.EntityType))
-            builder = builder.Where("entity_type = @EntityType", new {filter.EntityType});
+            builder = builder.Where(EntityTypeFilter, new {filter.EntityType});
         
         if (!string.IsNullOrEmpty(filter.Relation))
             builder = builder.Where("relation = @Relation", new {filter.Relation});
@@ -109,12 +112,12 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         
         if (!string.IsNullOrEmpty(filter.EntityType))
-            builder = builder.Where("entity_type = @EntityType", new {filter.EntityType});
+            builder = builder.Where(EntityTypeFilter, new {filter.EntityType});
         
         if (!string.IsNullOrEmpty(filter.Relation))
             builder = builder.Where("relation = @Relation", new {filter.Relation});
@@ -139,11 +142,11 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
         
-        builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
+        builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
             Length = 256
@@ -177,11 +180,11 @@ internal static class SqlBuilderExtensions
                 IsFixedLength = true,
             }};
             builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                SnapTokenFilter,
                 parameters);
         }
           
-        builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
+        builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
             Length = 256

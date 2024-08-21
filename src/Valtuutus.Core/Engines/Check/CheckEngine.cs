@@ -304,7 +304,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         };
     }
 
-    private async Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
+    private static async Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
@@ -344,7 +344,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return false;
     }
 
-    private async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
+    private static async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);

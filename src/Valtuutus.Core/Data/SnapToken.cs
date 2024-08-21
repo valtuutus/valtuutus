@@ -2,5 +2,8 @@
 
 public record struct SnapToken(string Value)
 {
-    public static implicit operator SnapToken(string token) => new SnapToken(token);
+    public static implicit operator SnapToken?(string? token)
+    {
+        return token is null ? null : new SnapToken(token);
+    }
 };
