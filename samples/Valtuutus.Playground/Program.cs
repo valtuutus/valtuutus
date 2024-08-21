@@ -37,7 +37,7 @@ builder.Services.AddSwaggerGen();
 
 var redisConnectionString = builder.Configuration.GetConnectionString("Redis")!;
 
-var muxxer = ConnectionMultiplexer.Connect(redisConnectionString);
+var muxxer = await ConnectionMultiplexer.ConnectAsync(redisConnectionString);
 builder.Services.AddFusionCache()
     .WithSerializer(
         new FusionCacheSystemTextJsonSerializer()
