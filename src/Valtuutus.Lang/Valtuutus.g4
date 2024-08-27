@@ -1,9 +1,9 @@
 ﻿grammar Valtuutus;
 
-schema : entityDefinition* functionDefinition* ;
+schema : (entityDefinition | functionDefinition)* EOF ;
 
 entityDefinition
-    : ENTITY ENTITY_NAME LBRACE entityBody RBRACE
+    : ENTITY ID LBRACE entityBody RBRACE
     ;
 
 entityBody
@@ -11,83 +11,66 @@ entityBody
     ;
 
 relationDefinition
-    : RELATION RELATION_NAME '@' TARGET_ENTITY_NAME (POUND SUBJECT_RELATION_NAME)?
+    : RELATION ID ('@' ID (POUND ID)?)+ SEMI  // Require both relation name and target entity
     ;
 
 attributeDefinition
-    : ATTRIBUTE ATTRIBUTE_NAME ATTRIBUTE_TYPE
+    : ATTRIBUTE ID type SEMI
     ;
 
 permissionDefinition
-    : PERMISSION PERMISSION_NAME ASSIGN permissionExpression
+    : PERMISSION ID ASSIGN expression SEMI
     ;
 
 functionDefinition
-    : FN FUNCTION_NAME LPAREN parameterList RPAREN LBRACE functionBody RBRACE
+    : FN ID LPAREN parameterList RPAREN LBRACE expression RBRACE
     ;
 
 parameterList
-    : (PARAMETER_NAME ATTRIBUTE_TYPE (COMMA PARAMETER_NAME ATTRIBUTE_TYPE)*)?
+    : (ID type (COMMA ID type)*)?
     ;
 
-functionBody
-    : permissionExpression // or you could define it with something else that makes sense for your language
-    ;
-
-ATTRIBUTE_TYPE
+type
     : INT | BOOL | STRING | DECIMAL
     ;
 
-permissionExpression
-    : permissionExpression AND permissionExpression       #andPermissionExpression
-    | permissionExpression OR permissionExpression        #orPermissionExpression
-    | functionCall                                        #functionCallPermissionExpression
-    | IDENTIFIER                                          #identifierPermissionExpression
-    | LPAREN permissionExpression RPAREN                  #parenthesisPermissionExpression
+expression
+    : expression AND expression       #andExpression
+    | expression OR expression        #orExpression
+    | functionCall                    #functionCallExpression
+    | ID                              #identifierExpression
+    | LPAREN expression RPAREN        #parenthesisExpression
     ;
 
 functionCall
-    : FUNCTION_NAME LPAREN argumentList RPAREN
+    : ID LPAREN argumentList RPAREN
     ;
 
 argumentList
-    : (ARGUMENT_NAME (COMMA ARGUMENT_NAME)*)?
+    : (ID (COMMA ID)*)?
     ;
 
-// Define the identifier pattern only once
-IDENTIFIER : [a-zA-Z_][a-zA-Z_0-9]*;
-
-// Use the IDENTIFIER rule for specific names
-ENTITY_NAME           : IDENTIFIER;
-RELATION_NAME         : IDENTIFIER;
-TARGET_ENTITY_NAME    : IDENTIFIER;
-SUBJECT_RELATION_NAME : IDENTIFIER;
-ATTRIBUTE_NAME        : IDENTIFIER;
-PERMISSION_NAME       : IDENTIFIER;
-FUNCTION_NAME         : IDENTIFIER;
-PARAMETER_NAME        : IDENTIFIER;
-ARGUMENT_NAME         : IDENTIFIER;
-
-ENTITY      : 'entity';
-RELATION    : 'relation';
-ATTRIBUTE   : 'attribute';
-PERMISSION  : 'permission';
-FN          : 'fn';
-INT         : 'int';
-BOOL        : 'bool';
-STRING      : 'string';
-DECIMAL     : 'decimal';
-ASSIGN      : ':=';
-AND         : 'and';
-OR          : 'or';
-NOT_EQUAL   : '!=';
-GREATER     : '>';
-POUND       : '#';
-LBRACE      : '{';
-RBRACE      : '}';
-LPAREN      : '(';
-RPAREN      : ')';
-COMMA       : ',';
-SEMI        : ';';
-WS          : [ \t\r\n]+ -> skip;
-COMMENT     : '//' ~[\r\n]* -> skip;
+ENTITY     : 'entity';
+RELATION   : 'relation';
+ATTRIBUTE  : 'attribute';
+PERMISSION : 'permission';
+FN         : 'fn';
+INT        : 'int';
+BOOL       : 'bool';
+STRING     : 'string';
+DECIMAL    : 'decimal';
+ASSIGN     : ':=';
+AND        : 'and';
+OR         : 'or';
+NOT_EQUAL  : '!=';
+GREATER    : '>';
+POUND      : '#';
+LBRACE     : '{';
+RBRACE     : '}';
+LPAREN     : '(';
+RPAREN     : ')';
+COMMA      : ',';
+SEMI       : ';';
+ID         : [a-zA-Z_][a-zA-Z_0-9]*;
+WS         : [ \t\r\n]+ -> skip;
+COMMENT    : '//' ~[\r\n]* -> skip;

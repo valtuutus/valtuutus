@@ -44,4 +44,14 @@ fn is_weekday(day_of_week string) {
 ");
         act.Should().Throw<SchemaParseException>();
     }
+    
+    [Fact]
+    public void Invalid_schema_Should_Throw_Exception2()
+    {
+        Action act = () => SchemaReader.Parse(@"entity user {
+            relation teste @group#member attribute legal bool
+        }
+");
+        act.Should().Throw<SchemaParseException>();
+    }
 }
