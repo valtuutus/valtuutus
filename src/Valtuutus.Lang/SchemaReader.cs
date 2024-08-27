@@ -26,8 +26,8 @@ public static class SchemaReader
         var parser = new ValtuutusParser(tokens);
         parser.RemoveErrorListeners();
         parser.AddErrorListener(errorListener);
-        errorListener.ThrowIfErrors();
         var tree = parser.schema();
+        errorListener.ThrowIfErrors();
         
         // Parse functions
         foreach (var funcs in tree.functionDefinition())
@@ -38,30 +38,22 @@ public static class SchemaReader
         // Parse entities
         foreach (var entityCtx in tree.entityDefinition())
         {
-            var entityBuilder = schemaBuilder.WithEntity(entityCtx.ID().GetText());
+            var entityBuilder = schemaBuilder.WithEntity(entityCtx.ENTITY_NAME().GetText());
 
             var relationCtx = entityCtx.entityBody().relationDefinition()!;
 
             foreach (var relation in relationCtx)
             {
-                var idlen = relation.ID().Length;
-                if (idlen < 2)
-                {
-                    throw new SchemaParseException(new List<string>
-                    {
-                        $"Invalid relation definition in entity {entityCtx.ID().GetText()}: relation name and target entity are required."
-                    });
-                }
-                entityBuilder.WithRelation(relation.ID(0).GetText(), relationBuilder =>
+                entityBuilder.WithRelation(relation.RELATION_NAME().GetText(), relationBuilder =>
                 {
                     var subjectRelation = relation.POUND() != null;
                     if (!subjectRelation)
                     {
-                        relationBuilder.WithEntityType(relation.ID(idlen -1).GetText());
+                        relationBuilder.WithEntityType(relation.TARGET_ENTITY_NAME().GetText());
                     }
                     else
                     {
-                        relationBuilder.WithEntityType(relation.ID(idlen -2).GetText(), relation.ID(idlen -1).GetText());
+                        relationBuilder.WithEntityType(relation.TARGET_ENTITY_NAME().GetText(), relation.SUBJECT_RELATION_NAME().GetText());
                     }
                 });
             }
@@ -70,8 +62,8 @@ public static class SchemaReader
 
             foreach (var attribute in attributeCtx)
             {
-                var attrType = _types[attribute.type().GetText()];
-                entityBuilder.WithAttribute(attribute.ID().GetText(), attrType);
+                var attrType = _types[attribute.ATTRIBUTE_TYPE().GetText()];
+                entityBuilder.WithAttribute(attribute.ATTRIBUTE_NAME().GetText(), attrType);
             }
             
             var permissionCtx = entityCtx.entityBody().permissionDefinition()!;
@@ -79,8 +71,8 @@ public static class SchemaReader
             foreach (var permission in permissionCtx)
             {
                 // Convert permission expression to PermissionNode
-                var permissionTree = BuildPermissionNode(permission.expression());
-                entityBuilder.WithPermission(permission.ID().GetText(), permissionTree);
+                var permissionTree = BuildPermissionNode(permission.permissionExpression());
+                entityBuilder.WithPermission(permission.PERMISSION_NAME().GetText(), permissionTree);
             }
             
         }
@@ -88,22 +80,22 @@ public static class SchemaReader
 
     }
     
-    private static PermissionNode BuildPermissionNode(ValtuutusParser.ExpressionContext context)
+    private static PermissionNode BuildPermissionNode(ValtuutusParser.PermissionExpressionContext context)
     {
         switch (context)
         {
-            case ValtuutusParser.AndExpressionContext andCtx:
-                var leftAnd = BuildPermissionNode(andCtx.expression(0));
-                var rightAnd = BuildPermissionNode(andCtx.expression(1));
+            case ValtuutusParser.AndPermissionExpressionContext andCtx:
+                var leftAnd = BuildPermissionNode(andCtx.permissionExpression(0));
+                var rightAnd = BuildPermissionNode(andCtx.permissionExpression(1));
                 return PermissionNode.Intersect(leftAnd, rightAnd);
 
-            case ValtuutusParser.OrExpressionContext orCtx:
-                var leftOr = BuildPermissionNode(orCtx.expression(0));
-                var rightOr = BuildPermissionNode(orCtx.expression(1));
+            case ValtuutusParser.OrPermissionExpressionContext orCtx:
+                var leftOr = BuildPermissionNode(orCtx.permissionExpression(0));
+                var rightOr = BuildPermissionNode(orCtx.permissionExpression(1));
                 return PermissionNode.Union(leftOr, rightOr);
 
-            case ValtuutusParser.IdentifierExpressionContext idCtx:
-                return PermissionNode.Leaf(idCtx.ID().GetText());
+            case ValtuutusParser.IdentifierPermissionExpressionContext idCtx:
+                return PermissionNode.Leaf(idCtx.IDENTIFIER().GetText());
 
             
             // TODO: Do some magic to handle the creation of expressions
@@ -119,8 +111,8 @@ public static class SchemaReader
             //     }
             //     throw new Exception($"Unknown function: {funcName}");
 
-            case ValtuutusParser.ParenthesisExpressionContext parenCtx:
-                return BuildPermissionNode(parenCtx.expression());
+            case ValtuutusParser.ParenthesisPermissionExpressionContext parenCtx:
+                return BuildPermissionNode(parenCtx.permissionExpression());
 
             default:
                 throw new Exception("Unsupported expression type");

@@ -3,7 +3,7 @@
 schema : entityDefinition* functionDefinition* ;
 
 entityDefinition
-    : ENTITY ID LBRACE entityBody RBRACE
+    : ENTITY ENTITY_NAME LBRACE entityBody RBRACE
     ;
 
 entityBody
@@ -11,67 +11,83 @@ entityBody
     ;
 
 relationDefinition
-    : RELATION ID '@' ID (POUND ID)?   // Require both relation name and target entity
+    : RELATION RELATION_NAME '@' TARGET_ENTITY_NAME (POUND SUBJECT_RELATION_NAME)?
     ;
 
 attributeDefinition
-    : ATTRIBUTE ID type
+    : ATTRIBUTE ATTRIBUTE_NAME ATTRIBUTE_TYPE
     ;
 
 permissionDefinition
-    : PERMISSION ID ASSIGN expression
+    : PERMISSION PERMISSION_NAME ASSIGN permissionExpression
     ;
 
 functionDefinition
-    : FN ID LPAREN parameterList RPAREN LBRACE expression RBRACE
+    : FN FUNCTION_NAME LPAREN parameterList RPAREN LBRACE functionBody RBRACE
     ;
 
 parameterList
-    : (ID type (COMMA ID type)*)?
+    : (PARAMETER_NAME ATTRIBUTE_TYPE (COMMA PARAMETER_NAME ATTRIBUTE_TYPE)*)?
     ;
 
-type
-    : INT | BOOL | STRING
+functionBody
+    : permissionExpression // or you could define it with something else that makes sense for your language
     ;
 
-expression
-    : expression AND expression       #andExpression
-    | expression OR expression        #orExpression
-    | ID NOT_EQUAL ID                 #notEqualExpression
-    | ID GREATER ID                   #greaterExpression
-    | functionCall                    #functionCallExpression
-    | ID                              #identifierExpression
-    | LPAREN expression RPAREN        #parenthesisExpression
+ATTRIBUTE_TYPE
+    : INT | BOOL | STRING | DECIMAL
+    ;
+
+permissionExpression
+    : permissionExpression AND permissionExpression       #andPermissionExpression
+    | permissionExpression OR permissionExpression        #orPermissionExpression
+    | functionCall                                        #functionCallPermissionExpression
+    | IDENTIFIER                                          #identifierPermissionExpression
+    | LPAREN permissionExpression RPAREN                  #parenthesisPermissionExpression
     ;
 
 functionCall
-    : ID LPAREN argumentList RPAREN
+    : FUNCTION_NAME LPAREN argumentList RPAREN
     ;
 
 argumentList
-    : (ID (COMMA ID)*)?
+    : (ARGUMENT_NAME (COMMA ARGUMENT_NAME)*)?
     ;
 
-ENTITY     : 'entity';
-RELATION   : 'relation';
-ATTRIBUTE  : 'attribute';
-PERMISSION : 'permission';
-FN         : 'fn';
-INT        : 'int';
-BOOL       : 'bool';
-STRING     : 'string';
-ASSIGN     : ':=';
-AND        : 'and';
-OR         : 'or';
-NOT_EQUAL  : '!=';
-GREATER    : '>';
-POUND      : '#';
-LBRACE     : '{';
-RBRACE     : '}';
-LPAREN     : '(';
-RPAREN     : ')';
-COMMA      : ',';
-SEMI       : ';';
-ID         : [a-zA-Z_][a-zA-Z_0-9]*;
-WS         : [ \t\r\n]+ -> skip;
-COMMENT    : '//' ~[\r\n]* -> skip;
+// Define the identifier pattern only once
+IDENTIFIER : [a-zA-Z_][a-zA-Z_0-9]*;
+
+// Use the IDENTIFIER rule for specific names
+ENTITY_NAME           : IDENTIFIER;
+RELATION_NAME         : IDENTIFIER;
+TARGET_ENTITY_NAME    : IDENTIFIER;
+SUBJECT_RELATION_NAME : IDENTIFIER;
+ATTRIBUTE_NAME        : IDENTIFIER;
+PERMISSION_NAME       : IDENTIFIER;
+FUNCTION_NAME         : IDENTIFIER;
+PARAMETER_NAME        : IDENTIFIER;
+ARGUMENT_NAME         : IDENTIFIER;
+
+ENTITY      : 'entity';
+RELATION    : 'relation';
+ATTRIBUTE   : 'attribute';
+PERMISSION  : 'permission';
+FN          : 'fn';
+INT         : 'int';
+BOOL        : 'bool';
+STRING      : 'string';
+DECIMAL     : 'decimal';
+ASSIGN      : ':=';
+AND         : 'and';
+OR          : 'or';
+NOT_EQUAL   : '!=';
+GREATER     : '>';
+POUND       : '#';
+LBRACE      : '{';
+RBRACE      : '}';
+LPAREN      : '(';
+RPAREN      : ')';
+COMMA       : ',';
+SEMI        : ';';
+WS          : [ \t\r\n]+ -> skip;
+COMMENT     : '//' ~[\r\n]* -> skip;

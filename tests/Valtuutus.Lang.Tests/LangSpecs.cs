@@ -41,7 +41,7 @@ fn is_weekday(day_of_week string) {
     {
         Action act = () => SchemaReader.Parse(@"entity user {
             relation
-}");
+");
         act.Should().Throw<SchemaParseException>();
     }
 }
