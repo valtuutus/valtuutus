@@ -1,5 +1,6 @@
 ﻿using Antlr4.Runtime;
 using OneOf;
+using System.Text;
 using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Lang;
@@ -91,7 +92,14 @@ public static class SchemaReader
                 return PermissionNode.Union(leftOr, rightOr);
 
             case ValtuutusParser.IdentifierExpressionContext idCtx:
-                return PermissionNode.Leaf(idCtx.ID().GetText());
+                var builder = new StringBuilder();
+                builder.Append(idCtx.ID(0).GetText());
+                if (idCtx.ID().Length > 1)
+                {
+                    builder.Append(idCtx.DOT().GetText());
+                    builder.Append(idCtx.ID(1).GetText());
+                }
+                return PermissionNode.Leaf(builder.ToString());
 
             case ValtuutusParser.ParenthesisExpressionContext parenCtx:
                 return BuildPermissionNode(parenCtx.expression());

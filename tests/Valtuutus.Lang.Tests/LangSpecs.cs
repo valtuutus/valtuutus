@@ -26,7 +26,7 @@ entity repository {
     permission edit := organization.view;
 }
 ");
-        parseResult.AsT1.Should().BeEmpty();
+        parseResult.IsT0.Should().BeTrue();
     }
     
     [Fact]
@@ -46,11 +46,15 @@ entity repository {
     [InlineData("entity    user  {       }")]
     public void Empty_entity_different_whitespace_should_not_return_error(string schema)
     {
+        // act
         var parseResult = SchemaReader.Parse(
             schema);
 
+
+        // assert
+        var expected = new SchemaBuilder().WithEntity("user").SchemaBuilder.Build();
         parseResult.IsT0.Should().BeTrue();
-        parseResult.AsT0.Should().BeEquivalentTo(
-            new SchemaBuilder().WithEntity("user").Build());
+        parseResult.AsT0.Should().BeEquivalentTo(expected
+            );
     }
 }

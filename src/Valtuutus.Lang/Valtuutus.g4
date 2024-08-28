@@ -29,7 +29,7 @@ type
 expression
     : expression AND expression       #andExpression
     | expression OR expression        #orExpression
-    | ID                              #identifierExpression
+    | ID (DOT ID)?                              #identifierExpression
     | LPAREN expression RPAREN        #parenthesisExpression
     ;
 
@@ -42,6 +42,7 @@ BOOL       : 'bool';
 ASSIGN     : ':=';
 AND        : 'and';
 OR         : 'or';
+DOT        : '.';
 POUND      : '#';
 LBRACE     : '{';
 RBRACE     : '}';
