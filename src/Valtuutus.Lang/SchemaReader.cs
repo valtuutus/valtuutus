@@ -43,7 +43,7 @@ public static class SchemaReader
                 var idlen = relation.ID().Length;
                 entityBuilder.WithRelation(relation.ID(0).GetText(), relationBuilder =>
                 {
-                    var subjectRelation = relation.POUND() != null;
+                    var subjectRelation = relation.POUND().Length > 0;
                     if (!subjectRelation)
                     {
                         relationBuilder.WithEntityType(relation.ID(idlen -1).GetText());

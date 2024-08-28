@@ -31,11 +31,3 @@ public class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<
         Errors.Add(errorMessage);
     }
 }
-
-public class SchemaParseException : Exception
-{
-    public SchemaParseException(IEnumerable<string> errors) 
-        : base("Parsing errors occurred:\n" + string.Join("\n", errors))
-    {
-    }
-}
