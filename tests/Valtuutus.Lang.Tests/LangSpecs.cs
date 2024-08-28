@@ -1,57 +1,56 @@
 using FluentAssertions;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Lang.Tests;
 
 public class LangSpecs
 {
-    [Fact(Skip = "Functions are still not implemented")]
-    public void Full_Lang_Specs_should_be_able_to_parse_entire_schema()
+    [Fact]
+    public void Full_Lang_v1_Specs_should_be_able_to_parse_entire_schema()
     {
-        var schema = SchemaReader.Parse(@"
+        var parseResult = SchemaReader.Parse(@"
 entity user {}
 
 entity organization {
-    relation member @user
-    relation admin @user
-    attribute credit int
-    permission view := check_credit(credit) and member
+    relation member @user;
+    relation admin @user;
+    attribute has_credit bool;
+    permission view := has_credit and member;
 }
 
 entity repository {
-    relation owner @organization#admin
-    relation organization @organization
-    attribute is_public bool
-    permission view := organization.admin or (is_public and organization.view)
-    permission edit := organization.view
-    permission delete := is_weekday(request.day_of_week)
-}
-fn check_credit(credit int) {
-    credit > 5000
-}
-fn is_weekday(day_of_week string) {
-    day_of_week != 'saturday' && day_of_week != 'sunday'
+    relation owner @organization#admin;
+    relation organization @organization;
+    attribute is_public bool;
+    permission view := organization.admin or (is_public and organization.view);
+    permission edit := organization.view;
 }
 ");
-
-        schema.Should().NotBeNull();
-    }
-
-    [Fact]
-    public void Invalid_schema_Should_Throw_Exception()
-    {
-        Action act = () => SchemaReader.Parse(@"entity user {
-            relation
-");
-        act.Should().Throw<SchemaParseException>();
+        parseResult.AsT1.Should().BeEmpty();
     }
     
     [Fact]
-    public void Invalid_schema_Should_Throw_Exception2()
+    public void Comma_is_required_after_entity_member_declaration()
     {
-        Action act = () => SchemaReader.Parse(@"entity user {
-            relation teste @group#member attribute legal bool
+        var parseResult = SchemaReader.Parse(@"entity user {
+            relation test @group#member attribute nice bool
         }
 ");
-        act.Should().Throw<SchemaParseException>();
+        parseResult.AsT1.Should().NotBeEmpty();
+        parseResult.AsT1.Should().BeEquivalentTo("Line 2:40 src:ValtuutusParser - extraneous input 'attribute' expecting {'@', ';'}",
+            "Line 3:8 src:ValtuutusParser - missing ';' at '}'");
+    }
+
+    [Theory]
+    [InlineData("entity user {}")]
+    [InlineData("entity    user  {       }")]
+    public void Empty_entity_different_whitespace_should_not_return_error(string schema)
+    {
+        var parseResult = SchemaReader.Parse(
+            schema);
+
+        parseResult.IsT0.Should().BeTrue();
+        parseResult.AsT0.Should().BeEquivalentTo(
+            new SchemaBuilder().WithEntity("user").Build());
     }
 }

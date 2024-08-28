@@ -20,6 +20,7 @@
     <ItemGroup>
       <PackageReference Include="Antlr4.Runtime.Standard" />
       <PackageReference Include="Antlr4BuildTasks" PrivateAssets="all" />
+      <PackageReference Include="OneOf" />
     </ItemGroup>
     
     <ItemGroup>

@@ -1,6 +1,6 @@
 ﻿grammar Valtuutus;
 
-schema : (entityDefinition | functionDefinition)* EOF ;
+schema : entityDefinition * EOF ;
 
 entityDefinition
     : ENTITY ID LBRACE entityBody RBRACE
@@ -22,54 +22,31 @@ permissionDefinition
     : PERMISSION ID ASSIGN expression SEMI
     ;
 
-functionDefinition
-    : FN ID LPAREN parameterList RPAREN LBRACE expression RBRACE
-    ;
-
-parameterList
-    : (ID type (COMMA ID type)*)?
-    ;
-
 type
-    : INT | BOOL | STRING | DECIMAL
+    : BOOL
     ;
 
 expression
     : expression AND expression       #andExpression
     | expression OR expression        #orExpression
-    | functionCall                    #functionCallExpression
     | ID                              #identifierExpression
     | LPAREN expression RPAREN        #parenthesisExpression
     ;
 
-functionCall
-    : ID LPAREN argumentList RPAREN
-    ;
-
-argumentList
-    : (ID (COMMA ID)*)?
-    ;
 
 ENTITY     : 'entity';
 RELATION   : 'relation';
 ATTRIBUTE  : 'attribute';
 PERMISSION : 'permission';
-FN         : 'fn';
-INT        : 'int';
 BOOL       : 'bool';
-STRING     : 'string';
-DECIMAL    : 'decimal';
 ASSIGN     : ':=';
 AND        : 'and';
 OR         : 'or';
-NOT_EQUAL  : '!=';
-GREATER    : '>';
 POUND      : '#';
 LBRACE     : '{';
 RBRACE     : '}';
 LPAREN     : '(';
 RPAREN     : ')';
-COMMA      : ',';
 SEMI       : ';';
 ID         : [a-zA-Z_][a-zA-Z_0-9]*;
 WS         : [ \t\r\n]+ -> skip;

@@ -1,4 +1,5 @@
 ﻿using Antlr4.Runtime;
+using OneOf;
 using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Lang;
@@ -7,13 +8,10 @@ public static class SchemaReader
 {
     private static readonly Dictionary<string, Type> _types = new()
     {
-        { "string", typeof(string) },
-        { "int", typeof(int)},
-        { "bool", typeof(bool)},
-        { "decimal", typeof(decimal) }
+        { "bool", typeof(bool)}
     };
 
-    public static Schema Parse(string schema)
+    public static OneOf<Schema, List<string>> Parse(string schema)
     {
         var schemaBuilder = new SchemaBuilder();
 
@@ -27,14 +25,11 @@ public static class SchemaReader
         parser.RemoveErrorListeners();
         parser.AddErrorListener(errorListener);
         var tree = parser.schema();
-        errorListener.ThrowIfErrors();
-        
-        // Parse functions
-        foreach (var funcs in tree.functionDefinition())
+
+        if (errorListener.HasErrors)
         {
-            //funcs.
+            return errorListener.Errors;
         }
-        
         // Parse entities
         foreach (var entityCtx in tree.entityDefinition())
         {
@@ -98,25 +93,11 @@ public static class SchemaReader
             case ValtuutusParser.IdentifierExpressionContext idCtx:
                 return PermissionNode.Leaf(idCtx.ID().GetText());
 
-            
-            // TODO: Do some magic to handle the creation of expressions
-            // case ValtuutusParser.FunctionCallExpressionContext funcCtx:
-            //     var funcName = funcCtx.ID().GetText();
-            //     if (funcName == "is_weekday")
-            //     {
-            //         return PermissionNode.AttributeStringExpression("day_of_week", day => day != "saturday" && day != "sunday");
-            //     }
-            //     else if (funcName == "check_credit")
-            //     {
-            //         return PermissionNode.AttributeIntExpression("credit", credit => credit > 5000);
-            //     }
-            //     throw new Exception($"Unknown function: {funcName}");
-
             case ValtuutusParser.ParenthesisExpressionContext parenCtx:
                 return BuildPermissionNode(parenCtx.expression());
 
             default:
-                throw new Exception("Unsupported expression type");
+                throw new NotSupportedException("Unsupported expression type");
         }
     }
 }

@@ -4,10 +4,11 @@ namespace Valtuutus.Lang;
 
 public class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<int>
 {
-    private readonly List<string> _errors = new();
+    public List<string> Errors { get; } = new();
+    public bool HasErrors => Errors.Count > 0;
 
     public override void SyntaxError(
-        TextWriter _,
+        TextWriter output,
         IRecognizer recognizer, 
         IToken offendingSymbol, 
         int line, 
@@ -18,14 +19,6 @@ public class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<
         LogError(recognizer, line, charPositionInLine, msg);
     }
 
-    public void ThrowIfErrors()
-    {
-        if (_errors.Count > 0)
-        {
-            throw new SchemaParseException(_errors);
-        }
-    }
-
     public void SyntaxError(TextWriter output, IRecognizer recognizer, int offendingSymbol, int line, int charPositionInLine,
         string msg, RecognitionException e)
     {
@@ -34,9 +27,8 @@ public class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<
 
     private void LogError(IRecognizer recognizer, int line, int charPositionInLine, string msg)
     {
-        string sourceName = recognizer.InputStream.SourceName;
-        var errorMessage = $"Line {line}:{charPositionInLine} src:{sourceName} - {msg}";
-        _errors.Add(errorMessage);
+        var errorMessage = $"Line {line}:{charPositionInLine} src:{recognizer.GetType().Name} - {msg}";
+        Errors.Add(errorMessage);
     }
 }
 
