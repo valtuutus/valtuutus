@@ -28,7 +28,7 @@ entity repository {
 ");
         parseResult.IsT0.Should().BeTrue();
     }
-    
+
     [Fact]
     public void Comma_is_required_after_entity_member_declaration()
     {
@@ -56,5 +56,34 @@ entity repository {
         parseResult.IsT0.Should().BeTrue();
         parseResult.AsT0.Should().BeEquivalentTo(expected
             );
+    }
+
+    [Fact]
+    public void Should_parse_fn()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity account {
+
+                relation owner @user;
+                
+                attribute balance int;
+
+                permission withdraw := check_balance(context.amount, balance) and owner;
+            }
+
+            fn check_balance(amount int, balance int) =>
+                (balance >= amount) and (amount <= 5000);
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.Functions["check_balance"].Execute(new Dictionary<string, object>()
+            {
+                ["balance"] = 5000,
+                ["amount"] = 5000
+            }).Should()
+            .BeTrue();
     }
 }
