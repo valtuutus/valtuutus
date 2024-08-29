@@ -31,8 +31,10 @@ public sealed class LookupEntityEngine(
     //<inheritdoc/>
     public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateLookupEntitySpanAttributes(req));
-        
+        using var activity =
+            DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
+                tags: CreateLookupEntitySpanAttributes(req));
+
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
         {
@@ -47,17 +49,18 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
-        var hs =  new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
-        activity?.AddEvent(new ActivityEvent("LookupEntityResult", tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
+        var hs = new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
+        activity?.AddEvent(new ActivityEvent("LookupEntityResult",
+            tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
     }
-    
-    
+
+
     private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(HashSet<string> result)
     {
         yield return new KeyValuePair<string, object?>("LookupEntityResultCount", result.Count);
     }
-    
+
     private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntitySpanAttributes(LookupEntityRequest req)
     {
         yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
@@ -135,7 +138,7 @@ public sealed class LookupEntityEngine(
             _ => throw new InvalidOperationException()
         };
     }
-    
+
     private LookupFunction CheckLeafPermission(LookupEntityRequestInternal req, PermissionNodeLeafPermission node)
     {
         var perm = node.Permission;
@@ -149,7 +152,7 @@ public sealed class LookupEntityEngine(
         // Direct Relation
         return LookupComputedUserSet(req, perm);
     }
-    
+
     private LookupFunction CheckLeafExp(LookupEntityRequestInternal req, PermissionNodeLeafExp node)
     {
         return async (ct) =>
@@ -162,28 +165,15 @@ public sealed class LookupEntityEngine(
                 throw new InvalidOperationException();
             }
 
-            var attributeArguments = node.Args
-                .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
-                .Cast<PermissionNodeExpArgumentAttribute>()
-                .Select(x => x.AttributeName)
-                .ToArray();
-            
+            var attributeArguments = node.GetArgsAttributesNames();
+
             var attributes = await reader.GetAttributes(
                 new EntityAttributesFilter
                 {
-                    Attributes = attributeArguments,
-                    EntityType = req.EntityType,
-                    SnapToken = req.SnapToken
+                    Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
                 }, ct);
-            
-            var paramToArgMap = fn.Parameters
-                .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
-                {
-                    arguments.Add(parameter, node.Args.First(a => a.ArgOrder == parameter.ParamOrder));
-                    return arguments;
-                });
 
-            var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
+            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
             {
@@ -191,45 +181,18 @@ public sealed class LookupEntityEngine(
                 {
                     return null;
                 }
-                
-                var attrType = getAttributesType(attr.Attribute);
 
-                var methodInfo = typeof(JsonValue).GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
+                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
 
-                if (methodInfo == null)
-                    throw new InvalidOperationException("GetValue<T> method not found on JsonValue.");
-
-                // Make the generic method with the dynamically determined type
-                MethodInfo genericMethod = methodInfo.MakeGenericMethod(attrType);
-
-                if (genericMethod == null)
-                    throw new InvalidOperationException("GetValue<T> method not found.");
-                
-                // Invoke the method dynamically
-                return genericMethod.Invoke(attr.Value, null);
+                return attr.GetValue(attrType);
             };
-            
-            
+
+
             return attributes.Values
                 .Where(attr =>
                 {
-                    IDictionary<string, object?> fnArgs = paramToArgMap.ToDictionary(
-                        pair => pair.Key.ParamName,
-                        pair =>
-                        {
-                            return pair.Value switch
-                            {
-                                PermissionNodeExpArgumentAttribute arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
-                                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                                _ => throw new Exception("Unsuported argument type.")
-                            };
-                        }
-                    );
-
+                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId));
                     return fn.Lambda(fnArgs);
-
                 })
                 .Select(x => new RelationOrAttributeTuple(x))
                 .ToList();
@@ -267,8 +230,7 @@ public sealed class LookupEntityEngine(
 
                 var dependent = LookupEntityInternal(req with
                 {
-                    EntityType = entity.Type,
-                    Permission = computedUserSetRelation,
+                    EntityType = entity.Type, Permission = computedUserSetRelation,
                 });
 
                 lookupFunctions.Add((ct) => JoinEntities(main, dependent, ct));
@@ -282,22 +244,18 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        return LookupEntityInternal(req with
-        {
-            Permission = computedUserSetRelation
-        });
+        return LookupEntityInternal(req with { Permission = computedUserSetRelation });
     }
 
     private LookupFunction LookupAttribute(LookupEntityRequestInternal req, Schemas.Attribute attribute)
     {
         return async (ct) =>
         {
-            return (await reader.GetAttributes(new EntityAttributeFilter
-                {
-                    Attribute = attribute.Name,
-                    EntityType = req.EntityType,
-                    SnapToken = req.SnapToken
-                }, ct))
+            return (await reader.GetAttributes(
+                    new EntityAttributeFilter
+                    {
+                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
+                    }, ct))
                 .Where(a => a.Value.TryGetValue(out bool b) && b)
                 .Select(x => new RelationOrAttributeTuple(x))
                 .ToList();
@@ -318,14 +276,14 @@ public sealed class LookupEntityEngine(
                 {
                     lookupFunctions.Add(LookupRelationLeaf(req with
                     {
-                        SubjectType = relationEntity.Type,
-                        SubjectsIds = [req.FinalSubjectId],
-                        Depth = req.Depth
+                        SubjectType = relationEntity.Type, SubjectsIds = [req.FinalSubjectId], Depth = req.Depth
                     }));
                     continue;
                 }
 
-                var subRelation = relationEntity.Relation is null ? null : schema.GetRelation(relationEntity.Type, relationEntity.Relation);
+                var subRelation = relationEntity.Relation is null
+                    ? null
+                    : schema.GetRelation(relationEntity.Type, relationEntity.Relation);
 
                 if (subRelation is not null)
                 {
@@ -349,11 +307,10 @@ public sealed class LookupEntityEngine(
                         return (_) => Task.FromResult<List<RelationOrAttributeTuple>>([]);
                     };
 
-                    var dependent = LookupRelation(req with
-                    {
-                        EntityType = relationEntity.Type,
-                        Permission = relationEntity.Relation!,
-                    }, subRelation);
+                    var dependent =
+                        LookupRelation(
+                            req with { EntityType = relationEntity.Type, Permission = relationEntity.Relation!, },
+                            subRelation);
 
                     lookupFunctions.Add((ct1) => JoinEntities(main, dependent, ct1));
                 }
@@ -371,9 +328,7 @@ public sealed class LookupEntityEngine(
             return (await reader.GetRelationsWithSubjectsIds(
                     new EntityRelationFilter
                     {
-                        Relation = req.Permission,
-                        EntityType = req.EntityType,
-                        SnapToken = req.SnapToken
+                        Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
                     },
                     req.SubjectsIds,
                     req.SubjectType,

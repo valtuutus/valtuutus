@@ -89,7 +89,14 @@ public record PermissionNodeExpArgumentDecimalLiteral : PermissionNodeExpArgumen
     public required decimal Value { get; init; }
 }
 
-public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args);
+public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
+{
+    public string[] GetArgsAttributesNames() => Args
+        .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
+        .Cast<PermissionNodeExpArgumentAttribute>()
+        .Select(x => x.AttributeName)
+        .ToArray();
+}
 
 public record PermissionNodeOperation(PermissionOperation Operation, List<PermissionNode> Children);
 

@@ -196,11 +196,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 throw new InvalidOperationException();
             }
 
-            var attributeArguments = node.Args
-                .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
-                .Cast<PermissionNodeExpArgumentAttribute>()
-                .Select(x => x.AttributeName)
-                .ToArray();
+            var attributeArguments = node.GetArgsAttributesNames();
 
             var attributes = await reader.GetAttributes(
                 new EntityAttributesFilter
@@ -210,17 +206,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = req.EntityType,
                     SnapToken = req.SnapToken
                 }, ct);
-            
 
-            var paramToArgMap = fn.Parameters
-                .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
-                {
-                    arguments.Add(parameter, node.Args.First(a => a.ArgOrder == parameter.ParamOrder));
-                    return arguments;
-                });
-            
-            var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
 
+            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
+            
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
             {
                 if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
@@ -228,38 +217,13 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     return null;
                 }
                 
-                var attrType = getAttributesType(attr.Attribute);
+                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
 
-                var methodInfo = typeof(JsonValue).GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
-
-                if (methodInfo == null)
-                    throw new InvalidOperationException("GetValue<T> method not found on JsonValue.");
-
-                // Make the generic method with the dynamically determined type
-                MethodInfo genericMethod = methodInfo.MakeGenericMethod(attrType);
-
-                if (genericMethod == null)
-                    throw new InvalidOperationException("GetValue<T> method not found.");
-                
-                // Invoke the method dynamically
-                return genericMethod.Invoke(attr.Value, null);
+                return attr.GetValue(attrType);
             };
 
 
-            IDictionary<string, object?> fnArgs = paramToArgMap.ToDictionary(
-                pair => pair.Key.ParamName,
-                pair =>
-                {
-                    return pair.Value switch
-                    {
-                        PermissionNodeExpArgumentAttribute arg => getDynamicallyTypedAttribute(arg),
-                        PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                        PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                        PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                        _ => throw new Exception("Unsuported argument type.")
-                    };
-                }
-            );
+            var fnArgs = paramToArgMap.ToLambdaArgs(getDynamicallyTypedAttribute);
 
             return fn.Lambda(fnArgs);
         };

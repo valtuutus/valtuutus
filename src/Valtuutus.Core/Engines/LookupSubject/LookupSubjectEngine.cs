@@ -167,11 +167,7 @@ public sealed class LookupSubjectEngine(
                 throw new InvalidOperationException();
             }
 
-            var attributeArguments = node.Args
-                .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
-                .Cast<PermissionNodeExpArgumentAttribute>()
-                .Select(x => x.AttributeName)
-                .ToArray();
+            var attributeArguments = node.GetArgsAttributesNames();
 
             var attributes = await reader.GetAttributesWithEntityIds(
                 new EntityAttributesFilter
@@ -181,12 +177,7 @@ public sealed class LookupSubjectEngine(
                     SnapToken = req.SnapToken
                 }, req.EntitiesIds, ct);
             
-            var paramToArgMap = fn.Parameters
-                .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
-                {
-                    arguments.Add(parameter, node.Args.First(a => a.ArgOrder == parameter.ParamOrder));
-                    return arguments;
-                });
+            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
             var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
 
@@ -196,44 +187,17 @@ public sealed class LookupSubjectEngine(
                 {
                     return null;
                 }
-                
-                var attrType = getAttributesType(attr.Attribute);
 
-                var methodInfo = typeof(JsonValue).GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
+                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
 
-                if (methodInfo == null)
-                    throw new InvalidOperationException("GetValue<T> method not found on JsonValue.");
-
-                // Make the generic method with the dynamically determined type
-                MethodInfo genericMethod = methodInfo.MakeGenericMethod(attrType);
-
-                if (genericMethod == null)
-                    throw new InvalidOperationException("GetValue<T> method not found.");
-                
-                // Invoke the method dynamically
-                return genericMethod.Invoke(attr.Value, null);
+                return attr.GetValue(attrType);
             };
             
             var res = attributes.Values
                 .Where(attr =>
                 {
-                    IDictionary<string, object?> fnArgs = paramToArgMap.ToDictionary(
-                        pair => pair.Key.ParamName,
-                        pair =>
-                        {
-                            return pair.Value switch
-                            {
-                                PermissionNodeExpArgumentAttribute arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
-                                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                                _ => throw new Exception("Unsuported argument type.")
-                            };
-                        }
-                    );
-
-                    var res = fn.Lambda(fnArgs);
-                    return res;
+                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId));
+                    return fn.Lambda(fnArgs);
                 })
                 .ToList();
             
