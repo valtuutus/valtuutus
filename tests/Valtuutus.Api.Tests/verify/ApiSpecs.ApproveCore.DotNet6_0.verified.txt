@@ -361,14 +361,6 @@ namespace Valtuutus.Core.Schemas
         public Valtuutus.Core.Schemas.Relation Build() { }
         public Valtuutus.Core.Schemas.RelationSchemaBuilder WithEntityType(string entityType, string? entityTypeRelation = null) { }
     }
-    public class Rule : System.IEquatable<Valtuutus.Core.Schemas.Rule>
-    {
-        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
-            "your compiler.", true)]
-        public Rule() { }
-        public string Name { get; init; }
-        public string RuleFn { get; init; }
-    }
     public class Schema : System.IEquatable<Valtuutus.Core.Schemas.Schema>
     {
         public Schema(System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities) { }
