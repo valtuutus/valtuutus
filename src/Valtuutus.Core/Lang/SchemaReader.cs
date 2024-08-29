@@ -1,10 +1,11 @@
 ﻿using Antlr4.Runtime;
-using OneOf;
-using System.Text;
 using System.Linq.Expressions;
+using System.Text;
 using Valtuutus.Core.Schemas;
+using Valtuutus.Lang;
+using OneOf;
 
-namespace Valtuutus.Lang;
+namespace Valtuutus.Core.Lang;
 
 public static class SchemaReader
 {
@@ -147,7 +148,7 @@ public static class SchemaReader
     private static FunctionNode<bool> CreateAndExpressionNode(IDictionary<string, Type> args,
         ValtuutusParser.AndExpressionContext andCtx)
     {
-        var node = new AndExpressionFnNode { };
+        var node = new AndExpressionFnNode();
         var leftChild = ParseFunctionExpression(args, andCtx.functionExpression(0));
         var rightChild = ParseFunctionExpression(args, andCtx.functionExpression(1));
 
@@ -166,7 +167,7 @@ public static class SchemaReader
     private static FunctionNode<bool> CreateOrExpressionNode(IDictionary<string, Type> args,
         ValtuutusParser.OrExpressionContext orCtx)
     {
-        var node = new OrExpressionFnNode { };
+        var node = new OrExpressionFnNode();
         var leftChild = ParseFunctionExpression(args, orCtx.functionExpression(0));
         var rightChild = ParseFunctionExpression(args, orCtx.functionExpression(1));
 
@@ -187,7 +188,7 @@ public static class SchemaReader
         ValtuutusParser.EqualityExpressionContext eqCtx
     )
     {
-        var node = new EqualExpressionFnNode { };
+        var node = new EqualExpressionFnNode();
         var leftChild = ParseLiteralExpression(args, eqCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, eqCtx.functionExpression(1));
 
@@ -208,7 +209,7 @@ public static class SchemaReader
         ValtuutusParser.InequalityExpressionContext neqCtx
     )
     {
-        var node = new NotEqualExpressionFnNode { };
+        var node = new NotEqualExpressionFnNode();
         var leftChild = ParseLiteralExpression(args, neqCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, neqCtx.functionExpression(1));
 
@@ -229,7 +230,7 @@ public static class SchemaReader
         ValtuutusParser.GreaterExpressionContext gtCtx
     )
     {
-        var node = new GreaterExpressionFnNode() { };
+        var node = new GreaterExpressionFnNode();
         var leftChild = ParseLiteralExpression(args, gtCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, gtCtx.functionExpression(1));
 
@@ -251,7 +252,7 @@ public static class SchemaReader
         ValtuutusParser.LessExpressionContext ltCtx
     )
     {
-        var node = new LessExpressionFnNode { };
+        var node = new LessExpressionFnNode();
         var leftChild = ParseLiteralExpression(args, ltCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, ltCtx.functionExpression(1));
 
@@ -272,7 +273,7 @@ public static class SchemaReader
         ValtuutusParser.GreaterOrEqualExpressionContext gteCtx
     )
     {
-        var node = new GreaterOrEqualExpressionFnNode { };
+        var node = new GreaterOrEqualExpressionFnNode();
 
         var leftChild = ParseLiteralExpression(args, gteCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, gteCtx.functionExpression(1));
@@ -294,7 +295,7 @@ public static class SchemaReader
         ValtuutusParser.LessOrEqualExpressionContext lteCtx
     )
     {
-        var node = new LessOrEqualExpressionFnNode { };
+        var node = new LessOrEqualExpressionFnNode();
         var leftChild = ParseLiteralExpression(args, lteCtx.functionExpression(0));
         var rightChild = ParseLiteralExpression(args, lteCtx.functionExpression(1));
 
@@ -313,7 +314,7 @@ public static class SchemaReader
     private static FunctionNode<bool> CreateParenthesisExpressionNode(IDictionary<string, Type> args,
         ValtuutusParser.ParenthesisExpressionContext parenCtx)
     {
-        var node = new ParenthesisExpressionFnNode { };
+        var node = new ParenthesisExpressionFnNode();
 
         var childNode = ParseFunctionExpression(args, parenCtx.functionExpression());
         node.TypeContext = childNode.TypeContext;

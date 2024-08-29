@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFrameworks>$(NetLibVersion);</TargetFrameworks>
+        <TargetFramework>netstandard2.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Description>$(Description)</Description>
@@ -20,15 +20,6 @@
     <ItemGroup>
       <PackageReference Include="Antlr4.Runtime.Standard" />
       <PackageReference Include="Antlr4BuildTasks" PrivateAssets="all" />
-      <PackageReference Include="OneOf" />
-        <PackageReference Include="Polyfill">
-            <PrivateAssets>all</PrivateAssets>
-            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\Valtuutus.Core\Valtuutus.Core.csproj"/>
     </ItemGroup>
 
 

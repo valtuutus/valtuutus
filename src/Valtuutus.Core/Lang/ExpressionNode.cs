@@ -1,6 +1,6 @@
 ﻿using System.Linq.Expressions;
 
-namespace Valtuutus.Lang;
+namespace Valtuutus.Core.Lang;
 
 internal enum FunctionNodeType
 {

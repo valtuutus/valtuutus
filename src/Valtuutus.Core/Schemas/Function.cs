@@ -54,7 +54,7 @@ public static class ParamToArgMapExtensions
                     PermissionNodeExpArgumentStringLiteral arg => arg.Value,
                     PermissionNodeExpArgumentIntLiteral arg => arg.Value,
                     PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                    _ => throw new Exception("Unsuported argument type.")
+                    _ => throw new NotSupportedException("Unsuported argument type.")
                 };
             }
         );

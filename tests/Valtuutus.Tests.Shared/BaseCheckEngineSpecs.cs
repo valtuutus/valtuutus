@@ -541,7 +541,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
                 [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(string) }],
-                (args) => (string)args["status"] == "active"));
+                (args) => (string?)args["status"] == "active"));
 
         var schema = entity.Build();
 
@@ -575,7 +575,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             .SchemaBuilder
             .WithFunction(new Function("check_balance",
                 [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = typeof(decimal) }],
-                (args) => (decimal)args["balance"] >= 500m));
+                (args) => (decimal?)args["balance"] >= 500m));
 
         var schema = entity.Build();
 

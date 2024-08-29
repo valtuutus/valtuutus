@@ -199,7 +199,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             .SchemaBuilder
             .WithFunction(new Function("check_balance",
                 [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = typeof(decimal) }],
-                (args) => (decimal)args["balance"] >= 500m));
+                (args) => (decimal?)args["balance"] >= 500m));
 
         var schema = entity.Build();
 

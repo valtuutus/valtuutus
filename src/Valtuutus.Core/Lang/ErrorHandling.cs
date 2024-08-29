@@ -1,8 +1,8 @@
 ﻿using Antlr4.Runtime;
 
-namespace Valtuutus.Lang;
+namespace Valtuutus.Core.Lang;
 
-public class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<int>
+internal class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<int>
 {
     public List<string> Errors { get; } = new();
     public bool HasErrors => Errors.Count > 0;

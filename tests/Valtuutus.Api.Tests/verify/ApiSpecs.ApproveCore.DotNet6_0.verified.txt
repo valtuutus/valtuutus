@@ -249,6 +249,13 @@ namespace Valtuutus.Core.Engines.LookupSubject
         public string SubjectType { get; init; }
     }
 }
+namespace Valtuutus.Core.Lang
+{
+    public static class SchemaReader
+    {
+        public static OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<string>> Parse(string schema) { }
+    }
+}
 namespace Valtuutus.Core.Observability
 {
     public static class DefaultActivitySource
