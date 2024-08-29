@@ -162,9 +162,9 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
     }
 
-    public async Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        return new Dictionary<string, AttributeTuple>();
+        throw new NotImplementedException();
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
@@ -188,5 +188,11 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
         }, cancellationToken);
+    }
+
+    public Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
+        CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
     }
 }

@@ -223,7 +223,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
             {
-                if (!attributes.TryGetValue(arg.AttributeName, out var attr))
+                if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
                 {
                     return null;
                 }

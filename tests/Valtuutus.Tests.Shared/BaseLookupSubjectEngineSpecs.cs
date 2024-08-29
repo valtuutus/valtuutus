@@ -15,10 +15,11 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     {
         Fixture = fixture;
     }
+
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    
+
     protected IDatabaseFixture Fixture { get; }
-    
+
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var services = new ServiceCollection()
@@ -34,20 +35,21 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
         return services.BuildServiceProvider();
     }
-    
-    
-    private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+
+
+    private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+        Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
-        if(tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
+        if (tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
         var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
         await dataEngine.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
-    
-    
+
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
@@ -160,22 +162,27 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
             .WithRelation("member", c => c.WithEntityType(TestsConsts.Users.Identifier))
-            .WithPermission("edit",
+            .WithAttribute("status", typeof(string))
+            .WithPermission("edit", PermissionNode.Intersect(
                 PermissionNode.Expression("isActiveStatus",
-                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]),
+                PermissionNode.Leaf("member")
+            ))
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
                 [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(string) }],
-                (args) => (string)args["status"] == "active"));
+                (args) => (string?)args["status"] == "active"));
 
         var schema = entity.Build();
 
         // act
         var engine = await CreateEngine(
             [
-                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member", TestsConsts.Users.Identifier,
+                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
+                    TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member", TestsConsts.Users.Identifier,
+                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
+                    TestsConsts.Users.Identifier,
                     TestsConsts.Users.Bob),
             ],
             [
@@ -200,14 +207,16 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity("account")
             .WithRelation("owner", c => c.WithEntityType(TestsConsts.Users.Identifier))
+            .WithAttribute("balance", typeof(decimal))
             .WithPermission("withdraw", PermissionNode.Intersect(
                 PermissionNode.Leaf("owner"),
-                PermissionNode.Expression("check_balance", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
+                PermissionNode.Expression("check_balance",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
             ))
             .SchemaBuilder
             .WithFunction(new Function("check_balance",
                 [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = typeof(decimal) }],
-                (args) => (decimal)args["balance"] >= 500m));
+                (args) => (decimal?)args["balance"] >= 500m));
 
         var schema = entity.Build();
 
@@ -244,12 +253,12 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Groups.Identifier)
-                .WithRelation("member", rc =>
-                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("member", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("group_members", rc =>
-                    rc.WithEntityType(TestsConsts.Groups.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+            .WithRelation("group_members", rc =>
+                rc.WithEntityType(TestsConsts.Groups.Identifier))
+            .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
         var engine = await CreateEngine(tuples, attributes, schema);
 

@@ -30,6 +30,28 @@ internal sealed class AttributesActor : ReceiveActor
         Receive<Commands.DumpAttributes>(DumpAttributesHandler);
 
         Receive<Commands.GetEntityAttributesByNames>(GetEntityAttributesByNamesHandler);
+
+        Receive<Commands.GetEntityAttributesByNamesWithEntitiesIds>(GetEntityAttributesByNamesWithEntitiesIdsHandler);
+    }
+    
+    private void GetEntityAttributesByNamesWithEntitiesIdsHandler(Commands.GetEntityAttributesByNamesWithEntitiesIds msg)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            msg.Filter.Attributes.Contains(x.Attribute.Attribute) &&
+            msg.EntitiesIds.Contains(x.Attribute.EntityId));
+
+        if (msg.Filter.SnapToken != null)
+        {
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
+
+        Sender.Tell(res.Select(x => x.Attribute)
+            .ToDictionary(x => (x.Attribute, x.EntityId)));
     }
 
     private void GetEntityAttributesByNamesHandler(Commands.GetEntityAttributesByNames msg)
@@ -48,7 +70,7 @@ internal sealed class AttributesActor : ReceiveActor
         }
 
         Sender.Tell(res.Select(x => x.Attribute)
-            .ToDictionary(x => x.Attribute));
+            .ToDictionary(x => (x.Attribute, x.EntityId)));
     }
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
@@ -164,5 +186,7 @@ internal sealed class AttributesActor : ReceiveActor
         public record GetEntityAttributesByNames(EntityAttributesFilter Filter)
         {
         }
+
+        public record GetEntityAttributesByNamesWithEntitiesIds(EntityAttributesFilter Filter, IEnumerable<string> EntitiesIds);
     }
 }

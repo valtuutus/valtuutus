@@ -161,7 +161,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
                 [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(string) }],
-                (args) => (string)args["status"] == "active"));
+                (args) => (string?)args["status"] == "active"));
 
         var schema = entity.Build();
 
@@ -171,7 +171,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
                 JsonValue.Create("active")!),
             new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PrivateWorkspace, "status",
                 JsonValue.Create("active")!),
-            new AttributeTuple(TestsConsts.Workspaces.Identifier, "1", "status",
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, "3", "status",
                 JsonValue.Create("archived")!),
         ], schema);
 

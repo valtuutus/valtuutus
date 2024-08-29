@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -158,32 +160,84 @@ public sealed class LookupSubjectEngine(
     {
         return async (ct) =>
         {
-            // TODO: Handle expressions
-            throw new NotImplementedException();
-            // using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            // var attrName = node.AttributeName;
-            //
-            // var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
-            //     {
-            //         Attribute = attrName,
-            //         EntityType = req.EntityType,
-            //         SnapToken = req.SnapToken
-            //     }, req.EntitiesIds, ct))
-            //     .Where(AttrEvaluator)
-            //     .ToList();
-            //
-            // return new RelationOrAttributeTuples(res);
-            //
-            // bool AttrEvaluator(AttributeTuple attrTuple)
-            // {
-            //     return node.Type switch
-            //     {
-            //         AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
-            //         AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
-            //         AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
-            //         _ => throw new InvalidOperationException()
-            //     };
-            // }
+            var fn = schema.Functions[node.FunctionName];
+
+            if (fn is null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            var attributeArguments = node.Args
+                .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
+                .Cast<PermissionNodeExpArgumentAttribute>()
+                .Select(x => x.AttributeName)
+                .ToArray();
+
+            var attributes = await reader.GetAttributesWithEntityIds(
+                new EntityAttributesFilter
+                {
+                    Attributes = attributeArguments,
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
+                }, req.EntitiesIds, ct);
+            
+            var paramToArgMap = fn.Parameters
+                .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
+                {
+                    arguments.Add(parameter, node.Args.First(a => a.ArgOrder == parameter.ParamOrder));
+                    return arguments;
+                });
+
+            var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
+
+            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
+            {
+                if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
+                {
+                    return null;
+                }
+                
+                var attrType = getAttributesType(attr.Attribute);
+
+                var methodInfo = typeof(JsonValue).GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
+
+                if (methodInfo == null)
+                    throw new InvalidOperationException("GetValue<T> method not found on JsonValue.");
+
+                // Make the generic method with the dynamically determined type
+                MethodInfo genericMethod = methodInfo.MakeGenericMethod(attrType);
+
+                if (genericMethod == null)
+                    throw new InvalidOperationException("GetValue<T> method not found.");
+                
+                // Invoke the method dynamically
+                return genericMethod.Invoke(attr.Value, null);
+            };
+            
+            var res = attributes.Values
+                .Where(attr =>
+                {
+                    IDictionary<string, object?> fnArgs = paramToArgMap.ToDictionary(
+                        pair => pair.Key.ParamName,
+                        pair =>
+                        {
+                            return pair.Value switch
+                            {
+                                PermissionNodeExpArgumentAttribute arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
+                                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
+                                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
+                                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                                _ => throw new Exception("Unsuported argument type.")
+                            };
+                        }
+                    );
+
+                    var res = fn.Lambda(fnArgs);
+                    return res;
+                })
+                .ToList();
+            
+            return new RelationOrAttributeTuples(res);
         };
     }
 

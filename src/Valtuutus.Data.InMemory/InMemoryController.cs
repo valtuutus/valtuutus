@@ -85,8 +85,13 @@ internal sealed class InMemoryController
         _transactions.Tell(new TransactionsActor.Commands.Create(id));
     }
 
-    public async Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken ct)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken ct)
     {
-        return await _attributes.Ask<Dictionary<string, AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNames(filter), ct);
+        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNames(filter), ct);
+    }
+
+    public async Task<Dictionary<(string AttributeName, string EntityId),AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    {
+        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNamesWithEntitiesIds(filter, entitiesIds), ct);
     }
 }
