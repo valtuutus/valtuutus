@@ -2,7 +2,7 @@
 
 namespace Valtuutus.Core.Schemas;
 
-public record Schema(Dictionary<string, Entity> Entities)
+public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Function> Functions)
 {
     public RelationType GetRelationType(string entityType, string permission)
     {

@@ -5,6 +5,7 @@
 public class SchemaBuilder
 {
     private readonly List<EntitySchemaBuilder> _entities = [];
+    private readonly List<Function> _functions = [];
 
     public EntitySchemaBuilder WithEntity(string entityName)
     {
@@ -16,8 +17,16 @@ public class SchemaBuilder
 
     public Schema Build()
     {
-        var schema = new Schema(_entities.Select(e => e.Build()).ToDictionary(e => e.Name, e => e));
+        var schema = new Schema(
+            _entities.Select(e => e.Build()).ToDictionary(e => e.Name, e => e),
+            _functions.ToDictionary(e => e.Name)
+            );
         return schema;
+    }
+
+    public void WithFunction(Function functionNode)
+    {
+        _functions.Add(functionNode);
     }
 }
 

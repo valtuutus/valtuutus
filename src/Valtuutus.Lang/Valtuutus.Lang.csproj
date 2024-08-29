@@ -1,5 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-    
+
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -16,14 +16,18 @@
             <Visitor>False</Visitor>
         </Antlr4>
     </ItemGroup>
-    
+
     <ItemGroup>
-      <PackageReference Include="Antlr4.Runtime.Standard" />
-      <PackageReference Include="Antlr4BuildTasks" PrivateAssets="all" />
+        <PackageReference Include="Antlr4.Runtime.Standard"/>
+        <PackageReference Include="Antlr4BuildTasks" PrivateAssets="all"/>
+        <PackageReference Include="Polyfill">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
-    
+
     <ItemGroup>
-      <ProjectReference Include="..\Valtuutus.Core\Valtuutus.Core.csproj" />
+        <ProjectReference Include="..\Valtuutus.Core\Valtuutus.Core.csproj"/>
     </ItemGroup>
 
 
