@@ -274,4 +274,70 @@ internal static class SqlBuilderExtensions
 
         return builder;
     }
+
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter)
+    {
+        
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
+            builder = builder.Where(
+                SnapTokenFilter,
+                parameters);
+        }
+
+        if (!string.IsNullOrEmpty(filter.EntityId))
+        {
+            builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
+            {
+                Value = filter.EntityId,
+                Length = 64
+            }});
+        }
+          
+        builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
+        {
+            Value = filter.EntityType,
+            Length = 256
+        }});
+        
+        builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
+        
+        return builder;
+    }
+
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter, IEnumerable<string> entitiesIds)
+    {
+        var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
+
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
+            builder = builder.Where(
+                SnapTokenFilter,
+                parameters);
+        }
+          
+        builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
+        {
+            Value = filter.EntityType,
+            Length = 256
+        }});
+        
+        builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
+        
+        builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+        
+        return builder;
+    }
 }
