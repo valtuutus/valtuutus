@@ -44,10 +44,10 @@ internal enum LiteralType
 
 internal record LiteralValueUnion : IComparable<LiteralValueUnion>
 {
-    internal LiteralType LiteralType { get; set; }
-    internal int? IntValue { get; set; }
-    internal string? StringValue { get; set; }
-    internal decimal? DecimalValue { get; set; }
+    public LiteralType LiteralType { get; set; }
+    public int? IntValue { get; set; }
+    public string? StringValue { get; set; }
+    public decimal? DecimalValue { get; set; }
 
     public int CompareTo(LiteralValueUnion? other)
     {
