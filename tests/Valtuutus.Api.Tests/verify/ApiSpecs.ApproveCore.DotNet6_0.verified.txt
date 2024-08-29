@@ -9,6 +9,7 @@ namespace Valtuutus.Core
         public string EntityId { get; }
         public string EntityType { get; }
         public System.Text.Json.Nodes.JsonValue Value { get; }
+        public object? GetValue(System.Type type) { }
     }
     public sealed class DataEngine
     {
@@ -100,8 +101,15 @@ namespace Valtuutus.Core.Data
     {
         System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
@@ -291,6 +299,7 @@ namespace Valtuutus.Core.Schemas
         public System.Func<System.Collections.Generic.IDictionary<string, object?>, bool> Lambda { get; init; }
         public string Name { get; init; }
         public System.Collections.Generic.List<Valtuutus.Core.Schemas.FunctionParameter> Parameters { get; init; }
+        public System.Collections.Generic.IDictionary<Valtuutus.Core.Schemas.FunctionParameter, Valtuutus.Core.Schemas.PermissionNodeExpArgument> CreateParamToArgMap(System.Collections.Generic.IList<Valtuutus.Core.Schemas.PermissionNodeExpArgument> args) { }
         public bool Execute(System.Collections.Generic.IDictionary<string, object?> arguments) { }
     }
     public class FunctionParameter : System.IEquatable<Valtuutus.Core.Schemas.FunctionParameter>
@@ -307,6 +316,10 @@ namespace Valtuutus.Core.Schemas
         String = 0,
         Int = 1,
         Decimal = 2,
+    }
+    public static class ParamToArgMapExtensions
+    {
+        public static System.Collections.Generic.IDictionary<string, object?> ToLambdaArgs(this System.Collections.Generic.IDictionary<Valtuutus.Core.Schemas.FunctionParameter, Valtuutus.Core.Schemas.PermissionNodeExpArgument> map, System.Func<Valtuutus.Core.Schemas.PermissionNodeExpArgumentAttribute, object?> attrValueMapper) { }
     }
     public class Permission : System.IEquatable<Valtuutus.Core.Schemas.Permission>
     {
@@ -403,6 +416,7 @@ namespace Valtuutus.Core.Schemas
         public PermissionNodeLeafExp(string FunctionName, Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args) { }
         public Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args { get; init; }
         public string FunctionName { get; init; }
+        public string[] GetArgsAttributesNames() { }
     }
     public class PermissionNodeLeafPermission : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafPermission>
     {

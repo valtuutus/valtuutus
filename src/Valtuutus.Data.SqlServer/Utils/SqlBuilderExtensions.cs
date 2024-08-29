@@ -231,15 +231,13 @@ internal static class SqlBuilderExtensions
             Value = filter.Attribute,
             Length = 64
         }});
-
-        if (entitiesIdsArr.Length != 0)
-        {
-            var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var entityId in entitiesIdsArr)
-                dt.Rows.Add(entityId);
-            builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter("TVP_ListIds")});
-        }
+        
+        var dt = new DataTable();
+        dt.Columns.Add("id", typeof(string));
+        foreach (var entityId in entitiesIdsArr)
+            dt.Rows.Add(entityId);
+        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter("TVP_ListIds")});
+        
 
         
         return builder;
@@ -315,6 +313,86 @@ internal static class SqlBuilderExtensions
                 });
         }
 
+        return builder;
+    }
+
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter, IEnumerable<string> entitiesIds)
+    {
+        var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
+        
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
+            builder = builder.Where(
+                SnapTokenFilter,
+                parameters);
+        }
+        
+        builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
+        {
+            Value = filter.EntityType,
+            Length = 256
+        }});
+        
+        
+        var attributesDt = new DataTable();
+        attributesDt.Columns.Add("id", typeof(string));
+        foreach (var attribute in filter.Attributes)
+            attributesDt.Rows.Add(attribute);
+        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter("TVP_ListIds")});
+        
+        var entitiesIdDt = new DataTable();
+        entitiesIdDt.Columns.Add("id", typeof(string));
+        foreach (var entityId in entitiesIdsArr)
+            entitiesIdDt.Rows.Add(entityId);
+        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = entitiesIdDt.AsTableValuedParameter("TVP_ListIds")});
+        
+
+        return builder;
+    }
+
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter)
+    {
+        
+        if (filter.SnapToken != null)
+        {
+            var parameters = new { SnapToken = new DbString()
+            {
+                Value = filter.SnapToken.Value.Value,
+                Length = 26,
+                IsFixedLength = true,
+            }};
+            builder = builder.Where(
+                SnapTokenFilter,
+                parameters);
+        }
+        
+        if (!string.IsNullOrEmpty(filter.EntityId))
+        {
+            builder = builder.Where("entity_id = @EntityId", new {EntityId = new DbString()
+            {
+                Value = filter.EntityId,
+                Length = 64
+            }});
+        }
+        
+        builder = builder.Where("entity_type = @EntityType", new {EntityType = new DbString()
+        {
+            Value = filter.EntityType,
+            Length = 256
+        }});
+        
+        
+        var attributesDt = new DataTable();
+        attributesDt.Columns.Add("id", typeof(string));
+        foreach (var attribute in filter.Attributes)
+            attributesDt.Rows.Add(attribute);
+        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter("TVP_ListIds")});
         return builder;
     }
 }

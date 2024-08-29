@@ -72,7 +72,25 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterAttributes(filter)
+                .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/");
+            
+            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToDictionary(x => (x.Attribute, x.EntityId));
+        }, cancellationToken);
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
@@ -104,10 +122,28 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         
     }
 
-    public Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterAttributes(filter, entitiesIds)
+                .AddTemplate(@"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/");
+            
+            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToDictionary(x => (x.Attribute, x.EntityId));
+        }, cancellationToken);
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
