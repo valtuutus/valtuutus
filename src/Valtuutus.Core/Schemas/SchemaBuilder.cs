@@ -14,7 +14,6 @@ public class SchemaBuilder
         return builder;
     }
     
-
     public Schema Build()
     {
         var schema = new Schema(
@@ -24,9 +23,10 @@ public class SchemaBuilder
         return schema;
     }
 
-    public void WithFunction(Function functionNode)
+    public SchemaBuilder WithFunction(Function functionNode)
     {
         _functions.Add(functionNode);
+        return this;
     }
 }
 

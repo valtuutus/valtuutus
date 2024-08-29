@@ -155,9 +155,15 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
             .WithAttribute("status", typeof(string))
-            .WithPermission("edit", PermissionNode.AttributeStringExpression("status", s => s == "active"));
+            .WithPermission("edit",
+                PermissionNode.Expression("isActiveStatus",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
+            .SchemaBuilder
+            .WithFunction(new Function("isActiveStatus",
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(string) }],
+                (args) => (string)args["status"] == "active"));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine([], [
@@ -188,10 +194,14 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             .WithAttribute("balance", typeof(decimal))
             .WithPermission("withdraw", PermissionNode.Intersect(
                 PermissionNode.Leaf("owner"),
-                PermissionNode.AttributeDecimalExpression("balance", b => b >= 500m)
-            ));
+                PermissionNode.Expression("check_balance", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
+            ))
+            .SchemaBuilder
+            .WithFunction(new Function("check_balance",
+                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = typeof(decimal) }],
+                (args) => (decimal)args["balance"] >= 500m));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine(

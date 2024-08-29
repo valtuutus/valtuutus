@@ -15,13 +15,13 @@ public enum PermissionOperation
 public enum PermissionNodeLeafType
 {
     Permission,
-    AttributeExpression
+    Expression
 }
 
 public record PermissionNodeLeaf(PermissionNodeLeafType Type)
 {
     public PermissionNodeLeafPermission? PermissionNode { get; init; }
-    public PermissionNodeLeafAttributeExp? ExpressionNode { get; init; }
+    public PermissionNodeLeafExp? ExpressionNode { get; init; }
 }
 
 public record PermissionNodeLeafPermission(string Permission);
@@ -33,12 +33,63 @@ public enum AttributeTypes
     Decimal
 }
 
-public record PermissionNodeLeafAttributeExp(string AttributeName, AttributeTypes Type)
+public enum PermissionNodeExpArgumentType
 {
-    public Func<int, bool>? IntExpression { get; init; }
-    public Func<string, bool>? StringExpression { get; init; }
-    public Func<decimal, bool>? DecimalExpression { get; init; }
+    Attribute,
+    ContextAccess,
+    Literal
 }
+
+public abstract record PermissionNodeExpArgument
+{
+    public abstract PermissionNodeExpArgumentType Type { get; }
+    public required int ArgOrder { get; init; }
+}
+
+public record PermissionNodeExpArgumentAttribute : PermissionNodeExpArgument 
+{
+    public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.Attribute;
+    public required string AttributeName { get; init; }
+}
+
+public record PermissionNodeExpArgumentContextAccess : PermissionNodeExpArgument
+{
+    public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
+    public required string ContextPropertyName { get; init; }
+}
+
+public enum LiteralType
+{
+    String,
+    Int,
+    Decimal,
+}
+
+public abstract record PermissionNodeExpArgumentLiteral : PermissionNodeExpArgument
+{
+    public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
+    public abstract LiteralType LiteralType { get; }
+}
+
+public record PermissionNodeExpArgumentStringLiteral : PermissionNodeExpArgumentLiteral
+{
+    public override LiteralType LiteralType => LiteralType.String;
+    public required string Value { get; init; }
+}
+
+public record PermissionNodeExpArgumentIntLiteral : PermissionNodeExpArgumentLiteral
+{
+    public override LiteralType LiteralType => LiteralType.Int;
+    public required int Value { get; init; }
+}
+
+public record PermissionNodeExpArgumentDecimalLiteral : PermissionNodeExpArgumentLiteral
+{
+    public override LiteralType LiteralType => LiteralType.Decimal;
+    public required decimal Value { get; init; }
+}
+
+public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args);
 
 public record PermissionNodeOperation(PermissionOperation Operation, List<PermissionNode> Children);
 
@@ -96,45 +147,11 @@ public record PermissionNode(PermissionNodeType Type)
         };
     }
 
-    public static PermissionNode AttributeIntExpression(string attrName, Func<int, bool> exp)
+    public static PermissionNode Expression(string functionName, PermissionNodeExpArgument[] args)
     {
         return new PermissionNode(PermissionNodeType.Leaf)
         {
-            LeafNode = new PermissionNodeLeaf(PermissionNodeLeafType.AttributeExpression)
-            {
-                ExpressionNode = new PermissionNodeLeafAttributeExp(attrName, AttributeTypes.Int)
-                {
-                    IntExpression = exp
-                }
-            }
-        };
-    }
-
-    public static PermissionNode AttributeStringExpression(string attrName, Func<string, bool> exp)
-    {
-        return new PermissionNode(PermissionNodeType.Leaf)
-        {
-            LeafNode = new PermissionNodeLeaf(PermissionNodeLeafType.AttributeExpression)
-            {
-                ExpressionNode = new PermissionNodeLeafAttributeExp(attrName, AttributeTypes.String)
-                {
-                    StringExpression = exp
-                }
-            }
-        };
-    }
-
-    public static PermissionNode AttributeDecimalExpression(string attrName, Func<decimal, bool> exp)
-    {
-        return new PermissionNode(PermissionNodeType.Leaf)
-        {
-            LeafNode = new PermissionNodeLeaf(PermissionNodeLeafType.AttributeExpression)
-            {
-                ExpressionNode = new PermissionNodeLeafAttributeExp(attrName, AttributeTypes.Decimal)
-                {
-                    DecimalExpression = exp
-                }
-            }
+            LeafNode = new PermissionNodeLeaf(PermissionNodeLeafType.Expression) { ExpressionNode = new PermissionNodeLeafExp(functionName, args) }
         };
     }
 }

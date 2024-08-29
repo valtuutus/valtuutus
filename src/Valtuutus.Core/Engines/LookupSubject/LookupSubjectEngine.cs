@@ -135,7 +135,7 @@ public sealed class LookupSubjectEngine(
         return node.Type switch
         {
             PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!),
-            PermissionNodeLeafType.AttributeExpression => CheckLeafAttributeExp(req, node.ExpressionNode!),
+            PermissionNodeLeafType.Expression => CheckLeafExp(req, node.ExpressionNode!),
             _ => throw new InvalidOperationException()
         };
     }
@@ -154,34 +154,36 @@ public sealed class LookupSubjectEngine(
         return LookupComputedUserSet(req, perm);
     }
     
-    private LookupSubjectFunction CheckLeafAttributeExp(LookupSubjectRequestInternal req, PermissionNodeLeafAttributeExp node)
+    private LookupSubjectFunction CheckLeafExp(LookupSubjectRequestInternal req, PermissionNodeLeafExp node)
     {
         return async (ct) =>
         {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attrName = node.AttributeName;
-
-            var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
-                {
-                    Attribute = attrName,
-                    EntityType = req.EntityType,
-                    SnapToken = req.SnapToken
-                }, req.EntitiesIds, ct))
-                .Where(AttrEvaluator)
-                .ToList();
-
-            return new RelationOrAttributeTuples(res);
-
-            bool AttrEvaluator(AttributeTuple attrTuple)
-            {
-                return node.Type switch
-                {
-                    AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
-                    AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
-                    AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
-                    _ => throw new InvalidOperationException()
-                };
-            }
+            // TODO: Handle expressions
+            throw new NotImplementedException();
+            // using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+            // var attrName = node.AttributeName;
+            //
+            // var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
+            //     {
+            //         Attribute = attrName,
+            //         EntityType = req.EntityType,
+            //         SnapToken = req.SnapToken
+            //     }, req.EntitiesIds, ct))
+            //     .Where(AttrEvaluator)
+            //     .ToList();
+            //
+            // return new RelationOrAttributeTuples(res);
+            //
+            // bool AttrEvaluator(AttributeTuple attrTuple)
+            // {
+            //     return node.Type switch
+            //     {
+            //         AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
+            //         AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
+            //         AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
+            //         _ => throw new InvalidOperationException()
+            //     };
+            // }
         };
     }
 

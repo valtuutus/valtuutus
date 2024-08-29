@@ -82,9 +82,13 @@ builder.Services.AddValtuutusCore(c =>
                 )
                 .WithPermission("edit", PermissionNode.Intersect(
                     PermissionNode.Union("org.admin", "team.member"),
-                    PermissionNode.AttributeStringExpression("status", status => status == "ativo"))
+                    PermissionNode.Expression("isActiveStatus", [new PermissionNodeExpArgumentAttribute() {ArgOrder = 0, AttributeName = "status"}]))
                 )
-                .WithPermission("delete", PermissionNode.Leaf("team.member"));
+                .WithPermission("delete", PermissionNode.Leaf("team.member"))
+            .SchemaBuilder
+            .WithFunction(new Function("isActiveStatus",
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(int) }],
+                (args) => (int?)args["status"] == 1));;;
     })
 #if postgres
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))

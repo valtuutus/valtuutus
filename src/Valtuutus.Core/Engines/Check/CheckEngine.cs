@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
@@ -41,23 +43,25 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
 
     //<inheritdoc/>
-    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
+    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req,
+        CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
         var permission = schema.GetPermissions(req.EntityType);
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
-        var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name, CheckInternal(new CheckRequest
-        {
-            EntityType = req.EntityType,
-            EntityId = req.EntityId,
-            Permission = x.Name,
-            SubjectType = req.SubjectType,
-            SubjectId = req.SubjectId,
-            SnapToken = req.SnapToken,
-            Depth = req.Depth
-        })(cancellationToken))).ToArray();
+        var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name,
+            CheckInternal(new CheckRequest
+            {
+                EntityType = req.EntityType,
+                EntityId = req.EntityId,
+                Permission = x.Name,
+                SubjectType = req.SubjectType,
+                SubjectId = req.SubjectId,
+                SnapToken = req.SnapToken,
+                Depth = req.Depth
+            })(cancellationToken))).ToArray();
 
         await Task.WhenAll(tasks.Select(x => x.Value));
         var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
@@ -116,13 +120,14 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attribute = await reader.GetAttribute(new EntityAttributeFilter
-            {
-                Attribute = req.Permission,
-                EntityId = req.EntityId,
-                EntityType = req.EntityType,
-                SnapToken = req.SnapToken
-            }, ct);
+            var attribute = await reader.GetAttribute(
+                new EntityAttributeFilter
+                {
+                    Attribute = req.Permission,
+                    EntityId = req.EntityId,
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
+                }, ct);
 
             if (attribute is null)
                 return false;
@@ -173,38 +178,90 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return node.LeafNode!.Type switch
         {
             PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.LeafNode!.PermissionNode!),
-            PermissionNodeLeafType.AttributeExpression => CheckLeafAttributeExp(req, node.LeafNode!.ExpressionNode!),
+            PermissionNodeLeafType.Expression => CheckLeafFn(req, node.LeafNode!.ExpressionNode!),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private CheckFunction CheckLeafAttributeExp(CheckRequest req, PermissionNodeLeafAttributeExp node)
+    private CheckFunction CheckLeafFn(CheckRequest req, PermissionNodeLeafExp node)
     {
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attrName = node.AttributeName;
+
+            var fn = schema.Functions[node.FunctionName];
+
+            if (fn is null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            var attributeArguments = node.Args
+                .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
+                .Cast<PermissionNodeExpArgumentAttribute>()
+                .Select(x => x.AttributeName)
+                .ToArray();
+
+            var attributes = await reader.GetAttributes(
+                new EntityAttributesFilter
+                {
+                    Attributes = attributeArguments,
+                    EntityId = req.EntityId,
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
+                }, ct);
             
-            var attribute = await reader.GetAttribute(new EntityAttributeFilter
-            {
-                Attribute = attrName,
-                EntityId = req.EntityId,
-                EntityType = req.EntityType,
-                SnapToken = req.SnapToken
-            }, ct);
 
-            if (attribute is null)
-                return false;
+            var paramToArgMap = fn.Parameters
+                .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
+                {
+                    arguments.Add(parameter, node.Args.First(a => a.ArgOrder == parameter.ParamOrder));
+                    return arguments;
+                });
+            
+            var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
 
-            var result = node.Type switch
+            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
             {
-                AttributeTypes.Decimal => node.DecimalExpression!(attribute.Value.GetValue<decimal>()),
-                AttributeTypes.Int => node.IntExpression!(attribute.Value.GetValue<int>()),
-                AttributeTypes.String => node.StringExpression!(attribute.Value.GetValue<string>()),
-                _ => throw new InvalidOperationException()
+                if (!attributes.TryGetValue(arg.AttributeName, out var attr))
+                {
+                    return null;
+                }
+                
+                var attrType = getAttributesType(attr.Attribute);
+
+                var methodInfo = typeof(JsonValue).GetMethod("GetValue", BindingFlags.Public | BindingFlags.Instance);
+
+                if (methodInfo == null)
+                    throw new InvalidOperationException("GetValue<T> method not found on JsonValue.");
+
+                // Make the generic method with the dynamically determined type
+                MethodInfo genericMethod = methodInfo.MakeGenericMethod(attrType);
+
+                if (genericMethod == null)
+                    throw new InvalidOperationException("GetValue<T> method not found.");
+                
+                // Invoke the method dynamically
+                return genericMethod.Invoke(attr.Value, null);
             };
 
-            return result;
+
+            IDictionary<string, object?> fnArgs = paramToArgMap.ToDictionary(
+                pair => pair.Key.ParamName,
+                pair =>
+                {
+                    return pair.Value switch
+                    {
+                        PermissionNodeExpArgumentAttribute arg => getDynamicallyTypedAttribute(arg),
+                        PermissionNodeExpArgumentStringLiteral arg => arg.Value,
+                        PermissionNodeExpArgumentIntLiteral arg => arg.Value,
+                        PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                        _ => throw new Exception("Unsuported argument type.")
+                    };
+                }
+            );
+
+            return fn.Lambda(fnArgs);
         };
     }
 
@@ -227,10 +284,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        return CheckInternal(req with
-        {
-            Permission = computedUserSetRelation
-        });
+        return CheckInternal(req with { Permission = computedUserSetRelation });
     }
 
     private CheckFunction CheckTupleToUserSet(CheckRequest req, string tupleSetRelation,
@@ -239,23 +293,27 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var relations = await reader.GetRelations(new RelationTupleFilter
-            {
-                EntityId = req.EntityId,
-                EntityType = req.EntityType,
-                Relation = tupleSetRelation,
-                SnapToken = req.SnapToken
-            }, ct);
+            var relations = await reader.GetRelations(
+                new RelationTupleFilter
+                {
+                    EntityId = req.EntityId,
+                    EntityType = req.EntityType,
+                    Relation = tupleSetRelation,
+                    SnapToken = req.SnapToken
+                }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
             checkFunctions.AddRange(relations.Select(relation =>
-                    CheckComputedUserSet(new CheckRequest
-                    {
-                        EntityType = relation.SubjectType, EntityId = relation.SubjectId,
-                        Permission = relation.SubjectRelation, SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken,
-                        Depth = req.Depth
-                    }, computedUserSetRelation)
+                    CheckComputedUserSet(
+                        new CheckRequest
+                        {
+                            EntityType = relation.SubjectType,
+                            EntityId = relation.SubjectId,
+                            Permission = relation.SubjectRelation,
+                            SubjectId = req.SubjectId,
+                            SnapToken = req.SnapToken,
+                            Depth = req.Depth
+                        }, computedUserSetRelation)
                 )
             );
 
@@ -269,13 +327,14 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-            var relations = await reader.GetRelations(new RelationTupleFilter
-            {
-                EntityId = req.EntityId,
-                EntityType = req.EntityType,
-                Relation = req.Permission,
-                SnapToken = req.SnapToken
-            }, ct);
+            var relations = await reader.GetRelations(
+                new RelationTupleFilter
+                {
+                    EntityId = req.EntityId,
+                    EntityType = req.EntityType,
+                    Relation = req.Permission,
+                    SnapToken = req.SnapToken
+                }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
 

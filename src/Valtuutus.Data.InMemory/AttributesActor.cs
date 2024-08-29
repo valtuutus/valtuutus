@@ -28,6 +28,27 @@ internal sealed class AttributesActor : ReceiveActor
         Receive<Commands.DeleteAttributes>(DeleteAttributesHandler);
 
         Receive<Commands.DumpAttributes>(DumpAttributesHandler);
+
+        Receive<Commands.GetEntityAttributesByNames>(GetEntityAttributesByNamesHandler);
+    }
+
+    private void GetEntityAttributesByNamesHandler(Commands.GetEntityAttributesByNames msg)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            msg.Filter.Attributes.Contains(x.Attribute.Attribute));
+
+        if (msg.Filter.SnapToken != null)
+        {
+            res = res
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
+                            0);
+        }
+
+        Sender.Tell(res.Select(x => x.Attribute)
+            .ToDictionary(x => x.Attribute));
     }
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
@@ -138,6 +159,10 @@ internal sealed class AttributesActor : ReceiveActor
             }
 
             public static DumpAttributes Instance { get; } = new();
+        }
+
+        public record GetEntityAttributesByNames(EntityAttributesFilter Filter)
+        {
         }
     }
 }

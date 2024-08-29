@@ -84,4 +84,9 @@ internal sealed class InMemoryController
     {
         _transactions.Tell(new TransactionsActor.Commands.Create(id));
     }
+
+    public async Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken ct)
+    {
+        return await _attributes.Ask<Dictionary<string, AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNames(filter), ct);
+    }
 }

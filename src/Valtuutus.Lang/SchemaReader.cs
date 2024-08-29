@@ -35,14 +35,14 @@ public static class SchemaReader
         {
             return errorListener.Errors;
         }
-        
+
         // Parse functions
         foreach (var funcs in tree.functionDefinition())
         {
             var functionNode = ParseFunctionDefinition(funcs);
             schemaBuilder.WithFunction(functionNode);
         }
-        
+
         // Parse entities
         foreach (var entityCtx in tree.entityDefinition())
         {
@@ -81,7 +81,7 @@ public static class SchemaReader
             foreach (var permission in permissionCtx)
             {
                 // Convert permission expression to PermissionNode
-                var permissionTree = BuildPermissionNode(permission.expression());
+                var permissionTree = BuildPermissionNode(permission.permissionExpression());
                 entityBuilder.WithPermission(permission.ID().GetText(), permissionTree);
             }
         }
@@ -91,7 +91,7 @@ public static class SchemaReader
 
     private static Function ParseFunctionDefinition(ValtuutusParser.FunctionDefinitionContext funcCtx)
     {
-        var args = new Dictionary<string, Type>();
+        var parameters = new List<FunctionParameter>();
 
         var ids = funcCtx.parameterList().ID();
         for (int i = 0; i < ids.Length; i++)
@@ -99,15 +99,18 @@ public static class SchemaReader
             var param = ids[i];
             var paramName = param.GetText();
             var paramType = _types[funcCtx.parameterList().type()[i].GetText()];
-            args.Add(paramName, paramType);
+            parameters.Add(new FunctionParameter() { ParamName = paramName, ParamOrder = i, ParamType = paramType });
         }
 
-        var tree = ParseFunctionExpression(args, funcCtx.functionBody().functionExpression());
+        var tree = ParseFunctionExpression(
+            parameters.ToDictionary(x => x.ParamName, x => x.ParamType),
+            funcCtx.functionBody().functionExpression()
+        );
 
-        var parameter = Expression.Parameter(typeof(IDictionary<string, object>), "args");
+        var parameter = Expression.Parameter(typeof(IDictionary<string, object?>), "args");
         var expression = tree.GetExpression(parameter);
 
-        return new Function(funcCtx.ID().GetText(), args, expression.Compile());
+        return new Function(funcCtx.ID().GetText(), parameters, expression.Compile());
     }
 
     private static FunctionNode<bool> ParseFunctionExpression(IDictionary<string, Type> args,
@@ -318,7 +321,7 @@ public static class SchemaReader
 
         return node;
     }
-    
+
     private static FunctionNode<LiteralValueUnion> CreateParameterIdFnNode(
         IDictionary<string, Type> args,
         ValtuutusParser.IdentifierExpressionContext idCtx
@@ -372,7 +375,68 @@ public static class SchemaReader
                     builder.Append(idCtx.DOT().GetText());
                     builder.Append(idCtx.ID(1).GetText());
                 }
+
                 return PermissionNode.Leaf(builder.ToString());
+
+            case ValtuutusParser.FunctionCallPermissionExpressionContext fnCtx:
+                var functionName = fnCtx.functionCall().ID().GetText();
+
+                var args = fnCtx.functionCall().argumentList().argument()
+                    .Select((a, i) =>
+                    {
+                        if (a.ID() != null)
+                        {
+                            return (PermissionNodeExpArgument)new PermissionNodeExpArgumentAttribute()
+                            {
+                                AttributeName = a.ID().GetText(),
+                                ArgOrder = i
+                            };
+                        }
+
+                        if (a.contextAccess() != null)
+                        {
+                            return new PermissionNodeExpArgumentContextAccess()
+                            {
+                                ContextPropertyName = a.contextAccess().ID().GetText(),
+                                ArgOrder = i
+                            };
+                        }
+
+                        if (a.literal() != null)
+                        {
+                            if (a.literal().STRING_LITERAL() != null)
+                            {
+                                return new PermissionNodeExpArgumentStringLiteral()
+                                {
+                                    Value = a.literal().STRING_LITERAL().GetText().Trim('"'),
+                                    ArgOrder = i
+                                };
+                            }
+
+                            if (a.literal().INT_LITERAL() != null)
+                            {
+                                return new PermissionNodeExpArgumentIntLiteral()
+                                {
+                                    Value = int.Parse(a.literal().INT_LITERAL().GetText()),
+                                    ArgOrder = i
+                                };
+                            }
+
+                            if (a.literal().DECIMAL_LITERAL() != null)
+                            {
+                                return new PermissionNodeExpArgumentDecimalLiteral()
+                                {
+                                    Value = decimal.Parse(a.literal().DECIMAL_LITERAL().GetText()),
+                                    ArgOrder = i
+                                };
+                            }
+                        }
+
+                        throw new Exception("Unrecognized function call");
+                    })
+                    .ToArray();
+
+                return PermissionNode.Expression(functionName, args);
 
             case ValtuutusParser.ParenthesisPermissionExpressionContext parenCtx:
                 return BuildPermissionNode(parenCtx.permissionExpression());

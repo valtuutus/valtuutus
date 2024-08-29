@@ -70,6 +70,11 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     
     }
 
+    public async Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    {
+        return new Dictionary<string, AttributeTuple>();
+    }
+
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

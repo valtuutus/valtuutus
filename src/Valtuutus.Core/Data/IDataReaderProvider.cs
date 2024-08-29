@@ -54,6 +54,14 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of AttributeTuples matching the filter criteria.</returns>
     Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// Retrieves a list of AttributeTuples based on the provided filter.
+    /// </summary>
+    /// <param name="filter">The filter criteria for retrieving AttributeTuples.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A list of AttributeTuples matching the filter criteria.</returns>
+    Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of AttributeTuples with specified entity IDs.
@@ -64,3 +72,4 @@ public interface IDataReaderProvider
     /// <returns>A list of AttributeTuples matching the filter criteria and entity IDs.</returns>
     Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
 }
+

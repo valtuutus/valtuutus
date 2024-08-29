@@ -62,6 +62,12 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
 
     }
 
+    public async Task<Dictionary<string, AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        return await ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, ct), cancellationToken);
+    }
+
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

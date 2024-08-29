@@ -25,7 +25,7 @@ internal enum FunctionNodeType
 
 internal abstract record FunctionNode<T>
 {
-    internal abstract Expression<Func<IDictionary<string, object>, T>> GetExpression(ParameterExpression args);
+    internal abstract Expression<Func<IDictionary<string, object?>, T>> GetExpression(ParameterExpression args);
     internal virtual Type TypeContext { get; set; }
     internal abstract FunctionNodeType NodeType { get; }
 }
@@ -101,22 +101,22 @@ internal record StringLiteralFnNode : LeafFunctionNode
     internal override FunctionNodeType NodeType => FunctionNodeType.StringLiteral;
     internal required string Value { get; init; }
 
-    internal override Expression<Func<IDictionary<string, object>, LiteralValueUnion>> GetExpression(
+    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LiteralType.String, StringValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object>, LiteralValueUnion>>(
+        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 }
 
 internal record IntegerLiteralFnNode : LeafFunctionNode
 {
-    internal override Expression<Func<IDictionary<string, object>, LiteralValueUnion>> GetExpression(
+    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LiteralType.Int, IntValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object>, LiteralValueUnion>>(
+        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 
@@ -131,18 +131,18 @@ internal record DecimalLiteralFnNode : LeafFunctionNode
     internal override FunctionNodeType NodeType => FunctionNodeType.DecimalLiteral;
     internal required decimal Value { get; init; }
 
-    internal override Expression<Func<IDictionary<string, object>, LiteralValueUnion>> GetExpression(
+    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LiteralType.Decimal, DecimalValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object>, LiteralValueUnion>>(
+        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 }
 
 internal record ParameterIdFnNode : LeafFunctionNode
 {
-    internal override Expression<Func<IDictionary<string, object>, LiteralValueUnion>> GetExpression(
+    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var key = Expression.Constant(ParameterName);
@@ -184,7 +184,7 @@ internal record ParameterIdFnNode : LeafFunctionNode
         };
         
         var lambda =
-            Expression.Lambda<Func<IDictionary<string, object>, LiteralValueUnion>>(newLiteralValueUnionExpression,
+            Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(newLiteralValueUnionExpression,
                 args);
         
         return lambda;
@@ -214,14 +214,14 @@ internal abstract record BinaryFunctionNode<TOut, TIn> : FunctionNode<TOut>
 
 internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.LessThanOrEqual(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.LessOrEqualExpression;
@@ -235,14 +235,14 @@ internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralVa
 
 internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.LessThan(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.LessExpression;
@@ -250,14 +250,14 @@ internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnio
 
 internal record GreaterOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.GreaterThanOrEqual(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.GreaterOrEqualExpression;
@@ -265,14 +265,14 @@ internal record GreaterOrEqualExpressionFnNode : BinaryFunctionNode<bool, Litera
 
 internal record GreaterExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.GreaterThan(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.GreaterExpression;
@@ -280,14 +280,14 @@ internal record GreaterExpressionFnNode : BinaryFunctionNode<bool, LiteralValueU
 
 internal record NotEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.NotEqual(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.NotEqualExpression;
@@ -295,14 +295,14 @@ internal record NotEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValue
 
 internal record EqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.Equal(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.EqualExpression;
@@ -310,14 +310,14 @@ internal record EqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUni
 
 internal record OrExpressionFnNode : BinaryFunctionNode<bool, bool>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.OrElse(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.OrExpression;
@@ -325,11 +325,11 @@ internal record OrExpressionFnNode : BinaryFunctionNode<bool, bool>
 
 internal record ParenthesisExpressionFnNode : UnaryFunctionNode<bool>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var childExpression = Child.GetExpression(args).Body;
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(childExpression, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(childExpression, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.ParenthesisExpression;
@@ -337,14 +337,14 @@ internal record ParenthesisExpressionFnNode : UnaryFunctionNode<bool>
 
 internal record AndExpressionFnNode : BinaryFunctionNode<bool, bool>
 {
-    internal override Expression<Func<IDictionary<string, object>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.AndAlso(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object>, bool>>(comparison, args);
+        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
 
     internal override FunctionNodeType NodeType => FunctionNodeType.AndExpression;

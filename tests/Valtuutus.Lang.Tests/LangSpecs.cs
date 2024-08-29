@@ -79,11 +79,40 @@ entity repository {
 
         schema.Should().NotBeNull();
 
-        schema.Functions["check_balance"].Execute(new Dictionary<string, object>()
+        schema.AsT0.Functions["check_balance"].Execute(new Dictionary<string, object?>()
             {
                 ["balance"] = 5000,
                 ["amount"] = 5000
             }).Should()
             .BeTrue();
+    }
+    
+    [Fact]
+    public void Should_parse_fn2()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity account {
+
+                relation owner @user;
+                
+                attribute balance int;
+
+                permission withdraw := check_balance(context.amount, balance) and owner;
+            }
+
+            fn check_balance(amount int, balance int) =>
+                (balance >= amount) and (amount <= 5000);
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["check_balance"].Execute(new Dictionary<string, object?>()
+            {
+                ["balance"] = null,
+                ["amount"] = 500
+            }).Should()
+            .BeFalse();
     }
 }
