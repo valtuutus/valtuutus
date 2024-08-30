@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Data.Db;
@@ -23,6 +23,7 @@ public static class DependencyInjectionExtensions
         SqlMapper.AddTypeHandler(new UlidTypeHandler());
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
+        builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();
 
         return builder;
     }
