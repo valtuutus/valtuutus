@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core;
+using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Dapper;
 using FluentAssertions;
@@ -21,8 +21,8 @@ public class DataEngineSpecs : BaseDataEngineSpecs
     public async Task WritingData_ShouldAssociateRelationWithTransactionId()
     {
         // act
-        var dataEngine = Provider.GetRequiredService<DataEngine>();
-        var snapToken = await dataEngine.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
+        var provider = Provider.GetRequiredService<IDataWriterProvider>();
+        var snapToken = await provider.Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
         var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
@@ -42,10 +42,10 @@ public class DataEngineSpecs : BaseDataEngineSpecs
     public async Task DeletingData_ShouldReturnTransactionId()
     {
         // arrange
-        var dataEngine = Provider.GetRequiredService<DataEngine>();
+        var provider = Provider.GetRequiredService<IDataWriterProvider>();
         
         // act
-        var newSnapToken = await dataEngine.Delete(new DeleteFilter
+        var newSnapToken = await provider.Delete(new DeleteFilter
         {
             Relations = new[] { new DeleteRelationsFilter
             {

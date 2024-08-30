@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
+using Valtuutus.Core.Data;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -42,8 +43,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var scope = serviceProvider.CreateScope();
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
         if(tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
-        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
-        await dataEngine.Write(tuples, attributes, default);
+        var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        await provider.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
     
