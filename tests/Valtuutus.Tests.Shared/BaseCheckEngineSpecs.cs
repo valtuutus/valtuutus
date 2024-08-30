@@ -6,11 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data;
+using Valtuutus.Core.Data;
 
 namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 {
+
     protected BaseCheckEngineSpecs(IDatabaseFixture fixture)
     {
         Fixture = fixture;
@@ -19,16 +21,16 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     protected IDatabaseFixture Fixture { get; }
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-
+    
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var services = new ServiceCollection()
             .AddValtuutusCore(TestsConsts.Action);
-
+        
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
 
-
+        
         if (schema != null)
         {
             var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
@@ -45,9 +47,9 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var checkEngine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
-        if (tuples.Length == 0 && attributes.Length == 0) return checkEngine;
-        var dataEngine = scope.ServiceProvider.GetRequiredService<DataEngine>();
-        await dataEngine.Write(tuples, attributes, default);
+        if(tuples.Length == 0 && attributes.Length == 0) return checkEngine;
+        var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        await provider.Write(tuples, attributes, default);
         return checkEngine;
     }
 
@@ -333,12 +335,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Groups.Identifier)
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("group_members", rc =>
-                rc.WithEntityType(TestsConsts.Groups.Identifier))
-            .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
 
         var engine = await CreateEngine(tuples, attributes, schema);
@@ -502,12 +504,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Groups.Identifier)
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
+                .WithRelation("member", rc =>
+                    rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("group_members", rc =>
-                rc.WithEntityType(TestsConsts.Groups.Identifier))
-            .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+                .WithRelation("group_members", rc =>
+                    rc.WithEntityType(TestsConsts.Groups.Identifier))
+                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
 
         var engine = await CreateEngine(tuples, [], schema);

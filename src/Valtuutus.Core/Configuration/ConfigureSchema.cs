@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core.Schemas;
+using Valtuutus.Core.Schemas;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -23,7 +23,6 @@ public static class ConfigureSchema
         services.AddScoped<ICheckEngine, CheckEngine>();
         services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
         services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
-        services.AddScoped<DataEngine>();
 
         return services;
     }

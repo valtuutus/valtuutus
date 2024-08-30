@@ -11,12 +11,6 @@ namespace Valtuutus.Core
         public System.Text.Json.Nodes.JsonValue Value { get; }
         public object? GetValue(System.Type type) { }
     }
-    public sealed class DataEngine
-    {
-        public DataEngine(Valtuutus.Core.Data.IDataWriterProvider writerProvider) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
-    }
     public sealed class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
     {
         public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null) { }
