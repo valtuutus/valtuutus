@@ -1,10 +1,11 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Bogus;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
 using Valtuutus.Data.Db;
+using Valtuutus.Core.Data;
 
 namespace Valtuutus.Api;
 
@@ -126,7 +127,7 @@ public static class Seeder
 
         var (relations, attributes) = GenerateData();
 
-        var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
         await writer.Write(relations, attributes, default);
 
     }
@@ -150,7 +151,7 @@ public static class Seeder
 
         var (relations, attributes) = GenerateData();
         
-        var writer = scope.ServiceProvider.GetRequiredService<DataEngine>();
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
         await writer.Write(relations, attributes, default);
     }
 
