@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
@@ -145,7 +145,7 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
         DeleteFilter filter, RelationTuple[] expectedTuples, AttributeTuple[] expectedAttributes)
     {
         // arrange
-        var engine = Provider.GetRequiredService<DataEngine>();
+        var engine = Provider.GetRequiredService<IDataWriterProvider>();
         await engine.Write(seedRelations, seedAttributes, default);
         
         // act
