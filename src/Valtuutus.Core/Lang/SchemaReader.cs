@@ -3,11 +3,10 @@ using System.Linq.Expressions;
 using System.Text;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Lang;
-using OneOf;
 
 namespace Valtuutus.Core.Lang;
 
-public static class SchemaReader
+public class SchemaReader
 {
     private static readonly Dictionary<string, Type> _types = new()
     {
@@ -16,8 +15,11 @@ public static class SchemaReader
         { "bool", typeof(bool) },
         { "decimal", typeof(decimal) }
     };
+    
+    private readonly List<LangError> _errors = new();
+    private readonly List<SchemaSymbol> _symbols = new();
 
-    public static OneOf<Schema, List<string>> Parse(string schema)
+    public OneOf<Schema, List<LangError>> Parse(string schema)
     {
         var schemaBuilder = new SchemaBuilder();
 
@@ -47,34 +49,59 @@ public static class SchemaReader
         // Parse entities
         foreach (var entityCtx in tree.entityDefinition())
         {
-            var entityBuilder = schemaBuilder.WithEntity(entityCtx.ID().GetText());
+            var entityName = entityCtx.ID().GetText();
+            
+            _symbols.Add(new SchemaSymbol(SymbolType.Entity, entityName));
+            
+            var entityBuilder = schemaBuilder.WithEntity(entityName);
 
             var relationCtx = entityCtx.entityBody().relationDefinition()!;
 
             foreach (var relation in relationCtx)
             {
-                var idlen = relation.ID().Length;
-                entityBuilder.WithRelation(relation.ID(0).GetText(), relationBuilder =>
+                var relationName = relation.ID().GetText();
+                var refRelations = new List<RelationReference>();
+                
+                entityBuilder.WithRelation(relationName, relationBuilder =>
                 {
-                    var subjectRelation = relation.POUND().Length > 0;
-                    if (!subjectRelation)
+                    foreach (var member in relation.relationMember())
                     {
-                        relationBuilder.WithEntityType(relation.ID(idlen - 1).GetText());
-                    }
-                    else
-                    {
-                        relationBuilder.WithEntityType(relation.ID(idlen - 2).GetText(),
-                            relation.ID(idlen - 1).GetText());
+                        var subjectRelation = member.POUND() != null;
+                        if (!subjectRelation)
+                        {
+                            relationBuilder.WithEntityType(member.ID(0).GetText());
+                            refRelations.Add(new RelationReference()
+                            {
+                                ReferencedEntityName = member.ID(0).GetText(),
+                                ReferencedEntityRelation = null
+                            });
+                        }
+                        else
+                        {
+                            relationBuilder.WithEntityType(member.ID(0).GetText(), member.ID(1).GetText());
+                            refRelations.Add(new RelationReference()
+                            {
+                                ReferencedEntityName = member.ID(0).GetText(),
+                                ReferencedEntityRelation = member.ID(1).GetText()
+                            });
+                        }
                     }
                 });
+                
+                _symbols.Add(new RelationSymbol(relationName, entityName, refRelations));
             }
 
             var attributeCtx = entityCtx.entityBody().attributeDefinition()!;
 
             foreach (var attribute in attributeCtx)
             {
-                var attrType = _types[attribute.type().GetText()];
-                entityBuilder.WithAttribute(attribute.ID().GetText(), attrType);
+
+                var attr = new AttributeSymbol(attribute.ID().GetText(), entityName,
+                    _types[attribute.type().GetText()]);
+                
+                _symbols.Add(attr);
+                
+                entityBuilder.WithAttribute(attr.Name, attr.AttributeType);
             }
 
             var permissionCtx = entityCtx.entityBody().permissionDefinition()!;
@@ -83,6 +110,7 @@ public static class SchemaReader
             {
                 // Convert permission expression to PermissionNode
                 var permissionTree = BuildPermissionNode(permission.permissionExpression());
+                _symbols.Add(new PermissionSymbol(permission.ID().GetText(), entityName));
                 entityBuilder.WithPermission(permission.ID().GetText(), permissionTree);
             }
         }

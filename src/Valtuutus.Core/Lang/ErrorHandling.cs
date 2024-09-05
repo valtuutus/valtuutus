@@ -4,7 +4,7 @@ namespace Valtuutus.Core.Lang;
 
 internal class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListener<int>
 {
-    public List<string> Errors { get; } = new();
+    public List<LangError> Errors { get; } = new();
     public bool HasErrors => Errors.Count > 0;
 
     public override void SyntaxError(
@@ -27,7 +27,12 @@ internal class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListene
 
     private void LogError(IRecognizer recognizer, int line, int charPositionInLine, string msg)
     {
-        var errorMessage = $"Line {line}:{charPositionInLine} src:{recognizer.GetType().Name} - {msg}";
-        Errors.Add(errorMessage);
+        var errorMessage = $"src:{recognizer.GetType().Name} - {msg}";
+        Errors.Add(new LangError
+        {
+            Line = line,
+            PositionInLine = charPositionInLine,
+            Message = errorMessage
+        });
     }
 }

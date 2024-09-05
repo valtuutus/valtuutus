@@ -9,7 +9,7 @@ public class LangSpecs
     [Fact]
     public void Full_Lang_v1_Specs_should_be_able_to_parse_entire_schema()
     {
-        var parseResult = SchemaReader.Parse(@"
+        var parseResult = new SchemaReader().Parse(@"
 entity user {}
 
 entity organization {
@@ -33,7 +33,7 @@ entity repository {
     [Fact]
     public void Comma_is_required_after_entity_member_declaration()
     {
-        var parseResult = SchemaReader.Parse(@"entity user {
+        var parseResult = new SchemaReader().Parse(@"entity user {
             relation test @group#member attribute nice bool
         }
 ");
@@ -48,7 +48,7 @@ entity repository {
     public void Empty_entity_different_whitespace_should_not_return_error(string schema)
     {
         // act
-        var parseResult = SchemaReader.Parse(
+        var parseResult = new SchemaReader().Parse(
             schema);
 
 
@@ -62,7 +62,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -91,7 +91,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn2()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -120,7 +120,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_int_comparison()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -149,7 +149,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_int_comparison_and_null_value()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -178,7 +178,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_bool_comparison()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -206,7 +206,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_not_expression()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -234,7 +234,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_boolean_identifier_expression()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity account {
@@ -262,7 +262,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_string_comparison()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity document {
@@ -291,7 +291,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_decimal_comparison()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity product {
@@ -320,7 +320,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_multiple_argument_types_and_conditions()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity transaction {
@@ -354,7 +354,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_multiple_argument_types_and_conditions_negative_case()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity transaction {
@@ -388,7 +388,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_multiple_argument_types_and_partial_conditions()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity transaction {
@@ -422,7 +422,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_composable_logical_expressions()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity transaction {
@@ -452,7 +452,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_composable_logical_expressions_with_identifier_boolean_expressions()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             entity user {}
 
             entity transaction {
@@ -482,7 +482,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_not_equal_expression()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             fn not_deleted(status string) =>
                 status != ""deleted"";
         ");
@@ -499,7 +499,7 @@ entity repository {
     [Fact]
     public void Should_parse_fn_with_less_than_expression()
     {
-        var schema = SchemaReader.Parse(@"
+        var schema = new SchemaReader().Parse(@"
             fn within_threshold(value int, threshold int) =>
                 value < threshold;
         ");
@@ -512,5 +512,53 @@ entity repository {
                 ["threshold"] = 1000,
             }).Should()
             .BeTrue();
+    }
+    
+        
+    [Fact]
+    public void Should_parse_relation_with_multiple_referenced_entities_relations()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+
+            entity team {
+
+                relation owner @user;
+                relation member @user;
+                relation org @organization;
+
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+                permission invite := org.admin and (owner or member);
+                permission remove_user :=  owner;
+            }
+
+            entity project {
+
+                relation members @team#member @team#owner @organization#member;
+                relation team @team;
+                relation org @organization;
+
+                permission view := org.admin or team.member;
+                permission edit := org.admin or team.member;
+                permission delete := team.member;
+            }
+        ");
+
+        schema.AsT0.Should().NotBeNull();
+
+        schema.AsT0.Entities["project"].Relations["members"]
+            .Entities
+            .Should()
+            .BeEquivalentTo([
+                new RelationEntity() { Type = "team", Relation = "member", },
+                new RelationEntity() { Type = "team", Relation = "owner", },
+                new RelationEntity() { Type = "organization", Relation = "member", },
+            ]);
     }
 }

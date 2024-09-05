@@ -11,7 +11,11 @@ entityBody
     ;
 
 relationDefinition
-    : RELATION ID ('@' ID (POUND ID)?)+ SEMI 
+    : RELATION ID relationMember+ SEMI 
+    ;
+
+relationMember
+    : ('@' ID (POUND ID)?)
     ;
 
 attributeDefinition
