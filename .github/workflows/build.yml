@@ -13,7 +13,9 @@ on:
 concurrency:
   group: ${{ github.head_ref || github.sha }}
   cancel-in-progress: true        
-
+permissions:
+  checks: write
+  pull-requests: write
 env:
   GITHUB_WORKSPACE: ${{ github.workspace }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
