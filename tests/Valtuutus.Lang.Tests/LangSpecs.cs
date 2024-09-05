@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Schemas;
 
@@ -38,8 +39,10 @@ entity repository {
         }
 ");
         parseResult.AsT1.Should().NotBeEmpty();
-        parseResult.AsT1.Should().BeEquivalentTo("Line 2:40 src:ValtuutusParser - extraneous input 'attribute' expecting {'@', ';'}",
-            "Line 3:8 src:ValtuutusParser - missing ';' at '}'");
+        parseResult.AsT1.Should().BeEquivalentTo([
+            new { Message = "src:ValtuutusParser - extraneous input 'attribute' expecting {'@', ';'}"},
+            new { Message = "src:ValtuutusParser - missing ';' at '}'"}
+        ]);
     }
 
     [Theory]
@@ -560,5 +563,93 @@ entity repository {
                 new RelationEntity() { Type = "team", Relation = "owner", },
                 new RelationEntity() { Type = "organization", Relation = "member", },
             ]);
+    }
+    
+    [Fact]
+    public void Schema_with_duplicate_entity_names_should_return_error()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity user {}
+        ");
+
+        schema.IsT0.Should().BeFalse();
+
+        schema.AsT1.Should().BeEquivalentTo([
+            new { Message = "Entity 'user' already declared in line 2:19.", }
+        ]);
+    }
+    
+    [Fact]
+    public void Schema_with_relation_to_an_unknown_entity()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity group {
+                relation member @user;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+
+        schema.AsT1.Should().BeEquivalentTo([
+            new { Message = $"Entity 'user' is not defined.", }
+        ]);
+    }
+    
+    [Fact]
+    public void Schema_with_relation_to_an_unknown_entity_relation()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity group {
+            }
+            entity project {
+                relation members @user @group#member;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+
+        schema.AsT1.Should().BeEquivalentTo([
+            new { Message = "Entity 'group' 'member' relation is not defined.", }
+        ]);
+    }
+    
+    [Fact]
+    public void Schema_with_relation_already_defined_in_entity()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity project {
+                relation member @user;
+                relation member @group#member;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+
+        schema.AsT1.Should().BeEquivalentTo([
+            new { Message = "Entity 'project' 'member' relation already been defined.", }
+        ]);
+    }
+    
+    [Fact]
+    public void Schema_with_attribute_already_defined_in_entity()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity project {
+                attribute status string;
+                attribute status int;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+
+        schema.AsT1.Should().BeEquivalentTo([
+            new { Message = "Entity 'project' 'status' attribute already been defined.", }
+        ]);
     }
 }

@@ -31,7 +31,7 @@ internal class ParserSchemaErrorListener : BaseErrorListener, IAntlrErrorListene
         Errors.Add(new LangError
         {
             Line = line,
-            PositionInLine = charPositionInLine,
+            StartPos = charPositionInLine,
             Message = errorMessage
         });
     }
