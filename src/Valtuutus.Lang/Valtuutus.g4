@@ -47,9 +47,7 @@ functionBody
     ;
 
 functionExpression
-    : functionExpression AND functionExpression              #andExpression
-    | functionExpression OR functionExpression               #orExpression
-    | functionExpression EQUAL functionExpression            #equalityExpression
+    : functionExpression EQUAL functionExpression            #equalityExpression
     | functionExpression NOT_EQUAL functionExpression        #inequalityExpression
     | functionExpression GREATER functionExpression          #greaterExpression
     | functionExpression LESS functionExpression             #lessExpression
@@ -58,9 +56,12 @@ functionExpression
     | functionExpression IN list                             #inListExpression
     | ID                                                     #identifierExpression
     | literal                                                #literalExpression
+    | functionExpression OR functionExpression               #orExpression
+    | functionExpression AND functionExpression              #andExpression
+    | NOT LPAREN functionExpression RPAREN                   #notExpression
     | LPAREN functionExpression RPAREN                       #parenthesisExpression
     ;
-    
+   
     
 list: stringLiteralList | intLiteralList | decimalLiteralList;
     
@@ -87,7 +88,7 @@ argument
     ;
     
 literal
-    : STRING_LITERAL | INT_LITERAL | DECIMAL_LITERAL
+    : STRING_LITERAL | INT_LITERAL | DECIMAL_LITERAL | BOOLEAN_LITERAL
     ;
 
 // keywords
@@ -108,6 +109,7 @@ DECIMAL    : 'decimal';
 ASSIGN     : ':=';
 AND        : 'and';
 OR         : 'or';
+NOT        : 'not';
 NOT_EQUAL  : '!=';
 EQUAL      : '==';
 GREATER    : '>';
@@ -120,6 +122,7 @@ IN         : 'in';
 STRING_LITERAL : '"' (~["\\] | '\\' .)* '"' ;
 INT_LITERAL    : [0-9]+ ;
 DECIMAL_LITERAL : [0-9]+ '.' [0-9]+ ;
+BOOLEAN_LITERAL: 'true' | 'false';
 
 // structure
 ARROW      : '=>';

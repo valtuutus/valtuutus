@@ -191,6 +191,62 @@ entity repository {
             }
 
             fn check_active(is_active bool) =>
+                is_active == true;
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["check_active"].Execute(new Dictionary<string, object?>()
+            {
+                ["is_active"] = true
+            }).Should()
+            .BeTrue();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_not_expression()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity account {
+
+                relation owner @user;
+                
+                attribute is_active bool;
+
+                permission access := not_check_active(is_active);
+            }
+
+            fn not_check_active(is_active bool) =>
+                not(is_active == true);
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["not_check_active"].Execute(new Dictionary<string, object?>()
+            {
+                ["is_active"] = true
+            }).Should()
+            .BeFalse();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_boolean_identifier_expression()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity account {
+
+                relation owner @user;
+                
+                attribute is_active bool;
+
+                permission access := check_active(is_active);
+            }
+
+            fn check_active(is_active bool) =>
                 is_active;
         ");
 
@@ -280,7 +336,7 @@ entity repository {
             }
 
             fn check_transaction(amount int, is_verified bool, note string, fee decimal) =>
-                (amount > 100) and (is_verified == true) and (note == ""Valid"") and (fee <= 10.00m);
+                (amount > 100) and (is_verified == true) and (note == ""Valid"") and (fee <= 10.00);
         ");
 
         schema.Should().NotBeNull();
@@ -314,7 +370,7 @@ entity repository {
             }
 
             fn check_transaction(amount int, is_verified bool, note string, fee decimal) =>
-                (amount > 100) and is_verified and (note == ""Valid"") and (fee <= 10.00m);
+                (amount > 100) and is_verified == true and (note == ""Valid"") and (fee <= 10.00);
         ");
 
         schema.Should().NotBeNull();
@@ -348,7 +404,7 @@ entity repository {
             }
 
             fn check_transaction(amount int, is_verified bool, note string, fee decimal) =>
-                (amount > 100) and is_verified and (note == ""Valid"") and (fee <= 10.00m);
+                (amount > 100) and is_verified == true and (note == ""Valid"") and (fee <= 10.00);
         ");
 
         schema.Should().NotBeNull();
@@ -361,5 +417,100 @@ entity repository {
                 ["fee"] = 5.00m
             }).Should()
             .BeFalse();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_composable_logical_expressions()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity transaction {
+
+                relation owner @user;
+
+                attribute is_verified bool;
+                attribute is_public bool;
+
+                permission view := check_transaction(is_verified, is_public);
+            }
+
+            fn check_transaction(is_verified bool, is_public bool) =>
+                is_verified == true or (is_public == true and not(is_verified));
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["check_transaction"].Execute(new Dictionary<string, object?>()
+            {
+                ["is_verified"] = false,
+                ["is_public"] = true
+            }).Should()
+            .BeTrue();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_composable_logical_expressions_with_identifier_boolean_expressions()
+    {
+        var schema = SchemaReader.Parse(@"
+            entity user {}
+
+            entity transaction {
+
+                relation owner @user;
+
+                attribute is_verified bool;
+                attribute is_public bool;
+
+                permission view := check_transaction(is_verified, is_public);
+            }
+
+            fn check_transaction(is_verified bool, is_public bool) =>
+                is_verified or (is_public and not(is_verified));
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["check_transaction"].Execute(new Dictionary<string, object?>()
+            {
+                ["is_verified"] = false,
+                ["is_public"] = true
+            }).Should()
+            .BeTrue();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_not_equal_expression()
+    {
+        var schema = SchemaReader.Parse(@"
+            fn not_deleted(status string) =>
+                status != ""deleted"";
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["not_deleted"].Execute(new Dictionary<string, object?>()
+            {
+                ["status"] = "deleted",
+            }).Should()
+            .BeFalse();
+    }
+    
+    [Fact]
+    public void Should_parse_fn_with_less_than_expression()
+    {
+        var schema = SchemaReader.Parse(@"
+            fn within_threshold(value int, threshold int) =>
+                value < threshold;
+        ");
+
+        schema.Should().NotBeNull();
+
+        schema.AsT0.Functions["within_threshold"].Execute(new Dictionary<string, object?>()
+            {
+                ["value"] = 100,
+                ["threshold"] = 1000,
+            }).Should()
+            .BeTrue();
     }
 }

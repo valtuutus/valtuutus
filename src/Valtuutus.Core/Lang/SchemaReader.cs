@@ -130,6 +130,9 @@ public static class SchemaReader
             ValtuutusParser.LessOrEqualExpressionContext lteCtx =>
                 CreateLessOrEqualExpressionNode(args, lteCtx),
             ValtuutusParser.ParenthesisExpressionContext parenCtx => CreateParenthesisExpressionNode(args, parenCtx),
+            ValtuutusParser.NotExpressionContext notCtx => CreateNotExpressionNode(args, notCtx),
+            ValtuutusParser.IdentifierExpressionContext  => TryHandleBooleanIdOrParamNode(args, exprCtx),
+            ValtuutusParser.LiteralExpressionContext  => TryHandleBooleanIdOrParamNode(args, exprCtx),
             _ => throw new Exception("Unsupported function expression type")
         };
     }
@@ -159,7 +162,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -178,7 +180,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -199,7 +200,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -220,7 +220,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -241,8 +240,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
-
 
         return node;
     }
@@ -263,7 +260,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -285,7 +281,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -306,7 +301,6 @@ public static class SchemaReader
 
         node.Left = leftChild;
         node.Right = rightChild;
-        node.TypeContext = leftChild.TypeContext;
 
         return node;
     }
@@ -314,13 +308,65 @@ public static class SchemaReader
     private static FunctionNode<bool> CreateParenthesisExpressionNode(IDictionary<string, Type> args,
         ValtuutusParser.ParenthesisExpressionContext parenCtx)
     {
-        var node = new ParenthesisExpressionFnNode();
-
-        var childNode = ParseFunctionExpression(args, parenCtx.functionExpression());
-        node.TypeContext = childNode.TypeContext;
-        node.Child = childNode;
+        var node = new ParenthesisExpressionFnNode
+        {
+            Child = ParseFunctionExpression(args, parenCtx.functionExpression())
+        };
 
         return node;
+    }
+
+    private static FunctionNode<bool> CreateNotExpressionNode(IDictionary<string, Type> args,
+        ValtuutusParser.NotExpressionContext notCtx)
+    {
+        var node = new NotExpressionFnNode
+        {
+            Child = ParseFunctionExpression(args, notCtx.functionExpression())
+        };
+
+        return node;
+    }
+
+    private static FunctionNode<bool> TryHandleBooleanIdOrParamNode(IDictionary<string, Type> args,
+        ValtuutusParser.FunctionExpressionContext exprCtx)
+    {
+        var handleLiteralNode = (ValtuutusParser.LiteralExpressionContext litCtx) =>
+        {
+            if (litCtx.literal().BOOLEAN_LITERAL() != null)
+            {
+                return new EqualExpressionFnNode()
+                {
+                    Left = ParseLiteralExpression(args, litCtx),
+                    Right = new BooleanLiteralFnNode() { Value = true }
+                };
+            }
+
+            throw new InvalidOperationException();
+        };
+
+        var handleParamNode = (ValtuutusParser.IdentifierExpressionContext idCtx) =>
+        {
+            var id = idCtx.ID().GetText();
+            if (args.TryGetValue(id, out Type? idType) && idType == typeof(bool))
+            {
+                return new EqualExpressionFnNode()
+                {
+                    Left = CreateParameterIdFnNode(args, idCtx),
+                    Right = new BooleanLiteralFnNode() { Value = true },
+                };
+            }
+
+            throw new InvalidOperationException();
+        };
+
+        var childNode = exprCtx switch
+        {
+            ValtuutusParser.IdentifierExpressionContext idCtx => handleParamNode(idCtx),
+            ValtuutusParser.LiteralExpressionContext litCtx => handleLiteralNode(litCtx),
+            _ => throw new InvalidOperationException()
+        };
+        
+        return childNode;
     }
 
     private static FunctionNode<LiteralValueUnion> CreateParameterIdFnNode(
@@ -331,7 +377,7 @@ public static class SchemaReader
         var id = idCtx.ID().GetText();
         var type = args[id];
 
-        return new ParameterIdFnNode() { ParameterType = type, ParameterName = id, TypeContext = type };
+        return new ParameterIdFnNode() { ParameterType = type, ParameterName = id};
     }
 
     private static FunctionNode<LiteralValueUnion> ParseLiteralFnNode(ValtuutusParser.LiteralContext literalCtx)
@@ -349,6 +395,11 @@ public static class SchemaReader
         if (literalCtx.DECIMAL_LITERAL() != null)
         {
             return new DecimalLiteralFnNode() { Value = decimal.Parse(literalCtx.DECIMAL_LITERAL().GetText()) };
+        }
+
+        if (literalCtx.BOOLEAN_LITERAL() != null)
+        {
+            return new BooleanLiteralFnNode() { Value = bool.Parse(literalCtx.BOOLEAN_LITERAL().GetText()) };
         }
 
         throw new Exception("Unrecognized literal");
@@ -389,8 +440,7 @@ public static class SchemaReader
                         {
                             return (PermissionNodeExpArgument)new PermissionNodeExpArgumentAttribute()
                             {
-                                AttributeName = a.ID().GetText(),
-                                ArgOrder = i
+                                AttributeName = a.ID().GetText(), ArgOrder = i
                             };
                         }
 
@@ -398,8 +448,7 @@ public static class SchemaReader
                         {
                             return new PermissionNodeExpArgumentContextAccess()
                             {
-                                ContextPropertyName = a.contextAccess().ID().GetText(),
-                                ArgOrder = i
+                                ContextPropertyName = a.contextAccess().ID().GetText(), ArgOrder = i
                             };
                         }
 
@@ -409,8 +458,7 @@ public static class SchemaReader
                             {
                                 return new PermissionNodeExpArgumentStringLiteral()
                                 {
-                                    Value = a.literal().STRING_LITERAL().GetText().Trim('"'),
-                                    ArgOrder = i
+                                    Value = a.literal().STRING_LITERAL().GetText().Trim('"'), ArgOrder = i
                                 };
                             }
 
@@ -418,8 +466,7 @@ public static class SchemaReader
                             {
                                 return new PermissionNodeExpArgumentIntLiteral()
                                 {
-                                    Value = int.Parse(a.literal().INT_LITERAL().GetText()),
-                                    ArgOrder = i
+                                    Value = int.Parse(a.literal().INT_LITERAL().GetText()), ArgOrder = i
                                 };
                             }
 
@@ -427,8 +474,7 @@ public static class SchemaReader
                             {
                                 return new PermissionNodeExpArgumentDecimalLiteral()
                                 {
-                                    Value = decimal.Parse(a.literal().DECIMAL_LITERAL().GetText()),
-                                    ArgOrder = i
+                                    Value = decimal.Parse(a.literal().DECIMAL_LITERAL().GetText()), ArgOrder = i
                                 };
                             }
                         }
