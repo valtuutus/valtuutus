@@ -112,6 +112,8 @@ entity repository {
 
         schema.Should().NotBeNull();
 
+        schema.IsT1.Should().BeFalse(string.Join(",", schema.AsT1.Select(x => x.ToString())));
+
         schema.AsT0.Functions["check_balance"].Execute(new Dictionary<string, object?>()
             {
                 ["balance"] = null,

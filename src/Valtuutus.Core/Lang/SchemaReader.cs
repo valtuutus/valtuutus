@@ -268,6 +268,8 @@ public class SchemaReader
         var parameter = Expression.Parameter(typeof(IDictionary<string, object?>), "args");
         var expression = tree.GetExpression(parameter);
 
+        _symbols.Add(new FunctionSymbol(functionName, funcCtx.Start.Line, funcCtx.Start.Column, parameters));
+
         return new Function(functionName, parameters, expression.Compile());
     }
 
