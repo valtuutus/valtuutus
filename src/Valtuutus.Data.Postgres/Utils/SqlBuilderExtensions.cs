@@ -1,12 +1,12 @@
 ﻿using System.Diagnostics;
 using Valtuutus.Core.Data;
 using Dapper;
+using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres.Utils;
 
 internal static class SqlBuilderExtensions
 {
-    private const string SnapTokenFilter = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
     private const string EntityTypeFilter = "entity_type = @EntityType";
     private const string SubjectTypeFilter = "subject_type = @SubjectType";
     private const string RelationFilter = "relation = @Relation";
@@ -15,18 +15,7 @@ internal static class SqlBuilderExtensions
 
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter filter)
     {
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
 
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -73,18 +62,7 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
         
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
 
         if (!string.IsNullOrEmpty(subjectType))
             builder = builder.Where(SubjectTypeFilter, new {SubjectType = subjectType});
@@ -106,19 +84,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter filter,  IList<string> subjectsIds, string subjectType)
     {
-     
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
         
         if (!string.IsNullOrEmpty(filter.EntityType))
             builder = builder.Where(EntityTypeFilter, new {filter.EntityType});
@@ -137,18 +103,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributeFilter filter)
     {
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
         
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -175,18 +130,7 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
         
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
           
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -209,18 +153,7 @@ internal static class SqlBuilderExtensions
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter)
     {
         
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
 
         if (!string.IsNullOrEmpty(filter.EntityId))
         {
@@ -246,18 +179,7 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
 
-        if (filter.SnapToken != null)
-        {
-            var parameters = new { SnapToken = new DbString()
-            {
-                Value = filter.SnapToken.Value.Value,
-                Length = 26,
-                IsFixedLength = true,
-            }};
-            builder = builder.Where(
-                SnapTokenFilter,
-                parameters);
-        }
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
           
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {

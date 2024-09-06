@@ -42,7 +42,7 @@ internal sealed class RelationsActor : ReceiveActor
     {
         if (withSnapToken.SnapToken != null)
         {
-            return current
+            current =  current
                 .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) <= 0)
                 .Where(x => x.DeletedTxId is null ||
                             x.DeletedTxId.Value.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) >
