@@ -10,6 +10,13 @@ using Valtuutus.Data.Db;
 namespace Valtuutus.Data.SqlServer;
 internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
+    private const string SelectAttributes = @"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/";
+
     private readonly DbConnectionFactory _connectionFactory;
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
@@ -56,12 +63,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -80,12 +82,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -107,12 +104,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
 
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -133,12 +125,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))

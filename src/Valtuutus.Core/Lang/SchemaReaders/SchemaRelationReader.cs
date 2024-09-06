@@ -10,7 +10,7 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
     {
         var relationName = relation.ID().GetText();
 
-        if (IsRelationAlreadyDefined(relation, entityName, relationName))
+        if (IsRelationAlreadyDefined(entityName, relationName))
         {
             return new List<LangError>()
             {
@@ -133,7 +133,7 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
         }
     }
 
-    private bool IsRelationAlreadyDefined(ValtuutusParser.RelationDefinitionContext relation, string entityName,
+    private bool IsRelationAlreadyDefined(string entityName,
         string relationName)
     {
         return schemaReader.FindEntityRelation(entityName, relationName) is not null;

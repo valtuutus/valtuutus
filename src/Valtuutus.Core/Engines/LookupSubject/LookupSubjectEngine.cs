@@ -179,8 +179,6 @@ public sealed class LookupSubjectEngine(
             
             var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
-            var getAttributesType = (string attrName) => schema.GetAttribute(req.EntityType, attrName).Type;
-
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
             {
                 if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))

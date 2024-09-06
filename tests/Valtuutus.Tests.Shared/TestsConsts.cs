@@ -62,7 +62,7 @@ public static class TestsConsts
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
                 [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
-                (args) => (int?)args["status"] == 1));;
+                (args) => (int?)args["status"] == 1));
     };
     public static Schema Schemas
     {

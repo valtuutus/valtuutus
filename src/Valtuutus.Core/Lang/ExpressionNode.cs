@@ -83,7 +83,7 @@ internal record LiteralValueUnion : IComparable<LiteralValueUnion>
 
         if (LiteralType != other.LiteralType)
         {
-            throw new ArgumentException();
+            throw new ArgumentException("Incompatible literal type comparison");
         }
 
         var intValueComparison = Nullable.Compare(IntValue, other.IntValue);
@@ -256,12 +256,6 @@ internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralVa
     internal override LangType TypeContext => LangType.Boolean;
 }
 
-// internal record InListExpressionFnNode : BinaryFunctionNode
-// {
-//     internal override FunctionNodeType NodeType => FunctionNodeType.InListExpression;
-//     internal required IEnumerable<UnaryFunctionNode> Values { get; set; }
-// }
-
 internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
@@ -390,37 +384,3 @@ internal record AndExpressionFnNode : BinaryFunctionNode<bool, bool>
 
     internal override LangType TypeContext => LangType.Boolean;
 }
-
-// internal record StringLiteralListFnNode : FunctionNode<string[]>
-// {
-//     internal override Expression<Func<IDictionary<string, object>, string[]>> GetExpression(
-//         ParameterExpression args)
-//     {
-//         return Expression.Lambda<Func<IDictionary<string, object>, string[]>>(Expression.Constant(Values));
-//     }
-//
-//     internal override FunctionNodeType NodeType => FunctionNodeType.StringLiteralList;
-//     internal required List<string> Values { get; init; }
-// }
-//
-// internal record IntLiteralListFnNode : FunctionNode<int[]>
-// {
-//     internal override Expression<Func<IDictionary<string, object>, int[]>> GetExpression(ParameterExpression args)
-//     {
-//         return Expression.Lambda<Func<IDictionary<string, object>, int[]>>(Expression.Constant(Values));
-//     }
-//
-//     internal override FunctionNodeType NodeType => FunctionNodeType.IntLiteralList;
-//     internal required List<int> Values { get; init; }
-// }
-//
-// internal record DecimalLiteralListFnNode : FunctionNode<decimal[]>
-// {
-//     internal override Expression<Func<IDictionary<string, object>, decimal[]>> GetExpression(ParameterExpression args)
-//     {
-//         return Expression.Lambda<Func<IDictionary<string, object>, decimal[]>>(Expression.Constant(Values));
-//     }
-//
-//     internal override FunctionNodeType NodeType => FunctionNodeType.DecimalLiteralList;
-//     internal required List<decimal> Values { get; init; }
-// }
