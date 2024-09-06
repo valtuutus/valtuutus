@@ -57,7 +57,6 @@ functionExpression
     | functionExpression LESS functionExpression             #lessExpression
     | functionExpression GREATER_OR_EQUAL functionExpression #greaterOrEqualExpression
     | functionExpression LESS_OR_EQUAL functionExpression    #lessOrEqualExpression
-    | functionExpression IN list                             #inListExpression
     | ID                                                     #identifierExpression
     | literal                                                #literalExpression
     | functionExpression OR functionExpression               #orExpression
@@ -65,15 +64,6 @@ functionExpression
     | NOT LPAREN functionExpression RPAREN                   #notExpression
     | LPAREN functionExpression RPAREN                       #parenthesisExpression
     ;
-   
-    
-list: stringLiteralList | intLiteralList | decimalLiteralList;
-    
-stringLiteralList: LBRACKET STRING_LITERAL (STRING_LITERAL COMMA)* RBRACKET; 
-
-intLiteralList: LBRACKET INT_LITERAL (INT_LITERAL COMMA)* RBRACKET;
-
-decimalLiteralList: LBRACKET DECIMAL_LITERAL (DECIMAL_LITERAL COMMA)* RBRACKET;
 
 functionCall
     : ID LPAREN argumentList RPAREN
@@ -120,7 +110,6 @@ GREATER    : '>';
 GREATER_OR_EQUAL : '>=';
 LESS_OR_EQUAL    : '<=';
 LESS       : '<';
-IN         : 'in';
 
 // literals
 STRING_LITERAL : '"' (~["\\] | '\\' .)* '"' ;

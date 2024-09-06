@@ -1,6 +1,8 @@
-﻿namespace Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Engines;
 
-public class EntityAttributeFilter
+namespace Valtuutus.Core.Data;
+
+public class EntityAttributeFilter : IWithSnapToken
 {
     public required string EntityType { get; init; }
     public string? EntityId { get; init; }
@@ -8,7 +10,7 @@ public class EntityAttributeFilter
     public required SnapToken? SnapToken { get; set; }
 }
 
-public class EntityAttributesFilter
+public class EntityAttributesFilter : IWithSnapToken
 {
     public required string EntityType { get; init; }
     public string? EntityId { get; init; }
@@ -16,7 +18,7 @@ public class EntityAttributesFilter
     public required SnapToken? SnapToken { get; set; }
 }
 
-public class AttributeFilter
+public class AttributeFilter : IWithSnapToken
 {
     public required string EntityType { get; init; }
     public required string Attribute { get; init; }

@@ -32,7 +32,7 @@ namespace Valtuutus.Core.Configuration
 }
 namespace Valtuutus.Core.Data
 {
-    public class AttributeFilter
+    public class AttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -62,7 +62,7 @@ namespace Valtuutus.Core.Data
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
     }
-    public class EntityAttributeFilter
+    public class EntityAttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -72,7 +72,7 @@ namespace Valtuutus.Core.Data
         public string? EntityId { get; init; }
         public string EntityType { get; init; }
     }
-    public class EntityAttributesFilter
+    public class EntityAttributesFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -82,7 +82,7 @@ namespace Valtuutus.Core.Data
         public string? EntityId { get; init; }
         public string EntityType { get; init; }
     }
-    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>
+    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -114,15 +114,15 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
     }
-    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>
+    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public RelationTupleFilter() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Relation { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }

@@ -4,7 +4,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-internal sealed class InMemoryController
+internal sealed class InMemoryController : IDisposable
 {
     private readonly ActorSystem _actorSystem;
     private readonly IActorRef _relations;
@@ -46,11 +46,23 @@ internal sealed class InMemoryController
     {
         return _attributes.Ask<List<AttributeTuple>>(new AttributesActor.Commands.GetAttributes(filter), ct);
     }
+    
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken ct)
+    {
+        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNames(filter), ct);
+    }
 
     public Task<List<AttributeTuple>> GetAttributes(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
     {
         return _attributes.Ask<List<AttributeTuple>>(new AttributesActor.Commands.GetAttributesWithEntitiesIds(filter, entitiesIds), ct);
     }
+    
+    public async Task<Dictionary<(string AttributeName, string EntityId),AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+    {
+        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNamesWithEntitiesIds(filter, entitiesIds), ct);
+    }
+
+
 
     public void Write(Ulid transactId, IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
         CancellationToken ct)
@@ -85,13 +97,10 @@ internal sealed class InMemoryController
         _transactions.Tell(new TransactionsActor.Commands.Create(id));
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken ct)
-    {
-        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNames(filter), ct);
-    }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId),AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken ct)
+
+    public void Dispose()
     {
-        return await _attributes.Ask<Dictionary<(string AttributeName, string EntityId), AttributeTuple>>(new AttributesActor.Commands.GetEntityAttributesByNamesWithEntitiesIds(filter, entitiesIds), ct);
+        _actorSystem.Dispose();
     }
 }
