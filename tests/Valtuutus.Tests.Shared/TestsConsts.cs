@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core.Schemas;
+﻿using Valtuutus.Core.Lang;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -60,7 +61,7 @@ public static class TestsConsts
                     [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(int) }],
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
                 (args) => (int?)args["status"] == 1));;
     };
     public static Schema Schemas

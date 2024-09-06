@@ -3,7 +3,7 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Lang;
 
-public enum SymbolType
+internal enum SymbolType
 {
     Entity,
     Function,
@@ -12,7 +12,7 @@ public enum SymbolType
     Permission,
 }
 
-public abstract record Symbol
+internal abstract record Symbol
 {
     protected Symbol(SymbolType type, string name, int declarationLine, int startPosition)
     {
@@ -28,7 +28,7 @@ public abstract record Symbol
     public string Name { get; private set; }
 };
 
-public record SchemaSymbol : Symbol
+internal record SchemaSymbol : Symbol
 {
     public SchemaSymbol(SymbolType type, string name, int declarationLine, int startPosition)
         : base(type, name, declarationLine, startPosition)
@@ -36,7 +36,7 @@ public record SchemaSymbol : Symbol
     }
 };
 
-public record FunctionSymbol : SchemaSymbol
+internal record FunctionSymbol : SchemaSymbol
 {
     public List<FunctionParameter> Parameters { get; }
 
@@ -47,7 +47,7 @@ public record FunctionSymbol : SchemaSymbol
     }
 }
 
-public abstract record EntitySymbol : SchemaSymbol
+internal abstract record EntitySymbol : SchemaSymbol
 {
     [SetsRequiredMembers]
     protected EntitySymbol(SymbolType type, string name, int declarationLine, int startPosition,
@@ -59,7 +59,7 @@ public abstract record EntitySymbol : SchemaSymbol
     public required string EntityName { get; init; }
 };
 
-public record PermissionSymbol : EntitySymbol
+internal record PermissionSymbol : EntitySymbol
 {
     [SetsRequiredMembers]
     public PermissionSymbol(string name, int declarationLine, int startPosition, string entityName)
@@ -68,7 +68,7 @@ public record PermissionSymbol : EntitySymbol
     }
 };
 
-public record RelationSymbol : EntitySymbol
+internal record RelationSymbol : EntitySymbol
 {
     [SetsRequiredMembers]
     public RelationSymbol(string name, int declarationLine, int startPosition, string entityName,
@@ -81,20 +81,20 @@ public record RelationSymbol : EntitySymbol
     public required IList<RelationReference> References { get; init; }
 };
 
-public record RelationReference
+internal record RelationReference
 {
     public required string ReferencedEntityName { get; init; }
     public required string? ReferencedEntityRelation { get; init; }
 }
 
-public record AttributeSymbol : EntitySymbol
+internal record AttributeSymbol : EntitySymbol
 {
     [SetsRequiredMembers]
-    public AttributeSymbol(string name, int declarationLine, int startPosition, string entityName, Type attributeType)
+    public AttributeSymbol(string name, int declarationLine, int startPosition, string entityName, LangType attributeType)
         : base(SymbolType.Attribute, name, declarationLine, startPosition, entityName)
     {
         AttributeType = attributeType;
     }
 
-    public required Type AttributeType { get; init; }
+    public required LangType AttributeType { get; init; }
 };

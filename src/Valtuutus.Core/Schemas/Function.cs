@@ -1,10 +1,11 @@
 ﻿using System.Diagnostics.CodeAnalysis;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Core.Schemas;
 
 public record FunctionParameter
 {
-    public required Type ParamType { get; init; }
+    public required LangType ParamType { get; init; }
     public required string ParamName { get; init; }
     public required int ParamOrder { get; init; }
 }
@@ -38,7 +39,7 @@ public record Function
     }
 }
 
-public static class ParamToArgMapExtensions
+internal static class ParamToArgMapExtensions
 {
     public static IDictionary<string, object?> ToLambdaArgs(
         this IDictionary<FunctionParameter, PermissionNodeExpArgument> map,

@@ -20,6 +20,7 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
+using Valtuutus.Core.Lang;
 using Valtuutus.Data;
 using Valtuutus.Data.Caching;
 using Valtuutus.Data.SqlServer;
@@ -87,7 +88,7 @@ builder.Services.AddValtuutusCore(c =>
                 .WithPermission("delete", PermissionNode.Leaf("team.member"))
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(int) }],
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
                 (args) => (int?)args["status"] == 1));;;
     })
 #if postgres

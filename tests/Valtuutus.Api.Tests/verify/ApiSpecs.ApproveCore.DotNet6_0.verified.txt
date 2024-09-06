@@ -245,9 +245,36 @@ namespace Valtuutus.Core.Engines.LookupSubject
 }
 namespace Valtuutus.Core.Lang
 {
-    public static class SchemaReader
+    public class LangError : System.IEquatable<Valtuutus.Core.Lang.LangError>
     {
-        public static OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<string>> Parse(string schema) { }
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public LangError() { }
+        public LangError(string message, int line, int startPos) { }
+        public int Line { get; init; }
+        public string Message { get; init; }
+        public int StartPos { get; init; }
+        public override string ToString() { }
+    }
+    public class LangException : System.Exception
+    {
+        public LangException(string message, int line, int startPos) { }
+        public Valtuutus.Core.Lang.LangError ToLangError() { }
+    }
+    public enum LangType
+    {
+        Int = 0,
+        String = 1,
+        Decimal = 2,
+        Boolean = 3,
+    }
+}
+namespace Valtuutus.Core.Lang.SchemaReaders
+{
+    public class SchemaReader
+    {
+        public SchemaReader() { }
+        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(string schema) { }
     }
 }
 namespace Valtuutus.Core.Observability
@@ -267,12 +294,6 @@ namespace Valtuutus.Core.Schemas
         public Attribute(string Name, System.Type Type) { }
         public string Name { get; init; }
         public System.Type Type { get; init; }
-    }
-    public enum AttributeTypes
-    {
-        Int = 0,
-        String = 1,
-        Decimal = 2,
     }
     public class Entity
     {
@@ -310,17 +331,7 @@ namespace Valtuutus.Core.Schemas
         public FunctionParameter() { }
         public string ParamName { get; init; }
         public int ParamOrder { get; init; }
-        public System.Type ParamType { get; init; }
-    }
-    public enum LiteralType
-    {
-        String = 0,
-        Int = 1,
-        Decimal = 2,
-    }
-    public static class ParamToArgMapExtensions
-    {
-        public static System.Collections.Generic.IDictionary<string, object?> ToLambdaArgs(this System.Collections.Generic.IDictionary<Valtuutus.Core.Schemas.FunctionParameter, Valtuutus.Core.Schemas.PermissionNodeExpArgument> map, System.Func<Valtuutus.Core.Schemas.PermissionNodeExpArgumentAttribute, object?> attrValueMapper) { }
+        public Valtuutus.Core.Lang.LangType ParamType { get; init; }
     }
     public class Permission : System.IEquatable<Valtuutus.Core.Schemas.Permission>
     {
@@ -359,6 +370,14 @@ namespace Valtuutus.Core.Schemas
         public override Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
         public string AttributeName { get; init; }
     }
+    public class PermissionNodeExpArgumentBooleanLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentBooleanLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentBooleanLiteral() { }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public bool Value { get; init; }
+    }
     public class PermissionNodeExpArgumentContextAccess : Valtuutus.Core.Schemas.PermissionNodeExpArgument, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentContextAccess>
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
@@ -372,7 +391,7 @@ namespace Valtuutus.Core.Schemas
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public PermissionNodeExpArgumentDecimalLiteral() { }
-        public override Valtuutus.Core.Schemas.LiteralType LiteralType { get; }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
         public decimal Value { get; init; }
     }
     public class PermissionNodeExpArgumentIntLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentIntLiteral>
@@ -380,7 +399,7 @@ namespace Valtuutus.Core.Schemas
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public PermissionNodeExpArgumentIntLiteral() { }
-        public override Valtuutus.Core.Schemas.LiteralType LiteralType { get; }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
         public int Value { get; init; }
     }
     public abstract class PermissionNodeExpArgumentLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgument, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral>
@@ -388,7 +407,7 @@ namespace Valtuutus.Core.Schemas
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         protected PermissionNodeExpArgumentLiteral() { }
-        public abstract Valtuutus.Core.Schemas.LiteralType LiteralType { get; }
+        public abstract Valtuutus.Core.Lang.LangType LiteralType { get; }
         public override Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
     }
     public class PermissionNodeExpArgumentStringLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentStringLiteral>
@@ -396,7 +415,7 @@ namespace Valtuutus.Core.Schemas
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public PermissionNodeExpArgumentStringLiteral() { }
-        public override Valtuutus.Core.Schemas.LiteralType LiteralType { get; }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
         public string Value { get; init; }
     }
     public enum PermissionNodeExpArgumentType

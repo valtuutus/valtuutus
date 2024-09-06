@@ -7,6 +7,7 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Data;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -161,7 +162,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
                     [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
             .SchemaBuilder
             .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = typeof(string) }],
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.String }],
                 (args) => (string?)args["status"] == "active"));
 
         var schema = entity.Build();
@@ -199,7 +200,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             ))
             .SchemaBuilder
             .WithFunction(new Function("check_balance",
-                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = typeof(decimal) }],
+                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = LangType.Decimal }],
                 (args) => (decimal?)args["balance"] >= 500m));
 
         var schema = entity.Build();

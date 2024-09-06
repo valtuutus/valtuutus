@@ -1,4 +1,6 @@
-﻿namespace Valtuutus.Core.Schemas;
+﻿using Valtuutus.Core.Lang;
+
+namespace Valtuutus.Core.Schemas;
 
 public enum PermissionNodeType
 {
@@ -26,13 +28,6 @@ public record PermissionNodeLeaf(PermissionNodeLeafType Type)
 
 public record PermissionNodeLeafPermission(string Permission);
 
-public enum AttributeTypes
-{
-    Int,
-    String,
-    Decimal
-}
-
 public enum PermissionNodeExpArgumentType
 {
     Attribute,
@@ -58,35 +53,34 @@ public record PermissionNodeExpArgumentContextAccess : PermissionNodeExpArgument
     public required string ContextPropertyName { get; init; }
 }
 
-public enum LiteralType
-{
-    String,
-    Int,
-    Decimal,
-}
-
 public abstract record PermissionNodeExpArgumentLiteral : PermissionNodeExpArgument
 {
     public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
-    public abstract LiteralType LiteralType { get; }
+    public abstract LangType LiteralType { get; }
 }
 
 public record PermissionNodeExpArgumentStringLiteral : PermissionNodeExpArgumentLiteral
 {
-    public override LiteralType LiteralType => LiteralType.String;
+    public override LangType LiteralType => LangType.String;
     public required string Value { get; init; }
 }
 
 public record PermissionNodeExpArgumentIntLiteral : PermissionNodeExpArgumentLiteral
 {
-    public override LiteralType LiteralType => LiteralType.Int;
+    public override LangType LiteralType => LangType.Int;
     public required int Value { get; init; }
 }
 
 public record PermissionNodeExpArgumentDecimalLiteral : PermissionNodeExpArgumentLiteral
 {
-    public override LiteralType LiteralType => LiteralType.Decimal;
+    public override LangType LiteralType => LangType.Decimal;
     public required decimal Value { get; init; }
+}
+
+public record PermissionNodeExpArgumentBooleanLiteral : PermissionNodeExpArgumentLiteral
+{
+    public override LangType LiteralType => LangType.Boolean;
+    public required bool Value { get; init; }
 }
 
 public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
