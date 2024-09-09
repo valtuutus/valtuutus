@@ -10,6 +10,13 @@ using Valtuutus.Data.Db;
 namespace Valtuutus.Data.SqlServer;
 internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
+    private const string SelectAttributes = @"SELECT
+                    entity_type,
+                    entity_id,
+                    attribute,
+                    value
+                FROM attributes /**where**/";
+
     private readonly DbConnectionFactory _connectionFactory;
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
@@ -56,18 +63,31 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
                 .ToList();
         }, cancellationToken);
     
+    }
+
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterAttributes(filter)
+                .AddTemplate(SelectAttributes);
+            
+            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToDictionary(x => (x.Attribute, x.EntityId));
+        }, cancellationToken);
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
@@ -84,12 +104,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM attributes /**where**/");
+                .AddTemplate(SelectAttributes);
 
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -97,6 +112,25 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                 .ToList();
         }, cancellationToken);
         
+    }
+
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
+        CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterAttributes(filter, entitiesIds)
+                .AddTemplate(SelectAttributes);
+            
+            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToDictionary(x => (x.Attribute, x.EntityId));
+        }, cancellationToken);
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)

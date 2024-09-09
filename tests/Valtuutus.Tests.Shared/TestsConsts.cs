@@ -1,4 +1,5 @@
-﻿using Valtuutus.Core.Schemas;
+﻿using Valtuutus.Core.Lang;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -47,14 +48,21 @@ public static class TestsConsts
                 )
                 .WithPermission("edit", PermissionNode.Intersect(
                     PermissionNode.Union("parent.admin", "team.member"),
-                    PermissionNode.AttributeIntExpression("status", status => status == 1))
+                    PermissionNode.Expression("isActiveStatus", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
                 )
             .WithEntity("task")
                 .WithRelation("parent", rc => rc.WithEntityType("project"))
                 .WithRelation("assignee", rc =>
                     rc.WithEntityType("user")
                         .WithEntityType("group", "member"))
-                .WithPermission("view", PermissionNode.Leaf("parent.view"));
+                .WithPermission("view", PermissionNode.Leaf("parent.view"))
+            .WithPermission("edit",
+                PermissionNode.Expression("isActiveStatus",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
+            .SchemaBuilder
+            .WithFunction(new Function("isActiveStatus",
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
+                (args) => (int?)args["status"] == 1));
     };
     public static Schema Schemas
     {

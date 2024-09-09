@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 
 namespace Valtuutus.Data.InMemory;
 
@@ -28,6 +29,49 @@ internal sealed class AttributesActor : ReceiveActor
         Receive<Commands.DeleteAttributes>(DeleteAttributesHandler);
 
         Receive<Commands.DumpAttributes>(DumpAttributesHandler);
+
+        Receive<Commands.GetEntityAttributesByNames>(GetEntityAttributesByNamesHandler);
+
+        Receive<Commands.GetEntityAttributesByNamesWithEntitiesIds>(GetEntityAttributesByNamesWithEntitiesIdsHandler);
+    }
+    
+    private void GetEntityAttributesByNamesWithEntitiesIdsHandler(Commands.GetEntityAttributesByNamesWithEntitiesIds msg)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            msg.Filter.Attributes.Contains(x.Attribute.Attribute) &&
+            msg.EntitiesIds.Contains(x.Attribute.EntityId));
+
+        res = ApplySnapTokenFilter(msg.Filter, res);
+
+        Sender.Tell(res.Select(x => x.Attribute)
+            .ToDictionary(x => (x.Attribute, x.EntityId)));
+    }
+
+    private static IEnumerable<InMemoryTuple> ApplySnapTokenFilter<T>(T withSnapToken, IEnumerable<InMemoryTuple> current) where T: IWithSnapToken
+    {
+        if (withSnapToken.SnapToken != null)
+        {
+            current = current
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) >
+                            0);
+        }
+        return current;
+    }
+
+    private void GetEntityAttributesByNamesHandler(Commands.GetEntityAttributesByNames msg)
+    {
+        var res = _attributesTuples.Where(x =>
+            x.Attribute.EntityType == msg.Filter.EntityType &&
+            msg.Filter.Attributes.Contains(x.Attribute.Attribute));
+
+        res = ApplySnapTokenFilter(msg.Filter, res);
+
+
+        Sender.Tell(res.Select(x => x.Attribute)
+            .ToDictionary(x => (x.Attribute, x.EntityId)));
     }
 
     private void DumpAttributesHandler(Commands.DumpAttributes _)
@@ -66,14 +110,7 @@ internal sealed class AttributesActor : ReceiveActor
             x.Attribute.Attribute == msg.Filter.Attribute &&
             msg.EntitiesIds.Contains(x.Attribute.EntityId));
 
-        if (msg.Filter.SnapToken != null)
-        {
-            res = res
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
-                            0);
-        }
+        res = ApplySnapTokenFilter(msg.Filter, res);
 
         Sender.Tell(res.Select(x => x.Attribute)
             .ToList());
@@ -84,15 +121,8 @@ internal sealed class AttributesActor : ReceiveActor
         var res = _attributesTuples.Where(x =>
             x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
-        if (msg.Filter.SnapToken != null)
-        {
-            res = res
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
-                            0);
-        }
-
+        res = ApplySnapTokenFilter(msg.Filter, res);
+        
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
             res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
@@ -104,14 +134,8 @@ internal sealed class AttributesActor : ReceiveActor
         var res = _attributesTuples.Where(x =>
             x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
-        if (msg.Filter.SnapToken != null)
-        {
-            res = res
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
-                            0);
-        }
+        res = ApplySnapTokenFilter(msg.Filter, res);
+
 
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
             res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
@@ -139,5 +163,11 @@ internal sealed class AttributesActor : ReceiveActor
 
             public static DumpAttributes Instance { get; } = new();
         }
+
+        public record GetEntityAttributesByNames(EntityAttributesFilter Filter)
+        {
+        }
+
+        public record GetEntityAttributesByNamesWithEntitiesIds(EntityAttributesFilter Filter, IEnumerable<string> EntitiesIds);
     }
 }

@@ -54,6 +54,16 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of AttributeTuples matching the filter criteria.</returns>
     Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// Retrieves a Dictionary of AttributeTuples based on the provided filter.
+    /// The key of the dictionary is the attribute name and entityId,
+    /// so that each entity instance will have only on attribute by name
+    /// </summary>
+    /// <param name="filter">The filter criteria for retrieving AttributeTuples.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A Dictionary of AttributeTuples matching the filter criteria.</returns>
+    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of AttributeTuples with specified entity IDs.
@@ -63,4 +73,15 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of AttributeTuples matching the filter criteria and entity IDs.</returns>
     Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
+    
+    /// <summary>
+    /// Retrieves a Dictionary of AttributeTuples based on the provided filter.
+    /// The key of the dictionary is the attribute name and entityId,
+    /// so that each entity instance will have only on attribute by name
+    /// </summary>
+    /// <param name="filter">The filter criteria for retrieving AttributeTuples.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A Dictionary of AttributeTuples matching the filter criteria.</returns>
+    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
 }
+

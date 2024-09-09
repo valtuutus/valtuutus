@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
@@ -7,6 +7,7 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -16,10 +17,11 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     {
         Fixture = fixture;
     }
+
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    
+
     protected IDatabaseFixture Fixture { get; }
-    
+
     private ServiceProvider CreateServiceProvider(Schema? schema = null)
     {
         var services = new ServiceCollection()
@@ -35,9 +37,10 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
         return services.BuildServiceProvider();
     }
-    
-    
-    private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+
+
+    private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+        Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
@@ -47,8 +50,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         await provider.Write(tuples, attributes, default);
         return lookupSubjectEngine;
     }
-    
-    
+
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
@@ -163,18 +166,25 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .WithRelation("member", c => c.WithEntityType(TestsConsts.Users.Identifier))
             .WithAttribute("status", typeof(string))
             .WithPermission("edit", PermissionNode.Intersect(
-                PermissionNode.AttributeStringExpression("status", s => s == "active"),
+                PermissionNode.Expression("isActiveStatus",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]),
                 PermissionNode.Leaf("member")
-            ));
+            ))
+            .SchemaBuilder
+            .WithFunction(new Function("isActiveStatus",
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.String }],
+                (args) => (string?)args["status"] == "active"));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine(
             [
-                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member", TestsConsts.Users.Identifier,
+                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
+                    TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member", TestsConsts.Users.Identifier,
+                new RelationTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "member",
+                    TestsConsts.Users.Identifier,
                     TestsConsts.Users.Bob),
             ],
             [
@@ -202,10 +212,15 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .WithAttribute("balance", typeof(decimal))
             .WithPermission("withdraw", PermissionNode.Intersect(
                 PermissionNode.Leaf("owner"),
-                PermissionNode.AttributeDecimalExpression("balance", b => b >= 500m)
-            ));
+                PermissionNode.Expression("check_balance",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
+            ))
+            .SchemaBuilder
+            .WithFunction(new Function("check_balance",
+                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = LangType.Decimal }],
+                (args) => (decimal?)args["balance"] >= 500m));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine(
@@ -240,12 +255,12 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var schema = new SchemaBuilder()
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Groups.Identifier)
-                .WithRelation("member", rc =>
-                    rc.WithEntityType(TestsConsts.Users.Identifier))
+            .WithRelation("member", rc =>
+                rc.WithEntityType(TestsConsts.Users.Identifier))
             .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("group_members", rc =>
-                    rc.WithEntityType(TestsConsts.Groups.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
+            .WithRelation("group_members", rc =>
+                rc.WithEntityType(TestsConsts.Groups.Identifier))
+            .WithPermission("view", PermissionNode.Leaf("group_members.member"))
             .SchemaBuilder.Build();
         var engine = await CreateEngine(tuples, attributes, schema);
 

@@ -1,6 +1,7 @@
 using Akka.Actor;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines;
 
 namespace Valtuutus.Data.InMemory;
 
@@ -35,6 +36,19 @@ internal sealed class RelationsActor : ReceiveActor
         Sender.Tell(_relationTuples.Where(x => x.DeletedTxId is null)
             .Select(x => x.Relation)
             .ToArray());
+    }
+    
+    private static IEnumerable<InMemoryTuple> ApplySnapTokenFilter<T>(T withSnapToken, IEnumerable<InMemoryTuple> current) where T: IWithSnapToken
+    {
+        if (withSnapToken.SnapToken != null)
+        {
+            current =  current
+                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) <= 0)
+                .Where(x => x.DeletedTxId is null ||
+                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) >
+                            0);
+        }
+        return current;
     }
 
     private void DeleteRelationsHandler(Commands.DeleteRelations msg)
@@ -71,14 +85,7 @@ internal sealed class RelationsActor : ReceiveActor
             x.Relation.SubjectType == msg.SubjectType &&
             msg.SubjectsIds.Contains(x.Relation.SubjectId));
 
-        if (msg.EntityRelationFilter.SnapToken != null)
-        {
-            result = result
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
-                            0);
-        }
+        result = ApplySnapTokenFilter(msg.EntityRelationFilter, result);
 
         Sender.Tell(result.Select(x => x.Relation).ToList());
     }
@@ -91,14 +98,8 @@ internal sealed class RelationsActor : ReceiveActor
             x.Relation.SubjectType == msg.SubjectType &&
             msg.EntitiesIds.Contains(x.Relation.EntityId));
 
-        if (msg.EntityRelationFilter.SnapToken != null)
-        {
-            result = result
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.EntityRelationFilter.SnapToken.Value.Value)) >
-                            0);
-        }
+        result = ApplySnapTokenFilter(msg.EntityRelationFilter, result);
+
 
         if (!string.IsNullOrEmpty(msg.SubjectRelation))
             result = result.Where(x => x.Relation.SubjectRelation == msg.SubjectRelation);
@@ -113,14 +114,7 @@ internal sealed class RelationsActor : ReceiveActor
             x.Relation.EntityId == msg.Filter.EntityId &&
             x.Relation.Relation == msg.Filter.Relation);
 
-        if (msg.Filter.SnapToken != null)
-        {
-            result = result
-                .Where(x => x.CreatedTxId.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) <= 0)
-                .Where(x => x.DeletedTxId is null ||
-                            x.DeletedTxId.Value.CompareTo(Ulid.Parse(msg.Filter.SnapToken.Value.Value)) >
-                            0);
-        }
+        result = ApplySnapTokenFilter(msg.Filter, result);
 
         if (!string.IsNullOrEmpty(msg.Filter.SubjectId))
             result = result.Where(x => x.Relation.SubjectId == msg.Filter.SubjectId);

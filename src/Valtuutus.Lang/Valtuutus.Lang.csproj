@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Description>$(Description)</Description>
+        <PackageTags>$(PackageTags);dsl;parser;lang</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Antlr4 Include="Valtuutus.g4">
+            <Package>Valtuutus.Lang</Package>
+            <Error>true</Error>
+            <Listener>True</Listener>
+            <Visitor>False</Visitor>
+        </Antlr4>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Antlr4.Runtime.Standard" />
+      <PackageReference Include="Antlr4BuildTasks" PrivateAssets="all" />
+    </ItemGroup>
+
+
+</Project>

@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
@@ -7,6 +7,7 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Tests.Shared;
 
@@ -41,7 +42,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         return services.BuildServiceProvider();
     }
 
-    private async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    private async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+        Schema? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
@@ -51,7 +53,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         await provider.Write(tuples, attributes, default);
         return checkEngine;
     }
-    
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
@@ -61,7 +63,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     {
         return Task.CompletedTask;
     }
-    
+
 
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> TopLevelChecks =
         CheckEngineSpecList.TopLevelChecks;
@@ -375,15 +377,17 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
 
         // Act
-        var result = await engine.Check(new CheckRequest
-        {
-            EntityType = "workspace",
-            Permission = "view",
-            EntityId = "1",
-            SubjectId = "1",
-            SubjectType = "user",
-            SnapToken = null
-        }, default);
+        var result =
+            await engine.Check(
+                new CheckRequest
+                {
+                    EntityType = "workspace",
+                    Permission = "view",
+                    EntityId = "1",
+                    SubjectId = "1",
+                    SubjectType = "user",
+                    SnapToken = null
+                }, default);
 
 
         // Assert
@@ -410,13 +414,11 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
 
         // Act
-        var result = await engine.SubjectPermission(new SubjectPermissionRequest
-        {
-            EntityType = "workspace",
-            EntityId = "1",
-            SubjectType = "user",
-            SubjectId = "1"
-        }, default);
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "workspace", EntityId = "1", SubjectType = "user", SubjectId = "1"
+            }, default);
 
 
         // Assert
@@ -442,13 +444,11 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine([], [], schema);
 
         // Act
-        var result = await engine.SubjectPermission(new SubjectPermissionRequest
-        {
-            EntityType = "workspace",
-            EntityId = "1",
-            SubjectType = "user",
-            SubjectId = "1"
-        }, default);
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "workspace", EntityId = "1", SubjectType = "user", SubjectId = "1"
+            }, default);
 
         // assert
         await Verifier.Verify(result);
@@ -477,13 +477,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], schema);
 
         // Act
-        var result = await engine.SubjectPermission(new SubjectPermissionRequest
-        {
-            EntityType = TestsConsts.Workspaces.Identifier,
-            EntityId = TestsConsts.Workspaces.PublicWorkspace,
-            SubjectType = "user",
-            SubjectId = "1"
-        }, default);
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                EntityId = TestsConsts.Workspaces.PublicWorkspace,
+                SubjectType = "user",
+                SubjectId = "1"
+            }, default);
 
         // assert
         await Verifier.Verify(result);
@@ -493,9 +494,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     public async Task SubjectPermissionWithDepthLimit()
     {
         // Arrange
-        var tuples = new RelationTuple[] {
-            new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
-            new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+        var tuples = new RelationTuple[]
+        {
+            new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
+                TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members",
+                TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
         };
 
         var schema = new SchemaBuilder()
@@ -534,9 +538,15 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             .WithEntity(TestsConsts.Users.Identifier)
             .WithEntity(TestsConsts.Workspaces.Identifier)
             .WithAttribute("status", typeof(string))
-            .WithPermission("edit", PermissionNode.AttributeStringExpression("status", s => s == "active"));
+            .WithPermission("edit",
+                PermissionNode.Expression("isActiveStatus",
+                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
+            .SchemaBuilder
+            .WithFunction(new Function("isActiveStatus",
+                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.String }],
+                (args) => (string?)args["status"] == "active"));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine([], [
@@ -563,10 +573,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             .WithAttribute("balance", typeof(decimal))
             .WithPermission("withdraw", PermissionNode.Intersect(
                 PermissionNode.Leaf("owner"),
-                PermissionNode.AttributeDecimalExpression("balance", b => b >= 500m)
-            ));
+                PermissionNode.Expression("check_balance", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
+            ))
+            .SchemaBuilder
+            .WithFunction(new Function("check_balance",
+                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = LangType.Decimal }],
+                (args) => (decimal?)args["balance"] >= 500m));
 
-        var schema = entity.SchemaBuilder.Build();
+        var schema = entity.Build();
 
         // act
         var engine = await CreateEngine(

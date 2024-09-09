@@ -2,6 +2,11 @@
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v6.0", FrameworkDisplayName=".NET 6.0")]
 namespace Valtuutus.Data.Db
 {
+    public static class CommonSqlBuilderExtensions
+    {
+        public static Dapper.SqlBuilder ApplySnapTokenFilter<T>(Dapper.SqlBuilder builder, T withSnapToken)
+            where T : Valtuutus.Core.Engines.IWithSnapToken { }
+    }
     public delegate System.Data.IDbConnection DbConnectionFactory();
     public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
     {

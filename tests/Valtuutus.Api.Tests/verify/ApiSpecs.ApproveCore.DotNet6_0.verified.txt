@@ -9,6 +9,7 @@ namespace Valtuutus.Core
         public string EntityId { get; }
         public string EntityType { get; }
         public System.Text.Json.Nodes.JsonValue Value { get; }
+        public object? GetValue(System.Type type) { }
     }
     public sealed class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
     {
@@ -31,7 +32,7 @@ namespace Valtuutus.Core.Configuration
 }
 namespace Valtuutus.Core.Data
 {
-    public class AttributeFilter
+    public class AttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -61,7 +62,7 @@ namespace Valtuutus.Core.Data
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
     }
-    public class EntityAttributeFilter
+    public class EntityAttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -71,7 +72,17 @@ namespace Valtuutus.Core.Data
         public string? EntityId { get; init; }
         public string EntityType { get; init; }
     }
-    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>
+    public class EntityAttributesFilter : Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public EntityAttributesFilter() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public string[] Attributes { get; init; }
+        public string? EntityId { get; init; }
+        public string EntityType { get; init; }
+    }
+    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
@@ -84,7 +95,15 @@ namespace Valtuutus.Core.Data
     {
         System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
@@ -95,15 +114,15 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
     }
-    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>
+    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
         public RelationTupleFilter() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string EntityId { get; init; }
         public string EntityType { get; init; }
         public string Relation { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
@@ -224,6 +243,40 @@ namespace Valtuutus.Core.Engines.LookupSubject
         public string SubjectType { get; init; }
     }
 }
+namespace Valtuutus.Core.Lang
+{
+    public class LangError : System.IEquatable<Valtuutus.Core.Lang.LangError>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public LangError() { }
+        public LangError(string message, int line, int startPos) { }
+        public int Line { get; init; }
+        public string Message { get; init; }
+        public int StartPos { get; init; }
+        public override string ToString() { }
+    }
+    public class LangException : System.Exception
+    {
+        public LangException(string message, int line, int startPos) { }
+        public Valtuutus.Core.Lang.LangError ToLangError() { }
+    }
+    public enum LangType
+    {
+        Int = 0,
+        String = 1,
+        Decimal = 2,
+        Boolean = 3,
+    }
+}
+namespace Valtuutus.Core.Lang.SchemaReaders
+{
+    public class SchemaReader
+    {
+        public SchemaReader() { }
+        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(string schema) { }
+    }
+}
 namespace Valtuutus.Core.Observability
 {
     public static class DefaultActivitySource
@@ -241,12 +294,6 @@ namespace Valtuutus.Core.Schemas
         public Attribute(string Name, System.Type Type) { }
         public string Name { get; init; }
         public System.Type Type { get; init; }
-    }
-    public enum AttributeTypes
-    {
-        Int = 0,
-        String = 1,
-        Decimal = 2,
     }
     public class Entity
     {
@@ -268,6 +315,24 @@ namespace Valtuutus.Core.Schemas
         public Valtuutus.Core.Schemas.EntitySchemaBuilder WithPermission(string permissionName, Valtuutus.Core.Schemas.PermissionNode permissionTree) { }
         public Valtuutus.Core.Schemas.EntitySchemaBuilder WithRelation(string relationName, System.Action<Valtuutus.Core.Schemas.RelationSchemaBuilder> config) { }
     }
+    public class Function : System.IEquatable<Valtuutus.Core.Schemas.Function>
+    {
+        public Function(string name, System.Collections.Generic.List<Valtuutus.Core.Schemas.FunctionParameter> parameters, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool> lambda) { }
+        public System.Func<System.Collections.Generic.IDictionary<string, object?>, bool> Lambda { get; init; }
+        public string Name { get; init; }
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.FunctionParameter> Parameters { get; init; }
+        public System.Collections.Generic.IDictionary<Valtuutus.Core.Schemas.FunctionParameter, Valtuutus.Core.Schemas.PermissionNodeExpArgument> CreateParamToArgMap(System.Collections.Generic.IList<Valtuutus.Core.Schemas.PermissionNodeExpArgument> args) { }
+        public bool Execute(System.Collections.Generic.IDictionary<string, object?> arguments) { }
+    }
+    public class FunctionParameter : System.IEquatable<Valtuutus.Core.Schemas.FunctionParameter>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public FunctionParameter() { }
+        public string ParamName { get; init; }
+        public int ParamOrder { get; init; }
+        public Valtuutus.Core.Lang.LangType ParamType { get; init; }
+    }
     public class Permission : System.IEquatable<Valtuutus.Core.Schemas.Permission>
     {
         public Permission(string Name, Valtuutus.Core.Schemas.PermissionNode Tree) { }
@@ -280,9 +345,7 @@ namespace Valtuutus.Core.Schemas
         public Valtuutus.Core.Schemas.PermissionNodeOperation? ExpressionNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeLeaf? LeafNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeType Type { get; init; }
-        public static Valtuutus.Core.Schemas.PermissionNode AttributeDecimalExpression(string attrName, System.Func<decimal, bool> exp) { }
-        public static Valtuutus.Core.Schemas.PermissionNode AttributeIntExpression(string attrName, System.Func<int, bool> exp) { }
-        public static Valtuutus.Core.Schemas.PermissionNode AttributeStringExpression(string attrName, System.Func<string, bool> exp) { }
+        public static Valtuutus.Core.Schemas.PermissionNode Expression(string functionName, Valtuutus.Core.Schemas.PermissionNodeExpArgument[] args) { }
         public static Valtuutus.Core.Schemas.PermissionNode Intersect(params Valtuutus.Core.Schemas.PermissionNode[] nodes) { }
         public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, string right) { }
         public static Valtuutus.Core.Schemas.PermissionNode Intersect(string left, Valtuutus.Core.Schemas.PermissionNode right) { }
@@ -291,21 +354,89 @@ namespace Valtuutus.Core.Schemas
         public static Valtuutus.Core.Schemas.PermissionNode Union(params Valtuutus.Core.Schemas.PermissionNode[] nodes) { }
         public static Valtuutus.Core.Schemas.PermissionNode Union(string left, string right) { }
     }
+    public abstract class PermissionNodeExpArgument : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgument>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        protected PermissionNodeExpArgument() { }
+        public abstract Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
+        public int ArgOrder { get; init; }
+    }
+    public class PermissionNodeExpArgumentAttribute : Valtuutus.Core.Schemas.PermissionNodeExpArgument, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentAttribute>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentAttribute() { }
+        public override Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
+        public string AttributeName { get; init; }
+    }
+    public class PermissionNodeExpArgumentBooleanLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentBooleanLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentBooleanLiteral() { }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public bool Value { get; init; }
+    }
+    public class PermissionNodeExpArgumentContextAccess : Valtuutus.Core.Schemas.PermissionNodeExpArgument, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentContextAccess>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentContextAccess() { }
+        public override Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
+        public string ContextPropertyName { get; init; }
+    }
+    public class PermissionNodeExpArgumentDecimalLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentDecimalLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentDecimalLiteral() { }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public decimal Value { get; init; }
+    }
+    public class PermissionNodeExpArgumentIntLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentIntLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentIntLiteral() { }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public int Value { get; init; }
+    }
+    public abstract class PermissionNodeExpArgumentLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgument, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        protected PermissionNodeExpArgumentLiteral() { }
+        public abstract Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public override Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
+    }
+    public class PermissionNodeExpArgumentStringLiteral : Valtuutus.Core.Schemas.PermissionNodeExpArgumentLiteral, System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgumentStringLiteral>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public PermissionNodeExpArgumentStringLiteral() { }
+        public override Valtuutus.Core.Lang.LangType LiteralType { get; }
+        public string Value { get; init; }
+    }
+    public enum PermissionNodeExpArgumentType
+    {
+        Attribute = 0,
+        ContextAccess = 1,
+        Literal = 2,
+    }
     public class PermissionNodeLeaf : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeaf>
     {
         public PermissionNodeLeaf(Valtuutus.Core.Schemas.PermissionNodeLeafType Type) { }
-        public Valtuutus.Core.Schemas.PermissionNodeLeafAttributeExp? ExpressionNode { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafExp? ExpressionNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeLeafPermission? PermissionNode { get; init; }
         public Valtuutus.Core.Schemas.PermissionNodeLeafType Type { get; init; }
     }
-    public class PermissionNodeLeafAttributeExp : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafAttributeExp>
+    public class PermissionNodeLeafExp : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafExp>
     {
-        public PermissionNodeLeafAttributeExp(string AttributeName, Valtuutus.Core.Schemas.AttributeTypes Type) { }
-        public string AttributeName { get; init; }
-        public System.Func<decimal, bool>? DecimalExpression { get; init; }
-        public System.Func<int, bool>? IntExpression { get; init; }
-        public System.Func<string, bool>? StringExpression { get; init; }
-        public Valtuutus.Core.Schemas.AttributeTypes Type { get; init; }
+        public PermissionNodeLeafExp(string FunctionName, Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args) { }
+        public Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args { get; init; }
+        public string FunctionName { get; init; }
+        public string[] GetArgsAttributesNames() { }
     }
     public class PermissionNodeLeafPermission : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafPermission>
     {
@@ -315,7 +446,7 @@ namespace Valtuutus.Core.Schemas
     public enum PermissionNodeLeafType
     {
         Permission = 0,
-        AttributeExpression = 1,
+        Expression = 1,
     }
     public class PermissionNodeOperation : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeOperation>
     {
@@ -355,18 +486,11 @@ namespace Valtuutus.Core.Schemas
         public Valtuutus.Core.Schemas.Relation Build() { }
         public Valtuutus.Core.Schemas.RelationSchemaBuilder WithEntityType(string entityType, string? entityTypeRelation = null) { }
     }
-    public class Rule : System.IEquatable<Valtuutus.Core.Schemas.Rule>
-    {
-        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
-            "your compiler.", true)]
-        public Rule() { }
-        public string Name { get; init; }
-        public string RuleFn { get; init; }
-    }
     public class Schema : System.IEquatable<Valtuutus.Core.Schemas.Schema>
     {
-        public Schema(System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities) { }
+        public Schema(System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities, System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Function> Functions) { }
         public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Function> Functions { get; init; }
         public Valtuutus.Core.Schemas.Attribute GetAttribute(string entityType, string attribute) { }
         public Valtuutus.Core.Schemas.Permission GetPermission(string entityType, string permission) { }
         public System.Collections.Generic.List<Valtuutus.Core.Schemas.Permission> GetPermissions(string entityType) { }
@@ -379,5 +503,6 @@ namespace Valtuutus.Core.Schemas
         public SchemaBuilder() { }
         public Valtuutus.Core.Schemas.Schema Build() { }
         public Valtuutus.Core.Schemas.EntitySchemaBuilder WithEntity(string entityName) { }
+        public Valtuutus.Core.Schemas.SchemaBuilder WithFunction(Valtuutus.Core.Schemas.Function functionNode) { }
     }
 }

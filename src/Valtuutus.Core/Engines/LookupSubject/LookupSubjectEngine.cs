@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -135,7 +137,7 @@ public sealed class LookupSubjectEngine(
         return node.Type switch
         {
             PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!),
-            PermissionNodeLeafType.AttributeExpression => CheckLeafAttributeExp(req, node.ExpressionNode!),
+            PermissionNodeLeafType.Expression => CheckLeafExp(req, node.ExpressionNode!),
             _ => throw new InvalidOperationException()
         };
     }
@@ -154,34 +156,50 @@ public sealed class LookupSubjectEngine(
         return LookupComputedUserSet(req, perm);
     }
     
-    private LookupSubjectFunction CheckLeafAttributeExp(LookupSubjectRequestInternal req, PermissionNodeLeafAttributeExp node)
+    private LookupSubjectFunction CheckLeafExp(LookupSubjectRequestInternal req, PermissionNodeLeafExp node)
     {
         return async (ct) =>
         {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attrName = node.AttributeName;
+            var fn = schema.Functions[node.FunctionName];
 
-            var res = (await reader.GetAttributesWithEntityIds(new AttributeFilter
+            if (fn is null)
+            {
+                throw new InvalidOperationException();
+            }
+
+            var attributeArguments = node.GetArgsAttributesNames();
+
+            var attributes = await reader.GetAttributesWithEntityIds(
+                new EntityAttributesFilter
                 {
-                    Attribute = attrName,
+                    Attributes = attributeArguments,
                     EntityType = req.EntityType,
                     SnapToken = req.SnapToken
-                }, req.EntitiesIds, ct))
-                .Where(AttrEvaluator)
-                .ToList();
+                }, req.EntitiesIds, ct);
+            
+            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
-            return new RelationOrAttributeTuples(res);
-
-            bool AttrEvaluator(AttributeTuple attrTuple)
+            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
             {
-                return node.Type switch
+                if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
                 {
-                    AttributeTypes.Decimal => node.DecimalExpression!(attrTuple.Value.GetValue<decimal>()),
-                    AttributeTypes.Int => node.IntExpression!(attrTuple.Value.GetValue<int>()),
-                    AttributeTypes.String => node.StringExpression!(attrTuple.Value.GetValue<string>()),
-                    _ => throw new InvalidOperationException()
-                };
-            }
+                    return null;
+                }
+
+                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
+
+                return attr.GetValue(attrType);
+            };
+            
+            var res = attributes.Values
+                .Where(attr =>
+                {
+                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId));
+                    return fn.Lambda(fnArgs);
+                })
+                .ToList();
+            
+            return new RelationOrAttributeTuples(res);
         };
     }
 

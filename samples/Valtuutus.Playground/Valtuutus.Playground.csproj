@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Valtuutus.Data.Caching\Valtuutus.Data.Caching.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\Valtuutus.Lang\Valtuutus.Lang.csproj" />
   </ItemGroup>
 
 </Project>
