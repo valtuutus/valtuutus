@@ -225,7 +225,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
             var fnArgs = paramToArgMap.ToLambdaArgs(getDynamicallyTypedAttribute);
 
-            return fn.Lambda(fnArgs);
+            var res =  fn.Lambda(fnArgs);
+            return res;
         };
     }
 

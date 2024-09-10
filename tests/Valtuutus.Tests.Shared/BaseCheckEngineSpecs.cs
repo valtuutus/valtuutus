@@ -541,7 +541,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             entity workspace {
                 relation member @user;
                 attribute status string;
-                permission edit:= isActiveStatus(status) and member;
+                permission edit:= isActiveStatus(status);
             }
             fn isActiveStatus(status string) => status == ""active"";
         ";
