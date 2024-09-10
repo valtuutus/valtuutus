@@ -435,7 +435,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         for (int i = 0; i < 50; i++)
         {
-            permissionBuilder.AppendLine($"\tpermission_{i} := public;");
+            permissionBuilder.AppendLine($"permission permission_{i} := public;");
         }
 
         // act
@@ -469,7 +469,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         for (int i = 0; i < 50; i++)
         {
-            permissionBuilder.AppendLine($"\tpermission_{i} := public;");
+            permissionBuilder.AppendLine($"permission permission_{i} := public;");
         }
         
         // act
