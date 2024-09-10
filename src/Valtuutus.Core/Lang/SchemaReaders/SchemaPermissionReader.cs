@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Lang;
 
@@ -124,7 +125,7 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
 
         return new PermissionNodeExpArgumentDecimalLiteral()
         {
-            Value = decimal.Parse(argCtx.literal().DECIMAL_LITERAL().GetText()), ArgOrder = argumentIndex
+            Value = decimal.Parse(argCtx.literal().DECIMAL_LITERAL().GetText(), CultureInfo.InvariantCulture), ArgOrder = argumentIndex
         };
     }
 
@@ -141,7 +142,7 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
 
         return new PermissionNodeExpArgumentIntLiteral()
         {
-            Value = int.Parse(argCtx.literal().INT_LITERAL().GetText()), ArgOrder = argumentIndex
+            Value = int.Parse(argCtx.literal().INT_LITERAL().GetText(), CultureInfo.InvariantCulture), ArgOrder = argumentIndex
         };
     }
 
