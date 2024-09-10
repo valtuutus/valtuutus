@@ -1,6 +1,6 @@
 ﻿namespace Valtuutus.Core.Schemas;
 
-public class SchemaBuilder
+internal class SchemaBuilder
 {
     private readonly List<EntitySchemaBuilder> _entities = [];
     private readonly List<Function> _functions = [];
@@ -28,7 +28,7 @@ public class SchemaBuilder
     }
 }
 
-public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
+internal class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 {
     private readonly Dictionary<string, Relation> _relations = new();
     private readonly Dictionary<string, Permission> _permissions = new();
@@ -67,7 +67,7 @@ public class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
     }
 }
 
-public class RelationSchemaBuilder(string name)
+internal class RelationSchemaBuilder(string name)
 {
     private readonly List<RelationEntity> _entities = new();
 

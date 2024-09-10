@@ -14,16 +14,16 @@ public record Function
 {
     public string Name { get; init; }
     public List<FunctionParameter> Parameters { get; init; }
-    public Func<IDictionary<string, object?>, bool> Lambda { get; init; }
+    internal Func<IDictionary<string, object?>, bool> Lambda { get; init; }
     
-    public Function(string name, List<FunctionParameter> parameters, Func<IDictionary<string, object?>, bool> lambda)
+    internal Function(string name, List<FunctionParameter> parameters, Func<IDictionary<string, object?>, bool> lambda)
     {
         Name = name;
         Parameters = parameters;
         Lambda = lambda;
     }
     
-    public IDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
+    internal IDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
     {
         return Parameters
             .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
