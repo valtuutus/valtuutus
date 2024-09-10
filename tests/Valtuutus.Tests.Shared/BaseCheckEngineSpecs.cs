@@ -23,27 +23,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
     
-    private ServiceProvider CreateServiceProvider(Schema? schema = null)
+    private ServiceProvider CreateServiceProvider(string? schema = null)
     {
         var services = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action);
+            .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
-
-        
-        if (schema != null)
-        {
-            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
-            services.Remove(serviceDescriptor);
-            services.AddSingleton(schema);
-        }
 
         return services.BuildServiceProvider();
     }
 
     private async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
-        Schema? schema = null)
+        string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();

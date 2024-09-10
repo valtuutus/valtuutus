@@ -6,75 +6,42 @@ namespace Valtuutus.Tests.Shared;
 public static class TestsConsts
 {
 
-    public static readonly Action<SchemaBuilder> Action = (schemaBuilder) =>
-    {
-        schemaBuilder
-            .WithEntity("user")
-            .WithEntity("group")
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                )
-            .WithEntity("workspace")
-                .WithRelation("owner", rc =>
-                    rc.WithEntityType("user"))
-                .WithRelation("admin", rc =>
-                    rc.WithEntityType("user"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user"))
-                .WithAttribute("public", typeof(bool))
-                .WithPermission("comment", PermissionNode.Intersect("member", PermissionNode.Leaf("public")))
-                .WithPermission("delete", PermissionNode.Leaf("owner"))
-                .WithPermission("view", PermissionNode.Union(
-                    PermissionNode.Leaf("public"), PermissionNode.Leaf("owner"),
-                    PermissionNode.Leaf("member"), PermissionNode.Leaf("admin"))
-                )
-            .WithEntity("team")
-                .WithRelation("lead", rc => rc.WithEntityType("user"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("group", "member"))
-            .WithEntity("project")
-                .WithRelation("parent", rc => rc.WithEntityType("workspace"))
-                .WithRelation("team", rc => rc.WithEntityType("team"))
-                .WithRelation("member", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("team", "member"))
-                .WithRelation("lead", rc => rc.WithEntityType("team", "lead"))
-                .WithAttribute("public", typeof(bool))
-                .WithAttribute("status", typeof(int))
-                .WithPermission("view", PermissionNode.Union(
-                    PermissionNode.Leaf("member"), PermissionNode.Leaf("lead"),
-                    PermissionNode.Intersect("public", "parent.view"))
-                )
-                .WithPermission("edit", PermissionNode.Intersect(
-                    PermissionNode.Union("parent.admin", "team.member"),
-                    PermissionNode.Expression("isActiveStatus", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
-                )
-            .WithEntity("task")
-                .WithRelation("parent", rc => rc.WithEntityType("project"))
-                .WithRelation("assignee", rc =>
-                    rc.WithEntityType("user")
-                        .WithEntityType("group", "member"))
-                .WithPermission("view", PermissionNode.Leaf("parent.view"))
-            .WithPermission("edit",
-                PermissionNode.Expression("isActiveStatus",
-                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
-            .SchemaBuilder
-            .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
-                (args) => (int?)args["status"] == 1));
-    };
-    public static Schema Schemas
-    {
-        get
-        {
-            var builder = new SchemaBuilder();
-            Action(builder);
-            return builder.Build();
-            
+    public const string DefaultSchema = @"
+        entity user {}
+        entity group {
+            relation member @user;
         }
-    }
-
+        entity workspace {
+            relation owner @user;
+            relation member @user;
+            relation admin @user;
+            attribute public bool;
+            permission comment := member and public;
+            permission delete := owner;
+            permission view := public or owner or admin or member;
+        }
+        entity team {
+            relation lead @user;
+            relation member @user @group#member;
+        }
+        entity project {
+            relation parent @workspace;
+            relation team @team;
+            relation member @user @team#member;
+            relation lead @team#lead;
+            attribute public bool;
+            attribute status int;
+            permission view := member or lead or (public and parent.view);
+            permission edit := (parent.admin or team.member) and isActiveStatus(status);
+        }
+        entity task
+        {
+            relation parent @project;
+            relation assignee @user @group#member;
+            permission view := parent.view;
+        }
+        fn isActiveStatus(status int) => status == 1;
+        ";
 
     public static class Users
     {

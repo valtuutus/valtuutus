@@ -21,24 +21,17 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     
     protected IDatabaseFixture Fixture { get; }
     
-    private ServiceProvider CreateServiceProvider(Schema? schema = null)
+    private ServiceProvider CreateServiceProvider(string? schema = null)
     {
         var services = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action);
+            .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(5);
-        
-        if (schema != null)
-        {
-            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
-            services.Remove(serviceDescriptor);
-            services.AddSingleton(schema);
-        }
 
         return services.BuildServiceProvider();
     }
 
-    private async ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, Schema? schema = null)
+    private async ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
@@ -153,19 +146,14 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     public async Task TestStringBasedAttributeExpression()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithAttribute("status", typeof(string))
-            .WithPermission("edit",
-                PermissionNode.Expression("isActiveStatus",
-                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
-            .SchemaBuilder
-            .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.String }],
-                (args) => (string?)args["status"] == "active"));
-
-        var schema = entity.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                attribute status bool;
+                permission edit:= isActiveStatus(status);
+            }
+            fn isActiveStatus(status string) => status == ""active"";
+        ";
 
         // act
         var engine = await CreateEngine([], [
@@ -235,16 +223,18 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Groups.Identifier)
-                .WithRelation("member", rc =>
-                    rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("group_members", rc =>
-                    rc.WithEntityType(TestsConsts.Groups.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
-            .SchemaBuilder.Build();
+        
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation group_members @group;
+                permission view := group_members.member;
+            }
+            fn isActiveStatus(status string) => status == ""active"";
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act

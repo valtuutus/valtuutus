@@ -28,7 +28,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     private ServiceProvider CreateServiceProvider()
     {
         var services = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action);
+            .AddValtuutusCore(TestsConsts.DefaultSchema);
 
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
