@@ -4,7 +4,7 @@ using Valtuutus.Lang;
 
 namespace Valtuutus.Core.Lang.SchemaReaders;
 
-public class SchemaReader
+internal class SchemaReader
 {
     private readonly List<LangError> _errors = new();
     private readonly List<SchemaSymbol> _symbols = new();

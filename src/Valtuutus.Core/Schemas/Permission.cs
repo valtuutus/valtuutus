@@ -2,99 +2,99 @@
 
 namespace Valtuutus.Core.Schemas;
 
-public enum PermissionNodeType
+internal enum PermissionNodeType
 {
     Leaf,
     Expression
 }
 
-public enum PermissionOperation
+internal enum PermissionOperation
 {
     Intersect,
     Union,
 }
 
-public enum PermissionNodeLeafType
+internal enum PermissionNodeLeafType
 {
     Permission,
     Expression
 }
 
-public record PermissionNodeLeaf(PermissionNodeLeafType Type)
+internal record PermissionNodeLeaf(PermissionNodeLeafType Type)
 {
     public PermissionNodeLeafPermission? PermissionNode { get; init; }
     public PermissionNodeLeafExp? ExpressionNode { get; init; }
 }
 
-public record PermissionNodeLeafPermission(string Permission);
+internal record PermissionNodeLeafPermission(string Permission);
 
-public enum PermissionNodeExpArgumentType
+internal enum PermissionNodeExpArgumentType
 {
     Attribute,
     ContextAccess,
     Literal
 }
 
-public abstract record PermissionNodeExpArgument
+internal abstract record PermissionNodeExpArgument
 {
     public abstract PermissionNodeExpArgumentType Type { get; }
     public required int ArgOrder { get; init; }
 }
 
-public record PermissionNodeExpArgumentAttribute : PermissionNodeExpArgument 
+internal record PermissionNodeExpArgumentAttribute : PermissionNodeExpArgument 
 {
     public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.Attribute;
     public required string AttributeName { get; init; }
 }
 
-public record PermissionNodeExpArgumentContextAccess : PermissionNodeExpArgument
+internal record PermissionNodeExpArgumentContextAccess : PermissionNodeExpArgument
 {
     public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
     public required string ContextPropertyName { get; init; }
 }
 
-public abstract record PermissionNodeExpArgumentLiteral : PermissionNodeExpArgument
+internal abstract record PermissionNodeExpArgumentLiteral : PermissionNodeExpArgument
 {
     public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
     public abstract LangType LiteralType { get; }
 }
 
-public record PermissionNodeExpArgumentStringLiteral : PermissionNodeExpArgumentLiteral
+internal record PermissionNodeExpArgumentStringLiteral : PermissionNodeExpArgumentLiteral
 {
     public override LangType LiteralType => LangType.String;
     public required string Value { get; init; }
 }
 
-public record PermissionNodeExpArgumentIntLiteral : PermissionNodeExpArgumentLiteral
+internal record PermissionNodeExpArgumentIntLiteral : PermissionNodeExpArgumentLiteral
 {
     public override LangType LiteralType => LangType.Int;
     public required int Value { get; init; }
 }
 
-public record PermissionNodeExpArgumentDecimalLiteral : PermissionNodeExpArgumentLiteral
+internal record PermissionNodeExpArgumentDecimalLiteral : PermissionNodeExpArgumentLiteral
 {
     public override LangType LiteralType => LangType.Decimal;
     public required decimal Value { get; init; }
 }
 
-public record PermissionNodeExpArgumentBooleanLiteral : PermissionNodeExpArgumentLiteral
+internal record PermissionNodeExpArgumentBooleanLiteral : PermissionNodeExpArgumentLiteral
 {
     public override LangType LiteralType => LangType.Boolean;
     public required bool Value { get; init; }
 }
 
-public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
+internal record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
 {
-    public string[] GetArgsAttributesNames() => Args
+    internal string[] GetArgsAttributesNames() => Args
         .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
         .Cast<PermissionNodeExpArgumentAttribute>()
         .Select(x => x.AttributeName)
         .ToArray();
 }
 
-public record PermissionNodeOperation(PermissionOperation Operation, List<PermissionNode> Children);
+internal record PermissionNodeOperation(PermissionOperation Operation, List<PermissionNode> Children);
 
-public record PermissionNode(PermissionNodeType Type)
+internal record PermissionNode(PermissionNodeType Type)
 {
     public PermissionNodeLeaf? LeafNode { get; init; }
     public PermissionNodeOperation? ExpressionNode { get; init; }
@@ -157,4 +157,14 @@ public record PermissionNode(PermissionNodeType Type)
     }
 }
 
-public record Permission(string Name, PermissionNode Tree);
+public record Permission
+{
+    internal Permission(string Name, PermissionNode Tree)
+    {
+        this.Name = Name;
+        this.Tree = Tree;
+    }
+
+    public string Name { get; init; }
+    internal PermissionNode Tree { get; init; }
+}
