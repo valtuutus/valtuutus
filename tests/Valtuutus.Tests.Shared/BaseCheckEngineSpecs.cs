@@ -3,6 +3,7 @@ using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data;
@@ -23,27 +24,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
     
-    private ServiceProvider CreateServiceProvider(Schema? schema = null)
+    private ServiceProvider CreateServiceProvider(string? schema = null)
     {
         var services = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action);
+            .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
-
-        
-        if (schema != null)
-        {
-            var serviceDescriptor = services.First(descriptor => descriptor.ServiceType == typeof(Schema));
-            services.Remove(serviceDescriptor);
-            services.AddSingleton(schema);
-        }
 
         return services.BuildServiceProvider();
     }
 
     private async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
-        Schema? schema = null)
+        string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
@@ -126,15 +119,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("project")
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithPermission("view", PermissionNode.Union("member", "admin"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity project {
+                relation member @user;
+                relation admin @user;
+                permission view := member or admin;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -151,15 +143,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("project")
-            .WithRelation("owner", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("whatever", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithPermission("delete", PermissionNode.Intersect("owner", "whatever"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity project {
+                relation owner @user;
+                relation whatever @user;
+                permission delete := owner and whatever;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -175,16 +166,15 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("project")
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithAttribute("public", typeof(bool))
-            .WithPermission("view", PermissionNode.Union("member", "public"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity project {
+                relation member @user;
+                relation admin @user;
+                attribute public bool;
+                permission view := member or public;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -201,14 +191,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("project")
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithAttribute("public", typeof(bool))
-            .WithPermission("comment", PermissionNode.Intersect("public", "member"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity project {
+                relation member @user;
+                attribute public bool;
+                permission comment := member and public;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -224,17 +214,18 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity("project")
-            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
-            .WithPermission("delete", PermissionNode.Leaf("parent.admin"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation admin @user;
+                relation member @user;
+            }
+
+            entity project {
+                relation parent @workspace;
+                permission delete := parent.admin;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -251,18 +242,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity("project")
-            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
-            .WithPermission("delete", PermissionNode.Union("parent.admin", "admin"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation admin @user;
+                relation member @user;
+            }
+
+            entity project {
+                relation admin @user;
+                relation parent @workspace;
+                permission delete := parent.admin or admin;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -278,18 +270,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity("project")
-            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
-            .WithPermission("delete", PermissionNode.Intersect("parent.admin", "admin"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation admin @user;
+                relation member @user;
+            }
+
+            entity project {
+                relation admin @user;
+                relation parent @workspace;
+                permission delete := parent.admin and admin;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -305,19 +298,20 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithPermission("view", PermissionNode.Union("admin", "member"))
-            .WithEntity("project")
-            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
-            .WithPermission("view", PermissionNode.Leaf("parent.view"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation admin @user;
+                relation member @user;
+                permission view := admin or member;
+            }
+
+            entity project {
+                relation admin @user;
+                relation parent @workspace;
+                permission view := parent.view;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -333,17 +327,16 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         CheckRequest request, bool expected)
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Groups.Identifier)
-                .WithRelation("member", rc =>
-                    rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("group_members", rc =>
-                    rc.WithEntityType(TestsConsts.Groups.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
-            .SchemaBuilder.Build();
-
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation group_members @group;
+                permission view := group_members.member;
+            }
+        ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
@@ -398,18 +391,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     public async Task SubjectPermissionsWhenNoPermissionsShouldReturnEmpty()
     {
         // Arrange
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithRelation("admin", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("member", rc =>
-                rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity("project")
-            .WithRelation("admin", rc => rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithRelation("parent", rc => rc.WithEntityType(TestsConsts.Workspaces.Identifier))
-            .WithPermission("view", PermissionNode.Leaf("parent.view"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation admin @user;
+                relation member @user;
+            }
+
+            entity project {
+                relation admin @user;
+                relation parent @workspace;
+                permission view := admin or parent;
+            }
+        ";
         var engine = await CreateEngine([], [], schema);
 
 
@@ -429,19 +423,23 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     public async Task SubjectPermissionShouldListAllPermissions()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+        var schema = @"
+            entity user {}
+            entity workspace {
+                attribute public bool;
+                {replace}
+            }
+        ";
+
+        var permissionBuilder = new StringBuilder();
 
         for (int i = 0; i < 50; i++)
         {
-            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+            permissionBuilder.AppendLine($"permission permission_{i} := public;");
         }
 
-        var schema = entity.SchemaBuilder.Build();
-
         // act
-        var engine = await CreateEngine([], [], schema);
+        var engine = await CreateEngine([], [], schema.Replace("{replace}", permissionBuilder.ToString()));
 
         // Act
         var result = await engine.SubjectPermission(
@@ -451,7 +449,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             }, default);
 
         // assert
-        await Verifier.Verify(result);
+        await Verify(result);
     }
 
 
@@ -459,22 +457,26 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     public async Task SubjectPermissionShouldEvaluatePermissions()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier).WithAttribute("public", typeof(bool));
+        var schema = @"
+            entity user {}
+            entity workspace {
+                attribute public bool;
+                {replace}
+            }
+        ";
+
+        var permissionBuilder = new StringBuilder();
 
         for (int i = 0; i < 50; i++)
         {
-            entity.WithPermission($"permission_{i}", PermissionNode.Leaf("public"));
+            permissionBuilder.AppendLine($"permission permission_{i} := public;");
         }
-
-        var schema = entity.SchemaBuilder.Build();
-
+        
         // act
         var engine = await CreateEngine([], [
             new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
                 JsonValue.Create(true))
-        ], schema);
+        ], schema.Replace("{replace}", permissionBuilder.ToString()));
 
         // Act
         var result = await engine.SubjectPermission(
@@ -487,7 +489,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             }, default);
 
         // assert
-        await Verifier.Verify(result);
+        await Verify(result);
     }
 
     [Fact]
@@ -502,16 +504,16 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
                 TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
         };
 
-        var schema = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Groups.Identifier)
-                .WithRelation("member", rc =>
-                    rc.WithEntityType(TestsConsts.Users.Identifier))
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-                .WithRelation("group_members", rc =>
-                    rc.WithEntityType(TestsConsts.Groups.Identifier))
-                .WithPermission("view", PermissionNode.Leaf("group_members.member"))
-            .SchemaBuilder.Build();
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation group_members @group;
+                permission view := group_members.member;
+            }
+        ";
 
         var engine = await CreateEngine(tuples, [], schema);
 
@@ -527,27 +529,22 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var result = await engine.SubjectPermission(request, default);
 
         // Assert
-        await Verifier.Verify(result);
+        await Verify(result);
     }
 
     [Fact]
     public async Task TestStringBasedAttributeExpression()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity(TestsConsts.Workspaces.Identifier)
-            .WithAttribute("status", typeof(string))
-            .WithPermission("edit",
-                PermissionNode.Expression("isActiveStatus",
-                    [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "status" }]))
-            .SchemaBuilder
-            .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.String }],
-                (args) => (string?)args["status"] == "active"));
-
-        var schema = entity.Build();
-
+        var schema = @"
+            entity user {}
+            entity workspace {
+                relation member @user;
+                attribute status string;
+                permission edit:= isActiveStatus(status);
+            }
+            fn isActiveStatus(status string) => status == ""active"";
+        ";
         // act
         var engine = await CreateEngine([], [
             new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "status",
@@ -566,22 +563,16 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     public async Task TestDecimalBasedAttributeExpression()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("account")
-            .WithRelation("owner", c => c.WithEntityType(TestsConsts.Users.Identifier))
-            .WithAttribute("balance", typeof(decimal))
-            .WithPermission("withdraw", PermissionNode.Intersect(
-                PermissionNode.Leaf("owner"),
-                PermissionNode.Expression("check_balance", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
-            ))
-            .SchemaBuilder
-            .WithFunction(new Function("check_balance",
-                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = LangType.Decimal }],
-                (args) => (decimal?)args["balance"] >= 500m));
-
-        var schema = entity.Build();
-
+        var schema = @"
+            entity user {}
+            entity account {
+                relation owner @user;
+                attribute balance decimal;
+                permission withdraw := owner and check_balance(balance);
+            }
+            fn check_balance(balance decimal) => balance >= 500.0;
+        ";
+        
         // act
         var engine = await CreateEngine(
             [

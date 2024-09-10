@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+﻿using System.Globalization;
+using System.Linq.Expressions;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Lang;
 
@@ -233,12 +234,12 @@ internal class SchemaFunctionReader(SchemaReader schemaReader)
 
         if (literalCtx.INT_LITERAL() != null)
         {
-            return new IntegerLiteralFnNode() { Value = int.Parse(literalCtx.INT_LITERAL().GetText()) };
+            return new IntegerLiteralFnNode() { Value = int.Parse(literalCtx.INT_LITERAL().GetText(), CultureInfo.InvariantCulture) };
         }
 
         if (literalCtx.DECIMAL_LITERAL() != null)
         {
-            return new DecimalLiteralFnNode() { Value = decimal.Parse(literalCtx.DECIMAL_LITERAL().GetText()) };
+            return new DecimalLiteralFnNode() { Value = decimal.Parse(literalCtx.DECIMAL_LITERAL().GetText(), CultureInfo.InvariantCulture) };
         }
 
         if (literalCtx.BOOLEAN_LITERAL() != null)

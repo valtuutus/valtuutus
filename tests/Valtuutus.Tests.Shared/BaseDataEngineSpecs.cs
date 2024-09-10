@@ -25,7 +25,7 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
     private ServiceProvider CreateServiceProvider()
     {
         var services = new ServiceCollection()
-            .AddValtuutusCore(TestsConsts.Action);
+            .AddValtuutusCore(TestsConsts.DefaultSchema);
         
         AddSpecificProvider(services);
 

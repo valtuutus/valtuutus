@@ -64,6 +64,8 @@ entity repository {
         );
     }
 
+    // startups:id:     relation       usuarioId
+    
     [Fact]
     public void Should_parse_relation_with_multiple_referenced_entities_relations()
     {
