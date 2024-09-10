@@ -54,43 +54,37 @@ builder.Services.AddFusionCache()
             ConnectionMultiplexerFactory = () => Task.FromResult((IConnectionMultiplexer)muxxer)
         }));
 
-builder.Services.AddValtuutusCore(c =>
-    {
-        c
-            .WithEntity("user")
-            .WithEntity("organization")
-                .WithRelation("admin", rc => rc.WithEntityType("user"))
-                .WithRelation("member", rc => rc.WithEntityType("user"))
-            .WithEntity("team")
-                .WithRelation("owner", rc => rc.WithEntityType("user"))
-                .WithRelation("member", rc => rc.WithEntityType("user"))
-                .WithRelation("org", rc => rc.WithEntityType("organization"))
-                .WithPermission("edit", PermissionNode.Union("org.admin", "owner"))
-                .WithPermission("delete", PermissionNode.Union("org.admin", "owner"))
-                .WithPermission("invite", PermissionNode.Intersect("org.admin", PermissionNode.Union("owner", "member")))
-                .WithPermission("remove_user", PermissionNode.Leaf("owner"))
-            .WithEntity("project")
-                .WithRelation("org", rc => rc.WithEntityType("organization"))
-                .WithRelation("team", rc => rc.WithEntityType("team"))
-                .WithRelation("member", rc => rc.WithEntityType("team", "member").WithEntityType("user"))
-                .WithAttribute("public", typeof(bool))
-                .WithAttribute("status", typeof(string))
-                .WithPermission("view",
-                    PermissionNode.Union(
-                        PermissionNode.Leaf("org.admin"),
-                        PermissionNode.Leaf("member"),
-                        PermissionNode.Intersect("public", "org.member"))
-                )
-                .WithPermission("edit", PermissionNode.Intersect(
-                    PermissionNode.Union("org.admin", "team.member"),
-                    PermissionNode.Expression("isActiveStatus", [new PermissionNodeExpArgumentAttribute() {ArgOrder = 0, AttributeName = "status"}]))
-                )
-                .WithPermission("delete", PermissionNode.Leaf("team.member"))
-            .SchemaBuilder
-            .WithFunction(new Function("isActiveStatus",
-                [new FunctionParameter { ParamName = "status", ParamOrder = 0, ParamType = LangType.Int }],
-                (args) => (int?)args["status"] == 1));;;
-    })
+
+const string schema = @"
+entity user {}
+entity organization {
+    relation admin @user;
+    relation member @user;
+}
+entity team {
+    relation owner @user;
+    relation member @user;
+    relation org @organization;
+    permission edit := org.admin or owner;
+    permission delete := org.admin or owner;
+    permission invite := org.admin and (owner or member);
+    permission remove_user := owner;
+}
+entity project {
+    relation org @organization;
+    relation team @team;
+    relation member @team#member @user;
+    attribute public bool;
+    attribute status int;
+    permission view := org.admin or member or (public and org.member);
+    permission edit := (org.admin or team.member) and isActiveStatus(status);
+    permission delete := team.member;
+}
+
+fn isActiveStatus(status int) => status == 1;
+";
+
+builder.Services.AddValtuutusCore(schema)
 #if postgres
     .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
 #else

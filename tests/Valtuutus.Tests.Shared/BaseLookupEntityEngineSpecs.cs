@@ -149,7 +149,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var schema = @"
             entity user {}
             entity workspace {
-                attribute status bool;
+                attribute status string;
                 permission edit:= isActiveStatus(status);
             }
             fn isActiveStatus(status string) => status == ""active"";
@@ -177,21 +177,15 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     public async Task TestDecimalBasedAttributeExpression()
     {
         // arrange
-        var entity = new SchemaBuilder()
-            .WithEntity(TestsConsts.Users.Identifier)
-            .WithEntity("account")
-            .WithRelation("owner", c => c.WithEntityType(TestsConsts.Users.Identifier))
-            .WithAttribute("balance", typeof(decimal))
-            .WithPermission("withdraw", PermissionNode.Intersect(
-                PermissionNode.Leaf("owner"),
-                PermissionNode.Expression("check_balance", [new PermissionNodeExpArgumentAttribute() { ArgOrder = 0, AttributeName = "balance" }])
-            ))
-            .SchemaBuilder
-            .WithFunction(new Function("check_balance",
-                [new FunctionParameter { ParamName = "balance", ParamOrder = 0, ParamType = LangType.Decimal }],
-                (args) => (decimal?)args["balance"] >= 500m));
-
-        var schema = entity.Build();
+        var schema = @"
+            entity user {}
+            entity account {
+                relation owner @user;
+                attribute balance decimal;
+                permission withdraw := owner and check_balance(balance);
+            }
+            fn check_balance(balance decimal) => balance >= 500.0;
+        ";
 
         // act
         var engine = await CreateEngine(
@@ -223,7 +217,6 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
     {
         // Arrange
-        
         var schema = @"
             entity user {}
             entity group {
@@ -233,7 +226,6 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
                 relation group_members @group;
                 permission view := group_members.member;
             }
-            fn isActiveStatus(status string) => status == ""active"";
         ";
         var engine = await CreateEngine(tuples, attributes, schema);
 
