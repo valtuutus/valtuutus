@@ -22,6 +22,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     public required string FinalSubjectId { get; init; }
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
+    public required IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
 }
 
 public sealed class LookupEntityEngine(
@@ -45,7 +46,8 @@ public sealed class LookupEntityEngine(
             FinalSubjectType = req.SubjectType,
             FinalSubjectId = req.SubjectId,
             SnapToken = req.SnapToken,
-            Depth = req.Depth
+            Depth = req.Depth,
+            Context = req.Context
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
@@ -164,6 +166,11 @@ public sealed class LookupEntityEngine(
             {
                 throw new InvalidOperationException();
             }
+            
+            if (!node.IsContextValid(req.Context))
+            {
+                return [];
+            }
 
             var attributeArguments = node.GetArgsAttributesNames();
 
@@ -191,7 +198,8 @@ public sealed class LookupEntityEngine(
             return attributes.Values
                 .Where(attr =>
                 {
-                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId));
+                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
+                        req.Context);
                     return fn.Lambda(fnArgs);
                 })
                 .Select(x => new RelationOrAttributeTuple(x))

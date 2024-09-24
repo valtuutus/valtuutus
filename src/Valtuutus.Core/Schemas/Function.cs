@@ -43,7 +43,8 @@ internal static class ParamToArgMapExtensions
 {
     public static IDictionary<string, object?> ToLambdaArgs(
         this IDictionary<FunctionParameter, PermissionNodeExpArgument> map,
-        Func<PermissionNodeExpArgumentAttribute, object?> attrValueMapper)
+        Func<PermissionNodeExpArgumentAttribute, object?> attrValueMapper,
+        IDictionary<string, object> context)
     {
         return map.ToDictionary(
             pair => pair.Key.ParamName,
@@ -55,6 +56,7 @@ internal static class ParamToArgMapExtensions
                     PermissionNodeExpArgumentStringLiteral arg => arg.Value,
                     PermissionNodeExpArgumentIntLiteral arg => arg.Value,
                     PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                    PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
                     _ => throw new NotSupportedException("Unsuported argument type.")
                 };
             }

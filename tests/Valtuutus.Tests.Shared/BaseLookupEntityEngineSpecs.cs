@@ -235,4 +235,50 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // Assert
         result.Should().BeEquivalentTo(expected);
     }
+    
+    public static TheoryData<string, decimal?, HashSet<string>> ContextAccessTheoryData = new()
+    {
+        {"withdraw_amount", 500.0m, ["1"]},
+        {"withdraw_amount", 1000.0m, []},
+        {"withdraw_amount", 872.54m, ["1"]},
+        {"withdraw_amount", 100.0m, ["1", "2"]},
+        {"withdraw_amount", null, []},
+        {"amount", 500.0m, []}
+    };
+
+    [Theory, MemberData(nameof(ContextAccessTheoryData))]
+    public async Task Test_function_call_with_context_arg(string key, decimal? value, HashSet<string> expected)
+    {
+        // arrange
+        var schema = @"
+            entity user {}
+            entity account {
+                relation owner @user;
+                attribute balance decimal;
+                permission withdraw := owner and check_balance(balance, context.withdraw_amount);
+            }
+            fn check_balance(balance decimal, withdrawAmount decimal) => balance >= withdrawAmount;
+        ";
+
+        // act
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("account", "1", "owner", TestsConsts.Users.Identifier, "1"),
+                new RelationTuple("account", "2", "owner", TestsConsts.Users.Identifier, "1")
+            ],
+            [
+                new AttributeTuple("account", "1", "balance",
+                    JsonValue.Create(872.54m)),
+                new AttributeTuple("account", "2", "balance",
+                    JsonValue.Create(120.11m)),
+            ], schema);
+
+        // Act
+        var context = new Dictionary<string, object> {{key, value}};
+        var result = await engine.LookupEntity(new LookupEntityRequest("account",
+            "withdraw", "user", "1", context: context), default);
+
+        // assert
+        result.Should().BeEquivalentTo(expected);
+    }
 }

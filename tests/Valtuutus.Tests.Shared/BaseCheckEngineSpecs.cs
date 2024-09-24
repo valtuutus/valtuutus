@@ -590,4 +590,48 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         // assert
         result.Should().BeTrue();
     }
+    
+    public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
+    {
+        {"withdraw_amount", 500.0m, true},
+        {"withdraw_amount", 1000.0m, false},
+        {"withdraw_amount", 872.54m, true},
+        {"withdraw_amount", null, false},
+        {"amount", 500.0m, false}
+    };
+
+    [Theory, MemberData(nameof(ContextAccessTheoryData))]
+    public async Task Test_function_call_with_context_arg(string key, decimal? value, bool shouldPass = true)
+    {
+        var schema = @"
+            entity user {}
+            entity account {
+                relation owner @user;
+                attribute balance decimal;
+                permission withdraw := owner and check_balance(balance, context.withdraw_amount);
+            }
+            fn check_balance(balance decimal, amount decimal) => balance >= amount;
+        ";
+        
+        // act
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("account", "1", "owner", TestsConsts.Users.Identifier, "1")
+            ],
+            [
+                new AttributeTuple("account", "1", "balance",
+                    JsonValue.Create(872.54m))
+            ], schema);
+
+        // Act
+        var context = new Dictionary<string, object>
+        {
+            {key, value}
+        };
+        var result = await engine.Check(new CheckRequest("account",
+            "1", "withdraw", "user", "1", context: context), default);
+
+        // assert
+        result.Should().Be(shouldPass);
+    }
 }
