@@ -69,9 +69,20 @@ internal class SchemaReader
 
     public OneOf<Schema, List<LangError>> Parse(string schema)
     {
-        var schemaBuilder = new SchemaBuilder();
-
         var str = new AntlrInputStream(schema);
+        return ParseInternal(str);
+    }
+    
+    public OneOf<Schema, List<LangError>> Parse(Stream schemaStream)
+    {
+        var str = new AntlrInputStream(schemaStream);
+        return ParseInternal(str);
+    }
+
+    private OneOf<Schema, List<LangError>> ParseInternal(AntlrInputStream str)
+    {
+        var schemaBuilder = new SchemaBuilder();
+        
         var lexer = new ValtuutusLexer(str);
         var errorListener = new ParserSchemaErrorListener();
         lexer.RemoveErrorListeners();
@@ -178,7 +189,6 @@ internal class SchemaReader
 
         return schemaBuilder.Build();
     }
-    
 
     internal HashSet<string> GetFinalEntitiesNames(RelationSymbol relationSymbol)
     {

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
+using System.Reflection;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
 using Valtuutus.Core.Schemas;
@@ -112,4 +113,18 @@ entity repository {
                 new RelationEntity() { Type = "organization", Relation = "member", },
             ]);
     }
+
+    [Fact]
+    public void Should_parse_schema_from_stream()
+    {
+        var schemaFilePath = Assembly.GetExecutingAssembly()
+            .GetManifestResourceNames()
+            .First(c => c.EndsWith("example1.vtt"));
+        
+        var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
+        
+        var parseResult = new SchemaReader().Parse(schema);
+        
+        parseResult.IsT0.Should().BeTrue();
+    } 
 }

@@ -29,5 +29,9 @@
     <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Lang\Valtuutus.Lang.csproj" />
   </ItemGroup>
+  
+  <ItemGroup>
+    <EmbeddedResource Include="schema.vtt" CopyToOutputDirectory="PreserveNewest"/>
+  </ItemGroup>
 
 </Project>
