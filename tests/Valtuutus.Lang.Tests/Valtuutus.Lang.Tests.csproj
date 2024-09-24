@@ -23,5 +23,9 @@
       <ProjectReference Include="..\..\src\Valtuutus.Lang\Valtuutus.Lang.csproj" />
       <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
     </ItemGroup>
+    
+    <ItemGroup>
+        <EmbeddedResource Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest"/>
+    </ItemGroup>
 
 </Project>

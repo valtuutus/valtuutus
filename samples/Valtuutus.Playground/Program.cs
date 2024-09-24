@@ -16,6 +16,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using StackExchange.Redis;
+using System.Reflection;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -55,34 +56,11 @@ builder.Services.AddFusionCache()
         }));
 
 
-const string schema = @"
-entity user {}
-entity organization {
-    relation admin @user;
-    relation member @user;
-}
-entity team {
-    relation owner @user;
-    relation member @user;
-    relation org @organization;
-    permission edit := org.admin or owner;
-    permission delete := org.admin or owner;
-    permission invite := org.admin and (owner or member);
-    permission remove_user := owner;
-}
-entity project {
-    relation org @organization;
-    relation team @team;
-    relation member @team#member @user;
-    attribute public bool;
-    attribute status int;
-    permission view := org.admin or member or (public and org.member);
-    permission edit := (org.admin or team.member) and isActiveStatus(status);
-    permission delete := team.member;
-}
+var schemaFilePath = Assembly.GetExecutingAssembly()
+    .GetManifestResourceNames()
+    .First(c => c.EndsWith("schema.vtt"));
 
-fn isActiveStatus(status int) => status == 1;
-";
+var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
 
 builder.Services.AddValtuutusCore(schema)
 #if postgres
