@@ -13,11 +13,13 @@ public record CheckRequest : IWithDepth, IWithSnapToken
     public string? SubjectRelation { get; init; }
     public SnapToken? SnapToken { get; set; }
     public int Depth { get; set; } = 10;
+    public IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
 
-    public CheckRequest() {}
-    
+    public CheckRequest() { }
+
     [SetsRequiredMembers]
-    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, SnapToken? snapToken = null)
+    public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null,
+        string? subjectId = null, string? subjectRelation = null, SnapToken? snapToken = null, IDictionary<string, object>? context = null)
     {
         EntityType = entityType;
         EntityId = entityId;
@@ -26,5 +28,6 @@ public record CheckRequest : IWithDepth, IWithSnapToken
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
         SnapToken = snapToken;
+        Context = context ?? new Dictionary<string, object>();
     }
 }

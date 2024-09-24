@@ -6,13 +6,14 @@ namespace Valtuutus.Core.Engines.LookupSubject;
 public record LookupSubjectRequest : IWithDepth, IWithSnapToken
 {
     [SetsRequiredMembers]
-    public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10)
+    public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10, IDictionary<string, object>? context = null)
     {
         EntityType = entityType;
         Permission = permission;
         SubjectType = subjectType;
         EntityId = entityId;
         Depth = depth;
+        Context = context ?? new Dictionary<string, object>();
     }
 
     public LookupSubjectRequest() {}
@@ -24,4 +25,5 @@ public record LookupSubjectRequest : IWithDepth, IWithSnapToken
     public required string SubjectType { get; init; }
     public SnapToken? SnapToken { get; set; }
     public int Depth { get; set; } = 10;
+    public IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
 }

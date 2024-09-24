@@ -154,7 +154,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var checkFunctions = new List<Func<CancellationToken, Task<bool>>>(capacity: children.Count);
+        var checkFunctions = new List<CheckFunction>(capacity: children.Count);
         foreach (var child in children)
         {
             switch (child.Type)
@@ -196,6 +196,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 throw new InvalidOperationException();
             }
 
+            if (!node.IsContextValid(req.Context))
+            {
+                return false;
+            }
+
             var attributeArguments = node.GetArgsAttributesNames();
 
             var attributes = await reader.GetAttributes(
@@ -209,23 +214,23 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
 
             var paramToArgMap = fn.CreateParamToArgMap(node.Args);
-            
+
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
             {
                 if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
                 {
                     return null;
                 }
-                
+
                 var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
 
                 return attr.GetValue(attrType);
             };
 
 
-            var fnArgs = paramToArgMap.ToLambdaArgs(getDynamicallyTypedAttribute);
+            var fnArgs = paramToArgMap.ToLambdaArgs(getDynamicallyTypedAttribute, req.Context);
 
-            var res =  fn.Lambda(fnArgs);
+            var res = fn.Lambda(fnArgs);
             return res;
         };
     }
@@ -243,7 +248,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         // Direct Relation
         return CheckComputedUserSet(req, perm);
     }
-
 
     private CheckFunction CheckComputedUserSet(CheckRequest req, string computedUserSetRelation)
     {

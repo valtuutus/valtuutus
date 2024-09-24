@@ -27,6 +27,7 @@ namespace Valtuutus.Core.Configuration
 {
     public static class ConfigureSchema
     {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream) { }
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText) { }
     }
 }
@@ -178,7 +179,8 @@ namespace Valtuutus.Core.Engines.Check
         [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public CheckRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
-        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default) { }
+        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -224,6 +226,10 @@ namespace Valtuutus.Core.Engines.Check
 }
 namespace Valtuutus.Core.Engines
 {
+    public static class ContextUtils
+    {
+        public static bool IsContextValid(this Valtuutus.Core.Schemas.PermissionNodeLeafExp node, System.Collections.Generic.IDictionary<string, object> context) { }
+    }
     public interface IWithDepth
     {
         int Depth { get; set; }
@@ -252,7 +258,8 @@ namespace Valtuutus.Core.Engines.LookupEntity
         [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public LookupEntityRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
-        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10) { }
+        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -284,7 +291,8 @@ namespace Valtuutus.Core.Engines.LookupSubject
         [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public LookupSubjectRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
-        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10) { }
+        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -327,6 +335,15 @@ namespace Valtuutus.Core.Lang
         String = 1,
         Decimal = 2,
         Boolean = 3,
+    }
+}
+namespace Valtuutus.Core.Lang.SchemaReaders
+{
+    public class SchemaReader
+    {
+        public SchemaReader() { }
+        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(System.IO.Stream schemaStream) { }
+        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(string schema) { }
     }
 }
 namespace Valtuutus.Core.Observability
