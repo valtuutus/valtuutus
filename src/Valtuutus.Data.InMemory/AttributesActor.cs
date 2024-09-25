@@ -34,8 +34,9 @@ internal sealed class AttributesActor : ReceiveActor
 
         Receive<Commands.GetEntityAttributesByNamesWithEntitiesIds>(GetEntityAttributesByNamesWithEntitiesIdsHandler);
     }
-    
-    private void GetEntityAttributesByNamesWithEntitiesIdsHandler(Commands.GetEntityAttributesByNamesWithEntitiesIds msg)
+
+    private void GetEntityAttributesByNamesWithEntitiesIdsHandler(
+        Commands.GetEntityAttributesByNamesWithEntitiesIds msg)
     {
         var res = _attributesTuples.Where(x =>
             x.Attribute.EntityType == msg.Filter.EntityType &&
@@ -48,7 +49,8 @@ internal sealed class AttributesActor : ReceiveActor
             .ToDictionary(x => (x.Attribute, x.EntityId)));
     }
 
-    private static IEnumerable<InMemoryTuple> ApplySnapTokenFilter<T>(T withSnapToken, IEnumerable<InMemoryTuple> current) where T: IWithSnapToken
+    private static IEnumerable<InMemoryTuple> ApplySnapTokenFilter<T>(T withSnapToken,
+        IEnumerable<InMemoryTuple> current) where T : IWithSnapToken
     {
         if (withSnapToken.SnapToken != null)
         {
@@ -58,6 +60,7 @@ internal sealed class AttributesActor : ReceiveActor
                             x.DeletedTxId.Value.CompareTo(Ulid.Parse(withSnapToken.SnapToken.Value.Value)) >
                             0);
         }
+
         return current;
     }
 
@@ -100,6 +103,18 @@ internal sealed class AttributesActor : ReceiveActor
 
     private void WriteAttributesHandler(Commands.WriteAttributes msg)
     {
+        var compareAttribute = (AttributeTuple a, AttributeTuple b) =>
+            a.EntityId == b.EntityId && a.EntityType == b.EntityType && a.Attribute == b.Attribute;
+        
+        foreach (var existingAttribute in _attributesTuples)
+        {
+            if (msg.Attributes.Any(x => compareAttribute(x, existingAttribute.Attribute))
+                && existingAttribute.DeletedTxId is null)
+            {
+                existingAttribute.DeletedTxId = msg.TransactId;
+            }
+        }
+
         _attributesTuples.AddRange(msg.Attributes.Select(x => new InMemoryTuple(x, msg.TransactId, null)));
     }
 
@@ -122,7 +137,7 @@ internal sealed class AttributesActor : ReceiveActor
             x.Attribute.EntityType == msg.Filter.EntityType && x.Attribute.Attribute == msg.Filter.Attribute);
 
         res = ApplySnapTokenFilter(msg.Filter, res);
-        
+
         if (!string.IsNullOrWhiteSpace(msg.Filter.EntityId))
             res = res.Where(x => x.Attribute.EntityId == msg.Filter.EntityId);
 
@@ -168,6 +183,8 @@ internal sealed class AttributesActor : ReceiveActor
         {
         }
 
-        public record GetEntityAttributesByNamesWithEntitiesIds(EntityAttributesFilter Filter, IEnumerable<string> EntitiesIds);
+        public record GetEntityAttributesByNamesWithEntitiesIds(
+            EntityAttributesFilter Filter,
+            IEnumerable<string> EntitiesIds);
     }
 }
