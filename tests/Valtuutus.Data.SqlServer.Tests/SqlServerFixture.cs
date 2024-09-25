@@ -140,6 +140,8 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
            index tvp_id (id)
            );
        
-       CREATE TABLE [transactions] ([id] nchar(26) NOT NULL, [created_at] datetime2(7) NOT NULL, CONSTRAINT [PK_transactions] PRIMARY KEY CLUSTERED ([id] ASC));    
+       CREATE TABLE [transactions] ([id] nchar(26) NOT NULL, [created_at] datetime2(7) NOT NULL, CONSTRAINT [PK_transactions] PRIMARY KEY CLUSTERED ([id] ASC));
+       
+       CREATE UNIQUE NONCLUSTERED INDEX IX_UniqueAttribute ON attributes (entity_id, entity_type, [attribute]) WHERE deleted_tx_id IS NULL    
        """;
 }

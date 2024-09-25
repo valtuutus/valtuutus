@@ -14,15 +14,18 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
     private readonly IServiceProvider _provider;
     private readonly ValtuutusDataOptions _options;
 
-    public PostgresDataWriterProvider(DbConnectionFactory factory, IServiceProvider provider, ValtuutusDataOptions options)
+    public PostgresDataWriterProvider(DbConnectionFactory factory, IServiceProvider provider,
+        ValtuutusDataOptions options)
     {
         _factory = factory;
         _provider = provider;
         _options = options;
     }
-    public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+
+    public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
+        CancellationToken ct)
     {
-        await using var db = (NpgsqlConnection) _factory();
+        await using var db = (NpgsqlConnection)_factory();
         await db.OpenAsync(ct);
 #if !NETCOREAPP3_0_OR_GREATER
         await using var transaction = db.BeginTransaction();
@@ -30,11 +33,12 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         await using var transaction = await db.BeginTransactionAsync(ct);
 #endif
         var transactId = Ulid.NewUlid();
-        
+
         await InsertTransaction(db, transactId, transaction, ct);
-        
+
         await using var relationsWriter = await db.BeginBinaryImportAsync(
-            "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)", ct);
+            "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
+            ct);
         foreach (var record in relations)
         {
             await relationsWriter.StartRowAsync(ct);
@@ -49,9 +53,15 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
 
         await relationsWriter.CompleteAsync(ct);
         await relationsWriter.CloseAsync(ct);
-        
+
+        await db.ExecuteAsync(new CommandDefinition(
+            "CREATE TEMPORARY TABLE temp_attributes (entity_type VARCHAR(256), entity_id VARCHAR(64), attribute VARCHAR(64), value JSONB, created_tx_id CHAR(26))",
+            transaction, cancellationToken: ct));
+
         await using var attributesWriter = await db.BeginBinaryImportAsync(
-            "copy public.attributes (entity_type, entity_id, attribute, value, created_tx_id) from STDIN (FORMAT BINARY)", ct);
+            "copy temp_attributes (entity_type, entity_id, attribute, value, created_tx_id) from STDIN (FORMAT BINARY)",
+            ct);
+        
         foreach (var record in attributes)
         {
             await attributesWriter.StartRowAsync(ct);
@@ -61,78 +71,87 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
             await attributesWriter.WriteAsync(record.Value.ToJsonString(), NpgsqlDbType.Jsonb, ct);
             await attributesWriter.WriteAsync(transactId.ToString(), NpgsqlDbType.Char, ct);
         }
-
         
         await attributesWriter.CompleteAsync(ct);
         await attributesWriter.CloseAsync(ct);
 
+        await db.ExecuteAsync(new CommandDefinition(
+            """"
+            MERGE INTO public.attributes AS target
+            USING temp_attributes AS source
+            ON (target.entity_type = source.entity_type 
+                AND target.entity_id = source.entity_id 
+                AND target.attribute = source.attribute)
+            WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
+                UPDATE SET deleted_tx_id = source.created_tx_id;
+            
+            INSERT INTO public.attributes (entity_type, entity_id, attribute, value, created_tx_id)
+            SELECT entity_type, entity_id, attribute, value, created_tx_id
+            FROM temp_attributes;
+            """", transaction, cancellationToken: ct));
 
         await transaction.CommitAsync(ct);
 
-        var snapToken = new SnapToken(transactId.ToString());    
+        var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;    }
+        return snapToken;
+    }
 
     private static async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
-        await db.ExecuteAsync(new CommandDefinition("INSERT INTO public.transactions (id, created_at) VALUES (@id, @created_at)", new
-        {
-            id = transactId,
-            created_at = DateTimeOffset.UtcNow
-        }, transaction: transaction, cancellationToken: ct));
+        await db.ExecuteAsync(new CommandDefinition(
+            "INSERT INTO public.transactions (id, created_at) VALUES (@id, @created_at)",
+            new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
+            cancellationToken: ct));
     }
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
         var transactId = Ulid.NewUlid();
-        await using var db = (NpgsqlConnection) _factory();
+        await using var db = (NpgsqlConnection)_factory();
         await db.OpenAsync(ct);
 
 
-        
 #if !NETCOREAPP3_0_OR_GREATER
         await using var transaction = db.BeginTransaction();
 #else
         await using var transaction = await db.BeginTransactionAsync(ct);
-        
+
 #endif
-        
+
         var snapTokenParam = new
         {
-            SnapToken = new DbString
-            {
-                Length = 26,
-                Value = transactId.ToString(),
-                IsFixedLength = true
-            }
-
+            SnapToken = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true }
         };
         if (filter.Relations.Length > 0)
         {
             var relationsBuilder = new SqlBuilder();
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate = relationsBuilder.AddTemplate(@"UPDATE public.relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
+            var queryTemplate =
+                relationsBuilder.AddTemplate(
+                    @"UPDATE public.relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
-            
         }
 
         if (filter.Attributes.Length > 0)
         {
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate = attributesBuilder.AddTemplate(@"UPDATE public.attributes set deleted_tx_id = @SnapToken /**where**/",snapTokenParam);
+            var queryTemplate =
+                attributesBuilder.AddTemplate(@"UPDATE public.attributes set deleted_tx_id = @SnapToken /**where**/",
+                    snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
-            
         }
 
         await InsertTransaction(db, transactId, transaction, ct);
         await transaction.CommitAsync(ct);
-        var snapToken = new SnapToken(transactId.ToString());    
+        var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;    }
+        return snapToken;
+    }
 }

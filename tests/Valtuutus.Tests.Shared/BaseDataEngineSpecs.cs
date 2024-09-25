@@ -8,7 +8,6 @@ using Valtuutus.Data;
 
 namespace Valtuutus.Tests.Shared;
 
-
 public abstract class BaseDataEngineSpecs : IAsyncLifetime
 {
     protected IDatabaseFixture Fixture { get; }
@@ -26,116 +25,144 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
     {
         var services = new ServiceCollection()
             .AddValtuutusCore(TestsConsts.DefaultSchema);
-        
+
         AddSpecificProvider(services);
 
         return services.BuildServiceProvider();
     }
 
     protected abstract Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples();
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[],
         DeleteFilter, RelationTuple[], AttributeTuple[]> DeleteCases =
         new()
         {
             // Should delete everything, because no parameters has been passed to the filter.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],
-                [], new DeleteFilter
-                {
-                    Relations = new []{ new DeleteRelationsFilter()}
-                }, [], []
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [], new DeleteFilter { Relations = new[] { new DeleteRelationsFilter() } }, [], []
             },
             // Should delete only the relation with the given subject id.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],                [], new DeleteFilter
-                {
-                    Relations = new []{ new DeleteRelationsFilter{SubjectId = "1"}}
-                }, [], []
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [], new DeleteFilter { Relations = new[] { new DeleteRelationsFilter { SubjectId = "1" } } }, [], []
             },
             // Should delete only the relation with the given entity id.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],
-                [], new DeleteFilter
-                {
-                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1"}}
-                }, [ new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")], []
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [], new DeleteFilter { Relations = new[] { new DeleteRelationsFilter { EntityId = "1" } } }, [
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                []
             },
             // Should delete only the relation with the given entity id and subject id.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],
-                [], new DeleteFilter
-                {
-                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1", SubjectId = "1"}}
-                }, [new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")], []
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [],
+                new DeleteFilter
+                    {
+                        Relations = new[] { new DeleteRelationsFilter { EntityId = "1", SubjectId = "1" } }
+                    },
+                [
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                []
             },
             // Should delete only the relation with the given entity id and entity type project.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],
-                [], new DeleteFilter
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [],
+                new DeleteFilter
                 {
-                    Relations = new []{ new DeleteRelationsFilter{EntityId = "1", EntityType = "project"}}
-                }, [new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")], []
+                    Relations = new[] { new DeleteRelationsFilter { EntityId = "1", EntityType = "project" } }
+                },
+                [
+                    new RelationTuple("project", "2", "member", "user", "1"),
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                []
             },
             // should delete only the relations with the given subject id and subject type user.
             {
-                [new RelationTuple("project", "1", "member", "user", "1"),
+                [
+                    new RelationTuple("project", "1", "member", "user", "1"),
                     new RelationTuple("project", "2", "member", "user", "1"),
-                    new RelationTuple("project", "3", "member", "user", "1")],
-                [], new DeleteFilter
+                    new RelationTuple("project", "3", "member", "user", "1")
+                ],
+                [],
+                new DeleteFilter
                 {
-                    Relations = new []{ new DeleteRelationsFilter{SubjectId = "1", SubjectType = "user"}}
-                }, [], []
+                    Relations = new[] { new DeleteRelationsFilter { SubjectId = "1", SubjectType = "user" } }
+                },
+                [], []
             },
-            
+
             // Should delete every attribute of the specified entityId.
             {
-                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                [], [
+                    new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
                     new AttributeTuple("project", "1", "public", JsonValue.Create(true)!),
                     new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
                     new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)], new DeleteFilter
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)
+                ],
+                new DeleteFilter
                 {
-                    Attributes = new []{ new DeleteAttributesFilter
-                    {
-                        EntityType = "project",
-                        EntityId = "1"
-                    }}
-                }, [], [new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)]
+                    Attributes = new[] { new DeleteAttributesFilter { EntityType = "project", EntityId = "1" } }
+                },
+                [], [
+                    new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)
+                ]
             },
-            
+
             // Should only delete the attribute with name public of the specified entityId.
             {
-                [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                [], [
+                    new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
                     new AttributeTuple("project", "1", "public", JsonValue.Create(true)!),
                     new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
                     new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)], new DeleteFilter
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)
+                ],
+                new DeleteFilter
                 {
-                    Attributes = new []{ new DeleteAttributesFilter
+                    Attributes = new[]
                     {
-                        EntityType = "project",
-                        EntityId = "1",
-                        Attribute = "public"
-                    }}
-                }, [], [new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
+                        new DeleteAttributesFilter
+                        {
+                            EntityType = "project", EntityId = "1", Attribute = "public"
+                        }
+                    }
+                },
+                [], [
+                    new AttributeTuple("project", "1", "name", JsonValue.Create("test")!),
                     new AttributeTuple("project", "1", "unreliable", JsonValue.Create(false)!),
                     new AttributeTuple("project", "2", "name", JsonValue.Create("test")!),
-                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)]
+                    new AttributeTuple("project", "3", "name", JsonValue.Create("test")!)
+                ]
             },
         };
 
@@ -147,31 +174,85 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
         // arrange
         var engine = Provider.GetRequiredService<IDataWriterProvider>();
         await engine.Write(seedRelations, seedAttributes, default);
-        
+
         // act
         await engine.Delete(filter, default);
-        
+
         // assert
         var (relations, attributes) = await GetCurrentTuples();
 
         relations.Should().BeEquivalentTo(expectedTuples);
-        attributes.Select(x => new
-        {
-            x.Attribute,
-            x.EntityType,
-            x.EntityId,
-            Value = x.Value.ToJsonString()
-        }).Should().BeEquivalentTo(expectedAttributes.Select(x => new
-        {
-            x.Attribute,
-            x.EntityType,
-            x.EntityId,
-            Value = x.Value.ToJsonString()
-        }));
+        attributes.Select(x => new { x.Attribute, x.EntityType, x.EntityId, Value = x.Value.ToJsonString() }).Should()
+            .BeEquivalentTo(expectedAttributes.Select(x =>
+                new { x.Attribute, x.EntityType, x.EntityId, Value = x.Value.ToJsonString() }));
+    }
 
+    [Fact]
+    public async Task ShouldNotAllowDuplicatedAttribute()
+    {
+        var engine = Provider.GetRequiredService<IDataWriterProvider>();
+
+        await engine.Write([],
+        [
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                JsonValue.Create(true))
+        ], default);
+
+        await engine.Write([],
+        [
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                JsonValue.Create(false))
+        ], default);
+
+        var (_, attributes) = await GetCurrentTuples();
+
+        attributes.Should().HaveCount(1);
+        attributes.Should().OnlyContain(a =>
+            a.Attribute == "public" && a.Value.ToJsonString(null) == JsonValue.Create(false, null).ToJsonString(null) &&
+            a.EntityId == TestsConsts.Workspaces.PublicWorkspace && a.EntityType == TestsConsts.Workspaces.Identifier);
     }
     
-    
+    [Fact]
+    public async Task ShouldNotAllowDuplicatedAttributeWithDeletedOne()
+    {
+        var engine = Provider.GetRequiredService<IDataWriterProvider>();
+
+        await engine.Write([],
+        [
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                JsonValue.Create(true))
+        ], default);
+        
+        await engine.Delete(new DeleteFilter
+        {
+            Attributes = new[]
+            {
+                new DeleteAttributesFilter
+                {
+                    EntityType = TestsConsts.Workspaces.Identifier,
+                    EntityId = TestsConsts.Workspaces.PublicWorkspace,
+                    Attribute = "public"
+                }
+            }
+        }, default);        
+
+        // Act
+        await engine.Write([],
+        [
+            new AttributeTuple(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "public",
+                JsonValue.Create(false))
+        ], default);
+
+        // Assert
+        var (_, attributes) = await GetCurrentTuples();
+
+        attributes.Should().HaveCount(1);
+        attributes.Should().OnlyContain(a =>
+            a.Attribute == "public" && a.Value.ToJsonString(null) == JsonValue.Create(false, null).ToJsonString(null) &&
+            a.EntityId == TestsConsts.Workspaces.PublicWorkspace && a.EntityType == TestsConsts.Workspaces.Identifier);
+    }
+
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
