@@ -11,6 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="FluentAssertions" />
         <PackageReference Include="Microsoft.NET.Test.Sdk"/>
         <PackageReference Include="xunit"/>
         <PackageReference Include="xunit.runner.visualstudio"/>
@@ -30,9 +31,6 @@
     <ItemGroup>
         <EmbeddedResource Include="schema1.vtt" />
         <AdditionalFiles Include="schema1.vtt" />
-
-        <EmbeddedResource Include="schema2.vtt" />
-        <AdditionalFiles Include="schema2.vtt" />
     </ItemGroup>
 
 </Project>

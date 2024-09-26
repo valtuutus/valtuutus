@@ -58,7 +58,7 @@ public class SchemaConstGenerator : IIncrementalGenerator
         var cultureInfo = CultureInfo.InvariantCulture;
         
         sb.AppendLine("""
-                      namespace Valtuutus.Lang.SourceGen.IntegrationTests;
+                      namespace Valtuutus.Lang;
 
                       /// <summary>
                       /// Auto-generated class to access all schema members as consts.
