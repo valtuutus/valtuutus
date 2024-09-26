@@ -8,7 +8,6 @@
         <IsTestProject>true</IsTestProject>
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
         <AdditionalFileItemNames>$(AdditionalFileItemNames);EmbeddedResource</AdditionalFileItemNames>
-
     </PropertyGroup>
 
     <ItemGroup>
@@ -23,19 +22,17 @@
 
     
     <ItemGroup>
-        
         <ProjectReference Include="..\..\src\Valtuutus.Lang.SourceGen\Valtuutus.Lang.SourceGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false"  />
     </ItemGroup>
     
     
 
     <ItemGroup>
-      <EmbeddedResource Include="schema1.vtt">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </EmbeddedResource>
-      <EmbeddedResource Include="schema2.vtt">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </EmbeddedResource>
+        <EmbeddedResource Include="schema1.vtt" />
+        <AdditionalFiles Include="schema1.vtt" />
+
+        <EmbeddedResource Include="schema2.vtt" />
+        <AdditionalFiles Include="schema2.vtt" />
     </ItemGroup>
 
 </Project>

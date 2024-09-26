@@ -22,7 +22,6 @@ public class SchemaConstGenerator : IIncrementalGenerator
         // We need a value provider for any addition file.
 		// As soon as there is direct access to embedded resources we can change this.
 		// All embedded resources are added as additional files through our build props integrated into the nuget.
-        
         // Get additional files that are marked as embedded resources (these are passed from the consuming assembly)
         var vttFiles = context.AdditionalTextsProvider
             .Where(file => file.Path.EndsWith(".vtt"))
@@ -59,7 +58,7 @@ public class SchemaConstGenerator : IIncrementalGenerator
         var cultureInfo = CultureInfo.InvariantCulture;
         
         sb.AppendLine("""
-                      namespace Valtuutus.Lang;
+                      namespace Valtuutus.Lang.SourceGen.IntegrationTests;
 
                       /// <summary>
                       /// Auto-generated class to access all schema members as consts.

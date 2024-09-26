@@ -4,7 +4,8 @@
         <IsRoslynComponent>true</IsRoslynComponent>
         <TargetFramework>netstandard2.0</TargetFramework>
         <Nullable>enable</Nullable>
-        
+        <LangVersion>latest</LangVersion>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -20,7 +21,21 @@
         <Deterministic>true</Deterministic>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     </PropertyGroup>
+    <PropertyGroup>
+    </PropertyGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all" GeneratePathProperty="true" />
+    </ItemGroup>
+
+    <Target Name="GetDependencyTargetPaths" AfterTargets="ResolvePackageDependenciesForBuild">
+        <ItemGroup>
+            <TargetPathWithTargetPlatformMoniker Include="@(ResolvedCompileFileDefinitions)" IncludeRuntimeDependency="false" />
+            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)/../Valtuutus.Lang/$(OutputPath)/*.dll" IncludeRuntimeDependency="false" />
+
+        </ItemGroup>
+    </Target>
+    
     <ItemGroup>
         <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     </ItemGroup>
@@ -33,12 +48,8 @@
 
     <ItemGroup>
         <EmbeddedResource Include="Valtuutus.Lang.SourceGen.props" Pack="true">
-            <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </EmbeddedResource>
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" />
     </ItemGroup>
 
 </Project>

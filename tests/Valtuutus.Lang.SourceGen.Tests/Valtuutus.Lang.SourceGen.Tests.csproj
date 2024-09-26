@@ -23,7 +23,7 @@
     
     
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Valtuutus.Lang.SourceGen\Valtuutus.Lang.SourceGen.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Lang.SourceGen\Valtuutus.Lang.SourceGen.csproj" PrivateAssets="all" />
     </ItemGroup>
 
     <ItemGroup>
