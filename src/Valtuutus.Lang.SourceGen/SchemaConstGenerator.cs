@@ -1,3 +1,4 @@
+using Antlr4.Runtime;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using System;
@@ -48,18 +49,73 @@ public class SchemaConstGenerator : IIncrementalGenerator
     {
         // Custom logic to process the .vtt content
         StringBuilder sb = new StringBuilder();
-        sb.AppendLine("public class GeneratedVttClass");
+        var str = new AntlrInputStream(vttContent);
+        var lexer = new ValtuutusLexer(str);
+        var tokens = new CommonTokenStream(lexer);
+        var parser = new ValtuutusParser(tokens);
+        
+        var tree = parser.schema();
+
+        var cultureInfo = CultureInfo.InvariantCulture;
+        
+        sb.AppendLine("public static class SchemaConstsGen");
         sb.AppendLine("{");
-        sb.AppendLine("    public static string GetVttContent()");
-        sb.AppendLine("    {");
-        sb.AppendLine($"        return @\"{vttContent}\";");
-        sb.AppendLine("    }");
+        foreach (var entity in tree.entityDefinition())
+        {
+            var entityName = entity.ID().GetText();
+            var entityBody = entity.entityBody();
+            sb.AppendLine($"\tpublic static class {cultureInfo.TextInfo.ToTitleCase(entityName).Replace("_", "")}");
+            sb.AppendLine("\t{");
+            sb.AppendLine("\t\tpublic const string Name = \"" + entityName + "\";");
+
+            var attributes = entityBody.attributeDefinition();
+
+            if (attributes.Length > 0)
+            {
+                sb.AppendLine("\t\tpublic static class Attributes");
+                sb.AppendLine("\t\t{");
+                foreach (var attribute in attributes)
+                {
+                    var attributeName = attribute.ID().GetText();
+                    sb.AppendLine($"\t\t\tpublic const string {cultureInfo.TextInfo.ToTitleCase(attributeName).Replace("_", "")} = \"{attributeName}\";");
+                }
+                sb.AppendLine("\t\t}");    
+            }
+
+            var relations = entityBody.relationDefinition();
+
+            if (relations.Length > 0)
+            {
+                sb.AppendLine("\t\tpublic static class Relations");
+                sb.AppendLine("\t\t{");
+                foreach (var relation in relations)
+                {
+                    var relationName = relation.ID().GetText();
+                    sb.AppendLine($"\t\t\tpublic const string {cultureInfo.TextInfo.ToTitleCase(relationName).Replace("_", "")} = \"{relationName}\";");
+                }
+                sb.AppendLine("\t\t}");
+            }
+            
+            var permissions = entityBody.permissionDefinition();
+
+            if (permissions.Length > 0)
+            {
+                sb.AppendLine("\t\tpublic static class Permissions");
+                sb.AppendLine("\t\t{");
+                foreach (var perm in permissions)
+                {
+                    var permName = perm.ID().GetText();
+                    sb.AppendLine(
+                        $"\t\t\tpublic const string {cultureInfo.TextInfo.ToTitleCase(permName).Replace("_", "")} = \"{permName}\";");
+                }
+
+                sb.AppendLine("\t\t}");
+            }
+
+            sb.AppendLine("\t}");
+        }
         sb.AppendLine("}");
+        
         return sb.ToString();
     }
-    
-    
-
-    
-
 }

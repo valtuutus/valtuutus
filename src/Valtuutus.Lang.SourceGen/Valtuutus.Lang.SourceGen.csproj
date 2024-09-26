@@ -36,4 +36,8 @@
         </EmbeddedResource>
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" />
+    </ItemGroup>
+
 </Project>
