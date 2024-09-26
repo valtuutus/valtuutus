@@ -58,7 +58,14 @@ public class SchemaConstGenerator : IIncrementalGenerator
 
         var cultureInfo = CultureInfo.InvariantCulture;
         
-        sb.AppendLine("public static class SchemaConstsGen");
+        sb.AppendLine("""
+                      namespace Valtuutus.Lang;
+
+                      /// <summary>
+                      /// Auto-generated class to access all schema members as consts.
+                      /// </summary>
+                      public static class SchemaConstsGen
+                      """);
         sb.AppendLine("{");
         foreach (var entity in tree.entityDefinition())
         {
@@ -66,7 +73,7 @@ public class SchemaConstGenerator : IIncrementalGenerator
             var entityBody = entity.entityBody();
             sb.AppendLine($"\tpublic static class {cultureInfo.TextInfo.ToTitleCase(entityName).Replace("_", "")}");
             sb.AppendLine("\t{");
-            sb.AppendLine("\t\tpublic const string Name = \"" + entityName + "\";");
+            sb.AppendLine($"\t\tpublic const string Name = \"{entityName}\";");
 
             var attributes = entityBody.attributeDefinition();
 
