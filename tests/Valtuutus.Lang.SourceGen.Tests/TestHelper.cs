@@ -32,7 +32,7 @@ public static class TestHelper
         {
             var path = $"{fileName}";
             var additionalText = new InMemoryAdditionalText(path, File.ReadAllText(path));
-            driver = driver.AddAdditionalTexts([additionalText]);
+            driver = driver.AddAdditionalTexts(ImmutableArray.Create<AdditionalText>(additionalText));
 
         }
 

@@ -5,7 +5,6 @@
         <TargetFramework>netstandard2.0</TargetFramework>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -28,11 +27,17 @@
         <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
-    <Target Name="GetDependencyTargetPaths" AfterTargets="ResolvePackageDependenciesForBuild">
-        <ItemGroup>
-            <TargetPathWithTargetPlatformMoniker Include="@(ResolvedCompileFileDefinitions)" IncludeRuntimeDependency="false" />
-            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)/../Valtuutus.Lang/$(OutputPath)/*.dll" IncludeRuntimeDependency="false" />
+    <!-- 
+        https://github.com/dotnet/roslyn/issues/52017#issuecomment-1046216200
+        This automatically adds explicit and transient dependencies so that they are available at the time the generator is executed. 
+    -->
+    <PropertyGroup>
+        <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
+    </PropertyGroup>
 
+    <Target Name="GetDependencyTargetPaths" DependsOnTargets="ResolveReferences">
+        <ItemGroup>
+            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)/../Valtuutus.Lang/$(OutputPath)/Valtuutus.Lang.dll" IncludeRuntimeDependency="false" />
         </ItemGroup>
     </Target>
     
