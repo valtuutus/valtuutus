@@ -25,6 +25,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="Antlr4.Runtime.Standard" GeneratePathProperty="true" PrivateAssets="all" />
     </ItemGroup>
 
     <!-- 
@@ -37,7 +38,9 @@
 
     <Target Name="GetDependencyTargetPaths" DependsOnTargets="ResolveReferences">
         <ItemGroup>
-            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)/../Valtuutus.Lang/$(OutputPath)/Valtuutus.Lang.dll" IncludeRuntimeDependency="false" />
+            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)\..\Valtuutus.Lang\$(OutputPath)\*.dll" IncludeRuntimeDependency="false" />
+            <TargetPathWithTargetPlatformMoniker Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" IncludeRuntimeDependency="false" />
+
         </ItemGroup>
     </Target>
     
