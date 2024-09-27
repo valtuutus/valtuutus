@@ -477,6 +477,7 @@ $RECYCLE.BIN/
 *.msm
 *.msp
 
+*.received.cs
 *.received.txt
 
 # Windows shortcuts
@@ -484,3 +485,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Global.json file
+global.json

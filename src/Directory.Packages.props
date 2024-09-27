@@ -11,6 +11,8 @@
     <PackageVersion Include="Dapper.SqlBuilder" Version="[2.0.78,)" />
     <PackageVersion Include="FastMember" Version="[1.5.0,)" />
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="8.0.1" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.2.1" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="[6.0.0,)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[6.0.0,)" />
