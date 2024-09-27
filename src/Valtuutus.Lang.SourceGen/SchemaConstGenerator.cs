@@ -35,16 +35,16 @@ public class SchemaConstGenerator : IIncrementalGenerator
         
         context.RegisterSourceOutput(vttFiles, (sourceProductionContext, file) =>
         {
-            if (!string.IsNullOrEmpty(file.Content))
+            if (!string.IsNullOrEmpty(file?.Content))
             {
-                var generatedSource = ProcessVttFile(file.Content);
+                var generatedSource = ProcessVttFile(file!.Content!);
                 sourceProductionContext.AddSource($"SchemaConsts.g.cs", SourceText.From(generatedSource, Encoding.UTF8));
             }
         });
 
     }
     
-    private string ProcessVttFile(string vttContent)
+    private static string ProcessVttFile(string vttContent)
     {
         // Custom logic to process the .vtt content
         StringBuilder sb = new StringBuilder();
