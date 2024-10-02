@@ -14,7 +14,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/";
+                FROM {0}.{1} /**where**/";
 
     private const string SelectRelations = @"SELECT 
                     entity_type,
@@ -23,14 +23,17 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     subject_type,
                     subject_id, 
                     subject_relation 
-                FROM relation_tuples /**where**/";
+                FROM {0}.{1} /**where**/";
 
     private readonly DbConnectionFactory _connectionFactory;
+    private readonly IValtuutusDbOptions _dbOptions;
 
     public PostgresDataReaderProvider(DbConnectionFactory connectionFactory,
-        ValtuutusDataOptions options) : base(options)
+        ValtuutusDataOptions options,
+        IValtuutusDbOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
+        _dbOptions = dbOptions;
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
@@ -41,7 +44,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         {
             using var connection = _connectionFactory();
 
-            var query = @"SELECT id FROM transactions ORDER BY created_at DESC LIMIT 1";
+            var query = $"SELECT id FROM {_dbOptions.Schema}.{_dbOptions.TransactionsTableName} ORDER BY created_at DESC LIMIT 1";
 
             var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query, cancellationToken: ct));
             return res != null ? new SnapToken(res) : (SnapToken?)null;
@@ -58,7 +61,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
-                .AddTemplate(SelectRelations);
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
 
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -78,7 +81,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
-                .AddTemplate(SelectRelations);
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
             
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -98,7 +101,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
-                .AddTemplate(SelectRelations);
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
 
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -118,8 +121,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate($@"{SelectAttributes}
-                LIMIT 1");
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
@@ -138,7 +140,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -157,7 +159,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -175,7 +177,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -194,7 +196,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))

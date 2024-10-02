@@ -12,14 +12,19 @@ public static class DependencyInjectionExtensions
     /// </summary>
     /// <param name="services">Service collection</param>
     /// <param name="factory">This is a scoped connection factory. Can be used to set multitenant access to the database.</param>
+    /// <param name="options">Options to configure schema and table names.</param>
     /// <returns></returns>
-    public static IValtuutusDataBuilder AddPostgres(this IServiceCollection services, Func<IServiceProvider, DbConnectionFactory> factory)
+    public static IValtuutusDataBuilder AddPostgres(this IServiceCollection services, 
+        Func<IServiceProvider, DbConnectionFactory> factory,
+        ValtuutusPostgresOptions? options = null)
     {
         var builder = services.AddValtuutusData();
         builder.Services.AddScoped(factory);
         DefaultTypeMap.MatchNamesWithUnderscores = true;
         SqlMapper.AddTypeHandler(new JsonTypeHandler());
         SqlMapper.AddTypeHandler(new UlidTypeHandler());
+        options ??= new ValtuutusPostgresOptions();
+        builder.Services.AddSingleton<IValtuutusDbOptions>(options);
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
         return builder;
