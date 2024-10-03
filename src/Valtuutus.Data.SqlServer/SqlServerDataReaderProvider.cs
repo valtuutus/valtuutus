@@ -1,5 +1,4 @@
-﻿
-using Valtuutus.Core;
+﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Data.SqlServer.Utils;
@@ -15,14 +14,26 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/";
+                FROM [{0}].[{1}] /**where**/";
+
+    private const string SelectRelations = @"SELECT
+                    entity_type,
+                    entity_id,
+                    relation,
+                    subject_type,
+                    subject_id, 
+                    subject_relation 
+                FROM [{0}].[{1}] /**where**/";
 
     private readonly DbConnectionFactory _connectionFactory;
+    private readonly IValtuutusDbOptions _dbOptions;
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
-        ValtuutusDataOptions options) : base(options)
+        ValtuutusDataOptions options,
+        IValtuutusDbOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
+        _dbOptions = dbOptions;
     }
 
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
@@ -37,12 +48,12 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(@"SELECT TOP 1
+                .AddTemplate(@$"SELECT TOP 1
                     entity_type,
                     entity_id,
                     attribute,
                     value
-                FROM attributes /**where**/");
+                FROM [{_dbOptions.Schema}].[{_dbOptions.AttributesTableName}] /**where**/");
             
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
@@ -63,7 +74,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -82,7 +93,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -104,7 +115,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
 
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -125,7 +136,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(SelectAttributes);
+                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
             
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -141,7 +152,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             using var connection = _connectionFactory();
 
-            var query = @"SELECT TOP 1 id FROM dbo.transactions ORDER BY created_at DESC";
+            var query = @$"SELECT TOP 1 id FROM {_dbOptions.Schema}.{_dbOptions.TransactionsTableName} ORDER BY created_at DESC";
 
             var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query, cancellationToken: ct));
             return res != null ? new SnapToken(res) : (SnapToken?)null;
@@ -161,14 +172,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id, 
-                    subject_relation 
-                FROM relation_tuples /**where**/");
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
             
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -193,14 +197,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id, 
-                    subject_relation 
-                FROM relation_tuples /**where**/");
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
             
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))
@@ -224,14 +221,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 #endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
-                .AddTemplate(@"SELECT
-                    entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id, 
-                    subject_relation 
-                FROM relation_tuples /**where**/");
+                .AddTemplate(string.Format(SelectRelations, _dbOptions.Schema, _dbOptions.RelationsTableName));
 
             var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                     queryTemplate.Parameters, cancellationToken: ct)))

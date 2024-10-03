@@ -121,7 +121,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
-                .AddTemplate(string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName));
+                .AddTemplate($"{string.Format(SelectAttributes, _dbOptions.Schema, _dbOptions.AttributesTableName)} LIMIT 1");
             
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,

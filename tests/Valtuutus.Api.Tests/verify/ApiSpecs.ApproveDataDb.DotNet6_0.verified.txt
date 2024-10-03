@@ -8,6 +8,17 @@ namespace Valtuutus.Data.Db
             where T : Valtuutus.Core.Engines.IWithSnapToken { }
     }
     public delegate System.Data.IDbConnection DbConnectionFactory();
+    public static class DependencyInjectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbSetup(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Db.IValtuutusDbOptions options) { }
+    }
+    public interface IValtuutusDbOptions
+    {
+        string AttributesTableName { get; }
+        string RelationsTableName { get; }
+        string Schema { get; }
+        string TransactionsTableName { get; }
+    }
     public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
     {
         public JsonTypeHandler() { }

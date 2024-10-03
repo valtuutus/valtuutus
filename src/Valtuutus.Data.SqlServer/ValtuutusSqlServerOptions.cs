@@ -1,14 +1,14 @@
 using Valtuutus.Data.Db;
 
-namespace Valtuutus.Data.Postgres;
+namespace Valtuutus.Data.SqlServer;
 
-public record ValtuutusPostgresOptions : IValtuutusDbOptions
+public record ValtuutusSqlServerOptions : IValtuutusDbOptions
 {
-    internal ValtuutusPostgresOptions()
+    internal ValtuutusSqlServerOptions()
     {
         
-    } 
-    public ValtuutusPostgresOptions(string schema,
+    }
+    public ValtuutusSqlServerOptions(string schema,
         string transactionsTableName, 
         string relationsTableName,
         string attributesTableName)
@@ -22,8 +22,10 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
         RelationsTableName = relationsTableName;
         AttributesTableName = attributesTableName;
     }
-    public string Schema { get; private set; } = "public";
-    public string TransactionsTableName  { get; private set; } = "transactions";
-    public string RelationsTableName  { get; private set; } = "relation_tuples";
-    public string AttributesTableName  { get; private set; } = "attributes";
-}
+    
+    public string Schema { get; } = "dbo";
+    public string TransactionsTableName { get; } = "transactions";
+    public string RelationsTableName { get; } = "relation_tuples";
+    public string AttributesTableName { get; } = "attributes";
+    
+};

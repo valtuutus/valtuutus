@@ -13,13 +13,17 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly ValtuutusDataOptions _options;
     private readonly IServiceProvider _provider;
+    private readonly IValtuutusDbOptions _dbOptions;
 
-    public SqlServerDataWriterProvider(DbConnectionFactory factory, ValtuutusDataOptions options,
-        IServiceProvider provider)
+    public SqlServerDataWriterProvider(DbConnectionFactory factory, 
+        ValtuutusDataOptions options,
+        IServiceProvider provider,
+        IValtuutusDbOptions dbOptions)
     {
         _factory = factory;
         _options = options;
         _provider = provider;
+        _dbOptions = dbOptions;
     }
 
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
@@ -43,7 +47,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         await InsertTransaction(db, transactionId, transaction, ct);
 
         var relationsBulkCopy = new SqlBulkCopy(db, SqlBulkCopyOptions.Default, transaction);
-        relationsBulkCopy.DestinationTableName = "relation_tuples";
+        relationsBulkCopy.DestinationTableName = $"[{_dbOptions.Schema}].[{_dbOptions.RelationsTableName}]";
 
 #if !NETSTANDARD2_0
         await
@@ -97,8 +101,8 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
 
         await db.ExecuteAsync(new CommandDefinition(
-            """
-            MERGE INTO dbo.attributes AS target
+            $"""
+            MERGE INTO [{_dbOptions.Schema}].[{_dbOptions.AttributesTableName}] AS target
             USING #temp_attributes AS source
             ON (target.entity_type = source.entity_type 
                 AND target.entity_id = source.entity_id 
@@ -106,7 +110,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
                 UPDATE SET target.deleted_tx_id = source.created_tx_id;
 
-            INSERT INTO dbo.attributes (entity_type, entity_id, attribute, value, created_tx_id)
+            INSERT INTO [{_dbOptions.Schema}].[{_dbOptions.AttributesTableName}] (entity_type, entity_id, attribute, value, created_tx_id)
             SELECT source.entity_type, source.entity_id, source.attribute, source.value, source.created_tx_id
             FROM #temp_attributes AS source;
             """, transaction: transaction, cancellationToken: ct));
@@ -151,7 +155,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             var relationsBuilder = new SqlBuilder();
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
             var queryTemplate =
-                relationsBuilder.AddTemplate(@"UPDATE relation_tuples set deleted_tx_id = @SnapToken /**where**/",
+                relationsBuilder.AddTemplate($@"UPDATE [{_dbOptions.Schema}].[{_dbOptions.RelationsTableName}] set deleted_tx_id = @SnapToken /**where**/",
                     snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
@@ -163,7 +167,7 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
             var queryTemplate =
-                attributesBuilder.AddTemplate(@"UPDATE attributes set deleted_tx_id = @SnapToken /**where**/",
+                attributesBuilder.AddTemplate($@"UPDATE [{_dbOptions.Schema}].[{_dbOptions.AttributesTableName}] set deleted_tx_id = @SnapToken /**where**/",
                     snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
@@ -181,11 +185,11 @@ internal sealed class SqlServerDataWriterProvider : IDataWriterProvider
         return snapToken;
     }
 
-    private static async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction,
+    private async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction,
         CancellationToken ct)
     {
         await db.ExecuteAsync(new CommandDefinition(
-            "INSERT INTO transactions (id, created_at) VALUES (@id, @created_at)",
+            $"INSERT INTO [{_dbOptions.Schema}].[{_dbOptions.TransactionsTableName}] (id, created_at) VALUES (@id, @created_at)",
             new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
             cancellationToken: ct));
     }

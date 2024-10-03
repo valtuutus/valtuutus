@@ -1,5 +1,4 @@
-﻿using Dapper;
-using Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Data.Db;
 
@@ -19,12 +18,7 @@ public static class DependencyInjectionExtensions
         ValtuutusPostgresOptions? options = null)
     {
         var builder = services.AddValtuutusData();
-        builder.Services.AddScoped(factory);
-        DefaultTypeMap.MatchNamesWithUnderscores = true;
-        SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        SqlMapper.AddTypeHandler(new UlidTypeHandler());
-        options ??= new ValtuutusPostgresOptions();
-        builder.Services.AddSingleton<IValtuutusDbOptions>(options);
+        builder.Services.AddDbSetup(factory, options ?? new ValtuutusPostgresOptions());
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
         return builder;

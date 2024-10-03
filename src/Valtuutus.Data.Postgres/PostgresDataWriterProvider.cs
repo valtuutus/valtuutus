@@ -13,13 +13,17 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly IServiceProvider _provider;
     private readonly ValtuutusDataOptions _options;
+    private readonly IValtuutusDbOptions _dbOptions;
 
-    public PostgresDataWriterProvider(DbConnectionFactory factory, IServiceProvider provider,
-        ValtuutusDataOptions options)
+    public PostgresDataWriterProvider(DbConnectionFactory factory,
+        IServiceProvider provider,
+        ValtuutusDataOptions options,
+        IValtuutusDbOptions dbOptions)
     {
         _factory = factory;
         _provider = provider;
         _options = options;
+        _dbOptions = dbOptions;
     }
 
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,
@@ -37,7 +41,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         await InsertTransaction(db, transactId, transaction, ct);
 
         await using var relationsWriter = await db.BeginBinaryImportAsync(
-            "copy public.relation_tuples (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
+            $"copy {_dbOptions.Schema}.{_dbOptions.RelationsTableName} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
             ct);
         foreach (var record in relations)
         {
@@ -76,8 +80,8 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         await attributesWriter.CloseAsync(ct);
 
         await db.ExecuteAsync(new CommandDefinition(
-            """"
-            MERGE INTO public.attributes AS target
+            $""""
+            MERGE INTO {_dbOptions.Schema}.{_dbOptions.AttributesTableName} AS target
             USING temp_attributes AS source
             ON (target.entity_type = source.entity_type 
                 AND target.entity_id = source.entity_id 
@@ -85,7 +89,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
             WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
                 UPDATE SET deleted_tx_id = source.created_tx_id;
             
-            INSERT INTO public.attributes (entity_type, entity_id, attribute, value, created_tx_id)
+            INSERT INTO {_dbOptions.Schema}.{_dbOptions.AttributesTableName} (entity_type, entity_id, attribute, value, created_tx_id)
             SELECT entity_type, entity_id, attribute, value, created_tx_id
             FROM temp_attributes;
             """", transaction, cancellationToken: ct));
@@ -97,11 +101,11 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         return snapToken;
     }
 
-    private static async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
+    private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
         await db.ExecuteAsync(new CommandDefinition(
-            "INSERT INTO public.transactions (id, created_at) VALUES (@id, @created_at)",
+            $"INSERT INTO {_dbOptions.Schema}.{_dbOptions.TransactionsTableName} (id, created_at) VALUES (@id, @created_at)",
             new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
             cancellationToken: ct));
     }
@@ -130,7 +134,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
             var queryTemplate =
                 relationsBuilder.AddTemplate(
-                    @"UPDATE public.relation_tuples set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
+                    $@"UPDATE {_dbOptions.Schema}.{_dbOptions.RelationsTableName} set deleted_tx_id = @SnapToken /**where**/", snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
@@ -141,7 +145,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
             var queryTemplate =
-                attributesBuilder.AddTemplate(@"UPDATE public.attributes set deleted_tx_id = @SnapToken /**where**/",
+                attributesBuilder.AddTemplate($@"UPDATE {_dbOptions.Schema}.{_dbOptions.AttributesTableName} set deleted_tx_id = @SnapToken /**where**/",
                     snapTokenParam);
 
             await db.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
