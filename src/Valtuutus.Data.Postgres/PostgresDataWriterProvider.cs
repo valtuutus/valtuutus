@@ -18,6 +18,7 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
     private static string? _insertTransactionCommandText;
     private static string? _deleteRelationsCommandText;
     private static string? _mergeAttributesCommandText;
+    private static readonly object Lock = new();
 
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
@@ -27,23 +28,43 @@ internal sealed class PostgresDataWriterProvider : IDataWriterProvider
         _factory = factory;
         _provider = provider;
         _options = options;
-        _copyRelationsCommand ??= $"copy {dbOptions.Schema}.{dbOptions.RelationsTableName} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)";
-        _insertTransactionCommandText ??= $"INSERT INTO {dbOptions.Schema}.{dbOptions.TransactionsTableName} (id, created_at) VALUES (@id, @created_at)";
-        _deleteRelationsCommandText ??= $@"UPDATE {dbOptions.Schema}.{dbOptions.RelationsTableName} set deleted_tx_id = @SnapToken /**where**/";
-        _deleteAttributesCommandText ??= $@"UPDATE {dbOptions.Schema}.{dbOptions.AttributesTableName} set deleted_tx_id = @SnapToken /**where**/";
-        _mergeAttributesCommandText ??= $""""
-                                       MERGE INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} AS target
-                                       USING temp_attributes AS source
-                                       ON (target.entity_type = source.entity_type 
-                                           AND target.entity_id = source.entity_id 
-                                           AND target.attribute = source.attribute)
-                                       WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
-                                           UPDATE SET deleted_tx_id = source.created_tx_id;
+        InitializeCommands(dbOptions);
+    }
 
-                                       INSERT INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} (entity_type, entity_id, attribute, value, created_tx_id)
-                                       SELECT entity_type, entity_id, attribute, value, created_tx_id
-                                       FROM temp_attributes;
-                                       """";
+    private static void InitializeCommands(IValtuutusDbOptions dbOptions)
+    {
+        if (_copyRelationsCommand == null || _insertTransactionCommandText == null ||
+            _deleteRelationsCommandText == null || _deleteAttributesCommandText == null ||
+            _mergeAttributesCommandText == null)
+        {
+            lock (Lock)
+            {
+                if (_copyRelationsCommand == null)
+                {
+                    _copyRelationsCommand ??=
+                        $"copy {dbOptions.Schema}.{dbOptions.RelationsTableName} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)";
+                    _insertTransactionCommandText ??=
+                        $"INSERT INTO {dbOptions.Schema}.{dbOptions.TransactionsTableName} (id, created_at) VALUES (@id, @created_at)";
+                    _deleteRelationsCommandText ??=
+                        $@"UPDATE {dbOptions.Schema}.{dbOptions.RelationsTableName} set deleted_tx_id = @SnapToken /**where**/";
+                    _deleteAttributesCommandText ??=
+                        $@"UPDATE {dbOptions.Schema}.{dbOptions.AttributesTableName} set deleted_tx_id = @SnapToken /**where**/";
+                    _mergeAttributesCommandText ??= $""""
+                                                     MERGE INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} AS target
+                                                     USING temp_attributes AS source
+                                                     ON (target.entity_type = source.entity_type 
+                                                         AND target.entity_id = source.entity_id 
+                                                         AND target.attribute = source.attribute)
+                                                     WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
+                                                         UPDATE SET deleted_tx_id = source.created_tx_id;
+
+                                                     INSERT INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} (entity_type, entity_id, attribute, value, created_tx_id)
+                                                     SELECT entity_type, entity_id, attribute, value, created_tx_id
+                                                     FROM temp_attributes;
+                                                     """";
+                }
+            }
+        }
     }
 
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes,

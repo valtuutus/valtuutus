@@ -30,26 +30,43 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _formattedGetLatestSnapTokenQuery;
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
+    private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
         ValtuutusDataOptions options,
         IValtuutusDbOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _formattedSelectAttributes ??= string.Format(UnformattedSelectAttributes, dbOptions.Schema,
-            dbOptions.AttributesTableName);
-        _formattedSelectRelations ??= string.Format(UnformattedSelectRelations, dbOptions.Schema,
-            dbOptions.RelationsTableName);
-        _formattedGetLatestSnapTokenQuery ??= string.Format("SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY created_at DESC",
-            dbOptions.Schema, dbOptions.TransactionsTableName);
-        _formattedSelect1Attribute ??= $"""
-                                            SELECT TOP 1
-                                            entity_type,
-                                            entity_id,
-                                            attribute,
-                                            value
-                                        FROM [{dbOptions.Schema}].[{dbOptions.AttributesTableName}] /**where**/
-                                        """;
+        InitializeQueries(dbOptions);
+    }
+
+    private static void InitializeQueries(IValtuutusDbOptions dbOptions)
+    {
+        if (_formattedSelectAttributes == null || _formattedSelectRelations == null ||
+            _formattedGetLatestSnapTokenQuery == null || _formattedSelect1Attribute == null)
+        {
+            lock (Lock)
+            {
+                if (_formattedSelectAttributes == null)
+                {
+                    _formattedSelectAttributes ??= string.Format(UnformattedSelectAttributes, dbOptions.Schema,
+                        dbOptions.AttributesTableName);
+                    _formattedSelectRelations ??= string.Format(UnformattedSelectRelations, dbOptions.Schema,
+                        dbOptions.RelationsTableName);
+                    _formattedGetLatestSnapTokenQuery ??= string.Format(
+                        "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY created_at DESC",
+                        dbOptions.Schema, dbOptions.TransactionsTableName);
+                    _formattedSelect1Attribute ??= $"""
+                                                        SELECT TOP 1
+                                                        entity_type,
+                                                        entity_id,
+                                                        attribute,
+                                                        value
+                                                    FROM [{dbOptions.Schema}].[{dbOptions.AttributesTableName}] /**where**/
+                                                    """;
+                }
+            }
+        }
     }
 
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)

@@ -30,6 +30,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _formattedGetLatestSnapTokenQuery;
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
+    private static readonly object Lock = new();
 
 
     public PostgresDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -37,13 +38,29 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         IValtuutusDbOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _formattedSelectAttributes ??= string.Format(UnformattedSelectAttributes, dbOptions.Schema,
-            dbOptions.AttributesTableName);
-        _formattedSelectRelations ??= string.Format(UnformattedSelectRelations, dbOptions.Schema,
-            dbOptions.RelationsTableName);
-        _formattedGetLatestSnapTokenQuery ??= string.Format("SELECT id FROM {0}.{1} ORDER BY created_at DESC LIMIT 1",
-            dbOptions.Schema, dbOptions.TransactionsTableName);
-        _formattedSelect1Attribute ??= $"{_formattedSelectAttributes!} LIMIT 1";
+        InitializeQueries(dbOptions);
+    }
+
+    private static void InitializeQueries(IValtuutusDbOptions dbOptions)
+    {
+        if (_formattedSelectAttributes == null || _formattedSelectRelations == null ||
+            _formattedGetLatestSnapTokenQuery == null || _formattedSelect1Attribute == null)
+        {
+            lock (Lock)
+            {
+                if (_formattedSelectAttributes == null)
+                {
+                    _formattedSelectAttributes ??= string.Format(UnformattedSelectAttributes, dbOptions.Schema,
+                        dbOptions.AttributesTableName);
+                    _formattedSelectRelations ??= string.Format(UnformattedSelectRelations, dbOptions.Schema,
+                        dbOptions.RelationsTableName);
+                    _formattedGetLatestSnapTokenQuery ??= string.Format(
+                        "SELECT id FROM {0}.{1} ORDER BY created_at DESC LIMIT 1",
+                        dbOptions.Schema, dbOptions.TransactionsTableName);
+                    _formattedSelect1Attribute ??= $"{_formattedSelectAttributes!} LIMIT 1";
+                }
+            }
+        }
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
