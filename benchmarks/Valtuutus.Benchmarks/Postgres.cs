@@ -32,15 +32,27 @@ public class Postgres
     public CheckRequest CheckRequestParam { get; set; } = null!;
 
     public IEnumerable<CheckRequest> ValuesForCheckRequest =>
+        // simple relation check
         new CheckRequest[] { new ()
         {
-            Permission = "view",
-            EntityType = "project",
-            EntityId = "projeto-teste",
+            Permission = "admin",
+            EntityType = "organization",
+            EntityId = "5171869f-b4e4-ca9a-b800-5e1dab069a26",
             SubjectType = "user",
-            SubjectId = "user-teste"
+            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
             
-        } };
+        },
+            // complex permissions, with function evaluation from attribute
+            new ()
+            {
+                Permission = "edit",
+                EntityType = "project",
+                EntityId = "e4010d7b-cea1-94c6-2232-e1f9ae557272",
+                SubjectType = "user",
+                SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
+            }
+            
+        };
 
     [GlobalSetup]
     public async Task Setup()

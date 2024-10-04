@@ -24,12 +24,20 @@ public record Team
     public User[] Members { get; set; } = [];
 }
 
+public enum ProjectStatus
+{
+    Inactive,
+    Active,
+}
+
 public record Project
 {
     public Guid Id { get; set; }
     public required Organization Org { get; set; }
     public required Team Team { get; set; }
     public bool Public { get; set; }
+    
+    public ProjectStatus Status { get; set; }
     public User[] Members { get; set; } = [];
 }
 
@@ -61,6 +69,7 @@ public static class Seeder
             .RuleFor(x => x.Id, f => f.Random.Guid())
             .RuleFor(x => x.Org, f => f.PickRandom(organizations))
             .RuleFor(x => x.Public, f => f.Random.Bool())
+            .RuleFor(x => x.Status, f => f.PickRandom<ProjectStatus>())
             .RuleFor(x => x.Team, (f, o) => f.PickRandom(teams.Where(t => t.Org.Id == o.Org.Id)))
             .RuleFor(x => x.Members,
                 (f, o) => f.PickRandom(o.Org.Members.Concat(o.Org.Admins).ToArray(),
@@ -94,12 +103,13 @@ public static class Seeder
                 project.Org.Id.ToString()));
             relations.Add(new RelationTuple("project", project.Id.ToString(), "team", "team",
                 project.Team.Id.ToString()));
-            relations.Add(new RelationTuple(" ", project.Id.ToString(), "member", "team",
+            relations.Add(new RelationTuple("project", project.Id.ToString(), "member", "team",
                 project.Team.Id.ToString(), "member"));
             relations.AddRange(project.Members.Select(u =>
                 new RelationTuple("project", project.Id.ToString(), "member", "user", u.Id.ToString())));
             attributes.Add(new AttributeTuple("project", project.Id.ToString(), "public",
                 JsonValue.Create(project.Public)));
+            attributes.Add(new AttributeTuple("project", project.Id.ToString(), "status", JsonValue.Create((int)project.Status)));
         }
 
         return (relations, attributes);

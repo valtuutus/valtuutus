@@ -25,10 +25,14 @@ public static class Seeder {
             return;
         }
 
+        Console.WriteLine("Generating data");
         var (relations, attributes) = Valtuutus.Seeder.Seeder.GenerateData();
 
         var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        
+        Console.WriteLine("Writing data to database...");
         await writer.Write(relations, attributes, default);
+        Console.WriteLine("Done.");
 
     }
 
