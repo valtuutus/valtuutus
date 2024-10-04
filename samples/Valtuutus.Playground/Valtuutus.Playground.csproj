@@ -10,7 +10,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Bogus" Version="35.6.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.7" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="8.0.7" />
     <PackageReference Include="Npgsql.OpenTelemetry" Version="8.0.3" />
@@ -28,6 +27,7 @@
     <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
     <ProjectReference Include="..\..\src\Valtuutus.Lang\Valtuutus.Lang.csproj" />
+    <ProjectReference Include="..\..\utils\Valtuutus.Seeder\Valtuutus.Seeder.csproj" />
   </ItemGroup>
   
   <ItemGroup>
