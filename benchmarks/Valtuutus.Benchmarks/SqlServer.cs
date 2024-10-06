@@ -1,24 +1,23 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Order;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using System.Data;
-using Testcontainers.PostgreSql;
+using Testcontainers.MsSql;
 using Valtuutus.Core.Engines.Check;
-using Valtuutus.Data.Postgres;
+using Valtuutus.Data.SqlServer;
 
 namespace Valtuutus.Benchmarks;
 
 [MemoryDiagnoser]
 [JsonExporterAttribute.FullCompressed]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
-public class Postgres
+public class SqlServer
 {
-    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder()
-        .WithUsername("Valtuutus")
-        .WithPassword("Valtuutus123")
-        .WithDatabase("Valtuutus")
-        .WithName($"pg-benchmarks-{Guid.NewGuid()}")
+    private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
+        .WithImage("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
+        .WithPassword("Valtuutus123!")
+        .WithName($"mssql-benchmarks-{Guid.NewGuid()}")
         .Build();
 
     private ServiceProvider _serviceProvider = null!;
@@ -28,11 +27,11 @@ public class Postgres
     public void Setup()
     {
         _dbContainer.StartAsync().GetAwaiter().GetResult();
-        IDbConnection DbFactory() => new NpgsqlConnection(_dbContainer.GetConnectionString());
-        var assembly = typeof(ValtuutusPostgresOptions).Assembly;
+        IDbConnection DbFactory() => new SqlConnection(_dbContainer.GetConnectionString());
+        var assembly = typeof(ValtuutusSqlServerOptions).Assembly;
         (_serviceProvider, _checkEngine) = CommonSetup.MigrateAndSeed(
                 DbFactory, 
-                (sc) => sc.AddPostgres(_ => DbFactory),
+                (sc) => sc.AddSqlServer(_ => DbFactory),
                 assembly)
             .GetAwaiter()
             .GetResult();
@@ -71,5 +70,5 @@ public class Postgres
         await _dbContainer.DisposeAsync();
         await _serviceProvider.DisposeAsync();
     }
-    
+
 }
