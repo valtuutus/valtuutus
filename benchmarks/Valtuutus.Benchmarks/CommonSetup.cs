@@ -2,6 +2,7 @@ using Dapper;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
+using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -12,7 +13,8 @@ namespace Valtuutus.Benchmarks;
 public static class CommonSetup
 {
     public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine)> MigrateAndSeed(
-        DbConnectionFactory dbFactory, Action<IServiceCollection> configureProvider, Assembly migrationAssembly)
+        DbConnectionFactory dbFactory, Action<IServiceCollection> configureProvider,
+        (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes, Assembly migrationAssembly)
     {
 
         var schemaFilePath = Assembly.GetExecutingAssembly()
@@ -44,9 +46,8 @@ public static class CommonSetup
             await connection.ExecuteAsync(migrationSql);
         }
 
-        var (relations, attributes) = Seeder.Seeder.GenerateData();
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(relations, attributes, default);
+        await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, default);
         
         return (serviceProvider, checkEngine);
     }

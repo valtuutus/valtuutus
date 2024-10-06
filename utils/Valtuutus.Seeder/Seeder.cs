@@ -43,7 +43,7 @@ public record Project
 
 public static class Seeder
 {
-    public static (List<RelationTuple> Relations, List<AttributeTuple> Attribute) GenerateData()
+    public static (List<RelationTuple> Relations, List<AttributeTuple> Attributes) GenerateData()
     {
         Randomizer.Seed = new Random(1500);
         var users = new Faker<User>()
