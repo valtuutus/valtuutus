@@ -16,12 +16,12 @@ jobs:
           dotnet-version: '8.x'
       - name: Track base branch benchmarks with Bencher
         run: |
-          dotnet run -c Release --filter '*' --project .\benchmarks\Valtuutus.Benchmarks
+          dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v4
         with:
           name: benchmark_results.json
-          path: ./benchmarks/Valtuutus.Benchmarks/BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
+          path: /benchmarks/Valtuutus.Benchmarks/BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
       - name: Upload GitHub Pull Request Event
         uses: actions/upload-artifact@v4
         with:
