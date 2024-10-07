@@ -70,10 +70,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         return await ExecuteWithRateLimit(async (ct) =>
         {
             using var connection = _connectionFactory();
-
-            var query = _formattedGetLatestSnapTokenQuery;
-
-            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(query!, cancellationToken: ct));
+            
+            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(_formattedGetLatestSnapTokenQuery!, cancellationToken: ct));
             return res != null ? new SnapToken(res) : (SnapToken?)null;
         }, cancellationToken);
     }

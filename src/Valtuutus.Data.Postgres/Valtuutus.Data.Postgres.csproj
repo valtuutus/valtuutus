@@ -23,4 +23,10 @@
       <ProjectReference Include="..\Valtuutus.Data.Db\Valtuutus.Data.Db.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <EmbeddedResource Include="Database\migrations\**">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </EmbeddedResource>
+    </ItemGroup>
+
 </Project>

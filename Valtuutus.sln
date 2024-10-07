@@ -41,6 +41,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{BB859D
 		.github\workflows\build.yml = .github\workflows\build.yml
 		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
+		.github\workflows\base_benchmarks.yml = .github\workflows\base_benchmarks.yml
+		.github\workflows\pr_benchmarks.yml = .github\workflows\pr_benchmarks.yml
+		.github\workflows\post_pr_benchmarks.yml = .github\workflows\post_pr_benchmarks.yml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{CE52FA1C-E7A6-4D10-A446-1D9209C79DAF}"
@@ -74,6 +77,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Lang.SourceGen.Tests", "tests\Valtuutus.Lang.SourceGen.Tests\Valtuutus.Lang.SourceGen.Tests.csproj", "{08999A36-685D-4E71-B6B2-39A9A626BF1A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Lang.SourceGen.IntegrationTests", "tests\Valtuutus.Lang.SourceGen.IntegrationTests\Valtuutus.Lang.SourceGen.IntegrationTests.csproj", "{06CB4A28-2FBE-4534-96D1-F844AE2CAF4D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{6346B56F-2846-48A9-8F2F-B2926AF3560C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Benchmarks", "benchmarks\Valtuutus.Benchmarks\Valtuutus.Benchmarks.csproj", "{55B5D5C8-1404-412A-916D-DFDDECA18A85}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "utils", "utils", "{F05F0F65-6685-4DDE-B159-120B4901ACBF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Seeder", "utils\Valtuutus.Seeder\Valtuutus.Seeder.csproj", "{D9D56C6E-33A3-4025-962E-28F49B5B7684}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -156,6 +167,14 @@ Global
 		{06CB4A28-2FBE-4534-96D1-F844AE2CAF4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{06CB4A28-2FBE-4534-96D1-F844AE2CAF4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{06CB4A28-2FBE-4534-96D1-F844AE2CAF4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55B5D5C8-1404-412A-916D-DFDDECA18A85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55B5D5C8-1404-412A-916D-DFDDECA18A85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55B5D5C8-1404-412A-916D-DFDDECA18A85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55B5D5C8-1404-412A-916D-DFDDECA18A85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D9D56C6E-33A3-4025-962E-28F49B5B7684}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D9D56C6E-33A3-4025-962E-28F49B5B7684}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D9D56C6E-33A3-4025-962E-28F49B5B7684}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D9D56C6E-33A3-4025-962E-28F49B5B7684}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{8CC248F9-8A7C-4237-B527-031A5F764B18} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
@@ -179,5 +198,7 @@ Global
 		{5050F7B7-6EAD-4032-864B-C7451DFFB76B} = {6C4F4C1F-90A9-46CA-B82F-A7FCF0B94E6E}
 		{08999A36-685D-4E71-B6B2-39A9A626BF1A} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 		{06CB4A28-2FBE-4534-96D1-F844AE2CAF4D} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
+		{55B5D5C8-1404-412A-916D-DFDDECA18A85} = {6346B56F-2846-48A9-8F2F-B2926AF3560C}
+		{D9D56C6E-33A3-4025-962E-28F49B5B7684} = {F05F0F65-6685-4DDE-B159-120B4901ACBF}
 	EndGlobalSection
 EndGlobal
