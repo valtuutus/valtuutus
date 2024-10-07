@@ -42,6 +42,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{BB859D
 		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		.github\workflows\base_benchmarks.yml = .github\workflows\base_benchmarks.yml
+		.github\workflows\pr_benchmarks.yml = .github\workflows\pr_benchmarks.yml
+		.github\workflows\post_pr_benchmarks.yml = .github\workflows\post_pr_benchmarks.yml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{CE52FA1C-E7A6-4D10-A446-1D9209C79DAF}"
