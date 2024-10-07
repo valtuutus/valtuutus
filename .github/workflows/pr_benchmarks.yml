@@ -21,7 +21,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: benchmark_results.json
-          path: /BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
+          path: BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
       - name: Upload GitHub Pull Request Event
         uses: actions/upload-artifact@v4
         with:
