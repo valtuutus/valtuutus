@@ -27,6 +27,6 @@ jobs:
           --thresholds-reset \
           --err \
           --adapter c_sharp_dot_net 
-          --file benchmarks/Valtuutus.Benchmarks/BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json \
+          --file /BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json \
           --github-actions '${{ secrets.GITHUB_TOKEN }}' \
           "dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/"
