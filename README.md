@@ -2,7 +2,7 @@
 
 ## A Google Zanzibar inspired authorization library in .NET
 
-The implementation is based on the [permify](https://github.com/Permify/permify) and other ReBac open source projects.
+The implementation is inspired on [permify](https://github.com/Permify/permify) and other ReBac open source projects.
 
 
 [![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)](https://www.nuget.org/packages?q=Valtuutus&includeComputedFrameworks=true&prerel=true&sortby=relevance)
@@ -19,13 +19,13 @@ The implementation is based on the [permify](https://github.com/Permify/permify)
 
 ## Functionality
 The library is designed to be simple and easy to use. Each subset of functionality is divided in engines. The engines are:
-- [DataEngine](src/Valtuutus.Core/DataEngine.cs): The engine that handles the write and deletion of relation tuples and attributes.
-  - [Read here](Storing%20Data.md) about how the relational data is stored.
-- [CheckEngine](src/Valtuutus.Core/CheckEngine.cs): The engine that handles the answering of two questions:
+- [ICheckEngine](src/Valtuutus.Core/Engines/Check/ICheckEngine.cs): The engine that handles the answering of two questions:
   - `Can entity U perform action Y in resource Z`? For that, use the `Check` function.
   - `What permissions entity U have in resource Z`? For that, use the `SubjectPermission` function.
-- [LookupSubjectEngine](src/Valtuutus.Core/LookupSubjectEngine.cs): The engine that can answer: `Which subjects of type T have permission Y on entity:X?` For that, use the `Lookup` function.
-- [LookupEntityEngine](src/Valtuutus.Core/LookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function.
+- [ILookupSubjectEngine](src/Valtuutus.Core/Engines/LookupSubject/ILookupSubjectEngine.cs): The engine that can answer: `Which subjects of type T have permission Y on entity:X?` For that, use the `Lookup` function.
+- [ILookupEntityEngine](src/Valtuutus.Core/Engines/LookupEntity/ILookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function.
+- [IDataWriterProvider](src/Valtuutus.Core/Data/IDataWriterProvider.cs): This is the provider that can write your relational or attribute data.
+- [Read here](Storing%20Data.md) about how the relational data is stored.
 
 ## Usage
 Install the package from NuGet:
@@ -74,6 +74,10 @@ builder.Services
 If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function.
 - [Postgres](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql)
 - [SqlServer](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
+
+## Schema and table name customization
+Our database providers allows the customization of schema and table names to your needs. When adding to dependency injection, checkout the optional parameter.
+
 ## Using query concurrent limiting
 It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:
 ```csharp
@@ -96,7 +100,7 @@ builder.Services
     .AddCaching(); // <-- This line
 ```
 
-This packages requires that you setup the amazing [FusionCache library](https://github.com/ZiggyCreatures/FusionCache).
+This packages requires that you set up the amazing [FusionCache library](https://github.com/ZiggyCreatures/FusionCache).
 [Click here](Caching.md) for more information.
 
 ## Telemetry

@@ -22,10 +22,10 @@ Attribute-Based Access Control takes a more contextual approach, allowing you to
 **Having said that, as of now, Valtuutus only supports boolean, string, integer, and decimal attributes.**
 
 ## Creating Authorization Data
-Relationships and attributes can be created simply by calling the `DataEngine` function `Write`.
+Relationships and attributes can be created simply by calling the `IDataWriterProvider` function `Write`.
 You can send multiple relations and attributes in a single call.
 
-Each relational tuple or attribute should be created according to the schema you defined using the FluentApi.
+Each relational tuple or attribute should be created according to the schema you defined in the schema.
 
 Let’s follow a simple document management system example with the following Valtuutus Schema to see how to create relation tuples.
 
@@ -46,10 +46,27 @@ builder.Services.AddValtuutusCore(c =>
             .WithPermission("delete", PermissionNode.Union("owner", "parent.admin"));
 });
 ```
+```csharp
+builder.Services.AddValtuutusCore("""
+    entity user {}
+    entity organization {
+        relation admin @user;
+        relation member @user;
+    }
+    entity document {
+        relation owner @user;
+        relation parent @organization;
+        relation maintainer @user @organization#member;
+        permission view := owner or parent.member or maintainer or parent.admin;
+        permission edit := owner or maintainer or parent.admin;
+        permission delete := owner or parent.admin;
+""");
+```
+
 According to the schema above; when a user creates a document in an organization, more specifically let’s say, when user:1 create a document:2 we need to create the following relational tuple:
 - document:2#owner@user:1
 
-To create this relational tuple, you can call the `Write` function of the `DataEngine` as follows:
+To create this relational tuple, you can call the `Write` function of the `IDataWriterProvider` as follows:
 
 ```csharp
 await writer.Write([new RelationTuple("document", "2", "owner", "user", "1")], [], default);
