@@ -186,10 +186,6 @@ namespace Valtuutus.Core.Engines.Check
 }
 namespace Valtuutus.Core.Engines
 {
-    public static class ContextUtils
-    {
-        public static bool IsContextValid(this Valtuutus.Core.Schemas.PermissionNodeLeafExp node, System.Collections.Generic.IDictionary<string, object> context) { }
-    }
     public interface IWithDepth
     {
         int Depth { get; set; }
@@ -275,15 +271,6 @@ namespace Valtuutus.Core.Lang
         String = 1,
         Decimal = 2,
         Boolean = 3,
-    }
-}
-namespace Valtuutus.Core.Lang.SchemaReaders
-{
-    public class SchemaReader
-    {
-        public SchemaReader() { }
-        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(System.IO.Stream schemaStream) { }
-        public OneOf.OneOf<Valtuutus.Core.Schemas.Schema, System.Collections.Generic.List<Valtuutus.Core.Lang.LangError>> Parse(string schema) { }
     }
 }
 namespace Valtuutus.Core.Observability

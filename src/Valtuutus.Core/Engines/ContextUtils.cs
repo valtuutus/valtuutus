@@ -2,12 +2,12 @@
 
 namespace Valtuutus.Core.Engines;
 
-public static class ContextUtils
+internal static class ContextUtils
 {
     // Basic validation for context access arguments
     // Later on, it will be better to return proper errors
     // Like if the context prop is null or not found
-    public static bool IsContextValid(this PermissionNodeLeafExp node, IDictionary<string, object> context)
+    internal static bool IsContextValid(this PermissionNodeLeafExp node, IDictionary<string, object> context)
     {
         return node.Args.All(a =>
             a.Type != PermissionNodeExpArgumentType.ContextAccess
