@@ -5,6 +5,7 @@
         <TargetFramework>netstandard2.0</TargetFramework>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
+        <PackageTags>$(PackageTags);sourcegen;lang</PackageTags>
     </PropertyGroup>
 
     <ItemGroup>
