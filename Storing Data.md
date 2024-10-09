@@ -28,24 +28,6 @@ You can send multiple relations and attributes in a single call.
 Each relational tuple or attribute should be created according to the schema you defined in the schema.
 
 Let’s follow a simple document management system example with the following Valtuutus Schema to see how to create relation tuples.
-
-```csharp
-builder.Services.AddValtuutusCore(c =>
-{
-    c
-        .WithEntity("user")
-        .WithEntity("organization")
-            .WithRelation("admin", rc => rc.WithEntityType("user"))
-            .WithRelation("member", rc => rc.WithEntityType("user"))
-        .WithEntity("document")
-            .WithRelation("owner", rc => rc.WithEntityType("user"))
-            .WithRelation("parent", rc => rc.WithEntityType("organization"))
-            .WithRelation("maintainer", rc => rc.WithEntityType("user").WithEntityType("organization", "member"))
-            .WithPermission("view", PermissionNode.Union("owner", "parent.member", "maintainer", "parent.admin"))
-            .WithPermission("edit", PermissionNode.Union("owner", "maintainer", "parent.admin"))
-            .WithPermission("delete", PermissionNode.Union("owner", "parent.admin"));
-});
-```
 ```csharp
 builder.Services.AddValtuutusCore("""
     entity user {}
@@ -71,6 +53,18 @@ To create this relational tuple, you can call the `Write` function of the `IData
 ```csharp
 await writer.Write([new RelationTuple("document", "2", "owner", "user", "1")], [], default);
 ```
+
+### Schema constants
+We understand that passing around arbitrary strings can lead to errors. We developed our source generator, that reads the schema and generates
+constants for Entity names, relations, permissions and attributes.
+
+On the consuming project, add the source generator from nuget:
+```shell
+dotnet add package Valtuutus.Lang.SourceGen
+```
+
+Then you should add your schema as an embedded file ending with .vtt;
+The source generator will pick it up and generate the consts in the Valtuutus.Lang namespace.
 
 ### Snap Tokens
 In Valtuutus, each modification to the authorization data returns a snap token.
