@@ -39,7 +39,6 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{BB859DDD-7E7F-4F97-B033-635432F127A5}"
 	ProjectSection(SolutionItems) = preProject
 		.github\workflows\build.yml = .github\workflows\build.yml
-		.github\workflows\codeql-analysis.yml = .github\workflows\codeql-analysis.yml
 		.github\workflows\publish.yml = .github\workflows\publish.yml
 		.github\workflows\base_benchmarks.yml = .github\workflows\base_benchmarks.yml
 		.github\workflows\pr_benchmarks.yml = .github\workflows\pr_benchmarks.yml
