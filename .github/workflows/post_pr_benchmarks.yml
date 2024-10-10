@@ -49,4 +49,4 @@ jobs:
           --adapter c_sharp_dot_net  \
           --github-actions '${{ secrets.GITHUB_TOKEN }}' \
           --ci-number '${{ env.PR_NUMBER }}' \
-          --file "$BENCHMARK_RESULTS"
+          --file '${{ env.BENCHMARK_RESULTS }}'
