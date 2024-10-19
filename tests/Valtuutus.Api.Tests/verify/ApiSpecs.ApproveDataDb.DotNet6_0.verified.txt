@@ -12,6 +12,13 @@ namespace Valtuutus.Data.Db
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbSetup(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Db.IValtuutusDbOptions options) { }
     }
+    public interface IDbDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+    }
     public interface IValtuutusDbOptions
     {
         string AttributesTableName { get; }
