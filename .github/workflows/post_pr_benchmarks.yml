@@ -49,4 +49,4 @@ jobs:
           --adapter c_sharp_dot_net  \
           --github-actions '${{ secrets.GITHUB_TOKEN }}' \
           --ci-number '${{ env.PR_NUMBER }}' \
-          --file '${{ env.BENCHMARK_RESULTS }}'
+          --file 'Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json'
