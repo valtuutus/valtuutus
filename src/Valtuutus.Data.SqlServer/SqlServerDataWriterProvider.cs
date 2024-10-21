@@ -95,8 +95,14 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 #else
         var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
 #endif
+        var snapToken = await Write(connection, transaction, relations, attributes, ct);
 
-        return await Write(connection, transaction, relations, attributes, ct);
+#if !NETCOREAPP3_0_OR_GREATER
+        transaction.Commit();
+#else
+        await ((SqlTransaction)transaction).CommitAsync(ct);
+#endif
+        return snapToken;
     }
 
     public async Task<SnapToken> Write(
@@ -165,12 +171,6 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         await connection.ExecuteAsync(new CommandDefinition(
             _mergeAttributesCommandText!, transaction: transaction, cancellationToken: ct));
 
-#if !NETCOREAPP3_0_OR_GREATER
-        transaction.Commit();
-#else
-        await ((SqlTransaction)transaction).CommitAsync(ct);
-#endif
-
         var snapToken = new SnapToken(transactionId.ToString());
         await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
@@ -195,8 +195,14 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 #else
         var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
 #endif
+        var snapToken = await Delete(connection, transaction, filter, ct);
 
-        return await Delete(connection, transaction, filter, ct);
+#if NETSTANDARD2_0
+        transaction.Commit();
+#else
+        await ((SqlTransaction)transaction).CommitAsync(ct);
+#endif
+        return snapToken;
     }
 
     public async Task<SnapToken> Delete(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
@@ -232,12 +238,6 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
             await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
         }
-
-#if NETSTANDARD2_0
-        transaction.Commit();
-#else
-        await ((SqlTransaction)transaction).CommitAsync(ct);
-#endif
 
         var snapToken = new SnapToken(transactId.ToString());
         await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
