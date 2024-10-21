@@ -100,7 +100,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 #if !NETCOREAPP3_0_OR_GREATER
         transaction.Commit();
 #else
-        await ((SqlTransaction)transaction).CommitAsync(ct);
+        await transaction.CommitAsync(ct);
 #endif
         return snapToken;
     }
@@ -200,7 +200,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 #if NETSTANDARD2_0
         transaction.Commit();
 #else
-        await ((SqlTransaction)transaction).CommitAsync(ct);
+        await transaction.CommitAsync(ct);
 #endif
         return snapToken;
     }

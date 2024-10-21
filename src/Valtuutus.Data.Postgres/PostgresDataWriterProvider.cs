@@ -154,12 +154,9 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
         return snapToken;
     }
 
-    private async Task InsertTransaction(
-        NpgsqlConnection db,
-        Ulid transactId,
-        NpgsqlTransaction transaction,
-        CancellationToken ct
-    ) {
+    private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
+        NpgsqlTransaction transaction, CancellationToken ct)
+    {
         await db.ExecuteAsync(new CommandDefinition(
             _insertTransactionCommandText!,
             new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
