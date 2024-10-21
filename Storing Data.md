@@ -22,7 +22,7 @@ Attribute-Based Access Control takes a more contextual approach, allowing you to
 **Having said that, as of now, Valtuutus only supports boolean, string, integer, and decimal attributes.**
 
 ## Creating Authorization Data
-Relationships and attributes can be created simply by calling the `IDataWriterProvider` function `Write`.
+Relationships and attributes can be created simply by calling the `IDataWriterProvider` or `IDbDataWriterProvider` function `Write`.
 You can send multiple relations and attributes in a single call.
 
 Each relational tuple or attribute should be created according to the schema you defined in the schema.
@@ -52,6 +52,18 @@ To create this relational tuple, you can call the `Write` function of the `IData
 
 ```csharp
 await writer.Write([new RelationTuple("document", "2", "owner", "user", "1")], [], default);
+```
+
+If you want to pass a connection and a transaction as a parameter, just call the `Write` function of `IDbDataWriterProvider` as follows:
+
+- No transaction
+```csharp
+await writer.Write(connection, [new RelationTuple("document", "2", "owner", "user", "1")], [], default);
+```
+
+- With transaction
+```csharp
+await writer.Write(connection, transaction, [new RelationTuple("document", "2", "owner", "user", "1")], [], default);
 ```
 
 ### Schema constants
