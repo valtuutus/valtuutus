@@ -1,0 +1,41 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v9.0", FrameworkDisplayName=".NET 9.0")]
+namespace Valtuutus.Data.Db
+{
+    public static class CommonSqlBuilderExtensions
+    {
+        public static Dapper.SqlBuilder ApplySnapTokenFilter<T>(Dapper.SqlBuilder builder, T withSnapToken)
+            where T : Valtuutus.Core.Engines.IWithSnapToken { }
+    }
+    public delegate System.Data.IDbConnection DbConnectionFactory();
+    public static class DependencyInjectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbSetup(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Db.IValtuutusDbOptions options) { }
+    }
+    public interface IDbDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+    }
+    public interface IValtuutusDbOptions
+    {
+        string AttributesTableName { get; }
+        string RelationsTableName { get; }
+        string Schema { get; }
+        string TransactionsTableName { get; }
+    }
+    public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
+    {
+        public JsonTypeHandler() { }
+        public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
+        public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
+    }
+    public class UlidTypeHandler : Dapper.SqlMapper.TypeHandler<System.Ulid>
+    {
+        public UlidTypeHandler() { }
+        public override System.Ulid Parse(object value) { }
+        public override void SetValue(System.Data.IDbDataParameter parameter, System.Ulid value) { }
+    }
+}

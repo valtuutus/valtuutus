@@ -1,0 +1,420 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v9.0", FrameworkDisplayName=".NET 9.0")]
+namespace Valtuutus.Core
+{
+    public sealed class AttributeTuple : System.IEquatable<Valtuutus.Core.AttributeTuple>
+    {
+        public AttributeTuple(string entityType, string entityId, string attribute, System.Text.Json.Nodes.JsonValue value) { }
+        public string Attribute { get; }
+        public string EntityId { get; }
+        public string EntityType { get; }
+        public System.Text.Json.Nodes.JsonValue Value { get; }
+        public object? GetValue(System.Type type) { }
+    }
+    public sealed class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
+    {
+        public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null) { }
+        public string EntityId { get; }
+        public string EntityType { get; }
+        public string Relation { get; }
+        public string SubjectId { get; }
+        public string SubjectRelation { get; }
+        public string SubjectType { get; }
+        public bool IsDirectSubject() { }
+    }
+}
+namespace Valtuutus.Core.Configuration
+{
+    public static class ConfigureSchema
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText) { }
+    }
+}
+namespace Valtuutus.Core.Data
+{
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class AttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public AttributeFilter() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Attribute { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public struct DeleteAttributesFilter : System.IEquatable<Valtuutus.Core.Data.DeleteAttributesFilter>
+    {
+        public string? Attribute { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    public class DeleteFilter : System.IEquatable<Valtuutus.Core.Data.DeleteFilter>
+    {
+        public DeleteFilter() { }
+        public Valtuutus.Core.Data.DeleteAttributesFilter[] Attributes { get; init; }
+        public Valtuutus.Core.Data.DeleteRelationsFilter[] Relations { get; init; }
+    }
+    public struct DeleteRelationsFilter : System.IEquatable<Valtuutus.Core.Data.DeleteRelationsFilter>
+    {
+        public string? EntityId { get; init; }
+        public string? EntityType { get; init; }
+        public string? Relation { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class EntityAttributeFilter : Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public EntityAttributeFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Attribute { get; init; }
+        public string? EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class EntityAttributesFilter : Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public EntityAttributesFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string[] Attributes { get; init; }
+        public string? EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public EntityRelationFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Relation { get; init; }
+    }
+    public interface IDataReaderProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IDataWriterProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class RelationTupleFilter : System.IEquatable<Valtuutus.Core.Data.RelationTupleFilter>, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public RelationTupleFilter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Relation { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    public struct SnapToken : System.IEquatable<Valtuutus.Core.Data.SnapToken>
+    {
+        public SnapToken(string Value) { }
+        public string Value { get; set; }
+        public static Valtuutus.Core.Data.SnapToken? op_Implicit(string? token) { }
+    }
+}
+namespace Valtuutus.Core.Engines.Check
+{
+    public sealed class CheckEngine : Valtuutus.Core.Engines.Check.ICheckEngine
+    {
+        public CheckEngine(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema) { }
+        public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public CheckRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
+        public int Depth { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        public string? SubjectId { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string? SubjectType { get; init; }
+    }
+    public interface ICheckEngine
+    {
+        System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken);
+    }
+    public enum RelationType
+    {
+        None = 0,
+        DirectRelation = 1,
+        Permission = 2,
+        Attribute = 3,
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public SubjectPermissionRequest() { }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public int Depth { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Engines
+{
+    public interface IWithDepth
+    {
+        int Depth { get; set; }
+    }
+    public interface IWithSnapToken
+    {
+        Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+    }
+}
+namespace Valtuutus.Core.Engines.LookupEntity
+{
+    public interface ILookupEntityEngine
+    {
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken);
+    }
+    public sealed class LookupEntityEngine : Valtuutus.Core.Engines.LookupEntity.ILookupEntityEngine
+    {
+        public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public LookupEntityRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
+        public int Depth { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Engines.LookupSubject
+{
+    public interface ILookupSubjectEngine
+    {
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken);
+    }
+    public sealed class LookupSubjectEngine : Valtuutus.Core.Engines.LookupSubject.ILookupSubjectEngine
+    {
+        public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public LookupSubjectRequest() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
+        public int Depth { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityId { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Permission { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Lang
+{
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class LangError : System.IEquatable<Valtuutus.Core.Lang.LangError>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public LangError() { }
+        [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+        public LangError(string message, int line, int startPos) { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int Line { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Message { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int StartPos { get; init; }
+        public override string ToString() { }
+    }
+    public class LangException : System.Exception
+    {
+        public LangException(string message, int line, int startPos) { }
+        public Valtuutus.Core.Lang.LangError ToLangError() { }
+    }
+    public enum LangType
+    {
+        Int = 0,
+        String = 1,
+        Decimal = 2,
+        Boolean = 3,
+    }
+}
+namespace Valtuutus.Core.Observability
+{
+    public static class DefaultActivitySource
+    {
+        public const string SourceName = "Valtuutus";
+        public const string SourceNameInternal = "Valtuutus.Internal";
+        public static System.Diagnostics.ActivitySource Instance { get; }
+        public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
+    }
+}
+namespace Valtuutus.Core.Schemas
+{
+    public class Attribute : System.IEquatable<Valtuutus.Core.Schemas.Attribute>
+    {
+        public Attribute(string Name, System.Type Type) { }
+        public string Name { get; init; }
+        public System.Type Type { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class Entity
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public Entity() { }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Attribute> Attributes { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Permission> Permissions { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Relation> Relations { get; init; }
+    }
+    public class Function : System.IEquatable<Valtuutus.Core.Schemas.Function>
+    {
+        public string Name { get; init; }
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.FunctionParameter> Parameters { get; init; }
+        public bool Execute(System.Collections.Generic.IDictionary<string, object?> arguments) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class FunctionParameter : System.IEquatable<Valtuutus.Core.Schemas.FunctionParameter>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public FunctionParameter() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string ParamName { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public int ParamOrder { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Lang.LangType ParamType { get; init; }
+    }
+    public class Permission : System.IEquatable<Valtuutus.Core.Schemas.Permission>
+    {
+        public string Name { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class Relation : System.IEquatable<Valtuutus.Core.Schemas.Relation>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public Relation() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public System.Collections.Generic.List<Valtuutus.Core.Schemas.RelationEntity> Entities { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public class RelationEntity : System.IEquatable<Valtuutus.Core.Schemas.RelationEntity>
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
+        public RelationEntity() { }
+        public string? Relation { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Type { get; init; }
+    }
+    public class Schema : System.IEquatable<Valtuutus.Core.Schemas.Schema>
+    {
+        public Schema(System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities, System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Function> Functions) { }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Entity> Entities { get; init; }
+        public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Function> Functions { get; init; }
+    }
+}
