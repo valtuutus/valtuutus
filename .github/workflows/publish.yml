@@ -17,7 +17,7 @@ jobs:
       - name: Setup dotnet
         uses: actions/setup-dotnet@v4.0.1
         with:
-          dotnet-version: '8.x'
+          dotnet-version: '9.x'
       - name: Install dotnet cake
         run: |
           dotnet tool install -g Cake.Tool        
