@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.6-beta</VersionPrefix>
+    <VersionPrefix>0.7-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,14 +17,9 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.6-beta:
-      - Replaced our schema builder with our own dsl;
-      - Allow the use of context during function calls;
-      - Added a unique constraint to attributes;
-      - Attributes are now merged when added; The old ones are soft deleted;
-      - Added a source generator to help with constants;
-      - Allow the customization of schema and table names;
-      - Added benchmarks to track our performance;
+    <PackageReleaseNotes>Version 0.7-beta:
+      - dotnet 9 support
+      - New interface for writing with db providers
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
