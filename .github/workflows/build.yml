@@ -34,9 +34,13 @@ jobs:
           distribution: 'microsoft' # See 'Supported distributions' for available options
           java-version: '17'
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v4.1.0
+        uses: actions/setup-dotnet@v4.2.0
         with:
-          dotnet-version: '9.x'
+          dotnet-version: |
+            9.x
+            8.x
+            7.x
+            6.x
       - name: Install dotnet-sonarscanner
         run: |
           dotnet tool install --global dotnet-sonarscanner
