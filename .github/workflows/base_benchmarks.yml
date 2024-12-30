@@ -9,9 +9,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v4.1.0
+        uses: actions/setup-dotnet@v4.2.0
         with:
-          dotnet-version: '9.x'
+          dotnet-version: |
+            9.x
+            8.x
+            7.x
+            6.x
       - uses: bencherdev/bencher@main
       - name: Track base branch benchmarks with Bencher
         run: |

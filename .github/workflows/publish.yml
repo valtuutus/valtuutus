@@ -15,9 +15,13 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v4.1.0
+        uses: actions/setup-dotnet@v4.2.0
         with:
-          dotnet-version: '9.x'
+          dotnet-version: |
+            9.x
+            8.x
+            7.x
+            6.x
       - name: Install dotnet cake
         run: |
           dotnet tool install -g Cake.Tool        
