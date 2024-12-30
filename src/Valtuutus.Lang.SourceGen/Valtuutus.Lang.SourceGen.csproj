@@ -7,6 +7,7 @@
         <LangVersion>latest</LangVersion>
         <PackageTags>$(PackageTags);sourcegen;lang</PackageTags>
         <IncludeBuildOutput>false</IncludeBuildOutput>
+        <IncludeSymbols>false</IncludeSymbols>
     </PropertyGroup>
 
     <ItemGroup>
@@ -22,11 +23,9 @@
         <Deterministic>true</Deterministic>
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     </PropertyGroup>
-    <PropertyGroup>
-    </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all" GeneratePathProperty="true" OutputItemType="Analyzer" />
+        <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all"  OutputItemType="Analyzer" />
         <PackageReference Include="Antlr4.Runtime.Standard" GeneratePathProperty="true" PrivateAssets="all" />
     </ItemGroup>
 
@@ -42,7 +41,6 @@
         <ItemGroup>
             <TargetPathWithTargetPlatformMoniker Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" IncludeRuntimeDependency="false" />
             <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-            <None Include="$(PKGValtuutus_Lang)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
             <None Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
         </ItemGroup>
     </Target>
