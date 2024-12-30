@@ -21,6 +21,7 @@ public static class DependencyInjectionExtensions
         builder.Services.AddDbSetup(factory, options ?? new ValtuutusPostgresOptions());
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
+        builder.Services.AddScoped<IDbDataWriterProvider, PostgresDataWriterProvider>();
         return builder;
     }
 }
