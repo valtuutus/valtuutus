@@ -25,8 +25,10 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all"  OutputItemType="Analyzer" />
+        <ProjectReference Include="..\Valtuutus.Lang\Valtuutus.Lang.csproj" PrivateAssets="all" />
         <PackageReference Include="Antlr4.Runtime.Standard" GeneratePathProperty="true" PrivateAssets="all" />
+        <None Include="$(OutputPath)\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+        <None Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
     </ItemGroup>
 
     <!-- 
@@ -37,11 +39,10 @@
         <GetTargetPathDependsOn>$(GetTargetPathDependsOn);GetDependencyTargetPaths</GetTargetPathDependsOn>
     </PropertyGroup>
 
-    <Target Name="GetDependencyTargetPaths" DependsOnTargets="ResolveReferences">
+    <Target Name="GetDependencyTargetPaths">
         <ItemGroup>
             <TargetPathWithTargetPlatformMoniker Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" IncludeRuntimeDependency="false" />
-            <None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-            <None Include="$(PKGAntlr4_Runtime_Standard)\lib\netstandard2.0\*.dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+            <TargetPathWithTargetPlatformMoniker Include="$(ProjectDir)\..\Valtuutus.Lang\$(OutputPath)\Valtuutus.Lang.dll" IncludeRuntimeDependency="false" />
         </ItemGroup>
     </Target>
 
