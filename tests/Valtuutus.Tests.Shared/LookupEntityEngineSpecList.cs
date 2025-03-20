@@ -284,6 +284,21 @@ public static class LookupEntityEngineSpecList
                 Depth = 2
             },
             new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+        },
+        {
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "group_members", TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers),
+            ],
+            [],
+            new LookupEntityRequest()
+            {
+                EntityType = TestsConsts.Workspaces.Identifier,
+                Permission = "view",
+                SubjectType = TestsConsts.Users.Identifier,
+                SubjectId = TestsConsts.Users.Alice,
+            },
+            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
         }
     };
 }
