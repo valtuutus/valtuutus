@@ -24,6 +24,6 @@ public record LookupEntityRequest : IWithDepth, IWithSnapToken
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
     public SnapToken? SnapToken { get; set; }
-    public int Depth { get; set; }
+    public int Depth { get; set; } = 10;
     public IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
 }
