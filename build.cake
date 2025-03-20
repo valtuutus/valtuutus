@@ -62,7 +62,8 @@ Task("PublishNuget")
        Information("Publishing {0}...", file.GetFilename().FullPath);
        DotNetNuGetPush(file, new DotNetNuGetPushSettings {
           ApiKey = context.EnvironmentVariable("NUGET_API_KEY"),
-          Source = "https://api.nuget.org/v3/index.json"
+          Source = "https://api.nuget.org/v3/index.json",
+          SkipDuplicate = true
        });
      }
    }
