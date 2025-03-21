@@ -6,13 +6,14 @@ using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Benchmarks;
 
 public static class CommonSetup
 {
-    public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine)> MigrateAndSeed(
+    public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine)> MigrateAndSeed(
         DbConnectionFactory dbFactory, Action<IServiceCollection> configureProvider,
         (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes, Assembly migrationAssembly)
     {
@@ -30,6 +31,7 @@ public static class CommonSetup
         configureProvider(serviceCollection);
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
+        var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
         
         
         var migrations = migrationAssembly
@@ -49,6 +51,6 @@ public static class CommonSetup
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
         await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, default);
         
-        return (serviceProvider, checkEngine);
+        return (serviceProvider, checkEngine, lookupEntityEngine);
     }
 }

@@ -20,7 +20,7 @@ entity project {
     attribute status int;
     permission view := org.admin or member or (public and org.member);
     permission edit := (org.admin or team.member) and isActiveStatus(status);
-    permission delete := team.member;
+    permission delete := org.admin or team.owner;
 }
 
 fn isActiveStatus(status int) => status == 1;

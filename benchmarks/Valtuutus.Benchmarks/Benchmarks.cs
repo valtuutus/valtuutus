@@ -8,6 +8,7 @@ using Testcontainers.MsSql;
 using Testcontainers.PostgreSql;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Data.Postgres;
 using Valtuutus.Data.SqlServer;
 
@@ -33,8 +34,10 @@ public class Benchmarks
 
     private ServiceProvider _pgServiceProvider = null!;
     private ICheckEngine _pgCheckEngine = null!;
+    private ILookupEntityEngine _pgLookupEntityEngine = null!;
     private ServiceProvider _mssqlServiceProvider = null!;
     private ICheckEngine _mssqlCheckEngine = null!;
+    private ILookupEntityEngine _msSqlLookupEntityEngine = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -50,7 +53,7 @@ public class Benchmarks
         await _pgContainer.StartAsync();
         IDbConnection DbFactory() => new NpgsqlConnection(_pgContainer.GetConnectionString());
         var pgAssembly = typeof(ValtuutusPostgresOptions).Assembly;
-        (_pgServiceProvider, _pgCheckEngine) = await CommonSetup.MigrateAndSeed(
+        (_pgServiceProvider, _pgCheckEngine, _pgLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
                 DbFactory, 
                 (sc) => sc.AddPostgres(_ => DbFactory),
                 relAndAttributes,
@@ -62,7 +65,7 @@ public class Benchmarks
         await _msSqlContainer.StartAsync();
         IDbConnection DbFactory() => new SqlConnection(_msSqlContainer.GetConnectionString());
         var mssqlAssembly = typeof(ValtuutusSqlServerOptions).Assembly;
-        (_mssqlServiceProvider, _mssqlCheckEngine) = await CommonSetup.MigrateAndSeed(
+        (_mssqlServiceProvider, _mssqlCheckEngine, _msSqlLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
             DbFactory,
             (sc) => sc.AddSqlServer(_ => DbFactory),
             relAndAttributes,
@@ -123,6 +126,32 @@ public class Benchmarks
             SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
         }, default);
     }
+    
+    [Benchmark]
+    public async Task<HashSet<string>> LookupEntity_Mssql()
+    {
+        return await _msSqlLookupEntityEngine.LookupEntity(new ()
+        {
+            Permission = "edit",
+            EntityType = "project",
+            SubjectType = "user",
+            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
+        }, default);
+    }
+    
+    [Benchmark]
+    public async Task<HashSet<string>> LookupEntity_Pg()
+    {
+        return await _pgLookupEntityEngine.LookupEntity(new ()
+        {
+            Permission = "edit",
+            EntityType = "project",
+            SubjectType = "user",
+            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
+        }, default);
+    }
+    
+    
     
     [GlobalCleanup]
     public async Task Cleanup()
