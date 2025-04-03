@@ -57,15 +57,11 @@ Task("PublishNuget")
  .Does(context => {
    if (BuildSystem.GitHubActions.IsRunningOnGitHubActions)
    {
-     foreach(var file in GetFiles("./.artifacts/*.nupkg"))
-     {
-       Information("Publishing {0}...", file.GetFilename().FullPath);
-       DotNetNuGetPush(file, new DotNetNuGetPushSettings {
+       DotNetNuGetPush("./.artifacts/*.nupkg", new DotNetNuGetPushSettings {
           ApiKey = context.EnvironmentVariable("NUGET_API_KEY"),
           Source = "https://api.nuget.org/v3/index.json",
           SkipDuplicate = true
        });
-     }
    }
  }); 
 
