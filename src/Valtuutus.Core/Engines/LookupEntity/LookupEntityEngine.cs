@@ -360,7 +360,12 @@ public sealed class LookupEntityEngine(
         var result = mainResult.Join(
                 dependentResult,
                 m => new { Type = m.RelationTuple!.SubjectType, Id = m.RelationTuple!.SubjectId },
-                d => new { Type = d.RelationTuple!.EntityType, Id = d.RelationTuple!.EntityId },
+                d => d.Type switch
+                {
+                    RelationOrAttributeType.Attribute => new {Type = d.AttributeTuple!.EntityType, Id = d.AttributeTuple!.EntityId},
+                    RelationOrAttributeType.Relation => new {Type = d.RelationTuple!.EntityType, Id = d.RelationTuple!.EntityId},
+                    _ => throw new ArgumentOutOfRangeException()
+                },
                 (m, d) => m)
             .ToList();
 

@@ -17,10 +17,11 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     {
         Fixture = fixture;
     }
+
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    
+
     protected IDatabaseFixture Fixture { get; }
-    
+
     private ServiceProvider CreateServiceProvider(string? schema = null)
     {
         var services = new ServiceCollection()
@@ -31,17 +32,18 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         return services.BuildServiceProvider();
     }
 
-    private async ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes, string? schema = null)
+    private async ValueTask<ILookupEntityEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
+        string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
         var scope = serviceProvider.CreateScope();
         var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
-        if(tuples.Length == 0 && attributes.Length == 0) return lookupEntityEngine;
+        if (tuples.Length == 0 && attributes.Length == 0) return lookupEntityEngine;
         var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
         await provider.Write(tuples, attributes, default);
         return lookupEntityEngine;
     }
-    
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();
@@ -51,7 +53,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     {
         return Task.CompletedTask;
     }
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         TopLevelChecks = LookupEntityEngineSpecList.TopLevelChecks;
 
@@ -90,7 +92,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         SimplePermissionLookup = LookupEntityEngineSpecList.SimplePermissionLookup;
-    
+
     [Theory]
     [MemberData(nameof(SimplePermissionLookup))]
     public async Task SimplePermissionLookupShouldReturnExpectedResult(RelationTuple[] tuples,
@@ -105,10 +107,11 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // assert
         result.Should().BeEquivalentTo(expected);
     }
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
-        IntersectWithRelationAndAttributePermissionLookup = LookupEntityEngineSpecList.IntersectWithRelationAndAttributePermissionLookup;
-    
+        IntersectWithRelationAndAttributePermissionLookup =
+            LookupEntityEngineSpecList.IntersectWithRelationAndAttributePermissionLookup;
+
     [Theory]
     [MemberData(nameof(IntersectWithRelationAndAttributePermissionLookup))]
     public async Task IntersectWithRelationAndAttributeLookupShouldReturnExpectedResult(RelationTuple[] tuples,
@@ -123,13 +126,15 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // assert
         result.Should().BeEquivalentTo(expected);
     }
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
-        IntersectAttributeExpressionWithOtherNodesLookup = LookupEntityEngineSpecList.IntersectAttributeExpressionWithOtherNodes;
-    
+        IntersectAttributeExpressionWithOtherNodesLookup =
+            LookupEntityEngineSpecList.IntersectAttributeExpressionWithOtherNodes;
+
     [Theory]
     [MemberData(nameof(IntersectAttributeExpressionWithOtherNodesLookup))]
-    public async Task IntersectAttributeExpressionWithOtherNodesLookupShouldReturnExpectedEntities(RelationTuple[] tuples,
+    public async Task IntersectAttributeExpressionWithOtherNodesLookupShouldReturnExpectedEntities(
+        RelationTuple[] tuples,
         AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
     {
         // Arrange
@@ -141,7 +146,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // assert
         result.Should().BeEquivalentTo(expected);
     }
-    
+
     [Fact]
     public async Task TestStringBasedAttributeExpression()
     {
@@ -235,15 +240,15 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // Assert
         result.Should().BeEquivalentTo(expected);
     }
-    
+
     public static TheoryData<string, decimal?, HashSet<string>> ContextAccessTheoryData = new()
     {
-        {"withdraw_amount", 500.0m, ["1"]},
-        {"withdraw_amount", 1000.0m, []},
-        {"withdraw_amount", 872.54m, ["1"]},
-        {"withdraw_amount", 100.0m, ["1", "2"]},
-        {"withdraw_amount", null, []},
-        {"amount", 500.0m, []}
+        { "withdraw_amount", 500.0m, ["1"] },
+        { "withdraw_amount", 1000.0m, [] },
+        { "withdraw_amount", 872.54m, ["1"] },
+        { "withdraw_amount", 100.0m, ["1", "2"] },
+        { "withdraw_amount", null, [] },
+        { "amount", 500.0m, [] }
     };
 
     [Theory, MemberData(nameof(ContextAccessTheoryData))]
@@ -274,11 +279,73 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var context = new Dictionary<string, object> {{key, value}};
+        var context = new Dictionary<string, object> { { key, value } };
         var result = await engine.LookupEntity(new LookupEntityRequest("account",
             "withdraw", "user", "1", context: context), default);
 
         // assert
         result.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task Test_permission_with_attribute_when_user_has_no_relation_and_attribute_is_enough_to_pass()
+    {
+        var schema = """
+                     entity user { }
+
+                     entity portfolio {
+                         relation owner @user;
+                         relation admin @user;
+                         relation member @user;
+                         attribute public bool;
+                         permission create_project := owner or admin;
+                         permission assign_user := owner or admin;
+                         permission view := public or owner or admin or member;
+                     }
+
+                     entity group {
+                         relation member @user;
+                     }
+
+                     entity project {
+                         relation portfolio @portfolio ;
+                         relation admin @user @group#member;
+                         relation member @user @group#member;
+                         attribute status string;
+                         permission create_task := (portfolio.owner or portfolio.admin
+                                         or admin or member) and isActiveStatus(status);
+                         permission edit := (portfolio.owner or portfolio.admin or admin) and isActiveStatus(status);
+                         permission view := admin or member or portfolio.view;     
+                     }
+
+                     entity task {
+                         relation project @project;
+                         permission view := project.view;     
+                     }
+
+                     fn isActiveStatus(status string) => status != "Archived";
+                     """;
+        
+        // act
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "project-p1", "portfolio", "portfolio", "portfolio-1"),
+                new RelationTuple("project", "project-p1-2", "portfolio", "portfolio", "portfolio-1"),
+                new RelationTuple("project", "project-p3", "portfolio", "portfolio", "portfolio-3"),
+            ],
+            [
+                new AttributeTuple("portfolio", "portfolio-1", "public",
+                    JsonValue.Create(true)),
+                new AttributeTuple("portfolio", "portfolio-2", "public",
+                    JsonValue.Create(false)),
+                new AttributeTuple("portfolio", "portfolio-3", "public",
+                    JsonValue.Create(true)),
+            ], schema);
+        
+        //
+        var result = await engine.LookupEntity(new LookupEntityRequest("project",
+            "view", "user", "alice"), CancellationToken.None);
+        
+        result.Should().BeEquivalentTo(["project-p1", "project-p1-2", "project-p3"]);
     }
 }
