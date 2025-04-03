@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.7.3-beta</VersionPrefix>
+    <VersionPrefix>0.7.3.1-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,8 +17,8 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.7.3-beta:
-      - FIX: Setting default depth limit for LookupEntityRequest
+    <PackageReleaseNotes>Version 0.7.3.1-beta:
+      - FIX: LookupEntityEngine throwing nullreference (#96)
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
