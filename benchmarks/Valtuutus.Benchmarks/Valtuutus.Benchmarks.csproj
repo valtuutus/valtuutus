@@ -16,6 +16,7 @@
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.3" />
       <PackageReference Include="Testcontainers.MsSql" Version="4.3.0" />
       <PackageReference Include="Testcontainers.PostgreSql" Version="4.3.0" />
+      <PackageReference Include="Valtuutus.Data.InMemory" Version="0.7.3.1-beta" />
     </ItemGroup>
 
     <ItemGroup>
