@@ -24,7 +24,7 @@ file class DictionaryPooledObjectPolicy<TKey, TValue> : PooledObjectPolicy<Dicti
     }
 }
 
-internal readonly ref struct PooledDictionary<TKey, TValue> where TKey : notnull
+internal readonly ref struct PooledDictionary<TKey, TValue> : IDisposable where TKey : notnull
 {
     internal readonly Dictionary<TKey, TValue> Dictionary;
 

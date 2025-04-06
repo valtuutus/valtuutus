@@ -115,7 +115,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         var transactionId = Ulid.NewUlid();
         await InsertTransaction((SqlConnection)connection, transactionId, (SqlTransaction)transaction, ct);
 
-        var relationsBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
+        using var relationsBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
         relationsBulkCopy.DestinationTableName = _relationsDestinationTableName;
 
 #if !NETSTANDARD2_0

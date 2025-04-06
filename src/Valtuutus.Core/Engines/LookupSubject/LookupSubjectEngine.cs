@@ -206,7 +206,7 @@ public sealed class LookupSubjectEngine(
 
         foreach (var attr in attributes.Values)
         {
-            var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            using var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
             if (fn.Lambda(fnArgs.Dictionary))
             {
                 result.Add(attr);
