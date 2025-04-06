@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using Valtuutus.Core.Lang;
+using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Core.Schemas;
 
@@ -23,14 +24,16 @@ public record Function
         Lambda = lambda;
     }
     
-    internal IDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
+    internal PooledDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
     {
-        return Parameters
-            .Aggregate(new Dictionary<FunctionParameter, PermissionNodeExpArgument>(), (arguments, parameter) =>
-            {
-                arguments.Add(parameter, args.First(a => a.ArgOrder == parameter.ParamOrder));
-                return arguments;
-            });
+        var pooled = PooledDictionary<FunctionParameter, PermissionNodeExpArgument>.Rent();
+
+        foreach (var parameter in Parameters)
+        {
+            pooled.Dictionary[parameter] = args.First(a => a.ArgOrder == parameter.ParamOrder);
+        }
+
+        return pooled;
     }
 
     public bool Execute(IDictionary<string, object?> arguments)
@@ -41,25 +44,28 @@ public record Function
 
 internal static class ParamToArgMapExtensions
 {
-    public static IDictionary<string, object?> ToLambdaArgs(
-        this IDictionary<FunctionParameter, PermissionNodeExpArgument> map,
+    public static PooledDictionary<string, object?> ToLambdaArgs(
+        this PooledDictionary<FunctionParameter, PermissionNodeExpArgument> map,
         Func<PermissionNodeExpArgumentAttribute, object?> attrValueMapper,
         IDictionary<string, object> context)
     {
-        return map.ToDictionary(
-            pair => pair.Key.ParamName,
-            pair =>
+        var pooled = PooledDictionary<string, object?>.Rent();
+
+        foreach (var pair in map.Dictionary)
+        {
+            object? value = pair.Value switch
             {
-                return pair.Value switch
-                {
-                    PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg),
-                    PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                    PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                    PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                    PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
-                    _ => throw new NotSupportedException("Unsuported argument type.")
-                };
-            }
-        );
+                PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg),
+                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
+                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
+                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
+                _ => throw new NotSupportedException("Unsupported argument type.")
+            };
+
+            pooled.Dictionary[pair.Key.ParamName] = value;
+        }
+
+        return pooled;
     }
 }

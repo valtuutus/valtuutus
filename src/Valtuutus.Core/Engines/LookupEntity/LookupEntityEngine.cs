@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
 using LookupFunction =
     System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<
@@ -166,7 +167,7 @@ public sealed class LookupEntityEngine(
             {
                 throw new InvalidOperationException();
             }
-            
+
             if (!node.IsContextValid(req.Context))
             {
                 return [];
@@ -177,33 +178,52 @@ public sealed class LookupEntityEngine(
             var attributes = await reader.GetAttributes(
                 new EntityAttributesFilter
                 {
-                    Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
+                    Attributes = attributeArguments,
+                    EntityType = req.EntityType,
+                    SnapToken = req.SnapToken
                 }, ct);
 
-            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
+            using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
-            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
+            return EvaluateExpressionMatches(attributes, req, fn, paramToArgMap);
+        };
+    }
+
+    private List<RelationOrAttributeTuple> EvaluateExpressionMatches(
+        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
+        LookupEntityRequestInternal req,
+        Function fn,
+        PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
+    {
+        var result = new List<RelationOrAttributeTuple>();
+        var getDynamicallyTypedAttribute = CreateAttributeGetter(attributes, req, schema);
+
+        foreach (var attr in attributes.Values)
+        {
+            var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            if (fn.Lambda(fnArgs.Dictionary))
             {
-                if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
-                {
-                    return null;
-                }
+                result.Add(new RelationOrAttributeTuple(attr));
+            }
+        }
 
-                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
+        return result;
+    }
 
-                return attr.GetValue(attrType);
-            };
+    private static Func<PermissionNodeExpArgumentAttribute, string, object?> CreateAttributeGetter(
+        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
+        LookupEntityRequestInternal req,
+        Schema schema)
+    {
+        return (arg, entityId) =>
+        {
+            if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
+            {
+                return null;
+            }
 
-
-            return attributes.Values
-                .Where(attr =>
-                {
-                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
-                        req.Context);
-                    return fn.Lambda(fnArgs);
-                })
-                .Select(x => new RelationOrAttributeTuple(x))
-                .ToList();
+            var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
+            return attr.GetValue(attrType);
         };
     }
 
