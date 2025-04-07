@@ -129,7 +129,7 @@ public sealed class LookupEntityEngine(
             }
         }
 
-        return async (ct) => await aggregator(lookupFunctions, ct);
+        return (ct) => aggregator(lookupFunctions, ct);
     }
 
     private LookupFunction LookupLeaf(LookupEntityRequestInternal req, PermissionNodeLeaf node)
