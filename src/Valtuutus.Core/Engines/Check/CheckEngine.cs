@@ -169,7 +169,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             }
         }
 
-        return async (ct) => await operationCombiner(checkFunctions, ct);
+        return (ct) => operationCombiner(checkFunctions, ct);
     }
 
     private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
