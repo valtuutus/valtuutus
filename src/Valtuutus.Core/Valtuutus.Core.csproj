@@ -10,6 +10,9 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+      <PackageReference Include="Microsoft.Extensions.ObjectPool">
+          <PrivateAssets>all</PrivateAssets>
+      </PackageReference>
       <PackageReference Include="OneOf" />
     </ItemGroup>
     <ItemGroup>

@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
 using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
@@ -168,7 +169,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             }
         }
 
-        return async (ct) => await operationCombiner(checkFunctions, ct);
+        return (ct) => operationCombiner(checkFunctions, ct);
     }
 
     private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
@@ -213,8 +214,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 }, ct);
 
 
-            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
-
+            using var paramToArg = fn.CreateParamToArgMap(node.Args);
+            
             var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
             {
                 if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
@@ -227,10 +228,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 return attr.GetValue(attrType);
             };
 
-
-            var fnArgs = paramToArgMap.ToLambdaArgs(getDynamicallyTypedAttribute, req.Context);
-
-            var res = fn.Lambda(fnArgs);
+            using var fnArgs = paramToArg.ToLambdaArgs(getDynamicallyTypedAttribute, req.Context);
+            
+            var res = fn.Lambda(fnArgs.Dictionary);
             return res;
         };
     }

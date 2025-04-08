@@ -6,6 +6,7 @@ using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
 using LookupSubjectFunction =
     System.Func<System.Threading.CancellationToken,
@@ -188,30 +189,47 @@ public sealed class LookupSubjectEngine(
                     Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
                 }, req.EntitiesIds, ct);
 
-            var paramToArgMap = fn.CreateParamToArgMap(node.Args);
+            using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
-            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg, string entityId) =>
+            return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, paramToArgMap));
+        };
+    }
+
+    private List<AttributeTuple> EvaluateExpressionMatches(
+        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
+        LookupSubjectRequestInternal req,
+        Function fn,
+        PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
+    {
+        var result = new List<AttributeTuple>();
+        var getDynamicallyTypedAttribute = CreateAttributeGetter(attributes, req, schema);
+
+        foreach (var attr in attributes.Values)
+        {
+            using var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            if (fn.Lambda(fnArgs.Dictionary))
             {
-                if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
-                {
-                    return null;
-                }
+                result.Add(attr);
+            }
+        }
 
-                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
+        return result;
+    }
 
-                return attr.GetValue(attrType);
-            };
+    private static Func<PermissionNodeExpArgumentAttribute, string, object?> CreateAttributeGetter(
+        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
+        LookupSubjectRequestInternal req,
+        Schema schema)
+    {
+        return (arg, entityId) =>
+        {
+            if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
+            {
+                return null;
+            }
 
-            var res = attributes.Values
-                .Where(attr =>
-                {
-                    var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId),
-                        req.Context);
-                    return fn.Lambda(fnArgs);
-                })
-                .ToList();
-
-            return new RelationOrAttributeTuples(res);
+            var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
+            return attr.GetValue(attrType);
         };
     }
 

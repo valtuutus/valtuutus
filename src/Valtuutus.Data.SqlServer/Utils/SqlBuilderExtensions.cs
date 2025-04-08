@@ -89,7 +89,7 @@ internal static class SqlBuilderExtensions
 
         if (entitiesIdsArr.Length > 0)
         {
-            var dt = new DataTable();
+            using var dt = new DataTable();
             dt.Columns.Add("id", typeof(string));
             foreach (var entityId in entitiesIdsArr)
                 dt.Rows.Add(entityId);
@@ -132,7 +132,7 @@ internal static class SqlBuilderExtensions
 
         if (subjectsIds.Count > 0)
         {
-            var dt = new DataTable();
+            using var dt = new DataTable();
             dt.Columns.Add("id", typeof(string));
             foreach (var subjectId in subjectsIds)
                 dt.Rows.Add(subjectId);
@@ -186,7 +186,7 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
         
-        var dt = new DataTable();
+        using var dt = new DataTable();
         dt.Columns.Add("id", typeof(string));
         foreach (var entityId in entitiesIdsArr)
             dt.Rows.Add(entityId);
@@ -210,13 +210,13 @@ internal static class SqlBuilderExtensions
         }});
         
         
-        var attributesDt = new DataTable();
+        using var attributesDt = new DataTable();
         attributesDt.Columns.Add("id", typeof(string));
         foreach (var attribute in filter.Attributes)
             attributesDt.Rows.Add(attribute);
         builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter(TvpListIds)});
         
-        var entitiesIdDt = new DataTable();
+        using var entitiesIdDt = new DataTable();
         entitiesIdDt.Columns.Add("id", typeof(string));
         foreach (var entityId in entitiesIdsArr)
             entitiesIdDt.Rows.Add(entityId);
@@ -247,7 +247,7 @@ internal static class SqlBuilderExtensions
         }});
         
         
-        var attributesDt = new DataTable();
+        using var attributesDt = new DataTable();
         attributesDt.Columns.Add("id", typeof(string));
         foreach (var attribute in filter.Attributes)
             attributesDt.Rows.Add(attribute);
