@@ -10,7 +10,7 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
-    <PackageVersion Include="PublicApiGenerator" Version="11.1.0" />
+    <PackageVersion Include="PublicApiGenerator" Version="11.4.5" />
     <PackageVersion Include="Respawn" Version="6.2.1" />
     <PackageVersion Include="Testcontainers.MsSql" Version="3.9.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="3.9.0" />

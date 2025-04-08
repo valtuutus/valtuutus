@@ -38,13 +38,12 @@ namespace Valtuutus.Core.Data
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public AttributeFilter() { }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Attribute { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
     }
     [System.Runtime.CompilerServices.RequiredMember]
     public struct DeleteAttributesFilter : System.IEquatable<Valtuutus.Core.Data.DeleteAttributesFilter>
@@ -75,44 +74,41 @@ namespace Valtuutus.Core.Data
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public EntityAttributeFilter() { }
-        [System.Runtime.CompilerServices.RequiredMember]
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Attribute { get; init; }
         public string? EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
     }
     [System.Runtime.CompilerServices.RequiredMember]
     public class EntityAttributesFilter : Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public EntityAttributesFilter() { }
-        [System.Runtime.CompilerServices.RequiredMember]
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string[] Attributes { get; init; }
         public string? EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
     }
     [System.Runtime.CompilerServices.RequiredMember]
     public class EntityRelationFilter : System.IEquatable<Valtuutus.Core.Data.EntityRelationFilter>, Valtuutus.Core.Engines.IWithSnapToken
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public EntityRelationFilter() { }
-        [System.Runtime.CompilerServices.RequiredMember]
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Relation { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
     }
     public interface IDataReaderProvider
     {
@@ -142,16 +138,15 @@ namespace Valtuutus.Core.Data
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public RelationTupleFilter() { }
-        [System.Runtime.CompilerServices.RequiredMember]
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Relation { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
@@ -176,19 +171,18 @@ namespace Valtuutus.Core.Engines.Check
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public CheckRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default, System.Collections.Generic.IDictionary<string, object>? context = null) { }
         public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Permission { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
@@ -210,14 +204,13 @@ namespace Valtuutus.Core.Engines.Check
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public SubjectPermissionRequest() { }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public int Depth { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string SubjectId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -251,17 +244,16 @@ namespace Valtuutus.Core.Engines.LookupEntity
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public LookupEntityRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
         public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Permission { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string SubjectId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -284,19 +276,18 @@ namespace Valtuutus.Core.Engines.LookupSubject
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public LookupSubjectRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
         public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
         public int Depth { get; set; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityId { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string EntityType { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Permission { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string SubjectType { get; init; }
     }
@@ -308,7 +299,6 @@ namespace Valtuutus.Core.Lang
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public LangError() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public LangError(string message, int line, int startPos) { }
@@ -356,7 +346,6 @@ namespace Valtuutus.Core.Schemas
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public Entity() { }
         public System.Collections.Generic.Dictionary<string, Valtuutus.Core.Schemas.Attribute> Attributes { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
@@ -375,7 +364,6 @@ namespace Valtuutus.Core.Schemas
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public FunctionParameter() { }
         [System.Runtime.CompilerServices.RequiredMember]
         public string ParamName { get; init; }
@@ -393,7 +381,6 @@ namespace Valtuutus.Core.Schemas
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public Relation() { }
         [System.Runtime.CompilerServices.RequiredMember]
         public System.Collections.Generic.List<Valtuutus.Core.Schemas.RelationEntity> Entities { get; init; }
@@ -405,7 +392,6 @@ namespace Valtuutus.Core.Schemas
     {
         [System.Obsolete("Constructors of types with required members are not supported in this version of " +
             "your compiler.", true)]
-        [System.Runtime.CompilerServices.CompilerFeatureRequired("RequiredMembers")]
         public RelationEntity() { }
         public string? Relation { get; init; }
         [System.Runtime.CompilerServices.RequiredMember]
