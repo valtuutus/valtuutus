@@ -1,6 +1,7 @@
 using Dapper;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using System.Reflection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
@@ -14,7 +15,7 @@ namespace Valtuutus.Benchmarks;
 public static class CommonSetup
 {
     public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine)> MigrateAndSeed(
-        DbConnectionFactory dbFactory, Action<IServiceCollection> configureProvider,
+        Action<IServiceCollection> configureProvider,
         (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes, Assembly migrationAssembly)
     {
 
@@ -26,12 +27,11 @@ public static class CommonSetup
         var serviceCollection = new ServiceCollection()
             .AddValtuutusCore(schema);
         
-        using var connection = dbFactory();
-        
         configureProvider(serviceCollection);
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
+        using var connection = serviceProvider.GetRequiredService<DbConnectionFactory>()();
         
         
         var migrations = migrationAssembly
@@ -49,8 +49,31 @@ public static class CommonSetup
         }
 
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
-        await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, default);
+        await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, CancellationToken.None);
         
         return (serviceProvider, checkEngine, lookupEntityEngine);
     }
+
+    public static async
+        Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine)> Seed(
+            Action<IServiceCollection> configureProvider,
+            (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes)
+    {
+        var schemaFilePath = Assembly.GetExecutingAssembly()
+            .GetManifestResourceNames()
+            .First(c => c.EndsWith("schema.vtt"));
+        var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
+        
+        var serviceCollection = new ServiceCollection()
+            .AddValtuutusCore(schema);
+        
+        configureProvider(serviceCollection);
+        var serviceProvider = serviceCollection.BuildServiceProvider();
+        var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
+        var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
+        var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
+        await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, CancellationToken.None);
+        
+        return (serviceProvider, checkEngine, lookupEntityEngine);
+    } 
 }

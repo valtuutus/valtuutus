@@ -9,6 +9,7 @@ using Testcontainers.PostgreSql;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Data.InMemory;
 using Valtuutus.Data.Postgres;
 using Valtuutus.Data.SqlServer;
 
@@ -17,7 +18,7 @@ namespace Valtuutus.Benchmarks;
 [MemoryDiagnoser]
 [JsonExporterAttribute.FullCompressed]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
-public class Benchmarks
+public class LookupBenchmarks
 {
     private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder()
         .WithUsername("Valtuutus")
@@ -33,28 +34,30 @@ public class Benchmarks
         .Build();
 
     private ServiceProvider _pgServiceProvider = null!;
-    private ICheckEngine _pgCheckEngine = null!;
     private ILookupEntityEngine _pgLookupEntityEngine = null!;
     private ServiceProvider _mssqlServiceProvider = null!;
-    private ICheckEngine _mssqlCheckEngine = null!;
     private ILookupEntityEngine _msSqlLookupEntityEngine = null!;
-
+    private ServiceProvider _inMemoryServiceProvider = null!;
+    private ILookupEntityEngine _inMemoryLookupEntityEngine = null!;
+    
     [GlobalSetup]
     public void Setup()
     {
         var relAndAttributes = Seeder.Seeder.GenerateData();
         var a = SetupPg(relAndAttributes);
         var b = SetupMssql(relAndAttributes);
-        Task.WhenAll(a, b).GetAwaiter().GetResult();
+        var c = SetupInMemory(relAndAttributes);
+        Task.WhenAll(a, b, c).GetAwaiter().GetResult();
     }
+    
+    
 
     private async Task SetupPg((List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes)
     {
         await _pgContainer.StartAsync();
         IDbConnection DbFactory() => new NpgsqlConnection(_pgContainer.GetConnectionString());
         var pgAssembly = typeof(ValtuutusPostgresOptions).Assembly;
-        (_pgServiceProvider, _pgCheckEngine, _pgLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
-                DbFactory, 
+        (_pgServiceProvider, _, _pgLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
                 (sc) => sc.AddPostgres(_ => DbFactory),
                 relAndAttributes,
                 pgAssembly);
@@ -65,66 +68,29 @@ public class Benchmarks
         await _msSqlContainer.StartAsync();
         IDbConnection DbFactory() => new SqlConnection(_msSqlContainer.GetConnectionString());
         var mssqlAssembly = typeof(ValtuutusSqlServerOptions).Assembly;
-        (_mssqlServiceProvider, _mssqlCheckEngine, _msSqlLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
-            DbFactory,
+        (_mssqlServiceProvider, _, _msSqlLookupEntityEngine) = await CommonSetup.MigrateAndSeed(
             (sc) => sc.AddSqlServer(_ => DbFactory),
             relAndAttributes,
             mssqlAssembly);
     }
     
-    [Benchmark]
-    public async Task<bool> CheckRequest_Simple_Relation_Check_Pg()
+    private async Task SetupInMemory((List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes)
     {
-        return await _pgCheckEngine.Check(new ()
-        {
-            Permission = "admin",
-            EntityType = "organization",
-            EntityId = "5171869f-b4e4-ca9a-b800-5e1dab069a26",
-            SubjectType = "user",
-            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-            
-        }, default);
+        (_inMemoryServiceProvider, _, _inMemoryLookupEntityEngine) = await CommonSetup.Seed(
+            (sc) => sc.AddInMemory(),
+            relAndAttributes);
     }
-    
+
     [Benchmark]
-    public async Task<bool> CheckRequest_Complex_Permission_Function_Eval_Pg()
+    public async Task<HashSet<string>> LookupEntity_InMemory()
     {
-        return await _pgCheckEngine.Check(new ()
+        return await _inMemoryLookupEntityEngine.LookupEntity(new ()
         {
             Permission = "edit",
             EntityType = "project",
-            EntityId = "e4010d7b-cea1-94c6-2232-e1f9ae557272",
             SubjectType = "user",
             SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-        }, default);
-    }
-    
-    
-    [Benchmark]
-    public async Task<bool> CheckRequest_Simple_Relation_Check_Mssql()
-    {
-        return await _mssqlCheckEngine.Check(new ()
-        {
-            Permission = "admin",
-            EntityType = "organization",
-            EntityId = "5171869f-b4e4-ca9a-b800-5e1dab069a26",
-            SubjectType = "user",
-            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-            
-        }, default);
-    }
-    
-    [Benchmark]
-    public async Task<bool> CheckRequest_Complex_Permission_Function_Eval_Mssql()
-    {
-        return await _mssqlCheckEngine.Check(new ()
-        {
-            Permission = "edit",
-            EntityType = "project",
-            EntityId = "e4010d7b-cea1-94c6-2232-e1f9ae557272",
-            SubjectType = "user",
-            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-        }, default);
+        }, CancellationToken.None);
     }
     
     [Benchmark]
@@ -136,7 +102,7 @@ public class Benchmarks
             EntityType = "project",
             SubjectType = "user",
             SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-        }, default);
+        }, CancellationToken.None);
     }
     
     [Benchmark]
@@ -148,7 +114,7 @@ public class Benchmarks
             EntityType = "project",
             SubjectType = "user",
             SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
-        }, default);
+        }, CancellationToken.None);
     }
     
     
@@ -160,6 +126,7 @@ public class Benchmarks
         await _pgServiceProvider.DisposeAsync();
         await _msSqlContainer.DisposeAsync();
         await _mssqlServiceProvider.DisposeAsync();
+        await _inMemoryServiceProvider.DisposeAsync();
     }
     
 }
