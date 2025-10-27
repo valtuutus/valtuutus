@@ -22,12 +22,12 @@ jobs:
         run: |
           dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
       - name: Upload Benchmark Results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: benchmark_results.json
           path: BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
       - name: Upload GitHub Pull Request Event
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: event.json
           path: ${{ github.event_path }}
