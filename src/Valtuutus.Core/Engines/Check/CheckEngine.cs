@@ -49,23 +49,36 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
-        var permission = schema.GetPermissions(req.EntityType);
+        var permissions = schema.GetPermissions(req.EntityType);
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
-        var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name,
-            CheckInternal(new CheckRequest
+        var count = permissions.Count;
+        var names = new string[count];
+        var tasks = new Task<bool>[count];
+
+        var i = 0;
+        foreach (var perm in permissions)
+        {
+            names[i] = perm.Name;
+            tasks[i] = CheckInternal(new CheckRequest
             {
                 EntityType = req.EntityType,
                 EntityId = req.EntityId,
-                Permission = x.Name,
+                Permission = perm.Name,
                 SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            })(cancellationToken))).ToArray();
+            })(cancellationToken);
+            i++;
+        }
 
-        await Task.WhenAll(tasks.Select(x => x.Value));
-        var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        await Task.WhenAll(tasks);
+
+        var dict = new Dictionary<string, bool>(count);
+        for (var j = 0; j < count; j++)
+            dict[names[j]] = tasks[j].Result;
+
         activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished",
             tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
         return dict;
@@ -272,19 +285,19 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 }, ct);
 
             var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
-            checkFunctions.AddRange(relations.Select(relation =>
-                    CheckComputedUserSet(
-                        new CheckRequest
-                        {
-                            EntityType = relation.SubjectType,
-                            EntityId = relation.SubjectId,
-                            Permission = relation.SubjectRelation,
-                            SubjectId = req.SubjectId,
-                            SnapToken = req.SnapToken,
-                            Depth = req.Depth
-                        }, computedUserSetRelation)
-                )
-            );
+            foreach (var relation in relations)
+            {
+                checkFunctions.Add(CheckComputedUserSet(
+                    new CheckRequest
+                    {
+                        EntityType = relation.SubjectType,
+                        EntityId = relation.SubjectId,
+                        Permission = relation.SubjectRelation,
+                        SubjectId = req.SubjectId,
+                        SnapToken = req.SnapToken,
+                        Depth = req.Depth
+                    }, computedUserSetRelation));
+            }
 
             return await CheckUnion(checkFunctions, ct);
         };
@@ -332,66 +345,74 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         };
     }
 
-    private static async Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
+    private static Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
+    {
+        if (functions.Count == 0) return Task.FromResult(false);
+        if (functions.Count == 1) return functions[0](ct);
+        return CheckUnionCore(functions, ct);
+    }
+
+    private static async Task<bool> CheckUnionCore(List<CheckFunction> functions, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
+        // Box once so all static-lambda continuations share the same state object
+        object boxedCts = pooledCts;
+
+        var tasks = new Task<bool>[functions.Count];
+        for (var i = 0; i < functions.Count; i++)
+        {
+            tasks[i] = functions[i](cancellationToken).ContinueWith(
+                static (t, state) =>
+                {
+                    if (t.Result) ((PooledCancellationTokenSource)state!).Cancel();
+                    return t.Result;
+                },
+                boxedCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+        }
 
         try
         {
-            var results = await Task.WhenAll(functions
-                .Select(f =>
-                {
-                    return f(cancellationToken).ContinueWith(t =>
-                    {
-                        if (t.Result)
-                        {
-                            pooledCts.Cancel();
-                        }
-
-                        return t.Result;
-                    }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-                })).ConfigureAwait(false);
-
-            if (Array.Exists(results, b => b))
-            {
-                return true;
-            }
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return Array.Exists(results, static b => b);
         }
         catch (OperationCanceledException)
         {
             return true;
         }
-
-        return false;
     }
 
-    private static async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
+    private static Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
+    {
+        if (functions.Count == 0) return Task.FromResult(true);
+        if (functions.Count == 1) return functions[0](ct);
+        return CheckIntersectCore(functions, ct);
+    }
+
+    private static async Task<bool> CheckIntersectCore(List<CheckFunction> functions, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
+        object boxedCts = pooledCts;
+
+        var tasks = new Task<bool>[functions.Count];
+        for (var i = 0; i < functions.Count; i++)
+        {
+            tasks[i] = functions[i](cancellationToken).ContinueWith(
+                static (t, state) =>
+                {
+                    if (!t.Result) ((PooledCancellationTokenSource)state!).Cancel();
+                    return t.Result;
+                },
+                boxedCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
+        }
 
         try
         {
-            var results = await Task.WhenAll(functions
-                .Select(f =>
-                {
-                    return f(cancellationToken).ContinueWith(t =>
-                    {
-                        if (!t.Result)
-                        {
-                            pooledCts.Cancel();
-                        }
-
-                        return t.Result;
-                    }, cancellationToken);
-                })).ConfigureAwait(false);
-
-            return Array.TrueForAll(results, b => b);
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return Array.TrueForAll(results, static b => b);
         }
         catch (OperationCanceledException)
         {
