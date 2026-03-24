@@ -57,7 +57,9 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId));
+        var tuples = res.RelationsTuples!;
+        var hs = new HashSet<string>();
+        foreach (var t in tuples) hs.Add(t.SubjectId);
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
             tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
@@ -77,10 +79,10 @@ public sealed class LookupSubjectEngine(
         yield return new KeyValuePair<string, object?>("LookupSubjectRequest", req);
     }
 
-    private static LookupSubjectFunction Fail()
-    {
-        return (_) => Task.FromResult(new RelationOrAttributeTuples(Enumerable.Empty<RelationTuple>().ToList()));
-    }
+    private static readonly List<RelationTuple> _emptyRelationList = new(0);
+    private static readonly RelationOrAttributeTuples _emptyTuples = new(_emptyRelationList);
+    private static readonly LookupSubjectFunction _failFunction = static _ => Task.FromResult(_emptyTuples);
+    private static LookupSubjectFunction Fail() => _failFunction;
 
     private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
     {
@@ -246,7 +248,7 @@ public sealed class LookupSubjectEngine(
                 {
                     EntityType = entity.Type,
                     Permission = computedUserSetRelation,
-                    EntitiesIds = relations.Select(x => x.SubjectId).ToArray()
+                    EntitiesIds = ToSubjectIdList(relations)
                 }));
             }
 
@@ -316,7 +318,7 @@ public sealed class LookupSubjectEngine(
                         {
                             EntityType = relationEntity.Type,
                             Permission = relationEntity.Relation!,
-                            EntitiesIds = relations.Select(x => x.SubjectId).ToArray()
+                            EntitiesIds = ToSubjectIdList(relations)
                         }, subRelation));
                 }
             }
@@ -351,9 +353,16 @@ public sealed class LookupSubjectEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var relations = (await Task.WhenAll(functions.Select(f => f(ct))))
-            .SelectMany(x => x.Type == RelationOrAttributeType.Relation ? x.RelationsTuples! : [])
-            .ToList();
+        var tasks = new Task<RelationOrAttributeTuples>[functions.Count];
+        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
+        var results = await Task.WhenAll(tasks);
+
+        var totalCount = 0;
+        foreach (var r in results)
+            if (r.Type == RelationOrAttributeType.Relation) totalCount += r.RelationsTuples!.Count;
+        var relations = new List<RelationTuple>(totalCount);
+        foreach (var r in results)
+            if (r.Type == RelationOrAttributeType.Relation) relations.AddRange(r.RelationsTuples!);
 
         return new RelationOrAttributeTuples(relations);
     }
@@ -363,42 +372,40 @@ public sealed class LookupSubjectEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var overlappingItems = Enumerable.Empty<RelationTuple>();
-        var results = await Task.WhenAll(functions.Select(f => f(ct)));
+        var tasks = new Task<RelationOrAttributeTuples>[functions.Count];
+        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
+        var results = await Task.WhenAll(tasks);
 
-        // If the intersection is between 2 relations, check if the subject is present in the 2 relations
-
-        // If the intersection is between a relation and an attribute, we need to check if the attribute is present and is `true`
-        // then we return the relations
-
-        var count = 0;
+        HashSet<RelationTuple>? hashSet = null;
         foreach (var result in results)
         {
             if (result.Type == RelationOrAttributeType.Attribute)
             {
-                if (result.AttributesTuples!.Count != 0)
-                {
-                    continue;
-                }
-
-                return new RelationOrAttributeTuples(new List<RelationTuple>());
+                if (result.AttributesTuples!.Count == 0)
+                    return _emptyTuples;
+                continue;
             }
 
             var relations = result.RelationsTuples!;
-
-            overlappingItems = count >= 1
-                ? overlappingItems
-                    .Select(x => x)
-                    .Intersect(
-                        relations,
-                        RelationTupleComparer.Instance)
-                : relations;
-
-            count++;
+            if (hashSet is null)
+            {
+                hashSet = new HashSet<RelationTuple>(relations, RelationTupleComparer.Instance);
+                continue;
+            }
+            hashSet.IntersectWith(relations);
+            if (hashSet.Count == 0)
+                return _emptyTuples;
         }
 
-        var res = overlappingItems.ToList();
-        return new RelationOrAttributeTuples(res);
+        if (hashSet is null) return _emptyTuples;
+        return new RelationOrAttributeTuples([.. hashSet]);
+    }
+
+    private static List<string> ToSubjectIdList(List<RelationTuple> tuples)
+    {
+        var list = new List<string>(tuples.Count);
+        foreach (var t in tuples) list.Add(t.SubjectId);
+        return list;
     }
 }
 
