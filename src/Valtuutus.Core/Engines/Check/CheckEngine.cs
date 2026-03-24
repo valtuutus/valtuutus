@@ -371,40 +371,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         if (functions.Count == 0) return Task.FromResult(false);
         if (functions.Count == 1) return functions[0](ct);
-        return CheckUnionCore(functions, ct);
+        return CheckUnionCore(functions, functions.Count, ct);
     }
 
-    private static async Task<bool> CheckUnionCore(List<CheckFunction> functions, CancellationToken ct)
-    {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
-        var cancellationToken = pooledCts.Token;
-        object boxedCts = pooledCts;
-
-        var tasks = new Task<bool>[functions.Count];
-        for (var i = 0; i < functions.Count; i++)
-        {
-            tasks[i] = functions[i](cancellationToken).ContinueWith(
-                static (t, state) =>
-                {
-                    if (t.Result) ((PooledCancellationTokenSource)state!).Cancel();
-                    return t.Result;
-                },
-                boxedCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-        }
-
-        try
-        {
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            return Array.Exists(results, static b => b);
-        }
-        catch (OperationCanceledException)
-        {
-            return true;
-        }
-    }
-
-    private static async Task<bool> CheckUnionCore(CheckFunction[] functions, int count, CancellationToken ct)
+    private static async Task<bool> CheckUnionCore(IReadOnlyList<CheckFunction> functions, int count, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);

@@ -27,7 +27,7 @@ file class CtsPooledObjectPolicy : PooledObjectPolicy<CancellationTokenSource>
         {
 #if NET6_0_OR_GREATER
             try { obj.TryReset(); }
-            catch { return false; }
+            catch (Exception) { return false; }
 #else
             return false;
 #endif
