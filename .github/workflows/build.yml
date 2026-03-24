@@ -9,10 +9,10 @@ on:
     types: [opened, synchronize, reopened]
     paths-ignore:
       - '**.md'
-        
+
 concurrency:
   group: ${{ github.head_ref || github.sha }}
-  cancel-in-progress: true        
+  cancel-in-progress: true
 permissions:
   checks: write
   pull-requests: write
@@ -20,7 +20,7 @@ env:
   GITHUB_WORKSPACE: ${{ github.workspace }}
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-  SONAR_DOTNET_ENABLE_CONCURRENT_EXECUTION: true  
+  SONAR_DOTNET_ENABLE_CONCURRENT_EXECUTION: true
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,34 +31,43 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
-          distribution: 'microsoft' # See 'Supported distributions' for available options
+          distribution: 'zulu'
           java-version: '17'
       - name: Setup dotnet
         uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: |
+            10.x
             9.x
             8.x
             7.x
             6.x
-      - name: Install dotnet-sonarscanner
+      - name: Cache SonarCloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+      - name: Install SonarCloud scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
         run: |
-          dotnet tool install --global dotnet-sonarscanner
+          mkdir -p ${{ runner.temp }}/scanner
+          dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}/scanner
       - name: Install dotnet-coverage
         run: |
           dotnet tool install --global dotnet-coverage
-          
+
       - name: Build the project, run all tests and publish to SonarCloud
         run: |
-          dotnet sonarscanner begin \
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner begin \
           /k:"valtuutus_valtuutus" \
           /o:"valtuutus" \
           /d:sonar.token="$SONAR_TOKEN" \
-          /d:sonar.host.url="https://sonarcloud.io" \
           /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
-          dotnet build Valtuutus.sln --no-incremental          
+          dotnet build Valtuutus.sln --no-incremental
           dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f xml  -o 'coverage.xml'
-          dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+          ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
       - name: Upload Test Result Files
         uses: actions/upload-artifact@v4
         with:

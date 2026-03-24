@@ -18,6 +18,7 @@ jobs:
         uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: |
+            10.x
             9.x
             8.x
             7.x
