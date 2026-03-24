@@ -409,22 +409,20 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var overlappingItems = Enumerable.Empty<RelationOrAttributeTuple>();
         var results = await Task.WhenAll(functions.Select(f => f(ct)));
 
-        var count = 0;
-        foreach (var result in results)
-        {
-            overlappingItems = count >= 1
-                ? overlappingItems.Intersect(
-                    result, RelationOrAttributeComparer.Instance)
-                : result;
+        if (results.Length == 0)
+            return [];
 
-            count++;
+        var hashSet = new HashSet<RelationOrAttributeTuple>(results[0], RelationOrAttributeComparer.Instance);
+        for (var i = 1; i < results.Length; i++)
+        {
+            hashSet.IntersectWith(results[i]);
+            if (hashSet.Count == 0)
+                return [];
         }
 
-        var res = overlappingItems.ToList();
-        return res;
+        return [.. hashSet];
     }
 }
 
