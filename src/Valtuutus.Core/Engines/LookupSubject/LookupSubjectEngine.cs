@@ -55,7 +55,7 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
+        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId));
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
             tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));

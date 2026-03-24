@@ -52,7 +52,7 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
+        var hs = new HashSet<string>(res.Select(x => x.EntityId));
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
