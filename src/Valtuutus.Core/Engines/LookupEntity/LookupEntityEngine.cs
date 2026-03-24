@@ -54,7 +54,8 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.Select(x => x.EntityId));
+        var hs = new HashSet<string>();
+        foreach (var r in res) hs.Add(r.EntityId);
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
@@ -71,10 +72,9 @@ public sealed class LookupEntityEngine(
         yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
     }
 
-    private static LookupFunction Fail()
-    {
-        return (_) => Task.FromResult(new List<RelationOrAttributeTuple>());
-    }
+    private static readonly List<RelationOrAttributeTuple> _emptyResult = new(0);
+    private static readonly LookupFunction _failFunction = static _ => Task.FromResult(_emptyResult);
+    private static LookupFunction Fail() => _failFunction;
 
     private LookupFunction LookupEntityInternal(LookupEntityRequestInternal req)
     {
@@ -146,16 +146,9 @@ public sealed class LookupEntityEngine(
 
     private LookupFunction CheckLeafPermission(LookupEntityRequestInternal req, PermissionNodeLeafPermission node)
     {
-        var perm = node.Permission;
-
-        if (perm.Split('.') is [{ } userSet, { } computedUserSet])
-        {
-            // Indirect Relation
-            return CheckTupleToUserSet(req, userSet, computedUserSet);
-        }
-
-        // Direct Relation
-        return LookupComputedUserSet(req, perm);
+        if (node.IsIndirect)
+            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!);
+        return LookupComputedUserSet(req, node.Permission);
     }
 
     private LookupFunction CheckLeafExp(LookupEntityRequestInternal req, PermissionNodeLeafExp node)
@@ -241,7 +234,7 @@ public sealed class LookupEntityEngine(
                             Permission = tupleSetRelation,
                             EntityType = req.EntityType,
                             SubjectType = entity.Type,
-                            SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
+                            SubjectsIds = ToEntityIdList(relatedTuples),
                             SubjectRelation = entity.Relation,
                             Depth = req.Depth
                         });
@@ -273,14 +266,16 @@ public sealed class LookupEntityEngine(
     {
         return async (ct) =>
         {
-            return (await reader.GetAttributes(
-                    new EntityAttributeFilter
-                    {
-                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
-                    }, ct))
-                .Where(a => a.Value.TryGetValue(out bool b) && b)
-                .Select(x => new RelationOrAttributeTuple(x))
-                .ToList();
+            var attrs = await reader.GetAttributes(
+                new EntityAttributeFilter
+                {
+                    Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
+                }, ct);
+            var result = new List<RelationOrAttributeTuple>(attrs.Count);
+            foreach (var a in attrs)
+                if (a.Value.TryGetValue(out bool b) && b)
+                    result.Add(new RelationOrAttributeTuple(a));
+            return result;
         };
     }
 
@@ -320,7 +315,7 @@ public sealed class LookupEntityEngine(
                                 Permission = relation.Name,
                                 EntityType = req.EntityType,
                                 SubjectType = relationEntity.Type,
-                                SubjectsIds = relatedTuples.Select(x => x.EntityId).ToList(),
+                                SubjectsIds = ToEntityIdList(relatedTuples),
                                 SubjectRelation = relationEntity.Relation,
                                 Depth = req.Depth
                             });
@@ -356,8 +351,7 @@ public sealed class LookupEntityEngine(
                     req.SubjectType,
                     ct
                 ))
-                .Select(x => new RelationOrAttributeTuple(x))
-                .ToList();
+                .ConvertAll(static x => new RelationOrAttributeTuple(x));
         };
     }
 
@@ -371,17 +365,19 @@ public sealed class LookupEntityEngine(
         var dependentResult = await dependent(ct);
         var mainResult = await main(dependentResult)(ct);
 
-        var result = mainResult.Join(
-                dependentResult,
-                m => new { Type = m.RelationTuple!.SubjectType, Id = m.RelationTuple!.SubjectId },
-                d => d.Type switch
-                {
-                    RelationOrAttributeType.Attribute => new {Type = d.AttributeTuple!.EntityType, Id = d.AttributeTuple!.EntityId},
-                    RelationOrAttributeType.Relation => new {Type = d.RelationTuple!.EntityType, Id = d.RelationTuple!.EntityId},
-                    _ => throw new ArgumentOutOfRangeException()
-                },
-                (m, d) => m)
-            .ToList();
+        var dependentSet = new HashSet<(string Type, string Id)>();
+        foreach (var d in dependentResult)
+        {
+            if (d.Type == RelationOrAttributeType.Relation)
+                dependentSet.Add((d.RelationTuple!.EntityType, d.RelationTuple!.EntityId));
+            else
+                dependentSet.Add((d.AttributeTuple!.EntityType, d.AttributeTuple!.EntityId));
+        }
+
+        var result = new List<RelationOrAttributeTuple>(mainResult.Count);
+        foreach (var m in mainResult)
+            if (dependentSet.Contains((m.RelationTuple!.SubjectType, m.RelationTuple!.SubjectId)))
+                result.Add(m);
 
         return result;
     }
@@ -391,11 +387,15 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var results = (await Task.WhenAll(functions.Select(f => f(ct))))
-            .SelectMany(x => x)
-            .ToList();
+        var tasks = new Task<List<RelationOrAttributeTuple>>[functions.Count];
+        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
+        var results = await Task.WhenAll(tasks);
 
-        return results;
+        var totalCount = 0;
+        foreach (var r in results) totalCount += r.Count;
+        var merged = new List<RelationOrAttributeTuple>(totalCount);
+        foreach (var r in results) merged.AddRange(r);
+        return merged;
     }
 
     private static async Task<List<RelationOrAttributeTuple>> IntersectEntities(List<LookupFunction> functions,
@@ -403,7 +403,9 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var results = await Task.WhenAll(functions.Select(f => f(ct)));
+        var tasks = new Task<List<RelationOrAttributeTuple>>[functions.Count];
+        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
+        var results = await Task.WhenAll(tasks);
 
         if (results.Length == 0)
             return [];
@@ -417,6 +419,13 @@ public sealed class LookupEntityEngine(
         }
 
         return [.. hashSet];
+    }
+
+    private static List<string> ToEntityIdList(List<RelationOrAttributeTuple> tuples)
+    {
+        var list = new List<string>(tuples.Count);
+        foreach (var t in tuples) list.Add(t.EntityId);
+        return list;
     }
 }
 
