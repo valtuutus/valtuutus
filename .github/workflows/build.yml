@@ -69,7 +69,7 @@ jobs:
           dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f xml  -o 'coverage.xml'
           ${{ runner.temp }}/scanner/dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
       - name: Upload Test Result Files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results
           path: ${{ github.workspace }}/**/TestResults/**/*
