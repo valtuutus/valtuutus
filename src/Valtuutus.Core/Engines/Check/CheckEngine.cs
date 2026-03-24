@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json.Nodes;
@@ -10,6 +11,8 @@ using CheckFunction = System.Func<System.Threading.CancellationToken, System.Thr
 
 namespace Valtuutus.Core.Engines.Check;
 
+internal readonly record struct CheckCacheKey(string EntityType, string EntityId, string Permission);
+
 public enum RelationType
 {
     None,
@@ -20,6 +23,10 @@ public enum RelationType
 
 public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICheckEngine
 {
+    // Per-request deduplication cache. Flows automatically through async/await via ExecutionContext.
+    // Only set during SubjectPermission() where multiple permissions may share sub-checks.
+    private static readonly AsyncLocal<ConcurrentDictionary<CheckCacheKey, Task<bool>>?> _requestCache = new();
+
     //<inheritdoc/>
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
@@ -53,36 +60,46 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         var permissions = schema.GetPermissions(req.EntityType);
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
-        var count = permissions.Count;
-        var names = new string[count];
-        var tasks = new Task<bool>[count];
-
-        var i = 0;
-        foreach (var perm in permissions)
+        // Install a shared cache for this call. AsyncLocal flows down into all spawned tasks,
+        // so every parallel sub-check in this call sees the same cache.
+        _requestCache.Value = new ConcurrentDictionary<CheckCacheKey, Task<bool>>();
+        try
         {
-            names[i] = perm.Name;
-            tasks[i] = CheckInternal(new CheckRequest
+            var count = permissions.Count;
+            var names = new string[count];
+            var tasks = new Task<bool>[count];
+
+            var i = 0;
+            foreach (var perm in permissions)
             {
-                EntityType = req.EntityType,
-                EntityId = req.EntityId,
-                Permission = perm.Name,
-                SubjectType = req.SubjectType,
-                SubjectId = req.SubjectId,
-                SnapToken = req.SnapToken,
-                Depth = req.Depth
-            })(cancellationToken);
-            i++;
+                names[i] = perm.Name;
+                tasks[i] = CheckInternal(new CheckRequest
+                {
+                    EntityType = req.EntityType,
+                    EntityId = req.EntityId,
+                    Permission = perm.Name,
+                    SubjectType = req.SubjectType,
+                    SubjectId = req.SubjectId,
+                    SnapToken = req.SnapToken,
+                    Depth = req.Depth
+                })(cancellationToken);
+                i++;
+            }
+
+            await Task.WhenAll(tasks);
+
+            var dict = new Dictionary<string, bool>(count);
+            for (var j = 0; j < count; j++)
+                dict[names[j]] = tasks[j].Result;
+
+            activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished",
+                tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
+            return dict;
         }
-
-        await Task.WhenAll(tasks);
-
-        var dict = new Dictionary<string, bool>(count);
-        for (var j = 0; j < count; j++)
-            dict[names[j]] = tasks[j].Result;
-
-        activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished",
-            tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
-        return dict;
+        finally
+        {
+            _requestCache.Value = null;
+        }
     }
 
     private static IEnumerable<KeyValuePair<string, object?>> CreateSubjectPermissionResultAttributes(
@@ -108,12 +125,28 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
         req.DecreaseDepth();
 
-        return schema.GetRelationType(req.EntityType, req.Permission) switch
+        var inner = schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => CheckRelation(req),
             RelationType.Permission => CheckPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
             RelationType.Attribute => CheckAttribute(req),
             _ => Fail()
+        };
+
+        var cache = _requestCache.Value;
+        if (cache is null)
+            return inner;
+
+        // Wrap in cache-aware function: on first execution the task is stored;
+        // subsequent calls for the same key return the already-running/completed task.
+        var key = new CheckCacheKey(req.EntityType, req.EntityId, req.Permission);
+        return ct =>
+        {
+            if (cache.TryGetValue(key, out var cached))
+                return cached;
+            var task = inner(ct);
+            cache.TryAdd(key, task);
+            return task;
         };
     }
 
