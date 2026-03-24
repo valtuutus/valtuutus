@@ -10,7 +10,7 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
-      BENCHMARK_RESULTS: benchmark_results.json
+      BENCHMARK_RESULTS: benchmark_results
       PR_EVENT: event.json
     steps:
       - name: Download Benchmark Results
@@ -36,17 +36,19 @@ jobs:
       - uses: bencherdev/bencher@main
       - name: Track Benchmarks with Bencher
         run: |
-          bencher run \
-          --project valtuutus \
-          --token '${{ secrets.BENCHER_API_TOKEN }}' \
-          --branch "$PR_HEAD" \
-          --start-point "$PR_BASE" \
-          --start-point-hash "$PR_BASE_SHA" \
-          --start-point-clone-thresholds \
-          --start-point-reset \
-          --testbed ubuntu-latest \
-          --err \
-          --adapter c_sharp_dot_net  \
-          --github-actions '${{ secrets.GITHUB_TOKEN }}' \
-          --ci-number "$PR_NUMBER" \
-          --file 'Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json'
+          for f in *-report-full-compressed.json; do
+            bencher run \
+            --project valtuutus \
+            --token '${{ secrets.BENCHER_API_TOKEN }}' \
+            --branch "$PR_HEAD" \
+            --start-point "$PR_BASE" \
+            --start-point-hash "$PR_BASE_SHA" \
+            --start-point-clone-thresholds \
+            --start-point-reset \
+            --testbed ubuntu-latest \
+            --err \
+            --adapter c_sharp_dot_net \
+            --github-actions '${{ secrets.GITHUB_TOKEN }}' \
+            --ci-number "$PR_NUMBER" \
+            --file "$f"
+          done
