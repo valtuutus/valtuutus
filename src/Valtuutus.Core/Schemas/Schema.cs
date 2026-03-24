@@ -30,9 +30,8 @@ public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Fun
         return Entities[entityType].Attributes[attribute];
     }
 
-    internal List<Permission> GetPermissions(string entityType)
+    internal Dictionary<string, Permission>.ValueCollection GetPermissions(string entityType)
     {
-        return Entities[entityType].Permissions.Select(x => x.Value)
-            .ToList();
+        return Entities[entityType].Permissions.Values;
     }
 }

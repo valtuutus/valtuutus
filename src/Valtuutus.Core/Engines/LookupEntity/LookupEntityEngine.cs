@@ -14,6 +14,8 @@ namespace Valtuutus.Core.Engines.LookupEntity;
 
 internal record LookupEntityRequestInternal : IWithDepth
 {
+    private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
+
     public required string EntityType { get; init; }
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
@@ -23,7 +25,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     public required string FinalSubjectId { get; init; }
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
-    public required IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
+    public required IDictionary<string, object> Context { get; set; } = EmptyContext;
 }
 
 public sealed class LookupEntityEngine(
@@ -52,7 +54,7 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.Select(x => x.EntityId).OrderBy(x => x));
+        var hs = new HashSet<string>(res.Select(x => x.EntityId));
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
@@ -196,11 +198,20 @@ public sealed class LookupEntityEngine(
         PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
     {
         var result = new List<RelationOrAttributeTuple>();
-        var getDynamicallyTypedAttribute = CreateAttributeGetter(attributes, req, schema);
 
         foreach (var attr in attributes.Values)
         {
-            using var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            using var fnArgs = paramToArgMap.ToLambdaArgs(
+                static (arg, state) =>
+                {
+                    var (attrs, entityId, entityType, sch) = state;
+                    if (!attrs.TryGetValue((arg.AttributeName, entityId), out var a))
+                        return null;
+                    return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                },
+                (attributes, attr.EntityId, req.EntityType, schema),
+                req.Context);
+
             if (fn.Lambda(fnArgs.Dictionary))
             {
                 result.Add(new RelationOrAttributeTuple(attr));
@@ -208,23 +219,6 @@ public sealed class LookupEntityEngine(
         }
 
         return result;
-    }
-
-    private static Func<PermissionNodeExpArgumentAttribute, string, object?> CreateAttributeGetter(
-        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
-        LookupEntityRequestInternal req,
-        Schema schema)
-    {
-        return (arg, entityId) =>
-        {
-            if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
-            {
-                return null;
-            }
-
-            var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
-            return attr.GetValue(attrType);
-        };
     }
 
     private LookupFunction CheckTupleToUserSet(LookupEntityRequestInternal req, string tupleSetRelation,
@@ -409,22 +403,20 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var overlappingItems = Enumerable.Empty<RelationOrAttributeTuple>();
         var results = await Task.WhenAll(functions.Select(f => f(ct)));
 
-        var count = 0;
-        foreach (var result in results)
-        {
-            overlappingItems = count >= 1
-                ? overlappingItems.Intersect(
-                    result, RelationOrAttributeComparer.Instance)
-                : result;
+        if (results.Length == 0)
+            return [];
 
-            count++;
+        var hashSet = new HashSet<RelationOrAttributeTuple>(results[0], RelationOrAttributeComparer.Instance);
+        for (var i = 1; i < results.Length; i++)
+        {
+            hashSet.IntersectWith(results[i]);
+            if (hashSet.Count == 0)
+                return [];
         }
 
-        var res = overlappingItems.ToList();
-        return res;
+        return [.. hashSet];
     }
 }
 

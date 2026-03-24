@@ -16,6 +16,8 @@ namespace Valtuutus.Core.Engines.LookupSubject;
 
 internal record LookupSubjectRequestInternal : IWithDepth
 {
+    private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
+
     public required string EntityType { get; init; }
     public required IList<string> EntitiesIds { get; init; }
     public required string Permission { get; init; }
@@ -26,7 +28,7 @@ internal record LookupSubjectRequestInternal : IWithDepth
     public required string RootEntityId { get; init; }
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
-    public required IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
+    public required IDictionary<string, object> Context { get; set; } = EmptyContext;
 }
 
 public sealed class LookupSubjectEngine(
@@ -55,7 +57,7 @@ public sealed class LookupSubjectEngine(
         };
 
         var res = await LookupInternal(internalReq)(cancellationToken);
-        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId).OrderBy(x => x));
+        var hs = new HashSet<string>(res.RelationsTuples!.Select(x => x.SubjectId));
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
             tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
@@ -202,11 +204,20 @@ public sealed class LookupSubjectEngine(
         PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
     {
         var result = new List<AttributeTuple>();
-        var getDynamicallyTypedAttribute = CreateAttributeGetter(attributes, req, schema);
 
         foreach (var attr in attributes.Values)
         {
-            using var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            using var fnArgs = paramToArgMap.ToLambdaArgs(
+                static (arg, state) =>
+                {
+                    var (attrs, entityId, entityType, sch) = state;
+                    if (!attrs.TryGetValue((arg.AttributeName, entityId), out var a))
+                        return null;
+                    return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                },
+                (attributes, attr.EntityId, req.EntityType, schema),
+                req.Context);
+
             if (fn.Lambda(fnArgs.Dictionary))
             {
                 result.Add(attr);
@@ -214,23 +225,6 @@ public sealed class LookupSubjectEngine(
         }
 
         return result;
-    }
-
-    private static Func<PermissionNodeExpArgumentAttribute, string, object?> CreateAttributeGetter(
-        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
-        LookupSubjectRequestInternal req,
-        Schema schema)
-    {
-        return (arg, entityId) =>
-        {
-            if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
-            {
-                return null;
-            }
-
-            var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
-            return attr.GetValue(attrType);
-        };
     }
 
     private LookupSubjectFunction CheckTupleToUserSet(LookupSubjectRequestInternal req, string tupleSetRelation,

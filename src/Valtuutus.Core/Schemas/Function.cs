@@ -68,4 +68,30 @@ internal static class ParamToArgMapExtensions
 
         return pooled;
     }
+
+    public static PooledDictionary<string, object?> ToLambdaArgs<TState>(
+        this PooledDictionary<FunctionParameter, PermissionNodeExpArgument> map,
+        Func<PermissionNodeExpArgumentAttribute, TState, object?> attrValueMapper,
+        TState state,
+        IDictionary<string, object> context)
+    {
+        var pooled = PooledDictionary<string, object?>.Rent();
+
+        foreach (var pair in map.Dictionary)
+        {
+            object? value = pair.Value switch
+            {
+                PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg, state),
+                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
+                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
+                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
+                _ => throw new NotSupportedException("Unsupported argument type.")
+            };
+
+            pooled.Dictionary[pair.Key.ParamName] = value;
+        }
+
+        return pooled;
+    }
 }

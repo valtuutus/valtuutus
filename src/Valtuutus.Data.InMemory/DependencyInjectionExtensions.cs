@@ -13,7 +13,8 @@ public static class DependencyInjectionExtensions
     public static IValtuutusDataBuilder AddInMemory(this IServiceCollection services)
     {
         var builder = services.AddValtuutusData();
-        builder.Services.AddSingleton<InMemoryController>();
+        builder.Services.AddSingleton<RelationsStore>();
+        builder.Services.AddSingleton<AttributesStore>();
         builder.Services.AddScoped<IDataReaderProvider, InMemoryProvider>();
         builder.Services.AddScoped<IDataWriterProvider, InMemoryProvider>();
         return builder;
