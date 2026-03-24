@@ -26,7 +26,25 @@ internal record PermissionNodeLeaf(PermissionNodeLeafType Type)
     public PermissionNodeLeafExp? ExpressionNode { get; init; }
 }
 
-internal record PermissionNodeLeafPermission(string Permission);
+internal sealed class PermissionNodeLeafPermission
+{
+    public string Permission { get; }
+    public string? UserSet { get; }
+    public string? ComputedUserSet { get; }
+    public bool IsIndirect { get; }
+
+    public PermissionNodeLeafPermission(string permission)
+    {
+        Permission = permission;
+        var i = permission.IndexOf('.');
+        if (i > 0 && i < permission.Length - 1)
+        {
+            UserSet = permission[..i];
+            ComputedUserSet = permission[(i + 1)..];
+            IsIndirect = true;
+        }
+    }
+}
 
 internal enum PermissionNodeExpArgumentType
 {

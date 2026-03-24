@@ -8,9 +8,9 @@ public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Fun
     {
         var found = Entities.TryGetValue(entityType, out var entity);
         if (!found) return RelationType.None;
-        if (entity!.Attributes.ContainsKey(permission)) return RelationType.Attribute;
+        if (entity!.Permissions.ContainsKey(permission)) return RelationType.Permission;
         if (entity.Relations.ContainsKey(permission)) return RelationType.DirectRelation;
-        if (entity.Permissions.ContainsKey(permission)) return RelationType.Permission;
+        if (entity.Attributes.ContainsKey(permission)) return RelationType.Attribute;
         return RelationType.None;
     }
 

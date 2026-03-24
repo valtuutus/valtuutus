@@ -155,16 +155,9 @@ public sealed class LookupSubjectEngine(
     private LookupSubjectFunction CheckLeafPermission(LookupSubjectRequestInternal req,
         PermissionNodeLeafPermission node)
     {
-        var perm = node.Permission;
-
-        if (perm.Split('.') is [{ } userSet, { } computedUserSet])
-        {
-            // Indirect Relation
-            return CheckTupleToUserSet(req, userSet, computedUserSet);
-        }
-
-        // Direct Relation
-        return LookupComputedUserSet(req, perm);
+        if (node.IsIndirect)
+            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!);
+        return LookupComputedUserSet(req, node.Permission);
     }
 
     private LookupSubjectFunction CheckLeafExp(LookupSubjectRequestInternal req, PermissionNodeLeafExp node)

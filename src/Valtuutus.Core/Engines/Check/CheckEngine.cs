@@ -246,16 +246,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private CheckFunction CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission node)
     {
-        var perm = node.Permission;
-
-        if (perm.Split('.') is [{ } userSet, { } computedUserSet])
-        {
-            // Indirect Relation
-            return CheckTupleToUserSet(req, userSet, computedUserSet);
-        }
-
-        // Direct Relation
-        return CheckComputedUserSet(req, perm);
+        if (node.IsIndirect)
+            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!);
+        return CheckComputedUserSet(req, node.Permission);
     }
 
     private CheckFunction CheckComputedUserSet(CheckRequest req, string computedUserSetRelation)
