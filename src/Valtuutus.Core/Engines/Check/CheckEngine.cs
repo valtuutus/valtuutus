@@ -336,8 +336,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var cancellationToken = cancellationTokenSource.Token;
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
 
         try
         {
@@ -348,7 +348,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     {
                         if (t.Result)
                         {
-                            cancellationTokenSource.Cancel();
+                            pooledCts.Cancel();
                         }
 
                         return t.Result;
@@ -364,10 +364,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             return true;
         }
-        finally
-        {
-            cancellationTokenSource.Dispose();
-        }
 
         return false;
     }
@@ -375,8 +371,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     private static async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var cancellationToken = cancellationTokenSource.Token;
+
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
 
         try
         {
@@ -387,23 +384,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     {
                         if (!t.Result)
                         {
-                            cancellationTokenSource.Cancel();
+                            pooledCts.Cancel();
                         }
 
                         return t.Result;
                     }, cancellationToken);
                 })).ConfigureAwait(false);
 
-            var result = Array.TrueForAll(results, b => b);
-            return result;
+            return Array.TrueForAll(results, b => b);
         }
         catch (OperationCanceledException)
         {
             return false;
-        }
-        finally
-        {
-            cancellationTokenSource.Dispose();
         }
     }
 }
