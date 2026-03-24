@@ -372,7 +372,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
-        object boxedCts = pooledCts;
+        var innerCts = pooledCts.InnerSource;
 
         var tasks = new Task<bool>[count];
         for (var i = 0; i < count; i++)
@@ -380,10 +380,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             tasks[i] = functions[i](cancellationToken).ContinueWith(
                 static (t, state) =>
                 {
-                    if (t.Result) ((PooledCancellationTokenSource)state!).Cancel();
+                    if (t.Result) ((CancellationTokenSource)state!).Cancel();
                     return t.Result;
                 },
-                boxedCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+                innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
         }
 
         try
@@ -409,7 +409,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
-        object boxedCts = pooledCts;
+        var innerCts = pooledCts.InnerSource;
 
         var tasks = new Task<bool>[functions.Count];
         for (var i = 0; i < functions.Count; i++)
@@ -417,10 +417,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             tasks[i] = functions[i](cancellationToken).ContinueWith(
                 static (t, state) =>
                 {
-                    if (!t.Result) ((PooledCancellationTokenSource)state!).Cancel();
+                    if (!t.Result) ((CancellationTokenSource)state!).Cancel();
                     return t.Result;
                 },
-                boxedCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
+                innerCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
         }
 
         try

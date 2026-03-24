@@ -28,10 +28,11 @@ public record Function
     {
         var pooled = PooledDictionary<FunctionParameter, PermissionNodeExpArgument>.Rent();
 
+        var argsByOrder = new Dictionary<int, PermissionNodeExpArgument>(args.Count);
+        foreach (var arg in args) argsByOrder[arg.ArgOrder] = arg;
+
         foreach (var parameter in Parameters)
-        {
-            pooled.Dictionary[parameter] = args.First(a => a.ArgOrder == parameter.ParamOrder);
-        }
+            pooled.Dictionary[parameter] = argsByOrder[parameter.ParamOrder];
 
         return pooled;
     }

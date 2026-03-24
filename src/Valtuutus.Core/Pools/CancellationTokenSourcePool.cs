@@ -48,6 +48,7 @@ internal readonly struct PooledCancellationTokenSource : IDisposable
     }
 
     public CancellationToken Token => _cts.Token;
+    internal CancellationTokenSource InnerSource => _cts;
 
     public void Cancel() => _cts.Cancel();
 
