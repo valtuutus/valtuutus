@@ -15,8 +15,9 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
 
     protected override Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        var controller = Provider.GetRequiredService<InMemoryController>();
-        return controller.Dump(default);
+        var relations = Provider.GetRequiredService<RelationsStore>();
+        var attributes = Provider.GetRequiredService<AttributesStore>();
+        return Task.FromResult((relations.Dump(), attributes.Dump()));
     }
 
     public DataEngineSpecs(InMemoryFixture fixture) : base(fixture) {}

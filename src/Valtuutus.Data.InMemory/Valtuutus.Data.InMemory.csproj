@@ -8,10 +8,6 @@
         <PackageTags>$(PackageTags);inmemory</PackageTags>
     </PropertyGroup>
 
-    <ItemGroup>
-      <PackageReference Include="Akka" />
-    </ItemGroup>
-
     <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
         <PackageReference Include="Polyfill">
             <PrivateAssets>all</PrivateAssets>
