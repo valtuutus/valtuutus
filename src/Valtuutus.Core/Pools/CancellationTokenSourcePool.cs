@@ -10,7 +10,6 @@ internal static class CancellationTokenSourcePool
     public static PooledCancellationTokenSource Rent(CancellationToken linkedToken)
     {
         var cts = _pool.Get();
-        // Create a linked registration so that cancelling the outer token cancels ours too
         var reg = linkedToken.Register(static s => ((CancellationTokenSource)s!).Cancel(), cts);
         return new PooledCancellationTokenSource(cts, reg);
     }
@@ -26,9 +25,12 @@ file class CtsPooledObjectPolicy : PooledObjectPolicy<CancellationTokenSource>
     {
         if (obj.IsCancellationRequested)
         {
-            // Reset so it can be reused
+#if NET6_0_OR_GREATER
             try { obj.TryReset(); }
             catch { return false; }
+#else
+            return false;
+#endif
         }
         return !obj.IsCancellationRequested;
     }

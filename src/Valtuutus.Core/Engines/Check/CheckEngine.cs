@@ -409,7 +409,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
-        // Box once so all static-lambda continuations share the same state object
         object boxedCts = pooledCts;
 
         var tasks = new Task<bool>[count];
