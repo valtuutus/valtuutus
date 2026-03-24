@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.Buffers;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
@@ -97,10 +98,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         yield return new KeyValuePair<string, object?>("SubjectPermissionRequest", req);
     }
 
-    private static CheckFunction Fail()
-    {
-        return (_) => Task.FromResult(false);
-    }
+    private static readonly CheckFunction _failFunction = static (_) => Task.FromResult(false);
+    private static CheckFunction Fail() => _failFunction;
 
     private CheckFunction CheckInternal(CheckRequest req)
     {
@@ -228,21 +227,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
 
             using var paramToArg = fn.CreateParamToArgMap(node.Args);
-            
-            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
-            {
-                if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
+
+            using var fnArgs = paramToArg.ToLambdaArgs(
+                static (arg, state) =>
                 {
-                    return null;
-                }
+                    var (attrs, entityId, entityType, sch) = state;
+                    if (!attrs.TryGetValue((arg.AttributeName, entityId), out var attr))
+                        return null;
+                    return attr.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                },
+                (attributes, req.EntityId, req.EntityType, schema),
+                req.Context);
 
-                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
-
-                return attr.GetValue(attrType);
-            };
-
-            using var fnArgs = paramToArg.ToLambdaArgs(getDynamicallyTypedAttribute, req.Context);
-            
             var res = fn.Lambda(fnArgs.Dictionary);
             return res;
         };
@@ -284,22 +280,32 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     SnapToken = req.SnapToken
                 }, ct);
 
-            var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
-            foreach (var relation in relations)
-            {
-                checkFunctions.Add(CheckComputedUserSet(
-                    new CheckRequest
-                    {
-                        EntityType = relation.SubjectType,
-                        EntityId = relation.SubjectId,
-                        Permission = relation.SubjectRelation,
-                        SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken,
-                        Depth = req.Depth
-                    }, computedUserSetRelation));
-            }
+            if (relations.Count == 0) return false;
 
-            return await CheckUnion(checkFunctions, ct);
+            var pool = ArrayPool<CheckFunction>.Shared;
+            var buffer = pool.Rent(relations.Count);
+            try
+            {
+                for (var i = 0; i < relations.Count; i++)
+                {
+                    var relation = relations[i];
+                    buffer[i] = CheckComputedUserSet(
+                        new CheckRequest
+                        {
+                            EntityType = relation.SubjectType,
+                            EntityId = relation.SubjectId,
+                            Permission = relation.SubjectRelation,
+                            SubjectId = req.SubjectId,
+                            SnapToken = req.SnapToken,
+                            Depth = req.Depth
+                        }, computedUserSetRelation);
+                }
+                return await CheckUnion(buffer, relations.Count, ct);
+            }
+            finally
+            {
+                pool.Return(buffer, clearArray: true);
+            }
         };
     }
 
@@ -318,31 +324,47 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     SnapToken = req.SnapToken
                 }, ct);
 
-            var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
+            if (relations.Count == 0) return false;
 
-            foreach (var relation in relations)
+            var pool = ArrayPool<CheckFunction>.Shared;
+            var buffer = pool.Rent(relations.Count);
+            var count = 0;
+            try
             {
-                if (relation.SubjectId == req.SubjectId)
+                foreach (var relation in relations)
                 {
-                    return true;
-                }
+                    if (relation.SubjectId == req.SubjectId)
+                        return true;
 
-                if (!relation.IsDirectSubject())
-                {
-                    checkFunctions.Add(CheckInternal(new CheckRequest
+                    if (!relation.IsDirectSubject())
                     {
-                        EntityType = relation.SubjectType,
-                        EntityId = relation.SubjectId,
-                        Permission = relation.SubjectRelation,
-                        SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken,
-                        Depth = req.Depth
-                    }));
+                        buffer[count++] = CheckInternal(new CheckRequest
+                        {
+                            EntityType = relation.SubjectType,
+                            EntityId = relation.SubjectId,
+                            Permission = relation.SubjectRelation,
+                            SubjectId = req.SubjectId,
+                            SnapToken = req.SnapToken,
+                            Depth = req.Depth
+                        });
+                    }
                 }
-            }
 
-            return await CheckUnion(checkFunctions, ct);
+                if (count == 0) return false;
+                return await CheckUnion(buffer, count, ct);
+            }
+            finally
+            {
+                pool.Return(buffer, clearArray: true);
+            }
         };
+    }
+
+    private static Task<bool> CheckUnion(CheckFunction[] functions, int count, CancellationToken ct)
+    {
+        if (count == 0) return Task.FromResult(false);
+        if (count == 1) return functions[0](ct);
+        return CheckUnionCore(functions, count, ct);
     }
 
     private static Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
@@ -357,11 +379,41 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
-        // Box once so all static-lambda continuations share the same state object
         object boxedCts = pooledCts;
 
         var tasks = new Task<bool>[functions.Count];
         for (var i = 0; i < functions.Count; i++)
+        {
+            tasks[i] = functions[i](cancellationToken).ContinueWith(
+                static (t, state) =>
+                {
+                    if (t.Result) ((PooledCancellationTokenSource)state!).Cancel();
+                    return t.Result;
+                },
+                boxedCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+        }
+
+        try
+        {
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return Array.Exists(results, static b => b);
+        }
+        catch (OperationCanceledException)
+        {
+            return true;
+        }
+    }
+
+    private static async Task<bool> CheckUnionCore(CheckFunction[] functions, int count, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
+        // Box once so all static-lambda continuations share the same state object
+        object boxedCts = pooledCts;
+
+        var tasks = new Task<bool>[count];
+        for (var i = 0; i < count; i++)
         {
             tasks[i] = functions[i](cancellationToken).ContinueWith(
                 static (t, state) =>

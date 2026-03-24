@@ -198,11 +198,20 @@ public sealed class LookupEntityEngine(
         PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
     {
         var result = new List<RelationOrAttributeTuple>();
-        var getDynamicallyTypedAttribute = CreateAttributeGetter(attributes, req, schema);
 
         foreach (var attr in attributes.Values)
         {
-            using var fnArgs = paramToArgMap.ToLambdaArgs(arg => getDynamicallyTypedAttribute(arg, attr.EntityId), req.Context);
+            using var fnArgs = paramToArgMap.ToLambdaArgs(
+                static (arg, state) =>
+                {
+                    var (attrs, entityId, entityType, sch) = state;
+                    if (!attrs.TryGetValue((arg.AttributeName, entityId), out var a))
+                        return null;
+                    return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                },
+                (attributes, attr.EntityId, req.EntityType, schema),
+                req.Context);
+
             if (fn.Lambda(fnArgs.Dictionary))
             {
                 result.Add(new RelationOrAttributeTuple(attr));
@@ -210,23 +219,6 @@ public sealed class LookupEntityEngine(
         }
 
         return result;
-    }
-
-    private static Func<PermissionNodeExpArgumentAttribute, string, object?> CreateAttributeGetter(
-        IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
-        LookupEntityRequestInternal req,
-        Schema schema)
-    {
-        return (arg, entityId) =>
-        {
-            if (!attributes.TryGetValue((arg.AttributeName, entityId), out var attr))
-            {
-                return null;
-            }
-
-            var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
-            return attr.GetValue(attrType);
-        };
     }
 
     private LookupFunction CheckTupleToUserSet(LookupEntityRequestInternal req, string tupleSetRelation,
