@@ -14,6 +14,8 @@ namespace Valtuutus.Core.Engines.LookupEntity;
 
 internal record LookupEntityRequestInternal : IWithDepth
 {
+    private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
+
     public required string EntityType { get; init; }
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
@@ -23,7 +25,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     public required string FinalSubjectId { get; init; }
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
-    public required IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
+    public required IDictionary<string, object> Context { get; set; } = EmptyContext;
 }
 
 public sealed class LookupEntityEngine(
