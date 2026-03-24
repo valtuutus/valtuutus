@@ -81,7 +81,7 @@ public class LookupBenchmarks
             relAndAttributes);
     }
 
-    [Benchmark]
+    [Benchmark(Baseline = true)]
     public async Task<HashSet<string>> LookupEntity_InMemory()
     {
         return await _inMemoryLookupEntityEngine.LookupEntity(new ()
