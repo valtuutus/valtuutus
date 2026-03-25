@@ -35,11 +35,14 @@ jobs:
             core.exportVariable("PR_NUMBER", prEvent.number);
       - uses: bencherdev/bencher@main
       - name: Track Benchmarks with Bencher
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for f in *-report-full-compressed.json; do
             bencher run \
             --project valtuutus \
-            --token '${{ secrets.BENCHER_API_TOKEN }}' \
+            --token "$BENCHER_API_TOKEN" \
             --branch "$PR_HEAD" \
             --start-point "$PR_BASE" \
             --start-point-hash "$PR_BASE_SHA" \
@@ -48,7 +51,7 @@ jobs:
             --testbed ubuntu-latest \
             --err \
             --adapter c_sharp_dot_net \
-            --github-actions '${{ secrets.GITHUB_TOKEN }}' \
+            --github-actions "$GITHUB_TOKEN" \
             --ci-number "$PR_NUMBER" \
             --file "$f"
           done

@@ -22,11 +22,14 @@ jobs:
           dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
       - uses: bencherdev/bencher@main
       - name: Track base branch benchmarks with Bencher
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for f in BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json; do
             bencher run \
             --project valtuutus \
-            --token '${{ secrets.BENCHER_API_TOKEN }}' \
+            --token "$BENCHER_API_TOKEN" \
             --branch main \
             --testbed ubuntu-latest \
             --threshold-measure latency \
@@ -37,5 +40,5 @@ jobs:
             --err \
             --adapter c_sharp_dot_net \
             --file "$f" \
-            --github-actions '${{ secrets.GITHUB_TOKEN }}'
+            --github-actions "$GITHUB_TOKEN"
           done
