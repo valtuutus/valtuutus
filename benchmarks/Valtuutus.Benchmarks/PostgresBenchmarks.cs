@@ -2,11 +2,13 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Order;
 using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
+using Npgsql;
+using System.Data;
+using Testcontainers.PostgreSql;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
-using Valtuutus.Data.InMemory;
+using Valtuutus.Data.Postgres;
 
 namespace Valtuutus.Benchmarks;
 
@@ -15,8 +17,15 @@ namespace Valtuutus.Benchmarks;
 [CategoriesColumn]
 [JsonExporterAttribute.FullCompressed]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
-public class InMemoryBenchmarks
+public class PostgresBenchmarks
 {
+    private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder()
+        .WithUsername("Valtuutus")
+        .WithPassword("Valtuutus123")
+        .WithDatabase("Valtuutus")
+        .WithName($"pg-benchmarks-{Guid.NewGuid()}")
+        .Build();
+
     private ServiceProvider _serviceProvider = null!;
     private ICheckEngine _checkEngine = null!;
     private ILookupEntityEngine _lookupEntityEngine = null!;
@@ -24,9 +33,13 @@ public class InMemoryBenchmarks
     [GlobalSetup]
     public async Task Setup()
     {
-        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.Seed(
-            sc => sc.AddInMemory(),
-            Seeder.Seeder.GenerateData());
+        await _pgContainer.StartAsync();
+        IDbConnection DbFactory() => new NpgsqlConnection(_pgContainer.GetConnectionString());
+        var pgAssembly = typeof(ValtuutusPostgresOptions).Assembly;
+        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.MigrateAndSeed(
+            sc => sc.AddPostgres(_ => DbFactory),
+            Seeder.Seeder.GenerateData(),
+            pgAssembly);
     }
 
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Simple")]
@@ -82,6 +95,7 @@ public class InMemoryBenchmarks
     [GlobalCleanup]
     public async Task Cleanup()
     {
+        await _pgContainer.DisposeAsync();
         await _serviceProvider.DisposeAsync();
     }
 }
