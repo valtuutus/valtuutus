@@ -55,6 +55,18 @@ public class InMemoryBenchmarks
         }, CancellationToken.None);
     }
 
+    [Benchmark(Baseline = true), BenchmarkCategory("SubjectPermission")]
+    public async Task<Dictionary<string, bool>> SubjectPermission()
+    {
+        return await _checkEngine.SubjectPermission(new()
+        {
+            EntityType = "project",
+            EntityId = "e4010d7b-cea1-94c6-2232-e1f9ae557272",
+            SubjectType = "user",
+            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
+        }, CancellationToken.None);
+    }
+
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity")]
     public async Task<HashSet<string>> LookupEntity()
     {

@@ -1,13 +1,14 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Order;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using System.Data;
-using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
-using Valtuutus.Data.SqlServer;
+using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Data.Postgres;
 
 namespace Valtuutus.Benchmarks;
 
@@ -16,27 +17,29 @@ namespace Valtuutus.Benchmarks;
 [CategoriesColumn]
 [JsonExporterAttribute.FullCompressed]
 [Orderer(SummaryOrderPolicy.FastestToSlowest)]
-public class SqlServerCheckBenchmarks
+public class PostgresBenchmarks
 {
-    private readonly MsSqlContainer _msSqlContainer = new MsSqlBuilder()
-        .WithImage("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
-        .WithPassword("Valtuutus123!")
-        .WithName($"mssql-check-benchmarks-{Guid.NewGuid()}")
+    private readonly PostgreSqlContainer _pgContainer = new PostgreSqlBuilder()
+        .WithUsername("Valtuutus")
+        .WithPassword("Valtuutus123")
+        .WithDatabase("Valtuutus")
+        .WithName($"pg-benchmarks-{Guid.NewGuid()}")
         .Build();
 
     private ServiceProvider _serviceProvider = null!;
     private ICheckEngine _checkEngine = null!;
+    private ILookupEntityEngine _lookupEntityEngine = null!;
 
     [GlobalSetup]
     public async Task Setup()
     {
-        await _msSqlContainer.StartAsync();
-        IDbConnection DbFactory() => new SqlConnection(_msSqlContainer.GetConnectionString());
-        var mssqlAssembly = typeof(ValtuutusSqlServerOptions).Assembly;
-        (_serviceProvider, _checkEngine, _) = await CommonSetup.MigrateAndSeed(
-            sc => sc.AddSqlServer(_ => DbFactory),
+        await _pgContainer.StartAsync();
+        IDbConnection DbFactory() => new NpgsqlConnection(_pgContainer.GetConnectionString());
+        var pgAssembly = typeof(ValtuutusPostgresOptions).Assembly;
+        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.MigrateAndSeed(
+            sc => sc.AddPostgres(_ => DbFactory),
             Seeder.Seeder.GenerateData(),
-            mssqlAssembly);
+            pgAssembly);
     }
 
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Simple")]
@@ -77,10 +80,22 @@ public class SqlServerCheckBenchmarks
         }, CancellationToken.None);
     }
 
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity")]
+    public async Task<HashSet<string>> LookupEntity()
+    {
+        return await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "edit",
+            EntityType = "project",
+            SubjectType = "user",
+            SubjectId = "3fca4119-3bda-4370-13cd-a3d317459c73"
+        }, CancellationToken.None);
+    }
+
     [GlobalCleanup]
     public async Task Cleanup()
     {
-        await _msSqlContainer.DisposeAsync();
+        await _pgContainer.DisposeAsync();
         await _serviceProvider.DisposeAsync();
     }
 }
