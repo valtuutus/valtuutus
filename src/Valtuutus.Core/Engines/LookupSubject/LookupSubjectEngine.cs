@@ -282,6 +282,9 @@ public sealed class LookupSubjectEngine(
 
     private LookupSubjectFunction LookupRelation(LookupSubjectRequestInternal req, Relation relation)
     {
+        if (!relation.EntityTypes.Contains(req.FinalSubjectType) && !relation.HasSubRelationPaths)
+            return Fail();
+
         return async (ct) =>
         {
             using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();

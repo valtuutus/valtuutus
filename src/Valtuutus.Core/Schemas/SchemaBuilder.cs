@@ -79,6 +79,13 @@ internal class RelationSchemaBuilder(string name)
 
     public Relation Build()
     {
-        return new Relation { Entities = _entities, Name = name };
+        var entityTypes = new HashSet<string>();
+        var hasSubRelationPaths = false;
+        foreach (var e in _entities)
+        {
+            entityTypes.Add(e.Type);
+            if (e.Relation is not null) hasSubRelationPaths = true;
+        }
+        return new Relation { Entities = _entities, Name = name, EntityTypes = entityTypes, HasSubRelationPaths = hasSubRelationPaths };
     }
 }
