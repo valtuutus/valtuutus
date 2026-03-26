@@ -294,12 +294,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             SnapToken = req.SnapToken
         };
 
-        // Phase 1: cheap point-check for a direct match.
-        // Avoids fetching the full relation list when the subject is a direct member.
         if (await reader.HasDirectRelation(filter, req.SubjectId, ct))
             return true;
 
-        // Phase 2: fetch only indirect tuples for recursion.
         var indirectRelations = await reader.GetIndirectRelations(filter, ct);
 
         if (indirectRelations.Count == 0) return false;
