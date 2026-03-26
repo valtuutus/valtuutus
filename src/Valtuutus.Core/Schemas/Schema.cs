@@ -34,4 +34,22 @@ public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Fun
     {
         return Entities[entityType].Permissions.Values;
     }
+
+    /// <summary>
+    /// Returns true when <paramref name="subjectType"/> (with optional <paramref name="subjectRelation"/>)
+    /// is listed as an allowed subject type for <c>entityType.relation</c> in the schema.
+    /// Call before any DB round-trip to short-circuit checks that are impossible by schema.
+    /// </summary>
+    internal bool IsSubjectTypeAllowedInRelation(string entityType, string relation,
+        string subjectType, string? subjectRelation)
+    {
+        var rel = GetRelation(entityType, relation);
+        var subRel = subjectRelation ?? string.Empty;
+        foreach (var entity in rel.Entities)
+        {
+            if (entity.Type == subjectType && (entity.Relation ?? string.Empty) == subRel)
+                return true;
+        }
+        return false;
+    }
 }
