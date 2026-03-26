@@ -142,6 +142,25 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
        
        CREATE TABLE [transactions] ([id] nchar(26) NOT NULL, [created_at] datetime2(7) NOT NULL, CONSTRAINT [PK_transactions] PRIMARY KEY CLUSTERED ([id] ASC));
        
-       CREATE UNIQUE NONCLUSTERED INDEX IX_UniqueAttribute ON attributes (entity_id, entity_type, [attribute]) WHERE deleted_tx_id IS NULL    
+       CREATE UNIQUE NONCLUSTERED INDEX IX_UniqueAttribute ON attributes (entity_id, entity_type, [attribute]) WHERE deleted_tx_id IS NULL
+
+       CREATE NONCLUSTERED INDEX [idx_relation_tuples_direct] ON [dbo].[relation_tuples]
+              (
+              [entity_type] ASC,
+              [entity_id] ASC,
+              [relation] ASC,
+              [subject_id] ASC
+              )
+              INCLUDE ([subject_type], [created_tx_id], [deleted_tx_id])
+              WHERE [subject_relation] = ''
+
+       CREATE NONCLUSTERED INDEX [idx_relation_tuples_indirect] ON [dbo].[relation_tuples]
+              (
+              [entity_type] ASC,
+              [entity_id] ASC,
+              [relation] ASC
+              )
+              INCLUDE ([subject_type], [subject_id], [subject_relation], [created_tx_id], [deleted_tx_id])
+              WHERE [subject_relation] <> ''
        """;
 }

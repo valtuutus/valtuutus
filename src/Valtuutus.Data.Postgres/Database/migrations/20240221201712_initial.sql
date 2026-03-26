@@ -46,3 +46,13 @@ CREATE TABLE "public"."transactions"
 CREATE INDEX "idx_created_at" ON public.transactions USING btree (created_at);
 
 CREATE UNIQUE INDEX "unique_attributes" on public.attributes (entity_type, entity_id, attribute) where deleted_tx_id is null;
+
+-- Serves HasDirectRelation EXISTS check (direct tuples only)
+CREATE INDEX "idx_tuples_direct" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id")
+    INCLUDE ("subject_type", "created_tx_id", "deleted_tx_id")
+    WHERE subject_relation = '';
+
+-- Serves GetIndirectRelations fetch (indirect tuples only)
+CREATE INDEX "idx_tuples_indirect" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation")
+    INCLUDE ("subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id")
+    WHERE subject_relation <> '';
