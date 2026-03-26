@@ -375,7 +375,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         try
         {
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            return Array.Exists(results, static b => b);
+            return results.AsSpan().Contains(true);
         }
         catch (OperationCanceledException)
         {
@@ -412,7 +412,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         try
         {
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            return Array.TrueForAll(results, static b => b);
+            return !results.AsSpan().Contains(false);
         }
         catch (OperationCanceledException)
         {

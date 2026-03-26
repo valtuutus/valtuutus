@@ -79,11 +79,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
         return await ExecuteWithRateLimit(async (ct) => { 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelect1Attribute);
@@ -100,11 +96,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
@@ -141,11 +133,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(_formattedSelectAttributes!);
@@ -196,11 +184,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
@@ -262,11 +246,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         return await ExecuteWithRateLimit(async (ct) =>
         {
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(_formattedSelectRelations!);
@@ -286,11 +266,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
         return await ExecuteWithRateLimit(async (ct) => { 
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
             await using var connection = (SqlConnection) _connectionFactory();
-#endif
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(_formattedSelectRelations!);
