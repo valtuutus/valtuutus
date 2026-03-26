@@ -39,6 +39,18 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         return ExecuteWithRateLimit(_ => Task.FromResult(_relations.GetRelations(tupleFilter)), cancellationToken);
     }
 
+    public Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        return ExecuteWithRateLimit(_ => Task.FromResult(_relations.HasDirectRelation(tupleFilter, subjectId)), cancellationToken);
+    }
+
+    public Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        return ExecuteWithRateLimit(_ => Task.FromResult(_relations.GetIndirectRelations(tupleFilter)), cancellationToken);
+    }
+
     public Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {

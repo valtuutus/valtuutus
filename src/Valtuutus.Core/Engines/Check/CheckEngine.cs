@@ -286,43 +286,43 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var relations = await reader.GetRelations(
-            new RelationTupleFilter
-            {
-                EntityId = req.EntityId,
-                EntityType = req.EntityType,
-                Relation = req.Permission,
-                SnapToken = req.SnapToken
-            }, ct);
+        var filter = new RelationTupleFilter
+        {
+            EntityId = req.EntityId,
+            EntityType = req.EntityType,
+            Relation = req.Permission,
+            SnapToken = req.SnapToken
+        };
 
-        if (relations.Count == 0) return false;
+        // Phase 1: cheap point-check for a direct match.
+        // Avoids fetching the full relation list when the subject is a direct member.
+        if (await reader.HasDirectRelation(filter, req.SubjectId, ct))
+            return true;
+
+        // Phase 2: fetch only indirect tuples for recursion.
+        var indirectRelations = await reader.GetIndirectRelations(filter, ct);
+
+        if (indirectRelations.Count == 0) return false;
 
         var pool = ArrayPool<Func<CancellationToken, Task<bool>>>.Shared;
-        var buffer = pool.Rent(relations.Count);
+        var buffer = pool.Rent(indirectRelations.Count);
         var count = 0;
         try
         {
-            foreach (var relation in relations)
+            foreach (var relation in indirectRelations)
             {
-                if (relation.SubjectId == req.SubjectId)
-                    return true;
-
-                if (!relation.IsDirectSubject())
+                var innerReq = new CheckRequest
                 {
-                    var innerReq = new CheckRequest
-                    {
-                        EntityType = relation.SubjectType,
-                        EntityId = relation.SubjectId,
-                        Permission = relation.SubjectRelation,
-                        SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken,
-                        Depth = req.Depth
-                    };
-                    buffer[count++] = innerCt => CheckInternal(innerReq, innerCt);
-                }
+                    EntityType = relation.SubjectType,
+                    EntityId = relation.SubjectId,
+                    Permission = relation.SubjectRelation,
+                    SubjectId = req.SubjectId,
+                    SnapToken = req.SnapToken,
+                    Depth = req.Depth
+                };
+                buffer[count++] = innerCt => CheckInternal(innerReq, innerCt);
             }
 
-            if (count == 0) return false;
             return await CheckUnion(buffer, count, ct);
         }
         finally

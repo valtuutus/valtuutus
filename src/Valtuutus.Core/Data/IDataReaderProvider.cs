@@ -18,6 +18,19 @@ public interface IDataReaderProvider
     Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Checks whether a direct (subject_relation IS NULL) tuple exists for the given subject ID.
+    /// Avoids materialising the full relation list when only an existence check is needed.
+    /// </summary>
+    Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Retrieves only indirect tuples (subject_relation IS NOT NULL) for the given filter.
+    /// Used after <see cref="HasDirectRelation"/> returns false to avoid fetching direct
+    /// tuples that are irrelevant to recursive resolution.
+    /// </summary>
+    Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves a list of RelationTuples with specified entity IDs.
     /// </summary>
     /// <param name="entityRelationFilter">The filter criteria for retrieving RelationTuples.</param>
