@@ -65,7 +65,7 @@ internal static class SqlBuilderExtensions
         builder = builder.Where(EntityIdFilter, new { EntityId = new DbString { Value = filter.EntityId, Length = 64 } });
         builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = filter.Relation, Length = 64 } });
         builder = builder.Where("subject_id = @SubjectId", new { SubjectId = new DbString { Value = subjectId, Length = 64 } });
-        builder = builder.Where("subject_relation IS NULL");
+        builder = builder.Where("subject_relation = ''");
         return builder;
     }
 
@@ -75,7 +75,7 @@ internal static class SqlBuilderExtensions
         builder = builder.Where(EntityTypeFilter, new { EntityType = new DbString { Value = filter.EntityType, Length = 256 } });
         builder = builder.Where(EntityIdFilter, new { EntityId = new DbString { Value = filter.EntityId, Length = 64 } });
         builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = filter.Relation, Length = 64 } });
-        builder = builder.Where("subject_relation IS NOT NULL");
+        builder = builder.Where("subject_relation <> ''");
         return builder;
     }
 
