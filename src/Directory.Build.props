@@ -11,7 +11,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
-    <NetLibVersion>netstandard2.0;net8.0;net9.0;net10.0</NetLibVersion>
+    <NetLibVersion>net8.0;net9.0;net10.0</NetLibVersion>
   </PropertyGroup>
   <PropertyGroup>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>

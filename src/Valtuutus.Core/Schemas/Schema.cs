@@ -1,9 +1,19 @@
-﻿using Valtuutus.Core.Engines.Check;
+using System.Collections.Frozen;
+using Valtuutus.Core.Engines.Check;
 
 namespace Valtuutus.Core.Schemas;
 
-public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Function> Functions)
+public record Schema
 {
+    public FrozenDictionary<string, Entity> Entities { get; init; }
+    public FrozenDictionary<string, Function> Functions { get; init; }
+
+    public Schema(IDictionary<string, Entity> entities, IDictionary<string, Function> functions)
+    {
+        Entities = entities.ToFrozenDictionary(StringComparer.Ordinal);
+        Functions = functions.ToFrozenDictionary(StringComparer.Ordinal);
+    }
+
     internal RelationType GetRelationType(string entityType, string permission)
     {
         var found = Entities.TryGetValue(entityType, out var entity);
@@ -18,19 +28,18 @@ public record Schema(Dictionary<string, Entity> Entities, Dictionary<string, Fun
     {
         return Entities[entityType].Relations[relation];
     }
-    
+
     internal Permission GetPermission(string entityType, string permission)
     {
         return Entities[entityType].Permissions[permission];
-
     }
-    
+
     internal Attribute GetAttribute(string entityType, string attribute)
     {
         return Entities[entityType].Attributes[attribute];
     }
 
-    internal Dictionary<string, Permission>.ValueCollection GetPermissions(string entityType)
+    internal IReadOnlyCollection<Permission> GetPermissions(string entityType)
     {
         return Entities[entityType].Permissions.Values;
     }
