@@ -591,6 +591,65 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeTrue();
     }
     
+    [Fact]
+    public async Task ReflexiveFastPath_ShouldReturnTrue_WithoutDbCall()
+    {
+        // Arrange — schema allows group#member as subject of group.member (self-referential)
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user @group#member;
+            }
+        ";
+        // No tuples needed — reflexive fast-path short-circuits before any DB call
+        var engine = await CreateEngine([], [], schema);
+
+        // Act — group:admins#member checking group:admins#member (reflexive)
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "group",
+            EntityId = "admins",
+            Permission = "member",
+            SubjectType = "group",
+            SubjectId = "admins",
+            SubjectRelation = "member"
+        }, default);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TypeGuard_ShouldReturnFalse_WhenSubjectTypeNotAllowedInRelation()
+    {
+        // Arrange — workspace.owner only allows @user, not @group
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation owner @user;
+                permission delete := owner;
+            }
+        ";
+        // No tuples — type guard prunes before any DB call
+        var engine = await CreateEngine([], [], schema);
+
+        // Act — subject type "group" is not listed in workspace.owner relation
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "delete",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
     public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, true},

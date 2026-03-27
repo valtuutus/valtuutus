@@ -112,6 +112,13 @@ public static class Seeder
             attributes.Add(new AttributeTuple("project", project.Id.ToString(), "status", JsonValue.Create((int)project.Status)));
         }
 
+        // Deterministic group for reflexive fast-path benchmark validation.
+        // Uses hardcoded IDs to avoid disturbing the Faker random seed.
+        const string reflexiveGroupId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        const string benchmarkUserId  = "3fca4119-3bda-4370-13cd-a3d317459c73";
+        relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "group", reflexiveGroupId, "member"));
+        relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "user", benchmarkUserId));
+
         return (relations, attributes);
     }
 }

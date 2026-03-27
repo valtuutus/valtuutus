@@ -23,5 +23,9 @@ entity project {
     permission delete := org.admin or team.owner;
     permission cache_test := (org.admin or team.owner) and (org.admin or member);
 }
+entity group {
+    relation member @user @group#member;
+    permission access := member;
+}
 
 fn isActiveStatus(status int) => status == 1;

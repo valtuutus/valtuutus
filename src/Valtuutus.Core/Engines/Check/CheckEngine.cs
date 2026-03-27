@@ -100,6 +100,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         if (req.CheckDepthLimit())
             return Task.FromResult(false);
 
+        if (!string.IsNullOrEmpty(req.SubjectRelation)
+            && req.SubjectType == req.EntityType
+            && req.SubjectId == req.EntityId
+            && req.SubjectRelation == req.Permission)
+            return Task.FromResult(true);
+
         req.DecreaseDepth();
 
         return schema.GetRelationType(req.EntityType, req.Permission) switch
@@ -284,6 +290,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private async Task<bool> CheckRelation(CheckRequest req, CancellationToken ct)
     {
+        if (!string.IsNullOrEmpty(req.SubjectType)
+            && !schema.IsSubjectTypeAllowedInRelation(req.EntityType, req.Permission,
+                req.SubjectType, req.SubjectRelation))
+            return false;
+
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         var filter = new RelationTupleFilter
