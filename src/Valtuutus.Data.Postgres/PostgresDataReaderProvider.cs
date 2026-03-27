@@ -16,20 +16,23 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     value
                 FROM {0}.{1} /**where**/";
 
-    private const string UnformattedSelectRelations = @"SELECT 
+    private const string UnformattedSelectRelations = @"SELECT
                     entity_type,
                     entity_id,
                     relation,
                     subject_type,
-                    subject_id, 
-                    subject_relation 
+                    subject_id,
+                    subject_relation
                 FROM {0}.{1} /**where**/";
+
+    private const string UnformattedExistsRelation = "SELECT EXISTS(SELECT 1 FROM {0}.{1} /**where**/)";
 
     private readonly DbConnectionFactory _connectionFactory;
     private static string? _formattedSelect1Attribute;
     private static string? _formattedGetLatestSnapTokenQuery;
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
+    private static string? _formattedExistsRelation;
     private static readonly object Lock = new();
 
 
@@ -58,6 +61,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                         "SELECT id FROM {0}.{1} ORDER BY created_at DESC LIMIT 1",
                         dbOptions.Schema, dbOptions.TransactionsTableName);
                     _formattedSelect1Attribute ??= $"{_formattedSelectAttributes!} LIMIT 1";
+                    _formattedExistsRelation ??= string.Format(UnformattedExistsRelation, dbOptions.Schema,
+                        dbOptions.RelationsTableName);
                 }
             }
         }
@@ -95,6 +100,41 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }, cancellationToken);
     }
     
+    public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelation(tupleFilter, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
+
+            return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: ct));
+        }, cancellationToken);
+    }
+
+    public async Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+            using var connection = _connectionFactory();
+
+            var queryTemplate = new SqlBuilder()
+                .FilterIndirectRelations(tupleFilter)
+                .AddTemplate(_formattedSelectRelations!);
+
+            return (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToList();
+        }, cancellationToken);
+    }
+
     public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

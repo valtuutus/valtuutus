@@ -77,5 +77,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         CREATE INDEX "idx_tuples_userset" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_type", "subject_relation");
         CREATE TABLE "public"."transactions" ("id" char(26) NOT NULL, "created_at" timestamptz NOT NULL, PRIMARY KEY ("id"));
        CREATE UNIQUE INDEX "unique_attributes" on public.attributes (entity_type, entity_id, attribute) where deleted_tx_id is null;
+       CREATE INDEX "idx_tuples_direct" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id") INCLUDE ("subject_type", "created_tx_id", "deleted_tx_id") WHERE subject_relation = '';
+       CREATE INDEX "idx_tuples_indirect" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation") INCLUDE ("subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id") WHERE subject_relation <> '';
        """;
 }

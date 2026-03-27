@@ -47,6 +47,38 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public bool HasDirectRelation(RelationTupleFilter filter, string subjectId)
+    {
+        using var _ = Read();
+        if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
+            return false;
+        var snap = filter.SnapToken;
+        foreach (var e in bucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (e.Relation.SubjectId != subjectId) continue;
+            if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    public List<RelationTuple> GetIndirectRelations(RelationTupleFilter filter)
+    {
+        using var _ = Read();
+        if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
+            return [];
+        var result = new List<RelationTuple>(bucket.Count);
+        var snap = filter.SnapToken;
+        foreach (var e in bucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+            result.Add(e.Relation);
+        }
+        return result;
+    }
+
     public List<RelationTuple> GetRelationsWithEntityIds(EntityRelationFilter filter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation)
     {

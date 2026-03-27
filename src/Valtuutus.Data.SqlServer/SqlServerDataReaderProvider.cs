@@ -16,20 +16,23 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     value
                 FROM [{0}].[{1}] /**where**/";
 
-    private const string UnformattedSelectRelations = @"SELECT 
+    private const string UnformattedSelectRelations = @"SELECT
                     entity_type,
                     entity_id,
                     relation,
                     subject_type,
-                    subject_id, 
-                    subject_relation 
+                    subject_id,
+                    subject_relation
                 FROM [{0}].[{1}] /**where**/";
+
+    private const string UnformattedExistsRelation = "SELECT CASE WHEN EXISTS(SELECT 1 FROM [{0}].[{1}] /**where**/) THEN 1 ELSE 0 END";
 
     private readonly DbConnectionFactory _connectionFactory;
     private static string? _formattedSelect1Attribute;
     private static string? _formattedGetLatestSnapTokenQuery;
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
+    private static string? _formattedExistsRelation;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
@@ -56,6 +59,8 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     _formattedGetLatestSnapTokenQuery ??= string.Format(
                         "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY created_at DESC",
                         dbOptions.Schema, dbOptions.TransactionsTableName);
+                    _formattedExistsRelation ??= string.Format(UnformattedExistsRelation, dbOptions.Schema,
+                        dbOptions.RelationsTableName);
                     _formattedSelect1Attribute ??= $"""
                                                         SELECT TOP 1
                                                         entity_type,
@@ -209,6 +214,47 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
        
     }
     
+    public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection)_connectionFactory();
+#else
+            await using var connection = (SqlConnection)_connectionFactory();
+#endif
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelation(tupleFilter, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
+
+            return await connection.ExecuteScalarAsync<int>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: ct)) == 1;
+        }, cancellationToken);
+    }
+
+    public async Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+
+        return await ExecuteWithRateLimit(async (ct) =>
+        {
+#if NETSTANDARD2_0
+            using var connection = (SqlConnection)_connectionFactory();
+#else
+            await using var connection = (SqlConnection)_connectionFactory();
+#endif
+            var queryTemplate = new SqlBuilder()
+                .FilterIndirectRelations(tupleFilter)
+                .AddTemplate(_formattedSelectRelations!);
+
+            return (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: ct)))
+                .ToList();
+        }, cancellationToken);
+    }
+
     public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
