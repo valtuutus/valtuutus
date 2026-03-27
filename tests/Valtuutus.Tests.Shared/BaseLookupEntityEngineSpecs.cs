@@ -348,4 +348,29 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         
         result.Should().BeEquivalentTo(["project-p1", "project-p1-2", "project-p3"]);
     }
+
+    [Fact]
+    public async Task TypeGuard_ShouldReturnEmpty_WhenSubjectTypeNotAllowedInRelation()
+    {
+        // The 'owner' relation on 'workspace' only allows 'user', not 'group'.
+        // LookupEntity for subject type 'group' should return nothing without a DB call.
+        const string schema = """
+            entity user {}
+            entity group { relation member @user; }
+            entity workspace {
+                relation owner @user;
+                permission delete := owner;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [new RelationTuple("workspace", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)],
+            [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("workspace", "delete", "group", "admins"),
+            CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
 }
