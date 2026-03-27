@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.Buffers;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
@@ -8,9 +9,6 @@ using Valtuutus.Core.Engines;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
-using LookupSubjectFunction =
-    System.Func<System.Threading.CancellationToken,
-        System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupSubject.RelationOrAttributeTuples>>;
 
 namespace Valtuutus.Core.Engines.LookupSubject;
 
@@ -56,7 +54,7 @@ public sealed class LookupSubjectEngine(
             Context = req.Context
         };
 
-        var res = await LookupInternal(internalReq)(cancellationToken);
+        var res = await LookupInternal(internalReq, cancellationToken);
         var tuples = res.RelationsTuples!;
         var hs = new HashSet<string>();
         foreach (var t in tuples) hs.Add(t.SubjectId);
@@ -81,13 +79,12 @@ public sealed class LookupSubjectEngine(
 
     private static readonly List<RelationTuple> _emptyRelationList = new(0);
     private static readonly RelationOrAttributeTuples _emptyTuples = new(_emptyRelationList);
-    private static readonly LookupSubjectFunction _failFunction = static _ => Task.FromResult(_emptyTuples);
-    private static LookupSubjectFunction Fail() => _failFunction;
+    private static readonly Task<RelationOrAttributeTuples> _failTask = Task.FromResult(_emptyTuples);
 
-    private LookupSubjectFunction LookupInternal(LookupSubjectRequestInternal req)
+    private Task<RelationOrAttributeTuples> LookupInternal(LookupSubjectRequestInternal req, CancellationToken ct)
     {
         if (req.CheckDepthLimit())
-            return Fail();
+            return _failTask;
 
         req.DecreaseDepth();
 
@@ -95,101 +92,103 @@ public sealed class LookupSubjectEngine(
 
         return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
-            RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission)),
-            RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
-            RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission)),
+            RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission), ct),
+            RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission), ct),
+            RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission), ct),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private LookupSubjectFunction LookupPermission(LookupSubjectRequestInternal req, Permission permission)
+    private Task<RelationOrAttributeTuples> LookupPermission(LookupSubjectRequestInternal req, Permission permission, CancellationToken ct)
     {
         var permNode = permission.Tree;
 
         return permNode.Type == PermissionNodeType.Expression
-            ? LookupExpression(req, permNode.ExpressionNode!)
-            : LookupLeaf(req, permNode.LeafNode!);
+            ? LookupExpression(req, permNode.ExpressionNode!, ct)
+            : LookupLeaf(req, permNode.LeafNode!, ct);
     }
 
-    private LookupSubjectFunction LookupExpression(LookupSubjectRequestInternal req, PermissionNodeOperation node)
+    private Task<RelationOrAttributeTuples> LookupExpression(LookupSubjectRequestInternal req, PermissionNodeOperation node, CancellationToken ct)
     {
         return node.Operation switch
         {
-            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, IntersectEntities),
-            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, UnionEntities),
+            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, ct, isUnion: false),
+            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, ct, isUnion: true),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private LookupSubjectFunction LookupExpressionChildren(LookupSubjectRequestInternal req,
-        List<PermissionNode> children,
-        Func<List<LookupSubjectFunction>, CancellationToken, Task<RelationOrAttributeTuples>> aggregator)
+    private async Task<RelationOrAttributeTuples> LookupExpressionChildren(LookupSubjectRequestInternal req,
+        List<PermissionNode> children, CancellationToken ct, bool isUnion)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var lookupFunctions = new List<LookupSubjectFunction>(capacity: children.Count);
-        foreach (var child in children)
+        var pool = ArrayPool<Task<RelationOrAttributeTuples>>.Shared;
+        var buffer = pool.Rent(children.Count);
+        try
         {
-            switch (child.Type)
+            for (var i = 0; i < children.Count; i++)
             {
-                case PermissionNodeType.Expression:
-                    lookupFunctions.Add(LookupExpression(req, child.ExpressionNode!));
-                    break;
-                case PermissionNodeType.Leaf:
-                    lookupFunctions.Add(LookupLeaf(req, child.LeafNode!));
-                    break;
+                var child = children[i];
+                buffer[i] = child.Type == PermissionNodeType.Expression
+                    ? LookupExpression(req, child.ExpressionNode!, ct)
+                    : LookupLeaf(req, child.LeafNode!, ct);
             }
-        }
 
-        return async (ct) => await aggregator(lookupFunctions, ct);
+            return isUnion
+                ? await UnionEntities(buffer, children.Count)
+                : await IntersectEntities(buffer, children.Count);
+        }
+        finally
+        {
+            pool.Return(buffer, clearArray: true);
+        }
     }
 
-    private LookupSubjectFunction LookupLeaf(LookupSubjectRequestInternal req, PermissionNodeLeaf node)
+    private Task<RelationOrAttributeTuples> LookupLeaf(LookupSubjectRequestInternal req, PermissionNodeLeaf node, CancellationToken ct)
     {
         return node.Type switch
         {
-            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!),
-            PermissionNodeLeafType.Expression => CheckLeafExp(req, node.ExpressionNode!),
+            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.PermissionNode!, ct),
+            PermissionNodeLeafType.Expression => CheckLeafExp(req, node.ExpressionNode!, ct),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private LookupSubjectFunction CheckLeafPermission(LookupSubjectRequestInternal req,
-        PermissionNodeLeafPermission node)
+    private Task<RelationOrAttributeTuples> CheckLeafPermission(LookupSubjectRequestInternal req,
+        PermissionNodeLeafPermission node, CancellationToken ct)
     {
         if (node.IsIndirect)
-            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!);
-        return LookupComputedUserSet(req, node.Permission);
+            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!, ct);
+        return LookupComputedUserSet(req, node.Permission, ct);
     }
 
-    private LookupSubjectFunction CheckLeafExp(LookupSubjectRequestInternal req, PermissionNodeLeafExp node)
+    private async Task<RelationOrAttributeTuples> CheckLeafExp(LookupSubjectRequestInternal req,
+        PermissionNodeLeafExp node, CancellationToken ct)
     {
-        return async (ct) =>
+        var fn = schema.Functions[node.FunctionName];
+
+        if (fn is null)
         {
-            var fn = schema.Functions[node.FunctionName];
+            throw new InvalidOperationException();
+        }
 
-            if (fn is null)
+        if (!node.IsContextValid(req.Context))
+        {
+            return new RelationOrAttributeTuples(new List<RelationTuple>());
+        }
+
+        var attributeArguments = node.GetArgsAttributesNames();
+
+        var attributes = await reader.GetAttributesWithEntityIds(
+            new EntityAttributesFilter
             {
-                throw new InvalidOperationException();
-            }
-            
-            if (!node.IsContextValid(req.Context))
-            {
-                return new RelationOrAttributeTuples(new List<RelationTuple>());
-            }
+                Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
+            }, req.EntitiesIds, ct);
 
-            var attributeArguments = node.GetArgsAttributesNames();
+        using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
-            var attributes = await reader.GetAttributesWithEntityIds(
-                new EntityAttributesFilter
-                {
-                    Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
-                }, req.EntitiesIds, ct);
-
-            using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
-
-            return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, paramToArgMap));
-        };
+        return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, paramToArgMap));
     }
 
     private List<AttributeTuple> EvaluateExpressionMatches(
@@ -222,15 +221,15 @@ public sealed class LookupSubjectEngine(
         return result;
     }
 
-    private LookupSubjectFunction CheckTupleToUserSet(LookupSubjectRequestInternal req, string tupleSetRelation,
-        string computedUserSetRelation)
+    private async Task<RelationOrAttributeTuples> CheckTupleToUserSet(LookupSubjectRequestInternal req,
+        string tupleSetRelation, string computedUserSetRelation, CancellationToken ct)
     {
-        return async (ct) =>
+        var relation = schema.GetRelation(req.EntityType, tupleSetRelation);
+        var pool = ArrayPool<Task<RelationOrAttributeTuples>>.Shared;
+        var buffer = pool.Rent(relation.Entities.Count);
+        var count = 0;
+        try
         {
-            var relation = schema.GetRelation(req.EntityType, tupleSetRelation);
-
-            var lookupFunctions = new List<LookupSubjectFunction>(capacity: relation.Entities.Count);
-
             foreach (var entity in relation.Entities)
             {
                 var relations = await reader.GetRelationsWithEntityIds(
@@ -244,31 +243,34 @@ public sealed class LookupSubjectEngine(
                     ct
                 );
 
-                lookupFunctions.Add(LookupInternal(req with
+                buffer[count++] = LookupInternal(req with
                 {
                     EntityType = entity.Type,
                     Permission = computedUserSetRelation,
                     EntitiesIds = ToSubjectIdList(relations)
-                }));
+                }, ct);
             }
 
-            return await UnionEntities(lookupFunctions, ct);
-        };
+            return await UnionEntities(buffer, count);
+        }
+        finally
+        {
+            pool.Return(buffer, clearArray: true);
+        }
     }
 
-    private LookupSubjectFunction LookupComputedUserSet(LookupSubjectRequestInternal req,
-        string computedUserSetRelation)
+    private Task<RelationOrAttributeTuples> LookupComputedUserSet(LookupSubjectRequestInternal req,
+        string computedUserSetRelation, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        return LookupInternal(req with { Permission = computedUserSetRelation });
+        return LookupInternal(req with { Permission = computedUserSetRelation }, ct);
     }
 
-    private LookupSubjectFunction LookupAttribute(LookupSubjectRequestInternal req, Schemas.Attribute attribute)
+    private async Task<RelationOrAttributeTuples> LookupAttribute(LookupSubjectRequestInternal req,
+        Schemas.Attribute attribute, CancellationToken ct)
     {
-        return async (ct) =>
-        {
-            var res = (await reader.GetAttributesWithEntityIds(
+        var res = (await reader.GetAttributesWithEntityIds(
                     new AttributeFilter
                     {
                         Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -276,26 +278,31 @@ public sealed class LookupSubjectEngine(
                 .Where(x => x.Value.TryGetValue<bool>(out var b) && b)
                 .ToList();
 
-            return new RelationOrAttributeTuples(res);
-        };
+        return new RelationOrAttributeTuples(res);
     }
 
-    private LookupSubjectFunction LookupRelation(LookupSubjectRequestInternal req, Relation relation)
+    private Task<RelationOrAttributeTuples> LookupRelation(LookupSubjectRequestInternal req, Relation relation, CancellationToken ct)
     {
         if (!relation.EntityTypes.Contains(req.FinalSubjectType) && !relation.HasSubRelationPaths)
-            return Fail();
+            return _failTask;
 
-        return async (ct) =>
+        return LookupRelationCore(req, relation, ct);
+    }
+
+    private async Task<RelationOrAttributeTuples> LookupRelationCore(LookupSubjectRequestInternal req, Relation relation, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var pool = ArrayPool<Task<RelationOrAttributeTuples>>.Shared;
+        var buffer = pool.Rent(relation.Entities.Count);
+        var count = 0;
+        try
         {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
-            var lookupFunctions = new List<LookupSubjectFunction>(capacity: relation.Entities.Count);
-
             foreach (var relationEntity in relation.Entities)
             {
                 if (relationEntity.Type == req.FinalSubjectType)
                 {
-                    lookupFunctions.Add(LookupRelationLeaf(req with { SubjectType = relationEntity.Type, }));
+                    buffer[count++] = LookupRelationLeaf(req with { SubjectType = relationEntity.Type, }, ct);
                     continue;
                 }
 
@@ -316,49 +323,48 @@ public sealed class LookupSubjectEngine(
                         ct
                     );
 
-                    lookupFunctions.Add(LookupRelation(
+                    buffer[count++] = LookupRelation(
                         req with
                         {
                             EntityType = relationEntity.Type,
                             Permission = relationEntity.Relation!,
                             EntitiesIds = ToSubjectIdList(relations)
-                        }, subRelation));
+                        }, subRelation, ct);
                 }
             }
 
-            return await UnionEntities(lookupFunctions, ct);
-        };
-    }
-
-    private LookupSubjectFunction LookupRelationLeaf(LookupSubjectRequestInternal req)
-    {
-        return async (ct) =>
+            return await UnionEntities(buffer, count);
+        }
+        finally
         {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var res = await reader.GetRelationsWithEntityIds(
-                new EntityRelationFilter
-                {
-                    Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
-                },
-                req.SubjectType,
-                req.EntitiesIds,
-                req.SubjectRelation,
-                ct
-            );
+            pool.Return(buffer, clearArray: true);
+        }
+    }
 
-            return new RelationOrAttributeTuples(res);
-        };
+    private async Task<RelationOrAttributeTuples> LookupRelationLeaf(LookupSubjectRequestInternal req, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var res = await reader.GetRelationsWithEntityIds(
+            new EntityRelationFilter
+            {
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
+            },
+            req.SubjectType,
+            req.EntitiesIds,
+            req.SubjectRelation,
+            ct
+        );
+
+        return new RelationOrAttributeTuples(res);
     }
 
 
-    private static async Task<RelationOrAttributeTuples> UnionEntities(List<LookupSubjectFunction> functions,
-        CancellationToken ct)
+    private static async Task<RelationOrAttributeTuples> UnionEntities(
+        Task<RelationOrAttributeTuples>[] buffer, int count)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var tasks = new Task<RelationOrAttributeTuples>[functions.Count];
-        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(new ArraySegment<Task<RelationOrAttributeTuples>>(buffer, 0, count));
 
         var totalCount = 0;
         foreach (var r in results)
@@ -370,14 +376,12 @@ public sealed class LookupSubjectEngine(
         return new RelationOrAttributeTuples(relations);
     }
 
-    private static async Task<RelationOrAttributeTuples> IntersectEntities(List<LookupSubjectFunction> functions,
-        CancellationToken ct)
+    private static async Task<RelationOrAttributeTuples> IntersectEntities(
+        Task<RelationOrAttributeTuples>[] buffer, int count)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var tasks = new Task<RelationOrAttributeTuples>[functions.Count];
-        for (var i = 0; i < functions.Count; i++) tasks[i] = functions[i](ct);
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(new ArraySegment<Task<RelationOrAttributeTuples>>(buffer, 0, count));
 
         HashSet<RelationTuple>? hashSet = null;
         foreach (var result in results)
@@ -389,13 +393,13 @@ public sealed class LookupSubjectEngine(
                 continue;
             }
 
-            var relations = result.RelationsTuples!;
+            var rels = result.RelationsTuples!;
             if (hashSet is null)
             {
-                hashSet = new HashSet<RelationTuple>(relations, RelationTupleComparer.Instance);
+                hashSet = new HashSet<RelationTuple>(rels, RelationTupleComparer.Instance);
                 continue;
             }
-            hashSet.IntersectWith(relations);
+            hashSet.IntersectWith(rels);
             if (hashSet.Count == 0)
                 return _emptyTuples;
         }
