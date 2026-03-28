@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -57,7 +58,7 @@ public sealed class LookupSubjectEngine(
         var res = await LookupInternal(internalReq, cancellationToken);
         var tuples = res.RelationsTuples!;
         var hs = new HashSet<string>();
-        foreach (var t in tuples) hs.Add(t.SubjectId);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) hs.Add(t.SubjectId);
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
             tags: new ActivityTagsCollection(CreateLookupSubjectResultAttributes(hs))));
@@ -232,7 +233,7 @@ public sealed class LookupSubjectEngine(
         {
             foreach (var entity in relation.Entities)
             {
-                var relations = await reader.GetRelationsWithEntityIds(
+                var pooled0 = await reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
                         Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -247,7 +248,7 @@ public sealed class LookupSubjectEngine(
                 {
                     EntityType = entity.Type,
                     Permission = computedUserSetRelation,
-                    EntitiesIds = ToSubjectIdList(relations)
+                    EntitiesIds = ToSubjectIdList(pooled0.Transfer())
                 }, ct);
             }
 
@@ -312,7 +313,7 @@ public sealed class LookupSubjectEngine(
 
                 if (subRelation is not null)
                 {
-                    var relations = await reader.GetRelationsWithEntityIds(
+                    var pooled1 = await reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
                             Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -328,7 +329,7 @@ public sealed class LookupSubjectEngine(
                         {
                             EntityType = relationEntity.Type,
                             Permission = relationEntity.Relation!,
-                            EntitiesIds = ToSubjectIdList(relations)
+                            EntitiesIds = ToSubjectIdList(pooled1.Transfer())
                         }, subRelation, ct);
                 }
             }
@@ -344,7 +345,7 @@ public sealed class LookupSubjectEngine(
     private async Task<RelationOrAttributeTuples> LookupRelationLeaf(LookupSubjectRequestInternal req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var res = await reader.GetRelationsWithEntityIds(
+        var pooled = await reader.GetRelationsWithEntityIds(
             new EntityRelationFilter
             {
                 Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -355,7 +356,7 @@ public sealed class LookupSubjectEngine(
             ct
         );
 
-        return new RelationOrAttributeTuples(res);
+        return new RelationOrAttributeTuples(pooled.Transfer());
     }
 
 
@@ -371,7 +372,7 @@ public sealed class LookupSubjectEngine(
             if (r.Type == RelationOrAttributeType.Relation) totalCount += r.RelationsTuples!.Count;
         var relations = new List<RelationTuple>(totalCount);
         foreach (var r in results)
-            if (r.Type == RelationOrAttributeType.Relation) relations.AddRange(r.RelationsTuples!);
+            if (r.Type == RelationOrAttributeType.Relation) relations.AddRange(CollectionsMarshal.AsSpan(r.RelationsTuples!));
 
         return new RelationOrAttributeTuples(relations);
     }
@@ -411,7 +412,7 @@ public sealed class LookupSubjectEngine(
     private static List<string> ToSubjectIdList(List<RelationTuple> tuples)
     {
         var list = new List<string>(tuples.Count);
-        foreach (var t in tuples) list.Add(t.SubjectId);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.SubjectId);
         return list;
     }
 }

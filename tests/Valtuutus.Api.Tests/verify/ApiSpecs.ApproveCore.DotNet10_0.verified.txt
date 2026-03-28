@@ -11,15 +11,15 @@ namespace Valtuutus.Core
         public System.Text.Json.Nodes.JsonValue Value { get; }
         public object? GetValue(System.Type type) { }
     }
-    public sealed class RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
+    public readonly struct RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
     {
         public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null) { }
-        public string EntityId { get; }
-        public string EntityType { get; }
-        public string Relation { get; }
-        public string SubjectId { get; }
-        public string SubjectRelation { get; }
-        public string SubjectType { get; }
+        public string EntityId { get; init; }
+        public string EntityType { get; init; }
+        public string Relation { get; init; }
+        public string SubjectId { get; init; }
+        public string SubjectRelation { get; init; }
+        public string SubjectType { get; init; }
         public bool IsDirectSubject() { }
     }
 }
@@ -123,11 +123,11 @@ namespace Valtuutus.Core.Data
                 "AttributeName",
                 "EntityId"})]
         System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetIndirectRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetIndirectRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, System.Collections.Generic.IList<string> subjectsIds, string subjectType, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
     }
     public interface IDataWriterProvider
@@ -333,6 +333,20 @@ namespace Valtuutus.Core.Observability
         public const string SourceNameInternal = "Valtuutus.Internal";
         public static System.Diagnostics.ActivitySource Instance { get; }
         public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
+    }
+}
+namespace Valtuutus.Core.Pools
+{
+    public readonly struct PooledList<T> : System.Collections.Generic.IEnumerable<T>, System.Collections.IEnumerable, System.IDisposable
+    {
+        public int Count { get; }
+        public T this[int index] { get; }
+        public void Add(T item) { }
+        public void AddRange(System.Collections.Generic.IEnumerable<T> items) { }
+        public System.ReadOnlySpan<T> AsSpan() { }
+        public void Dispose() { }
+        public System.Collections.Generic.List<T>.Enumerator GetEnumerator() { }
+        public static Valtuutus.Core.Pools.PooledList<T> Rent() { }
     }
 }
 namespace Valtuutus.Core.Schemas

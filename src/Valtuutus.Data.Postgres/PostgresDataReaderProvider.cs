@@ -1,6 +1,7 @@
 ﻿using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Data.Postgres.Utils;
 using Dapper;
 using Valtuutus.Data.Db;
@@ -81,7 +82,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }, cancellationToken);
     }
 
-    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -93,13 +94,21 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .FilterRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
 
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
-            return res;
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
-    
+
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
@@ -117,7 +126,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }, cancellationToken);
     }
 
-    public async Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -129,13 +138,22 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .FilterIndirectRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
 
-            return (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
 
-    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -147,16 +165,23 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(_formattedSelectRelations!);
-            
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
-            
-            return res;
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
     
-    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
 
@@ -168,11 +193,18 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(_formattedSelectRelations!);
 
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
-            
-            return res;
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
     

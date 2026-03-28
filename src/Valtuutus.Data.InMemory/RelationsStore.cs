@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Data.InMemory;
 
@@ -28,13 +29,13 @@ internal sealed class RelationsStore : IDisposable
                (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(id) > 0);
     }
 
-    public List<RelationTuple> GetRelations(RelationTupleFilter filter)
+    public PooledList<RelationTuple> GetRelations(RelationTupleFilter filter)
     {
         using var _ = Read();
         if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
-            return [];
+            return PooledList<RelationTuple>.Rent();
 
-        var result = new List<RelationTuple>(bucket.Count);
+        var result = PooledList<RelationTuple>.Rent();
         var snap = filter.SnapToken;
         foreach (var e in bucket)
         {
@@ -63,12 +64,12 @@ internal sealed class RelationsStore : IDisposable
         return false;
     }
 
-    public List<RelationTuple> GetIndirectRelations(RelationTupleFilter filter)
+    public PooledList<RelationTuple> GetIndirectRelations(RelationTupleFilter filter)
     {
         using var _ = Read();
         if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
-            return [];
-        var result = new List<RelationTuple>(bucket.Count);
+            return PooledList<RelationTuple>.Rent();
+        var result = PooledList<RelationTuple>.Rent();
         var snap = filter.SnapToken;
         foreach (var e in bucket)
         {
@@ -79,15 +80,15 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
-    public List<RelationTuple> GetRelationsWithEntityIds(EntityRelationFilter filter, string subjectType,
+    public PooledList<RelationTuple> GetRelationsWithEntityIds(EntityRelationFilter filter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation)
     {
         var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
         using var _ = Read();
         if (!_byRelationSubjectType.TryGetValue((filter.EntityType, filter.Relation, subjectType), out var bucket))
-            return [];
+            return PooledList<RelationTuple>.Rent();
 
-        var result = new List<RelationTuple>(idSet.Count);
+        var result = PooledList<RelationTuple>.Rent();
         var snap = filter.SnapToken;
         foreach (var e in bucket)
         {
@@ -99,13 +100,13 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
-    public List<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, IList<string> subjectIds, string subjectType)
+    public PooledList<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, IList<string> subjectIds, string subjectType)
     {
         using var _ = Read();
         if (!_byRelationSubjectType.TryGetValue((filter.EntityType, filter.Relation, subjectType), out var bucket))
-            return [];
+            return PooledList<RelationTuple>.Rent();
 
-        var result = new List<RelationTuple>(subjectIds.Count);
+        var result = PooledList<RelationTuple>.Rent();
         var snap = filter.SnapToken;
         foreach (var e in bucket)
         {

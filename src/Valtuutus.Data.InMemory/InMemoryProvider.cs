@@ -1,6 +1,7 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Data;
 
 namespace Valtuutus.Data.InMemory;
@@ -33,7 +34,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         return ExecuteWithRateLimit(_ => Task.FromResult(token), cancellationToken);
     }
 
-    public Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         return ExecuteWithRateLimit(_ => Task.FromResult(_relations.GetRelations(tupleFilter)), cancellationToken);
@@ -45,13 +46,13 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         return ExecuteWithRateLimit(_ => Task.FromResult(_relations.HasDirectRelation(tupleFilter, subjectId)), cancellationToken);
     }
 
-    public Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         return ExecuteWithRateLimit(_ => Task.FromResult(_relations.GetIndirectRelations(tupleFilter)), cancellationToken);
     }
 
-    public Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
+    public Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
@@ -60,7 +61,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
             cancellationToken);
     }
 
-    public Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
+    public Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
         IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

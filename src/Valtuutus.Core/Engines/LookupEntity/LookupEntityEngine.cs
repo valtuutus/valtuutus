@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -53,7 +54,7 @@ public sealed class LookupEntityEngine(
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
         var hs = new HashSet<string>(res.Count);
-        foreach (var r in res) hs.Add(r.EntityId);
+        foreach (ref readonly var r in CollectionsMarshal.AsSpan(res)) hs.Add(r.EntityId);
         ListPool<LookupEntityResult>.Return(res);
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
@@ -365,7 +366,7 @@ public sealed class LookupEntityEngine(
     private async Task<List<LookupEntityResult>> LookupRelationLeaf(LookupEntityRequestInternal req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var relations = await reader.GetRelationsWithSubjectsIds(
+        using var relations = await reader.GetRelationsWithSubjectsIds(
             new EntityRelationFilter
             {
                 Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -412,7 +413,7 @@ public sealed class LookupEntityEngine(
         var merged = ListPool<LookupEntityResult>.Rent();
         foreach (var r in results)
         {
-            merged.AddRange(r);
+            merged.AddRange(CollectionsMarshal.AsSpan(r));
             ListPool<LookupEntityResult>.Return(r);
         }
         return merged;
@@ -446,7 +447,7 @@ public sealed class LookupEntityEngine(
     private static List<string> ToEntityIdList(List<LookupEntityResult> tuples)
     {
         var list = new List<string>(tuples.Count);
-        foreach (var t in tuples) list.Add(t.EntityId);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.EntityId);
         return list;
     }
 }

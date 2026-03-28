@@ -1,13 +1,13 @@
 namespace Valtuutus.Core;
 
-public sealed record RelationTuple
+public readonly record struct RelationTuple
 {
-    public string EntityType { get; private init; } = null!;
-    public string EntityId { get; private init; } = null!;
-    public string Relation { get; private init; } = null!;
-    public string SubjectType { get; private init; } = null!;
-    public string SubjectId { get; private init; } = null!;
-    public string SubjectRelation { get; private init; } = null!;
+    public string EntityType { get; init; }
+    public string EntityId { get; init; }
+    public string Relation { get; init; }
+    public string SubjectType { get; init; }
+    public string SubjectId { get; init; }
+    public string SubjectRelation { get; init; }
 
     public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null)
     {
@@ -28,14 +28,8 @@ internal class RelationTupleComparer : IEqualityComparer<RelationTuple>
 
     internal static IEqualityComparer<RelationTuple> Instance { get; } = new RelationTupleComparer();
 
-    public bool Equals(RelationTuple? x, RelationTuple? y)
-    {
-        if (ReferenceEquals(x, y)) return true;
-        if (ReferenceEquals(x, null)) return false;
-        if (ReferenceEquals(y, null)) return false;
-        if (x.GetType() != y.GetType()) return false;
-        return x.SubjectType == y.SubjectType && x.SubjectId == y.SubjectId;
-    }
+    public bool Equals(RelationTuple x, RelationTuple y) =>
+        x.SubjectType == y.SubjectType && x.SubjectId == y.SubjectId;
 
     public int GetHashCode(RelationTuple obj)
     {
