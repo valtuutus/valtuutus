@@ -434,3 +434,9 @@ internal record RelationOrAttributeTuples
     public List<RelationTuple>? RelationsTuples { get; init; }
     public RelationOrAttributeType Type { get; init; }
 }
+
+internal enum RelationOrAttributeType
+{
+    Attribute,
+    Relation
+}

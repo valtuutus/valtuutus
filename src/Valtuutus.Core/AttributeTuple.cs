@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -10,8 +10,8 @@ public sealed record AttributeTuple
     public string EntityId { get; private init; } = null!;
     public string Attribute { get; private init; } = null!;
     public JsonValue Value { get; private init; } = null!;
-    
-    
+
+
     public AttributeTuple(string entityType, string entityId, string attribute, JsonValue value)
     {
         EntityType = entityType;
