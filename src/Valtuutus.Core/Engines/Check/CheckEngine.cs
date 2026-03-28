@@ -250,7 +250,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         string computedUserSetRelation, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var relations = await reader.GetRelations(
+        using var relations = await reader.GetRelations(
             new RelationTupleFilter
             {
                 EntityId = req.EntityId,
@@ -308,7 +308,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         if (await reader.HasDirectRelation(filter, req.SubjectId, ct))
             return true;
 
-        var indirectRelations = await reader.GetIndirectRelations(filter, ct);
+        using var indirectRelations = await reader.GetIndirectRelations(filter, ct);
 
         if (indirectRelations.Count == 0) return false;
 

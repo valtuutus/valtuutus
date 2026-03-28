@@ -1,3 +1,5 @@
+using Valtuutus.Core.Pools;
+
 namespace Valtuutus.Core.Data;
 
 public interface IDataReaderProvider
@@ -15,7 +17,7 @@ public interface IDataReaderProvider
     /// <param name="tupleFilter">The filter criteria for retrieving RelationTuples.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of RelationTuples matching the filter criteria.</returns>
-    Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
 
     /// <summary>
     /// Checks whether a direct (subject_relation IS NULL) tuple exists for the given subject ID.
@@ -28,7 +30,7 @@ public interface IDataReaderProvider
     /// Used after <see cref="HasDirectRelation"/> returns false to avoid fetching direct
     /// tuples that are irrelevant to recursive resolution.
     /// </summary>
-    Task<List<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of RelationTuples with specified entity IDs.
@@ -39,7 +41,7 @@ public interface IDataReaderProvider
     /// <param name="subjectRelation">The relation of the subject.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and entity IDs.</returns>
-    Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
+    Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken);
 
     /// <summary>
@@ -50,7 +52,7 @@ public interface IDataReaderProvider
     /// <param name="subjectType">The type of the subject.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and subject IDs.</returns>
-    Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a single AttributeTuple based on the provided filter.
@@ -67,7 +69,7 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of AttributeTuples matching the filter criteria.</returns>
     Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken);
-    
+
     /// <summary>
     /// Retrieves a Dictionary of AttributeTuples based on the provided filter.
     /// The key of the dictionary is the attribute name and entityId,
@@ -86,7 +88,7 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of AttributeTuples matching the filter criteria and entity IDs.</returns>
     Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
-    
+
     /// <summary>
     /// Retrieves a Dictionary of AttributeTuples based on the provided filter.
     /// The key of the dictionary is the attribute name and entityId,

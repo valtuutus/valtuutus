@@ -232,7 +232,7 @@ public sealed class LookupSubjectEngine(
         {
             foreach (var entity in relation.Entities)
             {
-                var relations = await reader.GetRelationsWithEntityIds(
+                var pooled0 = await reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
                         Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -247,7 +247,7 @@ public sealed class LookupSubjectEngine(
                 {
                     EntityType = entity.Type,
                     Permission = computedUserSetRelation,
-                    EntitiesIds = ToSubjectIdList(relations)
+                    EntitiesIds = ToSubjectIdList(pooled0.Transfer())
                 }, ct);
             }
 
@@ -312,7 +312,7 @@ public sealed class LookupSubjectEngine(
 
                 if (subRelation is not null)
                 {
-                    var relations = await reader.GetRelationsWithEntityIds(
+                    var pooled1 = await reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
                             Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -328,7 +328,7 @@ public sealed class LookupSubjectEngine(
                         {
                             EntityType = relationEntity.Type,
                             Permission = relationEntity.Relation!,
-                            EntitiesIds = ToSubjectIdList(relations)
+                            EntitiesIds = ToSubjectIdList(pooled1.Transfer())
                         }, subRelation, ct);
                 }
             }
@@ -344,7 +344,7 @@ public sealed class LookupSubjectEngine(
     private async Task<RelationOrAttributeTuples> LookupRelationLeaf(LookupSubjectRequestInternal req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var res = await reader.GetRelationsWithEntityIds(
+        var pooled = await reader.GetRelationsWithEntityIds(
             new EntityRelationFilter
             {
                 Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
@@ -355,7 +355,7 @@ public sealed class LookupSubjectEngine(
             ct
         );
 
-        return new RelationOrAttributeTuples(res);
+        return new RelationOrAttributeTuples(pooled.Transfer());
     }
 
 

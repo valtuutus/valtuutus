@@ -365,7 +365,7 @@ public sealed class LookupEntityEngine(
     private async Task<List<LookupEntityResult>> LookupRelationLeaf(LookupEntityRequestInternal req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var relations = await reader.GetRelationsWithSubjectsIds(
+        using var relations = await reader.GetRelationsWithSubjectsIds(
             new EntityRelationFilter
             {
                 Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
