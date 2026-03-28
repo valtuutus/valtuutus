@@ -52,8 +52,9 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
-        var hs = new HashSet<string>();
+        var hs = new HashSet<string>(res.Count);
         foreach (var r in res) hs.Add(r.EntityId);
+        ListPool<RelationOrAttributeTuple>.Return(res);
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
         return hs;
@@ -70,13 +71,13 @@ public sealed class LookupEntityEngine(
         yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
     }
 
-    private static readonly List<RelationOrAttributeTuple> _emptyResult = new(0);
-    private static readonly Task<List<RelationOrAttributeTuple>> _failTask = Task.FromResult(_emptyResult);
+    private static Task<List<RelationOrAttributeTuple>> EmptyPooledListTask() =>
+        Task.FromResult(ListPool<RelationOrAttributeTuple>.Rent());
 
     private Task<List<RelationOrAttributeTuple>> LookupEntityInternal(LookupEntityRequestInternal req, CancellationToken ct)
     {
         if (req.CheckDepthLimit())
-            return _failTask;
+            return EmptyPooledListTask();
 
         req.DecreaseDepth();
 
@@ -167,7 +168,7 @@ public sealed class LookupEntityEngine(
 
         if (!node.IsContextValid(req.Context))
         {
-            return [];
+            return ListPool<RelationOrAttributeTuple>.Rent();
         }
 
         var attributeArguments = node.GetArgsAttributesNames();
@@ -191,7 +192,7 @@ public sealed class LookupEntityEngine(
         Function fn,
         PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
     {
-        var result = new List<RelationOrAttributeTuple>();
+        var result = ListPool<RelationOrAttributeTuple>.Rent();
 
         foreach (var attr in attributes.Values)
         {
@@ -251,7 +252,7 @@ public sealed class LookupEntityEngine(
                             }, ct);
                         }
 
-                        return Task.FromResult<List<RelationOrAttributeTuple>>([]);
+                        return EmptyPooledListTask();
                     },
                     dependent);
             }
@@ -280,7 +281,7 @@ public sealed class LookupEntityEngine(
             {
                 Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
             }, ct);
-        var result = new List<RelationOrAttributeTuple>(attrs.Count);
+        var result = ListPool<RelationOrAttributeTuple>.Rent();
         foreach (var a in attrs)
             if (a.Value.TryGetValue(out bool b) && b)
                 result.Add(new RelationOrAttributeTuple(a));
@@ -290,7 +291,7 @@ public sealed class LookupEntityEngine(
     private Task<List<RelationOrAttributeTuple>> LookupRelation(LookupEntityRequestInternal req, Relation relation, CancellationToken ct)
     {
         if (!relation.EntityTypes.Contains(req.FinalSubjectType) && !relation.HasSubRelationPaths)
-            return _failTask;
+            return EmptyPooledListTask();
 
         return LookupRelationCore(req, relation, ct);
     }
@@ -347,7 +348,7 @@ public sealed class LookupEntityEngine(
                                 }, ct);
                             }
 
-                            return Task.FromResult<List<RelationOrAttributeTuple>>([]);
+                            return EmptyPooledListTask();
                         },
                         dependent);
                 }
@@ -364,16 +365,17 @@ public sealed class LookupEntityEngine(
     private async Task<List<RelationOrAttributeTuple>> LookupRelationLeaf(LookupEntityRequestInternal req, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        return (await reader.GetRelationsWithSubjectsIds(
-                    new EntityRelationFilter
-                    {
-                        Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
-                    },
-                    req.SubjectsIds,
-                    req.SubjectType,
-                    ct
-                ))
-                .ConvertAll(static x => new RelationOrAttributeTuple(x));
+        var relations = await reader.GetRelationsWithSubjectsIds(
+            new EntityRelationFilter
+            {
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
+            },
+            req.SubjectsIds,
+            req.SubjectType,
+            ct);
+        var result = ListPool<RelationOrAttributeTuple>.Rent();
+        foreach (var x in relations) result.Add(new RelationOrAttributeTuple(x));
+        return result;
     }
 
     private static async Task<List<RelationOrAttributeTuple>> JoinEntities(
@@ -386,7 +388,7 @@ public sealed class LookupEntityEngine(
         var dependentResult = await dependent;
         var mainResult = await main(dependentResult);
 
-        var dependentSet = new HashSet<(string Type, string Id)>();
+        var dependentSet = new HashSet<(string Type, string Id)>(dependentResult.Count);
         foreach (var d in dependentResult)
         {
             if (d.Type == RelationOrAttributeType.Relation)
@@ -394,11 +396,13 @@ public sealed class LookupEntityEngine(
             else
                 dependentSet.Add((d.AttributeTuple!.EntityType, d.AttributeTuple!.EntityId));
         }
+        ListPool<RelationOrAttributeTuple>.Return(dependentResult);
 
-        var result = new List<RelationOrAttributeTuple>(mainResult.Count);
+        var result = ListPool<RelationOrAttributeTuple>.Rent();
         foreach (var m in mainResult)
             if (dependentSet.Contains((m.RelationTuple!.SubjectType, m.RelationTuple!.SubjectId)))
                 result.Add(m);
+        ListPool<RelationOrAttributeTuple>.Return(mainResult);
 
         return result;
     }
@@ -410,10 +414,12 @@ public sealed class LookupEntityEngine(
 
         var results = await Task.WhenAll(new ArraySegment<Task<List<RelationOrAttributeTuple>>>(buffer, 0, count));
 
-        var totalCount = 0;
-        foreach (var r in results) totalCount += r.Count;
-        var merged = new List<RelationOrAttributeTuple>(totalCount);
-        foreach (var r in results) merged.AddRange(r);
+        var merged = ListPool<RelationOrAttributeTuple>.Rent();
+        foreach (var r in results)
+        {
+            merged.AddRange(r);
+            ListPool<RelationOrAttributeTuple>.Return(r);
+        }
         return merged;
     }
 
@@ -425,17 +431,21 @@ public sealed class LookupEntityEngine(
         var results = await Task.WhenAll(new ArraySegment<Task<List<RelationOrAttributeTuple>>>(buffer, 0, count));
 
         if (results.Length == 0)
-            return [];
+            return ListPool<RelationOrAttributeTuple>.Rent();
 
         var hashSet = new HashSet<RelationOrAttributeTuple>(results[0], RelationOrAttributeComparer.Instance);
+        ListPool<RelationOrAttributeTuple>.Return(results[0]);
         for (var i = 1; i < results.Length; i++)
         {
             hashSet.IntersectWith(results[i]);
+            ListPool<RelationOrAttributeTuple>.Return(results[i]);
             if (hashSet.Count == 0)
-                return [];
+                return ListPool<RelationOrAttributeTuple>.Rent();
         }
 
-        return [.. hashSet];
+        var result = ListPool<RelationOrAttributeTuple>.Rent();
+        foreach (var item in hashSet) result.Add(item);
+        return result;
     }
 
     private static List<string> ToEntityIdList(List<RelationOrAttributeTuple> tuples)
@@ -484,9 +494,7 @@ internal sealed class RelationOrAttributeComparer : IEqualityComparer<RelationOr
     public bool Equals(RelationOrAttributeTuple? x, RelationOrAttributeTuple? y)
     {
         if (ReferenceEquals(x, y)) return true;
-        if (ReferenceEquals(x, null)) return false;
-        if (ReferenceEquals(y, null)) return false;
-        if (x.GetType() != y.GetType()) return false;
+        if (x is null || y is null) return false;
         return x.EntityType == y.EntityType && x.EntityId == y.EntityId;
     }
 

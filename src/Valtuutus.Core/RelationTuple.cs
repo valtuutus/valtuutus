@@ -1,4 +1,4 @@
-﻿namespace Valtuutus.Core;
+namespace Valtuutus.Core;
 
 public sealed record RelationTuple
 {
@@ -8,7 +8,7 @@ public sealed record RelationTuple
     public string SubjectType { get; private init; } = null!;
     public string SubjectId { get; private init; } = null!;
     public string SubjectRelation { get; private init; } = null!;
-    
+
     public RelationTuple(string entityType, string entityId, string relation, string subjectType, string subjectId, string? subjectRelation = null)
     {
         EntityType = entityType;
@@ -19,17 +19,12 @@ public sealed record RelationTuple
         SubjectRelation = subjectRelation ?? "";
     }
 
-
-    public bool IsDirectSubject()
-    {
-        return SubjectRelation == "";
-    }
+    public bool IsDirectSubject() => SubjectRelation == "";
 }
 
-internal class RelationTupleComparer : IEqualityComparer<RelationTuple> {
-    private RelationTupleComparer()
-    {
-    }
+internal class RelationTupleComparer : IEqualityComparer<RelationTuple>
+{
+    private RelationTupleComparer() { }
 
     internal static IEqualityComparer<RelationTuple> Instance { get; } = new RelationTupleComparer();
 
