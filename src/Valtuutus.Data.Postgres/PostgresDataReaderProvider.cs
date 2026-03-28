@@ -95,9 +95,17 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .AddTemplate(_formattedSelectRelations!);
 
             var pooled = PooledList<RelationTuple>.Rent();
-            pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)));
-            return pooled;
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
 
@@ -131,9 +139,17 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .AddTemplate(_formattedSelectRelations!);
 
             var pooled = PooledList<RelationTuple>.Rent();
-            pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)));
-            return pooled;
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
 
@@ -151,9 +167,17 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .AddTemplate(_formattedSelectRelations!);
 
             var pooled = PooledList<RelationTuple>.Rent();
-            pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)));
-            return pooled;
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
     
@@ -170,9 +194,17 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 .AddTemplate(_formattedSelectRelations!);
 
             var pooled = PooledList<RelationTuple>.Rent();
-            pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)));
-            return pooled;
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: ct)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
         }, cancellationToken);
     }
     
