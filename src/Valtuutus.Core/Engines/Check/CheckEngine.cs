@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
@@ -317,7 +318,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         var count = 0;
         try
         {
-            foreach (var relation in indirectRelations)
+            foreach (ref readonly var relation in indirectRelations.AsSpan())
             {
                 var innerReq = new CheckRequest
                 {

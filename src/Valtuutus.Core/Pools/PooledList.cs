@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Runtime.InteropServices;
 
 namespace Valtuutus.Core.Pools;
 
@@ -30,6 +31,8 @@ public readonly struct PooledList<T> : IEnumerable<T>, IDisposable
     /// Transfers ownership of the underlying list to the caller.
     /// The list is NOT returned to the pool — the caller is responsible for its lifecycle.
     /// </summary>
+    public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_list);
+
     internal List<T> Transfer() => _list;
 
     public void Dispose() => ListPool<T>.Return(_list);
