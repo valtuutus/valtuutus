@@ -2,28 +2,15 @@
 
 public abstract class RateLimiterExecuter : IDisposable
 {
-    private readonly SemaphoreSlim _semaphore;
+    protected readonly SemaphoreSlim Semaphore;
 
     protected RateLimiterExecuter(ValtuutusDataOptions options)
     {
-        _semaphore = new SemaphoreSlim(options.MaxConcurrentQueries, options.MaxConcurrentQueries);
+        Semaphore = new SemaphoreSlim(options.MaxConcurrentQueries, options.MaxConcurrentQueries);
     }
-    
-    protected async Task<T> ExecuteWithRateLimit<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
-    {
-        await _semaphore.WaitAsync(ct);
-        try
-        {
-            return await action(ct);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-    
+
     public void Dispose()
     {
-        _semaphore.Dispose();
+        Semaphore.Dispose();
     }
 }
