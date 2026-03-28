@@ -343,6 +343,7 @@ namespace Valtuutus.Core.Pools
         public T this[int index] { get; }
         public void Add(T item) { }
         public void AddRange(System.Collections.Generic.IEnumerable<T> items) { }
+        public System.ReadOnlySpan<T> AsSpan() { }
         public void Dispose() { }
         public System.Collections.Generic.List<T>.Enumerator GetEnumerator() { }
         public static Valtuutus.Core.Pools.PooledList<T> Rent() { }
