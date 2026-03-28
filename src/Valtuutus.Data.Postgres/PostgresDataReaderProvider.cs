@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core;
+using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
@@ -72,24 +72,26 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-            
-            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(_formattedGetLatestSnapTokenQuery!, cancellationToken: ct));
+            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(_formattedGetLatestSnapTokenQuery!, cancellationToken: cancellationToken));
             return res != null ? new SnapToken(res) : (SnapToken?)null;
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
@@ -98,7 +100,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             try
             {
                 pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: ct)));
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
                 return pooled;
             }
             catch
@@ -106,34 +108,40 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 pooled.Dispose();
                 throw;
             }
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterDirectRelation(tupleFilter, subjectId)
                 .AddTemplate(_formattedExistsRelation!);
 
             return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: ct));
-        }, cancellationToken);
+                queryTemplate.Parameters, cancellationToken: cancellationToken));
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterIndirectRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
@@ -142,7 +150,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             try
             {
                 pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: ct)));
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
                 return pooled;
             }
             catch
@@ -150,18 +158,20 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 pooled.Dispose();
                 throw;
             }
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(_formattedSelectRelations!);
@@ -170,7 +180,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             try
             {
                 pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: ct)));
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
                 return pooled;
             }
             catch
@@ -178,17 +188,20 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 pooled.Dispose();
                 throw;
             }
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
-    
+
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(_formattedSelectRelations!);
@@ -197,7 +210,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             try
             {
                 pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: ct)));
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
                 return pooled;
             }
             catch
@@ -205,99 +218,116 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 pooled.Dispose();
                 throw;
             }
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
-    
+
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelect1Attribute);
-            
+
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: ct));
-        }, cancellationToken);
-
+                queryTemplate.Parameters, cancellationToken: cancellationToken));
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
-            
-            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
-        }, cancellationToken);
 
+            return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
+                .ToList();
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToDictionary(x => (x.Attribute, x.EntityId));
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToList();
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
             using var connection = _connectionFactory();
-
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToDictionary(x => (x.Attribute, x.EntityId));
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 }
