@@ -70,6 +70,21 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         }
     }
 
+    public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

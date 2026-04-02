@@ -346,6 +346,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             }, computedUserSetRelation, memo, ct);
         }
 
+        var firstSubjectType = relations.AsSpan()[0].SubjectType;
+        if (AllSameSubjectType(relations.AsSpan(), firstSubjectType)
+            && schema.GetRelationType(firstSubjectType, computedUserSetRelation) == RelationType.DirectRelation
+            && !schema.GetRelation(firstSubjectType, computedUserSetRelation).HasSubRelationPaths)
+        {
+            var entityIds = new string[relations.Count];
+            for (var i = 0; i < relations.Count; i++)
+                entityIds[i] = relations[i].SubjectId;
+            return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
+                req.SubjectId!, req.SnapToken, ct);
+        }
+
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);
         var cancellationToken = pooledCts.Token;
         var innerCts = pooledCts.InnerSource;
@@ -450,5 +462,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             return true;
         }
+    }
+
+    private static bool AllSameSubjectType(ReadOnlySpan<RelationTuple> relations, string expectedType)
+    {
+        foreach (ref readonly var r in relations)
+            if (r.SubjectType != expectedType) return false;
+        return true;
     }
 }
