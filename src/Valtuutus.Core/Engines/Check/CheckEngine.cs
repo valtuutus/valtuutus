@@ -148,6 +148,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             && req.SubjectRelation == req.Permission)
             return Task.FromResult(true);
 
+        if (!string.IsNullOrEmpty(req.SubjectType)
+            && !schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
+            return Task.FromResult(false);
+
         req.DecreaseDepth();
 
         var key = new CheckMemoKey(req.EntityType, req.EntityId, req.Permission, req.SubjectType, req.SubjectId);
@@ -392,8 +396,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             SnapToken = req.SnapToken
         };
 
-        if (await reader.HasDirectRelation(filter, req.SubjectId, ct))
-            return true;
+        var hasDirect = await reader.HasDirectRelation(filter, req.SubjectId!, ct);
+        if (hasDirect) return true;
+
+        if (!schema.GetRelation(req.EntityType, req.Permission).HasSubRelationPaths)
+            return false;
 
         using var indirectRelations = await reader.GetIndirectRelations(filter, ct);
 
