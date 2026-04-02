@@ -733,6 +733,38 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task TupleToUserSet_BatchPath_Should_Return_True_For_Homogeneous_DirectRelation()
+    {
+        var schema = @"
+            entity user {}
+            entity team {
+                relation member @user;
+            }
+            entity project {
+                relation team_link @team;
+                permission view := team_link.member;
+            }
+        ";
+
+        var engine = await CreateEngine([
+            new RelationTuple("project", "1", "team_link", "team", "alpha"),
+            new RelationTuple("project", "1", "team_link", "team", "beta"),
+            new RelationTuple("team", "beta", "member", "user", "alice")
+        ], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "project",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "user",
+            SubjectId = "alice"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
     public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, true},
