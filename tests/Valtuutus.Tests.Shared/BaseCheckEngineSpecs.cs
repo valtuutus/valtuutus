@@ -650,6 +650,89 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ReachabilityPruning_ShouldNotPrune_AttributeDrivenUnion()
+    {
+        var schema = @"
+            entity user {}
+            entity group {}
+            entity workspace {
+                relation owner @user;
+                attribute public bool;
+                permission view := owner or public;
+            }
+        ";
+
+        var engine = await CreateEngine([], [
+            new AttributeTuple("workspace", "1", "public", JsonValue.Create(true))
+        ], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ReachabilityPruning_ShouldReturnFalse_ForImpossibleNestedPath()
+    {
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation parent @group;
+                permission view := parent.member;
+            }
+        ";
+
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReachabilityPruning_ShouldRemainConservative_ForCyclicPermission()
+    {
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user @group#member;
+                permission access := member;
+            }
+        ";
+
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "group",
+            EntityId = "admins",
+            Permission = "access",
+            SubjectType = "group",
+            SubjectId = "admins",
+            SubjectRelation = "member"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
     public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, true},
