@@ -165,6 +165,27 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
+    public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            using var connection = _connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelationBatch(snapToken, entityType, entityIds, relation, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
+
+            return await connection.ExecuteScalarAsync<bool>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: cancellationToken));
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

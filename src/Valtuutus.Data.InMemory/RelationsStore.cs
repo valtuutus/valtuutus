@@ -80,6 +80,23 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public bool HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, SnapToken? snapToken)
+    {
+        using var _ = Read();
+        foreach (var entityId in entityIds)
+        {
+            if (!_byEntityRelation.TryGetValue((entityType, entityId, relation), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (e.Relation.SubjectId != subjectId) continue;
+                if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+                return true;
+            }
+        }
+        return false;
+    }
+
     public PooledList<RelationTuple> GetRelationsWithEntityIds(EntityRelationFilter filter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation)
     {

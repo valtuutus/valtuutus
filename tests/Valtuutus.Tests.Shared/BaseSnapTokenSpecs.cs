@@ -375,6 +375,80 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HasAnyDirectRelation_Should_Return_True_When_Any_Entity_Has_Direct_Relation()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice"),
+            new RelationTuple("workspace", "private", "owner", "user", "bob")
+        ], [], default);
+
+        var result = await providers.reader.HasAnyDirectRelation(
+            "workspace",
+            ["missing", "private", "other"],
+            "owner",
+            "bob",
+            snapToken,
+            default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasAnyDirectRelation_Should_Ignore_Indirect_Tuples()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ], [], default);
+
+        var result = await providers.reader.HasAnyDirectRelation(
+            "workspace",
+            ["public"],
+            "owner",
+            "admins",
+            snapToken,
+            default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HasAnyDirectRelation_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var firstSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice")
+        ], [], default);
+
+        var secondSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "private", "owner", "user", "charlie")
+        ], [], default);
+
+        var resultWithOldToken = await providers.reader.HasAnyDirectRelation(
+            "workspace",
+            ["private"],
+            "owner",
+            "charlie",
+            firstSnapToken,
+            default);
+
+        var resultWithNewToken = await providers.reader.HasAnyDirectRelation(
+            "workspace",
+            ["private"],
+            "owner",
+            "charlie",
+            secondSnapToken,
+            default);
+
+        resultWithOldToken.Should().BeFalse();
+        resultWithNewToken.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task GetAttribute_Should_Respect_SnapToken()
     {
         var providers = CreateProviders();

@@ -26,6 +26,14 @@ public interface IDataReaderProvider
     Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Batch variant of <see cref="HasDirectRelation"/>: returns true if ANY of the given
+    /// entity IDs has a direct relation to <paramref name="subjectId"/>. Collapses N individual
+    /// HasDirectRelation queries into a single DB round-trip.
+    /// </summary>
+    Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves only indirect tuples (subject_relation IS NOT NULL) for the given filter.
     /// Used after <see cref="HasDirectRelation"/> returns false to avoid fetching direct
     /// tuples that are irrelevant to recursive resolution.

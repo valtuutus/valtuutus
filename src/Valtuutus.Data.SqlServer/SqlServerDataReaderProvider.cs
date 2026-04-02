@@ -278,6 +278,27 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         }
     }
 
+    public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelationBatch(snapToken, entityType, entityIds, relation, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
+
+            return await connection.ExecuteScalarAsync<int>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: cancellationToken)) == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();

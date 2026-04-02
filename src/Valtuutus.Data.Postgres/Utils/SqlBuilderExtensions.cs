@@ -78,6 +78,21 @@ internal static class SqlBuilderExtensions
         return builder;
     }
 
+    public static SqlBuilder FilterDirectRelationBatch(this SqlBuilder builder, SnapToken? snapToken,
+        string entityType, string[] entityIds, string relation, string subjectId)
+    {
+        if (snapToken != null)
+            builder = builder.Where(
+                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
+                new { SnapToken = new DbString { Value = snapToken.Value.Value, Length = 26, IsFixedLength = true } });
+        builder = builder.Where(EntityTypeFilter, new { EntityType = new DbString { Value = entityType, Length = 256 } });
+        builder = builder.Where("entity_id = ANY(@EntityIds)", new { EntityIds = entityIds });
+        builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = relation, Length = 64 } });
+        builder = builder.Where("subject_id = @SubjectId", new { SubjectId = new DbString { Value = subjectId, Length = 64 } });
+        builder = builder.Where("subject_relation = ''");
+        return builder;
+    }
+
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter filter,
         string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation)
     {
