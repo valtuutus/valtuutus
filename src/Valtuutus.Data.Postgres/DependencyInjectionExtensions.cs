@@ -17,8 +17,10 @@ public static class DependencyInjectionExtensions
         Func<IServiceProvider, DbConnectionFactory> factory,
         ValtuutusPostgresOptions? options = null)
     {
+        var postgresOptions = options ?? new ValtuutusPostgresOptions();
         var builder = services.AddValtuutusData();
-        builder.Services.AddDbSetup(factory, options ?? new ValtuutusPostgresOptions());
+        builder.Services.AddDbSetup(factory, postgresOptions);
+        builder.Services.AddSingleton(postgresOptions);
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, PostgresDataWriterProvider>();
