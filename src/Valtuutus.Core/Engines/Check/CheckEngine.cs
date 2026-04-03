@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -351,11 +352,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             && schema.GetRelationType(firstSubjectType, computedUserSetRelation) == RelationType.DirectRelation
             && !schema.GetRelation(firstSubjectType, computedUserSetRelation).HasSubRelationPaths)
         {
-            var entityIds = new string[relations.Count];
+            var entityIds = ArrayPool<string>.Shared.Rent(relations.Count);
             for (var i = 0; i < relations.Count; i++)
                 entityIds[i] = relations[i].SubjectId;
-            return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
-                req.SubjectId!, req.SnapToken, ct);
+            Array.Clear(entityIds, relations.Count, entityIds.Length - relations.Count);
+            try
+            {
+                return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
+                    req.SubjectId!, req.SnapToken, ct);
+            }
+            finally
+            {
+                Array.Clear(entityIds, 0, relations.Count);
+                ArrayPool<string>.Shared.Return(entityIds);
+            }
         }
 
         using var pooledCts = CancellationTokenSourcePool.Rent(ct);

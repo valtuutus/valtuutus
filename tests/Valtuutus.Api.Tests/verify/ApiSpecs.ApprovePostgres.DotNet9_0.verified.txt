@@ -10,6 +10,8 @@ namespace Valtuutus.Data.Postgres
     {
         public ValtuutusPostgresOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
         public string AttributesTableName { get; }
+        public int AutoPrepareMinUsages { get; init; }
+        public int MaxAutoPrepare { get; init; }
         public string RelationsTableName { get; }
         public string Schema { get; }
         public string TransactionsTableName { get; }

@@ -15,8 +15,9 @@ public static class DependencyInjectionExtensions
         var builder = services.AddValtuutusData();
         builder.Services.AddSingleton<RelationsStore>();
         builder.Services.AddSingleton<AttributesStore>();
-        builder.Services.AddScoped<IDataReaderProvider, InMemoryProvider>();
-        builder.Services.AddScoped<IDataWriterProvider, InMemoryProvider>();
+        builder.Services.AddScoped<InMemoryProvider>();
+        builder.Services.AddScoped<IDataReaderProvider>(sp => sp.GetRequiredService<InMemoryProvider>());
+        builder.Services.AddScoped<IDataWriterProvider>(sp => sp.GetRequiredService<InMemoryProvider>());
         return builder;
     }
 }

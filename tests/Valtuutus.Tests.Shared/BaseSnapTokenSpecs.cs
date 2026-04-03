@@ -117,6 +117,35 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         },
     };
 
+    [Fact]
+    public async Task GetLatestSnapToken_Should_Return_Null_When_Empty()
+    {
+        var providers = CreateProviders();
+
+        var latest = await providers.reader.GetLatestSnapToken(default);
+
+        latest.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetLatestSnapToken_Should_Return_Latest_After_Writes()
+    {
+        var providers = CreateProviders();
+
+        var first = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice")
+        ], [], default);
+
+        var second = await providers.writer.Write([
+            new RelationTuple("workspace", "private", "owner", "user", "bob")
+        ], [], default);
+
+        var latest = await providers.reader.GetLatestSnapToken(default);
+
+        latest.Should().Be(second);
+        latest.Should().NotBe(first);
+    }
+
     [Theory]
     [MemberData(nameof(GetRelationsAfterFirstWriteData))]
     public async Task GetRelations_After_First_Write_All_Relations_Should_be_Retrieved(
@@ -449,6 +478,148 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HasDirectRelation_Should_Return_True_For_Direct_Tuple()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice")
+        ], [], default);
+
+        var result = await providers.reader.HasDirectRelation(new RelationTupleFilter
+            {
+                EntityType = "workspace",
+                EntityId = "public",
+                Relation = "owner",
+                SnapToken = snapToken
+            },
+            "alice",
+            default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HasDirectRelation_Should_Ignore_Indirect_Tuple()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ], [], default);
+
+        var result = await providers.reader.HasDirectRelation(new RelationTupleFilter
+            {
+                EntityType = "workspace",
+                EntityId = "public",
+                Relation = "owner",
+                SnapToken = snapToken
+            },
+            "admins",
+            default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task HasDirectRelation_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var firstSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice")
+        ], [], default);
+
+        var secondSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "bob")
+        ], [], default);
+
+        var resultWithOldToken = await providers.reader.HasDirectRelation(new RelationTupleFilter
+            {
+                EntityType = "workspace",
+                EntityId = "public",
+                Relation = "owner",
+                SnapToken = firstSnapToken
+            },
+            "bob",
+            default);
+
+        var resultWithNewToken = await providers.reader.HasDirectRelation(new RelationTupleFilter
+            {
+                EntityType = "workspace",
+                EntityId = "public",
+                Relation = "owner",
+                SnapToken = secondSnapToken
+            },
+            "bob",
+            default);
+
+        resultWithOldToken.Should().BeFalse();
+        resultWithNewToken.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetIndirectRelations_Should_Return_Only_Indirect_Tuples()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "user", "alice"),
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ], [], default);
+
+        var relations = await providers.reader.GetIndirectRelations(new RelationTupleFilter
+        {
+            EntityType = "workspace",
+            EntityId = "public",
+            Relation = "owner",
+            SnapToken = snapToken
+        }, default);
+
+        relations.Should().BeEquivalentTo([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ]);
+    }
+
+    [Fact]
+    public async Task GetIndirectRelations_Should_Respect_SnapToken()
+    {
+        var providers = CreateProviders();
+
+        var firstSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ], [], default);
+
+        var secondSnapToken = await providers.writer.Write([
+            new RelationTuple("workspace", "public", "owner", "group", "reviewers", "member")
+        ], [], default);
+
+        var relationsWithOldToken = await providers.reader.GetIndirectRelations(new RelationTupleFilter
+        {
+            EntityType = "workspace",
+            EntityId = "public",
+            Relation = "owner",
+            SnapToken = firstSnapToken
+        }, default);
+
+        var relationsWithNewToken = await providers.reader.GetIndirectRelations(new RelationTupleFilter
+        {
+            EntityType = "workspace",
+            EntityId = "public",
+            Relation = "owner",
+            SnapToken = secondSnapToken
+        }, default);
+
+        relationsWithOldToken.Should().BeEquivalentTo([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member")
+        ]);
+        relationsWithNewToken.Should().BeEquivalentTo([
+            new RelationTuple("workspace", "public", "owner", "group", "admins", "member"),
+            new RelationTuple("workspace", "public", "owner", "group", "reviewers", "member")
+        ]);
+    }
+
+    [Fact]
     public async Task GetAttribute_Should_Respect_SnapToken()
     {
         var providers = CreateProviders();
@@ -500,6 +671,90 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             Attribute = "public",
             Value = JsonValue.Create(false).ToJsonString()
         });
+    }
+
+    [Fact]
+    public async Task GetAttribute_Should_Return_Null_When_Missing()
+    {
+        var providers = CreateProviders();
+
+        await providers.writer.Write([], [
+            new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
+        ], default);
+
+        var attribute = await providers.reader.GetAttribute(new EntityAttributeFilter
+        {
+            EntityType = "workspace",
+            EntityId = "missing",
+            Attribute = "status",
+            SnapToken = null
+        }, default);
+
+        attribute.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetAttribute_Should_Work_Without_EntityId()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([], [
+            new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
+        ], default);
+
+        var attribute = await providers.reader.GetAttribute(new EntityAttributeFilter
+        {
+            EntityType = "workspace",
+            Attribute = "status",
+            SnapToken = snapToken
+        }, default);
+
+        new
+        {
+            attribute!.EntityType,
+            attribute.EntityId,
+            attribute.Attribute,
+            Value = attribute.Value.ToJsonString()
+        }.Should().BeEquivalentTo(new
+        {
+            EntityType = "workspace",
+            EntityId = "public",
+            Attribute = "status",
+            Value = JsonValue.Create("active")!.ToJsonString()
+        });
+    }
+
+    [Fact]
+    public async Task GetAttribute_Should_Respect_SnapToken_Without_EntityId()
+    {
+        var providers = CreateProviders();
+
+        var firstSnapToken = await providers.writer.Write([], [
+            new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
+        ], default);
+
+        var secondSnapToken = await providers.writer.Write([], [
+            new AttributeTuple("workspace", "private", "status", JsonValue.Create("inactive")!)
+        ], default);
+
+        var attributeWithOldToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+        {
+            EntityType = "workspace",
+            Attribute = "status",
+            SnapToken = firstSnapToken
+        }, default);
+
+        var attributeWithNewToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+        {
+            EntityType = "workspace",
+            Attribute = "status",
+            SnapToken = secondSnapToken
+        }, default);
+
+        attributeWithOldToken.Should().NotBeNull();
+        attributeWithNewToken.Should().NotBeNull();
+        attributeWithOldToken!.EntityId.Should().Be("public");
+        attributeWithNewToken!.Attribute.Should().Be("status");
     }
 
     [Fact]
