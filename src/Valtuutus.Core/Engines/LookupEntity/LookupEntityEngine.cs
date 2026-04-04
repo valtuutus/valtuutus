@@ -123,6 +123,9 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
+        if (!isUnion && HasMixedAttributeAndRelationChildren(children))
+            return await LookupIntersectionConstrained(req, children, ct);
+
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
         var buffer = pool.Rent(children.Count);
         try
@@ -143,6 +146,125 @@ public sealed class LookupEntityEngine(
         {
             pool.Return(buffer, clearArray: true);
         }
+    }
+
+    private static bool HasMixedAttributeAndRelationChildren(List<PermissionNode> children)
+    {
+        bool hasAttr = false, hasOther = false;
+        foreach (var child in children)
+        {
+            if (child.Type == PermissionNodeType.Leaf && child.LeafNode!.Type == PermissionNodeLeafType.Expression)
+                hasAttr = true;
+            else
+                hasOther = true;
+            if (hasAttr && hasOther) return true;
+        }
+        return false;
+    }
+
+    private async Task<List<LookupEntityResult>> LookupIntersectionConstrained(
+        LookupEntityRequestInternal req, List<PermissionNode> children, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
+
+        var attrLeaves = new List<PermissionNodeLeafExp>(2);
+        var nonAttrCount = 0;
+        var nonAttrBuffer = pool.Rent(children.Count);
+        List<LookupEntityResult>[] nonAttrResults;
+        try
+        {
+            foreach (var child in children)
+            {
+                if (child.Type == PermissionNodeType.Leaf &&
+                    child.LeafNode!.Type == PermissionNodeLeafType.Expression)
+                    attrLeaves.Add(child.LeafNode.ExpressionNode!);
+                else
+                    nonAttrBuffer[nonAttrCount++] = child.Type == PermissionNodeType.Expression
+                        ? LookupExpression(req, child.ExpressionNode!, ct)
+                        : LookupLeaf(req, child.LeafNode!, ct);
+            }
+            nonAttrResults = await Task.WhenAll(new ArraySegment<Task<List<LookupEntityResult>>>(nonAttrBuffer, 0, nonAttrCount));
+        }
+        finally
+        {
+            pool.Return(nonAttrBuffer, clearArray: true);
+        }
+
+        foreach (var r in nonAttrResults)
+        {
+            if (r.Count == 0)
+            {
+                foreach (var rr in nonAttrResults) ListPool<LookupEntityResult>.Return(rr);
+                return ListPool<LookupEntityResult>.Rent();
+            }
+        }
+
+        var first = nonAttrResults[0];
+        var entityIds = new HashSet<string>(first.Count);
+        foreach (var e in first) entityIds.Add(e.EntityId);
+
+        if (nonAttrResults.Length > 1)
+        {
+            var tempIds = new HashSet<string>();
+            for (var i = 1; i < nonAttrResults.Length; i++)
+            {
+                tempIds.Clear();
+                foreach (var e in nonAttrResults[i]) tempIds.Add(e.EntityId);
+                entityIds.IntersectWith(tempIds);
+                if (entityIds.Count == 0)
+                {
+                    foreach (var r in nonAttrResults) ListPool<LookupEntityResult>.Return(r);
+                    return ListPool<LookupEntityResult>.Rent();
+                }
+            }
+        }
+
+        var totalCount = nonAttrCount + attrLeaves.Count;
+        var attrBuffer = pool.Rent(attrLeaves.Count);
+        var allBuffer = pool.Rent(totalCount);
+        try
+        {
+            for (var i = 0; i < attrLeaves.Count; i++)
+                attrBuffer[i] = CheckLeafExpWithEntityIds(req, attrLeaves[i], entityIds, ct);
+
+            for (var i = 0; i < nonAttrResults.Length; i++)
+                allBuffer[i] = Task.FromResult(nonAttrResults[i]);
+            for (var i = 0; i < attrLeaves.Count; i++)
+                allBuffer[nonAttrResults.Length + i] = attrBuffer[i];
+
+            return await IntersectEntities(allBuffer, totalCount);
+        }
+        finally
+        {
+            pool.Return(attrBuffer, clearArray: true);
+            pool.Return(allBuffer, clearArray: true);
+        }
+    }
+
+    private async Task<List<LookupEntityResult>> CheckLeafExpWithEntityIds(
+        LookupEntityRequestInternal req, PermissionNodeLeafExp node,
+        IReadOnlyCollection<string> entityIds, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var fn = schema.Functions[node.FunctionName];
+        if (fn is null) throw new InvalidOperationException();
+        if (!node.IsContextValid(req.Context)) return ListPool<LookupEntityResult>.Rent();
+
+        var attributeArguments = node.GetArgsAttributesNames();
+        var attributes = await reader.GetAttributesWithEntityIds(
+            new EntityAttributesFilter
+            {
+                Attributes = attributeArguments,
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
+            },
+            entityIds,
+            ct);
+
+        using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
+        return EvaluateExpressionMatches(attributes, req, fn, paramToArgMap);
     }
 
     private Task<List<LookupEntityResult>> LookupLeaf(LookupEntityRequestInternal req, PermissionNodeLeaf node, CancellationToken ct)
