@@ -393,6 +393,9 @@ public sealed class LookupEntityEngine(
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         var dependentResult = await dependent;
+        if (dependentResult.Count == 0)
+            return dependentResult;
+
         var mainResult = await main(dependentResult, state);
 
         var dependentSet = new HashSet<(string Type, string Id)>(dependentResult.Count);
