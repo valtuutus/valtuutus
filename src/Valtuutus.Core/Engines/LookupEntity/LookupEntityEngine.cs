@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -25,6 +26,10 @@ internal record LookupEntityRequestInternal : IWithDepth
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
     public required IDictionary<string, object> Context { get; set; } = EmptyContext;
+    // Request-scoped cache for GetAttributes(EntityAttributesFilter) results.
+    // Memoises the Task itself — concurrent callers await the same Task rather than
+    // issuing duplicate DB queries for the same (entityType, attributeNames) combination.
+    public required ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>> AttributeCache { get; init; }
 }
 
 public sealed class LookupEntityEngine(
@@ -49,7 +54,9 @@ public sealed class LookupEntityEngine(
             FinalSubjectId = req.SubjectId,
             SnapToken = req.SnapToken,
             Depth = req.Depth,
-            Context = req.Context
+            Context = req.Context,
+            AttributeCache = new ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>>(
+                concurrencyLevel: 1, capacity: 4)
         };
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
@@ -174,13 +181,17 @@ public sealed class LookupEntityEngine(
 
         var attributeArguments = node.GetArgsAttributesNames();
 
-        var attributes = await reader.GetAttributes(
-            new EntityAttributesFilter
-            {
-                Attributes = attributeArguments,
-                EntityType = req.EntityType,
-                SnapToken = req.SnapToken
-            }, ct);
+        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments);
+        var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,
+            static (_, state) => state.reader.GetAttributes(
+                new EntityAttributesFilter
+                {
+                    Attributes = state.attributeArguments,
+                    EntityType = state.req.EntityType,
+                    SnapToken = state.req.SnapToken
+                }, state.ct),
+            (reader, attributeArguments, req, ct));
+        var attributes = await attributesTask;
 
         using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
