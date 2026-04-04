@@ -11,7 +11,7 @@ CREATE TABLE "public"."attributes"
     PRIMARY KEY ("id")
 );
 -- Create index "idx_attributes" to table: "attributes"
-CREATE INDEX "idx_attributes" ON "public"."attributes" ("entity_type", "entity_id", "attribute");
+CREATE INDEX "idx_attributes" ON "public"."attributes" ("entity_type", "entity_id", "attribute") INCLUDE ("value");
 -- Create "relation_tuples" table
 CREATE TABLE "public"."relation_tuples"
 (
@@ -29,7 +29,7 @@ CREATE TABLE "public"."relation_tuples"
 -- Create index "idx_tuples_entity_relation" to table: "relation_tuples"
 CREATE INDEX "idx_tuples_entity_relation" ON "public"."relation_tuples" ("entity_type", "relation");
 -- Create index "idx_tuples_subject_entities" to table: "relation_tuples"
-CREATE INDEX "idx_tuples_subject_entities" ON "public"."relation_tuples" ("entity_type", "relation", "subject_type", "subject_id");
+CREATE INDEX "idx_tuples_subject_entities" ON "public"."relation_tuples" ("entity_type", "relation", "subject_type", "subject_id") INCLUDE ("entity_id", "subject_relation");
 -- Create index "idx_tuples_user" to table: "relation_tuples"
 CREATE INDEX "idx_tuples_user" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id");
 -- Create index "idx_tuples_userset" to table: "relation_tuples"
