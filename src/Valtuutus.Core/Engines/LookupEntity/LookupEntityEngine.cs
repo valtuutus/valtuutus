@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -25,6 +26,10 @@ internal record LookupEntityRequestInternal : IWithDepth
     public SnapToken? SnapToken { get; set; }
     public required int Depth { get; set; } = 10;
     public required IDictionary<string, object> Context { get; set; } = EmptyContext;
+    // Request-scoped cache for GetAttributes(EntityAttributesFilter) results.
+    // Memoises the Task itself — concurrent callers await the same Task rather than
+    // issuing duplicate DB queries for the same (entityType, attributeNames) combination.
+    public required ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>> AttributeCache { get; init; }
 }
 
 public sealed class LookupEntityEngine(
@@ -49,7 +54,9 @@ public sealed class LookupEntityEngine(
             FinalSubjectId = req.SubjectId,
             SnapToken = req.SnapToken,
             Depth = req.Depth,
-            Context = req.Context
+            Context = req.Context,
+            AttributeCache = new ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>>(
+                concurrencyLevel: 1, capacity: 4)
         };
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
@@ -116,6 +123,9 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
+        if (!isUnion && HasMixedAttributeAndRelationChildren(children))
+            return await LookupIntersectionConstrained(req, children, ct);
+
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
         var buffer = pool.Rent(children.Count);
         try
@@ -136,6 +146,125 @@ public sealed class LookupEntityEngine(
         {
             pool.Return(buffer, clearArray: true);
         }
+    }
+
+    private static bool HasMixedAttributeAndRelationChildren(List<PermissionNode> children)
+    {
+        bool hasAttr = false, hasOther = false;
+        foreach (var child in children)
+        {
+            if (child.Type == PermissionNodeType.Leaf && child.LeafNode!.Type == PermissionNodeLeafType.Expression)
+                hasAttr = true;
+            else
+                hasOther = true;
+            if (hasAttr && hasOther) return true;
+        }
+        return false;
+    }
+
+    private async Task<List<LookupEntityResult>> LookupIntersectionConstrained(
+        LookupEntityRequestInternal req, List<PermissionNode> children, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
+
+        var attrLeaves = new List<PermissionNodeLeafExp>(2);
+        var nonAttrCount = 0;
+        var nonAttrBuffer = pool.Rent(children.Count);
+        List<LookupEntityResult>[] nonAttrResults;
+        try
+        {
+            foreach (var child in children)
+            {
+                if (child.Type == PermissionNodeType.Leaf &&
+                    child.LeafNode!.Type == PermissionNodeLeafType.Expression)
+                    attrLeaves.Add(child.LeafNode.ExpressionNode!);
+                else
+                    nonAttrBuffer[nonAttrCount++] = child.Type == PermissionNodeType.Expression
+                        ? LookupExpression(req, child.ExpressionNode!, ct)
+                        : LookupLeaf(req, child.LeafNode!, ct);
+            }
+            nonAttrResults = await Task.WhenAll(new ArraySegment<Task<List<LookupEntityResult>>>(nonAttrBuffer, 0, nonAttrCount));
+        }
+        finally
+        {
+            pool.Return(nonAttrBuffer, clearArray: true);
+        }
+
+        foreach (var r in nonAttrResults)
+        {
+            if (r.Count == 0)
+            {
+                foreach (var rr in nonAttrResults) ListPool<LookupEntityResult>.Return(rr);
+                return ListPool<LookupEntityResult>.Rent();
+            }
+        }
+
+        var first = nonAttrResults[0];
+        var entityIds = new HashSet<string>(first.Count);
+        foreach (var e in first) entityIds.Add(e.EntityId);
+
+        if (nonAttrResults.Length > 1)
+        {
+            var tempIds = new HashSet<string>();
+            for (var i = 1; i < nonAttrResults.Length; i++)
+            {
+                tempIds.Clear();
+                foreach (var e in nonAttrResults[i]) tempIds.Add(e.EntityId);
+                entityIds.IntersectWith(tempIds);
+                if (entityIds.Count == 0)
+                {
+                    foreach (var r in nonAttrResults) ListPool<LookupEntityResult>.Return(r);
+                    return ListPool<LookupEntityResult>.Rent();
+                }
+            }
+        }
+
+        var totalCount = nonAttrCount + attrLeaves.Count;
+        var attrBuffer = pool.Rent(attrLeaves.Count);
+        var allBuffer = pool.Rent(totalCount);
+        try
+        {
+            for (var i = 0; i < attrLeaves.Count; i++)
+                attrBuffer[i] = CheckLeafExpWithEntityIds(req, attrLeaves[i], entityIds, ct);
+
+            for (var i = 0; i < nonAttrResults.Length; i++)
+                allBuffer[i] = Task.FromResult(nonAttrResults[i]);
+            for (var i = 0; i < attrLeaves.Count; i++)
+                allBuffer[nonAttrResults.Length + i] = attrBuffer[i];
+
+            return await IntersectEntities(allBuffer, totalCount);
+        }
+        finally
+        {
+            pool.Return(attrBuffer, clearArray: true);
+            pool.Return(allBuffer, clearArray: true);
+        }
+    }
+
+    private async Task<List<LookupEntityResult>> CheckLeafExpWithEntityIds(
+        LookupEntityRequestInternal req, PermissionNodeLeafExp node,
+        IReadOnlyCollection<string> entityIds, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var fn = schema.Functions[node.FunctionName];
+        if (fn is null) throw new InvalidOperationException();
+        if (!node.IsContextValid(req.Context)) return ListPool<LookupEntityResult>.Rent();
+
+        var attributeArguments = node.GetArgsAttributesNames();
+        var attributes = await reader.GetAttributesWithEntityIds(
+            new EntityAttributesFilter
+            {
+                Attributes = attributeArguments,
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken
+            },
+            entityIds,
+            ct);
+
+        using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
+        return EvaluateExpressionMatches(attributes, req, fn, paramToArgMap);
     }
 
     private Task<List<LookupEntityResult>> LookupLeaf(LookupEntityRequestInternal req, PermissionNodeLeaf node, CancellationToken ct)
@@ -174,13 +303,17 @@ public sealed class LookupEntityEngine(
 
         var attributeArguments = node.GetArgsAttributesNames();
 
-        var attributes = await reader.GetAttributes(
-            new EntityAttributesFilter
-            {
-                Attributes = attributeArguments,
-                EntityType = req.EntityType,
-                SnapToken = req.SnapToken
-            }, ct);
+        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments);
+        var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,
+            static (_, state) => state.reader.GetAttributes(
+                new EntityAttributesFilter
+                {
+                    Attributes = state.attributeArguments,
+                    EntityType = state.req.EntityType,
+                    SnapToken = state.req.SnapToken
+                }, state.ct),
+            (reader, attributeArguments, req, ct));
+        var attributes = await attributesTask;
 
         using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
 
@@ -233,28 +366,25 @@ public sealed class LookupEntityEngine(
                     EntityType = entity.Type, Permission = computedUserSetRelation,
                 }, ct);
 
-                var capturedEntity = entity;
-                var capturedReq = req;
-                var capturedTupleSetRelation = tupleSetRelation;
                 buffer[count++] = JoinEntities(
-                    relatedTuples =>
+                    static (relatedTuples, s) =>
                     {
                         using var activityMain = DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
                         if (relatedTuples.Count > 0)
                         {
-                            return LookupRelationLeaf(capturedReq with
+                            return s.engine.LookupRelationLeaf(s.req with
                             {
-                                Permission = capturedTupleSetRelation,
-                                EntityType = capturedReq.EntityType,
-                                SubjectType = capturedEntity.Type,
+                                Permission = s.tupleSetRelation,
+                                EntityType = s.req.EntityType,
+                                SubjectType = s.entity.Type,
                                 SubjectsIds = ToEntityIdList(relatedTuples),
-                                SubjectRelation = capturedEntity.Relation,
-                                Depth = capturedReq.Depth
-                            }, ct);
+                                SubjectRelation = s.entity.Relation,
+                                Depth = s.req.Depth
+                            }, s.ct);
                         }
-
                         return EmptyPooledListTask();
                     },
+                    (engine: this, req, entity, tupleSetRelation, ct),
                     dependent);
             }
 
@@ -323,34 +453,31 @@ public sealed class LookupEntityEngine(
 
                 if (subRelation is not null)
                 {
-                    var capturedRelationEntity = relationEntity;
-                    var capturedRelation = relation;
-                    var capturedReq = req;
                     var dependent = LookupRelation(req with
                     {
                         EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
                     }, subRelation, ct);
 
                     buffer[count++] = JoinEntities(
-                        relatedTuples =>
+                        static (relatedTuples, s) =>
                         {
                             using var activityMain =
                                 DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
                             if (relatedTuples.Count > 0)
                             {
-                                return LookupRelationLeaf(capturedReq with
+                                return s.engine.LookupRelationLeaf(s.req with
                                 {
-                                    Permission = capturedRelation.Name,
-                                    EntityType = capturedReq.EntityType,
-                                    SubjectType = capturedRelationEntity.Type,
+                                    Permission = s.relation.Name,
+                                    EntityType = s.req.EntityType,
+                                    SubjectType = s.relationEntity.Type,
                                     SubjectsIds = ToEntityIdList(relatedTuples),
-                                    SubjectRelation = capturedRelationEntity.Relation,
-                                    Depth = capturedReq.Depth
-                                }, ct);
+                                    SubjectRelation = s.relationEntity.Relation,
+                                    Depth = s.req.Depth
+                                }, s.ct);
                             }
-
                             return EmptyPooledListTask();
                         },
+                        (engine: this, req, relation, relationEntity, ct),
                         dependent);
                 }
             }
@@ -379,15 +506,19 @@ public sealed class LookupEntityEngine(
         return result;
     }
 
-    private static async Task<List<LookupEntityResult>> JoinEntities(
-        Func<List<LookupEntityResult>, Task<List<LookupEntityResult>>> main,
+    private static async Task<List<LookupEntityResult>> JoinEntities<TState>(
+        Func<List<LookupEntityResult>, TState, Task<List<LookupEntityResult>>> main,
+        TState state,
         Task<List<LookupEntityResult>> dependent
     )
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         var dependentResult = await dependent;
-        var mainResult = await main(dependentResult);
+        if (dependentResult.Count == 0)
+            return dependentResult;
+
+        var mainResult = await main(dependentResult, state);
 
         var dependentSet = new HashSet<(string Type, string Id)>(dependentResult.Count);
         foreach (var d in dependentResult)
