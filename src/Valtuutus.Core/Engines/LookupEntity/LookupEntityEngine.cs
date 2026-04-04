@@ -244,28 +244,25 @@ public sealed class LookupEntityEngine(
                     EntityType = entity.Type, Permission = computedUserSetRelation,
                 }, ct);
 
-                var capturedEntity = entity;
-                var capturedReq = req;
-                var capturedTupleSetRelation = tupleSetRelation;
                 buffer[count++] = JoinEntities(
-                    relatedTuples =>
+                    static (relatedTuples, s) =>
                     {
                         using var activityMain = DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
                         if (relatedTuples.Count > 0)
                         {
-                            return LookupRelationLeaf(capturedReq with
+                            return s.engine.LookupRelationLeaf(s.req with
                             {
-                                Permission = capturedTupleSetRelation,
-                                EntityType = capturedReq.EntityType,
-                                SubjectType = capturedEntity.Type,
+                                Permission = s.tupleSetRelation,
+                                EntityType = s.req.EntityType,
+                                SubjectType = s.entity.Type,
                                 SubjectsIds = ToEntityIdList(relatedTuples),
-                                SubjectRelation = capturedEntity.Relation,
-                                Depth = capturedReq.Depth
-                            }, ct);
+                                SubjectRelation = s.entity.Relation,
+                                Depth = s.req.Depth
+                            }, s.ct);
                         }
-
                         return EmptyPooledListTask();
                     },
+                    (engine: this, req, entity, tupleSetRelation, ct),
                     dependent);
             }
 
@@ -334,34 +331,31 @@ public sealed class LookupEntityEngine(
 
                 if (subRelation is not null)
                 {
-                    var capturedRelationEntity = relationEntity;
-                    var capturedRelation = relation;
-                    var capturedReq = req;
                     var dependent = LookupRelation(req with
                     {
                         EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
                     }, subRelation, ct);
 
                     buffer[count++] = JoinEntities(
-                        relatedTuples =>
+                        static (relatedTuples, s) =>
                         {
                             using var activityMain =
                                 DefaultActivitySource.InternalSourceInstance.StartActivity("join main FN");
                             if (relatedTuples.Count > 0)
                             {
-                                return LookupRelationLeaf(capturedReq with
+                                return s.engine.LookupRelationLeaf(s.req with
                                 {
-                                    Permission = capturedRelation.Name,
-                                    EntityType = capturedReq.EntityType,
-                                    SubjectType = capturedRelationEntity.Type,
+                                    Permission = s.relation.Name,
+                                    EntityType = s.req.EntityType,
+                                    SubjectType = s.relationEntity.Type,
                                     SubjectsIds = ToEntityIdList(relatedTuples),
-                                    SubjectRelation = capturedRelationEntity.Relation,
-                                    Depth = capturedReq.Depth
-                                }, ct);
+                                    SubjectRelation = s.relationEntity.Relation,
+                                    Depth = s.req.Depth
+                                }, s.ct);
                             }
-
                             return EmptyPooledListTask();
                         },
+                        (engine: this, req, relation, relationEntity, ct),
                         dependent);
                 }
             }
@@ -390,15 +384,16 @@ public sealed class LookupEntityEngine(
         return result;
     }
 
-    private static async Task<List<LookupEntityResult>> JoinEntities(
-        Func<List<LookupEntityResult>, Task<List<LookupEntityResult>>> main,
+    private static async Task<List<LookupEntityResult>> JoinEntities<TState>(
+        Func<List<LookupEntityResult>, TState, Task<List<LookupEntityResult>>> main,
+        TState state,
         Task<List<LookupEntityResult>> dependent
     )
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         var dependentResult = await dependent;
-        var mainResult = await main(dependentResult);
+        var mainResult = await main(dependentResult, state);
 
         var dependentSet = new HashSet<(string Type, string Id)>(dependentResult.Count);
         foreach (var d in dependentResult)
