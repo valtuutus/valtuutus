@@ -376,13 +376,13 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
-    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            if (subjectsIds.Count == 1)
+            if (subjectsIds.Length == 1)
             {
                 await using var command = _hotPathDataSource.CreateCommand(
                     entityFilter.SnapToken is null ? _getRelationsWithSingleSubjectSql! : _getRelationsWithSingleSubjectSnapSql!);
@@ -424,7 +424,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 AddStringParameter(command, "subject_type", subjectType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
                 {
-                    TypedValue = subjectsIds as string[] ?? subjectsIds.ToArray()
+                    TypedValue = subjectsIds
                 });
                 if (entityFilter.SnapToken is { } snapToken)
                     AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);

@@ -60,7 +60,7 @@ public interface IDataReaderProvider
     /// <param name="subjectType">The type of the subject.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and subject IDs.</returns>
-    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a single AttributeTuple based on the provided filter.
