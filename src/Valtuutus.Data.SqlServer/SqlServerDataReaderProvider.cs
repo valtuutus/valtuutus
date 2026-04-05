@@ -336,13 +336,13 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         }
     }
 
-    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            if (subjectsIds.Count == 1)
+            if (subjectsIds.Length == 1)
             {
                 await using var connection = (SqlConnection)_connectionFactory();
                 var pooled = PooledList<RelationTuple>.Rent();

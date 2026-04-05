@@ -115,7 +115,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+        string[] subjectsIds, string subjectType, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);

@@ -117,7 +117,7 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
-    public PooledList<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, IList<string> subjectIds, string subjectType)
+    public PooledList<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, string[] subjectIds, string subjectType)
     {
         using var _ = Read();
         if (!_byRelationSubjectType.TryGetValue((filter.EntityType, filter.Relation, subjectType), out var bucket))

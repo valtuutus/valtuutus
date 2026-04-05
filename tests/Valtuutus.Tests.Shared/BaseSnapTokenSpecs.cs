@@ -379,7 +379,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         // Assert that using an older token does not bring new data
         var relationsWithOldToken = await providers.reader.GetRelationsWithSubjectsIds(
             filter with { SnapToken = initialSnapToken },
-            new List<string> { "charlie", "alice", "bob" },
+            ["charlie", "alice", "bob"],
             "user",
             default
         );
@@ -392,7 +392,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         // Assert that the newer token returns the inserted data
         var relationsWithNewToken = await providers.reader.GetRelationsWithSubjectsIds(
             filter with { SnapToken = newSnapToken },
-            new List<string> { "charlie", "alice", "bob" },
+            ["charlie", "alice", "bob"],
             "user",
             default
         );

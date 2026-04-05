@@ -142,7 +142,7 @@ internal static class SqlBuilderExtensions
         return builder;
     }
     
-    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, IList<string> subjectsIds, string subjectType)
+    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType)
     {
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, entityFilter);
 
@@ -166,7 +166,7 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
 
-        if (subjectsIds.Count > 0)
+        if (subjectsIds.Length > 0)
         {
             using var dt = new DataTable();
             dt.Columns.Add("id", typeof(string));

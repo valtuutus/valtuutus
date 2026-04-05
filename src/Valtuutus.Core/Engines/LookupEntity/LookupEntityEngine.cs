@@ -19,7 +19,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     public required string EntityType { get; init; }
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
-    public required IList<string> SubjectsIds { get; init; }
+    public required string[] SubjectsIds { get; init; }
     public string? SubjectRelation { get; init; }
     public required string FinalSubjectType { get; init; }
     public required string FinalSubjectId { get; init; }
@@ -575,11 +575,12 @@ public sealed class LookupEntityEngine(
         return result;
     }
 
-    private static List<string> ToEntityIdList(List<LookupEntityResult> tuples)
+    private static string[] ToEntityIdList(List<LookupEntityResult> tuples)
     {
-        var list = new List<string>(tuples.Count);
-        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.EntityId);
-        return list;
+        var arr = new string[tuples.Count];
+        var span = CollectionsMarshal.AsSpan(tuples);
+        for (var i = 0; i < span.Length; i++) arr[i] = span[i].EntityId;
+        return arr;
     }
 }
 
