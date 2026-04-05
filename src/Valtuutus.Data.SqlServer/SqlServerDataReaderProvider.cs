@@ -35,6 +35,8 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
     private static string? _formattedExistsRelation;
+    private static string? _getRelationsWithSingleSubjectSql;
+    private static string? _getRelationsWithSingleSubjectSnapSql;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -71,6 +73,11 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                                         value
                                                     FROM [{dbOptions.Schema}].[{dbOptions.AttributesTableName}] /**where**/
                                                     """;
+                    var relationsTable = $"[{dbOptions.Schema}].[{dbOptions.RelationsTableName}]";
+                    _getRelationsWithSingleSubjectSql =
+                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
+                    _getRelationsWithSingleSubjectSnapSql =
+                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
                 }
             }
         }
@@ -335,21 +342,63 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var connection = (SqlConnection)_connectionFactory();
+            if (subjectsIds.Count == 1)
+            {
+                await using var connection = (SqlConnection)_connectionFactory();
+                var pooled = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    if (entityFilter.SnapToken is null)
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 }
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
+                    else
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectSnapSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value.Value, Length = 26, IsFixedLength = true }
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
+                    return pooled;
+                }
+                catch
+                {
+                    pooled.Dispose();
+                    throw;
+                }
+            }
+
+            await using var fallbackConnection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(_formattedSelectRelations!);
 
-            var pooled = PooledList<RelationTuple>.Rent();
+            var multi = PooledList<RelationTuple>.Rent();
             try
             {
-                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                multi.AddRange(await fallbackConnection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                         queryTemplate.Parameters, cancellationToken: cancellationToken)));
-                return pooled;
+                return multi;
             }
             catch
             {
-                pooled.Dispose();
+                multi.Dispose();
                 throw;
             }
         }
