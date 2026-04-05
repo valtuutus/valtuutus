@@ -301,4 +301,66 @@ public static class LookupEntityEngineSpecList
             new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
         }
     };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+        DiamondPatternLookup => new()
+    {
+        {
+            // folder:1 has both owner and editor pointing to group:developers#member.
+            // alice is a member of developers.
+            // Diamond: group.member["alice"] is the shared sub-tree — queried twice without memo.
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("folder", "1", "owner", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Developers, "member"),
+                new("folder", "1", "editor", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Developers, "member"),
+            ],
+            [],
+            new LookupEntityRequest("folder", "view", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            new HashSet<string>(["1"])
+        },
+        {
+            // Disjoint groups: alice in developers, bob in designers.
+            // folder:1 owner via developers, folder:2 editor via designers.
+            // alice can only see folder:1.
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Bob),
+                new("folder", "1", "owner", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Developers, "member"),
+                new("folder", "2", "editor", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Designers, "member"),
+            ],
+            [],
+            new LookupEntityRequest("folder", "view", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            new HashSet<string>(["1"])
+        },
+        {
+            // alice is in both developers and designers.
+            // folder:1 owner via developers, folder:2 editor via designers,
+            // folder:3 has both owner via developers AND editor via designers.
+            // alice can see all three.
+            [
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Developers, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new(TestsConsts.Groups.Identifier, TestsConsts.Groups.Designers, "member",
+                    TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("folder", "1", "owner", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Developers, "member"),
+                new("folder", "2", "editor", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Designers, "member"),
+                new("folder", "3", "owner", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Developers, "member"),
+                new("folder", "3", "editor", TestsConsts.Groups.Identifier,
+                    TestsConsts.Groups.Designers, "member"),
+            ],
+            [],
+            new LookupEntityRequest("folder", "view", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            new HashSet<string>(["1", "2", "3"])
+        },
+    };
 }

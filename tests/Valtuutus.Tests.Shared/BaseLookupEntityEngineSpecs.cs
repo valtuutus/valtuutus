@@ -214,6 +214,24 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+        DiamondPatternLookup = LookupEntityEngineSpecList.DiamondPatternLookup;
+
+    [Theory]
+    [MemberData(nameof(DiamondPatternLookup))]
+    public async Task DiamondPatternLookupShouldReturnExpectedResult(RelationTuple[] tuples,
+        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+    {
+        // Arrange
+        var engine = await CreateEngine(tuples, attributes);
+
+        // Act
+        var result = await engine.LookupEntity(request, default);
+
+        // Assert
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
         UnionRelationDepthLimit = LookupEntityEngineSpecList.UnionRelationDepthLimit;
 
     [Theory]

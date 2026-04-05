@@ -40,6 +40,11 @@ public static class TestsConsts
             relation assignee @user @group#member;
             permission view := parent.view;
         }
+        entity folder {
+            relation owner @group#member;
+            relation editor @group#member;
+            permission view := owner or editor;
+        }
         fn isActiveStatus(status int) => status == 1;
         ";
 
