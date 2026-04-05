@@ -582,6 +582,58 @@ public sealed class LookupEntityEngine(
         for (var i = 0; i < span.Length; i++) arr[i] = span[i].EntityId;
         return arr;
     }
+
+    private readonly struct SubjectSetKey : IEquatable<SubjectSetKey>
+    {
+        private readonly string[] _sorted;
+        private readonly int _hash;
+
+        public SubjectSetKey(string[] ids)
+        {
+            // Sort in-place — safe because caller owns this freshly-allocated array.
+            // Sorting makes SequenceEqual an order-independent set comparison.
+            Array.Sort(ids, StringComparer.Ordinal);
+            _sorted = ids;
+            var h = 0;
+            foreach (var id in ids)
+                h = unchecked(h * 31 ^ StringComparer.Ordinal.GetHashCode(id));
+            _hash = h;
+        }
+
+        public bool Equals(SubjectSetKey other)
+        {
+            if (_sorted.Length != other._sorted.Length) return false;
+            return _sorted.AsSpan().SequenceEqual(other._sorted.AsSpan());
+        }
+
+        public override bool Equals(object? obj) => obj is SubjectSetKey other && Equals(other);
+        public override int GetHashCode() => _hash;
+    }
+
+    private readonly struct LookupMemoKey : IEquatable<LookupMemoKey>
+    {
+        private readonly string _entityType;
+        private readonly string _permission;
+        private readonly string _subjectType;
+        private readonly SubjectSetKey _subjectsIds;
+
+        public LookupMemoKey(string entityType, string permission, string subjectType, string[] subjectsIds)
+        {
+            _entityType = entityType;
+            _permission = permission;
+            _subjectType = subjectType;
+            _subjectsIds = new SubjectSetKey(subjectsIds);
+        }
+
+        public bool Equals(LookupMemoKey other) =>
+            _entityType == other._entityType &&
+            _permission == other._permission &&
+            _subjectType == other._subjectType &&
+            _subjectsIds.Equals(other._subjectsIds);
+
+        public override bool Equals(object? obj) => obj is LookupMemoKey other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(_entityType, _permission, _subjectType, _subjectsIds);
+    }
 }
 
 internal readonly struct LookupEntityResult : IEquatable<LookupEntityResult>
