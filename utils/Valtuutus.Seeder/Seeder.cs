@@ -119,6 +119,25 @@ public static class Seeder
         relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "group", reflexiveGroupId, "member"));
         relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "user", benchmarkUserId));
 
+        // Diamond-pattern benchmark data.
+        // One group whose member is benchmarkUser.
+        // Five folders each having that group as both owner AND editor — creates a
+        // TTU diamond: both branches resolve to (group, diamondGroupId, member, [benchmarkUserId]).
+        const string diamondGroupId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+        const string diamondFolder1 = "cccccccc-cccc-cccc-cccc-cccccccccc01";
+        const string diamondFolder2 = "cccccccc-cccc-cccc-cccc-cccccccccc02";
+        const string diamondFolder3 = "cccccccc-cccc-cccc-cccc-cccccccccc03";
+        const string diamondFolder4 = "cccccccc-cccc-cccc-cccc-cccccccccc04";
+        const string diamondFolder5 = "cccccccc-cccc-cccc-cccc-cccccccccc05";
+
+        relations.Add(new RelationTuple("group", diamondGroupId, "member", "user", benchmarkUserId));
+
+        foreach (var folderId in new[] { diamondFolder1, diamondFolder2, diamondFolder3, diamondFolder4, diamondFolder5 })
+        {
+            relations.Add(new RelationTuple("folder", folderId, "owner", "group", diamondGroupId, "member"));
+            relations.Add(new RelationTuple("folder", folderId, "editor", "group", diamondGroupId, "member"));
+        }
+
         return (relations, attributes);
     }
 }
