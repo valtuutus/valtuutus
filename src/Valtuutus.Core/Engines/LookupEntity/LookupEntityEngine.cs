@@ -315,7 +315,7 @@ public sealed class LookupEntityEngine(
         Function fn,
         PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
     {
-        var result = new List<LookupEntityResult>();
+        var result = new List<LookupEntityResult>(attributes.Count);
 
         foreach (var attr in attributes.Values)
         {
@@ -530,10 +530,14 @@ public sealed class LookupEntityEngine(
         foreach (var r in results) total += r.Length;
         if (total == 0) return Array.Empty<LookupEntityResult>();
 
-        var merged = new List<LookupEntityResult>(total);
+        var merged = new LookupEntityResult[total];
+        var offset = 0;
         foreach (var r in results)
-            merged.AddRange(r);
-        return merged.ToArray();
+        {
+            r.CopyTo(merged, offset);
+            offset += r.Length;
+        }
+        return merged;
     }
 
     private static async Task<LookupEntityResult[]> IntersectEntities(
