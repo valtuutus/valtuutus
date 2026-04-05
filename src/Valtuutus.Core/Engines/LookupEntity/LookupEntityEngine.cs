@@ -45,23 +45,27 @@ internal readonly struct LookupMemoKey : IEquatable<LookupMemoKey>
     private readonly string _permission;
     private readonly string _subjectType;
     private readonly SubjectSetKey _subjectsIds;
+    private readonly int _depth;
 
-    public LookupMemoKey(string entityType, string permission, string subjectType, string[] subjectsIds)
+    public LookupMemoKey(string entityType, string permission,
+        string subjectType, string[] subjectsIds, int depth)
     {
         _entityType = entityType;
         _permission = permission;
         _subjectType = subjectType;
         _subjectsIds = new SubjectSetKey(subjectsIds);
+        _depth = depth;
     }
 
     public bool Equals(LookupMemoKey other) =>
+        _depth == other._depth &&
         _entityType == other._entityType &&
         _permission == other._permission &&
         _subjectType == other._subjectType &&
         _subjectsIds.Equals(other._subjectsIds);
 
     public override bool Equals(object? obj) => obj is LookupMemoKey other && Equals(other);
-    public override int GetHashCode() => HashCode.Combine(_entityType, _permission, _subjectType, _subjectsIds);
+    public override int GetHashCode() => HashCode.Combine(_entityType, _permission, _subjectType, _subjectsIds, _depth);
 }
 
 internal record LookupEntityRequestInternal : IWithDepth
@@ -143,22 +147,24 @@ public sealed class LookupEntityEngine(
 
         req.DecreaseDepth();
 
-        // SubjectSetKey constructor sorts req.SubjectsIds in-place — safe because the array
-        // is freshly allocated by ToEntityIdList or is a single-element literal.
-        var key = new LookupMemoKey(req.EntityType, req.Permission, req.SubjectType, req.SubjectsIds);
-        if (req.LookupMemo.TryGetValue(key, out var cached))
-            return cached;
+        // SubjectsIds is sorted in-place by SubjectSetKey; all req copies (via `with`) share
+        // this array, but the sort is stable across all usages — read-only after first sort.
+        var key = new LookupMemoKey(req.EntityType, req.Permission, req.SubjectType, req.SubjectsIds, req.Depth);
+        return req.LookupMemo.GetOrAdd(key,
+            static (_, s) => s.engine.DispatchLookup(s.req, s.ct),
+            (engine: this, req, ct));
+    }
 
+    private Task<LookupEntityResult[]> DispatchLookup(LookupEntityRequestInternal req, CancellationToken ct)
+    {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var task = schema.GetRelationType(req.EntityType, req.Permission) switch
+        return schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission), ct),
             RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission), ct),
             RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission), ct),
             _ => throw new InvalidOperationException()
         };
-
-        return req.LookupMemo.GetOrAdd(key, task);
     }
 
     private Task<LookupEntityResult[]> LookupPermission(LookupEntityRequestInternal req, Permission permission, CancellationToken ct)
