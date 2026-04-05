@@ -12,6 +12,58 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Engines.LookupEntity;
 
+internal readonly struct SubjectSetKey : IEquatable<SubjectSetKey>
+{
+    private readonly string[] _sorted;
+    private readonly int _hash;
+
+    public SubjectSetKey(string[] ids)
+    {
+        // Sort in-place — safe because caller owns this freshly-allocated array.
+        // Sorting makes SequenceEqual an order-independent set comparison.
+        Array.Sort(ids, StringComparer.Ordinal);
+        _sorted = ids;
+        var h = 0;
+        foreach (var id in ids)
+            h = unchecked(h * 31 ^ StringComparer.Ordinal.GetHashCode(id));
+        _hash = h;
+    }
+
+    public bool Equals(SubjectSetKey other)
+    {
+        if (_sorted.Length != other._sorted.Length) return false;
+        return _sorted.AsSpan().SequenceEqual(other._sorted.AsSpan());
+    }
+
+    public override bool Equals(object? obj) => obj is SubjectSetKey other && Equals(other);
+    public override int GetHashCode() => _hash;
+}
+
+internal readonly struct LookupMemoKey : IEquatable<LookupMemoKey>
+{
+    private readonly string _entityType;
+    private readonly string _permission;
+    private readonly string _subjectType;
+    private readonly SubjectSetKey _subjectsIds;
+
+    public LookupMemoKey(string entityType, string permission, string subjectType, string[] subjectsIds)
+    {
+        _entityType = entityType;
+        _permission = permission;
+        _subjectType = subjectType;
+        _subjectsIds = new SubjectSetKey(subjectsIds);
+    }
+
+    public bool Equals(LookupMemoKey other) =>
+        _entityType == other._entityType &&
+        _permission == other._permission &&
+        _subjectType == other._subjectType &&
+        _subjectsIds.Equals(other._subjectsIds);
+
+    public override bool Equals(object? obj) => obj is LookupMemoKey other && Equals(other);
+    public override int GetHashCode() => HashCode.Combine(_entityType, _permission, _subjectType, _subjectsIds);
+}
+
 internal record LookupEntityRequestInternal : IWithDepth
 {
     private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
@@ -30,6 +82,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     // Memoises the Task itself — concurrent callers await the same Task rather than
     // issuing duplicate DB queries for the same (entityType, attributeNames) combination.
     public required ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>> AttributeCache { get; init; }
+    public required ConcurrentDictionary<LookupMemoKey, Task<LookupEntityResult[]>> LookupMemo { get; init; }
 }
 
 public sealed class LookupEntityEngine(
@@ -59,6 +112,8 @@ public sealed class LookupEntityEngine(
             Depth = req.Depth,
             Context = req.Context,
             AttributeCache = new ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>>(
+                concurrencyLevel: 1, capacity: 4),
+            LookupMemo = new ConcurrentDictionary<LookupMemoKey, Task<LookupEntityResult[]>>(
                 concurrencyLevel: 1, capacity: 4)
         };
 
@@ -88,14 +143,22 @@ public sealed class LookupEntityEngine(
 
         req.DecreaseDepth();
 
+        // SubjectSetKey constructor sorts req.SubjectsIds in-place — safe because the array
+        // is freshly allocated by ToEntityIdList or is a single-element literal.
+        var key = new LookupMemoKey(req.EntityType, req.Permission, req.SubjectType, req.SubjectsIds);
+        if (req.LookupMemo.TryGetValue(key, out var cached))
+            return cached;
+
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        return schema.GetRelationType(req.EntityType, req.Permission) switch
+        var task = schema.GetRelationType(req.EntityType, req.Permission) switch
         {
             RelationType.DirectRelation => LookupRelation(req, schema.GetRelation(req.EntityType, req.Permission), ct),
             RelationType.Permission => LookupPermission(req, schema.GetPermission(req.EntityType, req.Permission), ct),
             RelationType.Attribute => LookupAttribute(req, schema.GetAttribute(req.EntityType, req.Permission), ct),
             _ => throw new InvalidOperationException()
         };
+
+        return req.LookupMemo.GetOrAdd(key, task);
     }
 
     private Task<LookupEntityResult[]> LookupPermission(LookupEntityRequestInternal req, Permission permission, CancellationToken ct)
@@ -568,57 +631,6 @@ public sealed class LookupEntityEngine(
         return arr;
     }
 
-    private readonly struct SubjectSetKey : IEquatable<SubjectSetKey>
-    {
-        private readonly string[] _sorted;
-        private readonly int _hash;
-
-        public SubjectSetKey(string[] ids)
-        {
-            // Sort in-place — safe because caller owns this freshly-allocated array.
-            // Sorting makes SequenceEqual an order-independent set comparison.
-            Array.Sort(ids, StringComparer.Ordinal);
-            _sorted = ids;
-            var h = 0;
-            foreach (var id in ids)
-                h = unchecked(h * 31 ^ StringComparer.Ordinal.GetHashCode(id));
-            _hash = h;
-        }
-
-        public bool Equals(SubjectSetKey other)
-        {
-            if (_sorted.Length != other._sorted.Length) return false;
-            return _sorted.AsSpan().SequenceEqual(other._sorted.AsSpan());
-        }
-
-        public override bool Equals(object? obj) => obj is SubjectSetKey other && Equals(other);
-        public override int GetHashCode() => _hash;
-    }
-
-    private readonly struct LookupMemoKey : IEquatable<LookupMemoKey>
-    {
-        private readonly string _entityType;
-        private readonly string _permission;
-        private readonly string _subjectType;
-        private readonly SubjectSetKey _subjectsIds;
-
-        public LookupMemoKey(string entityType, string permission, string subjectType, string[] subjectsIds)
-        {
-            _entityType = entityType;
-            _permission = permission;
-            _subjectType = subjectType;
-            _subjectsIds = new SubjectSetKey(subjectsIds);
-        }
-
-        public bool Equals(LookupMemoKey other) =>
-            _entityType == other._entityType &&
-            _permission == other._permission &&
-            _subjectType == other._subjectType &&
-            _subjectsIds.Equals(other._subjectsIds);
-
-        public override bool Equals(object? obj) => obj is LookupMemoKey other && Equals(other);
-        public override int GetHashCode() => HashCode.Combine(_entityType, _permission, _subjectType, _subjectsIds);
-    }
 }
 
 internal readonly struct LookupEntityResult : IEquatable<LookupEntityResult>
