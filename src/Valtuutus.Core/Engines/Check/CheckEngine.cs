@@ -190,7 +190,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken
+                SnapToken = req.SnapToken.Value
             }, ct);
 
         if (attribute is null)
@@ -287,7 +287,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attributes = attributeArguments,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken
+                SnapToken = req.SnapToken.Value
             }, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(node.Args);
@@ -329,7 +329,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = tupleSetRelation,
-                SnapToken = req.SnapToken
+                SnapToken = req.SnapToken.Value
             }, ct);
 
         if (relations.Count == 0) return false;
@@ -359,7 +359,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             try
             {
                 return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
-                    req.SubjectId!, req.SnapToken, ct);
+                    req.SubjectId!, req.SnapToken.Value, ct);
             }
             finally
             {
@@ -415,7 +415,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             EntityId = req.EntityId,
             EntityType = req.EntityType,
             Relation = req.Permission,
-            SnapToken = req.SnapToken
+            SnapToken = req.SnapToken.Value
         };
 
         var hasDirect = await reader.HasDirectRelation(filter, req.SubjectId!, ct);
