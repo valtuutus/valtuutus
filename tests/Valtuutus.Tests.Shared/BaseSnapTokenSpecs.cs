@@ -69,7 +69,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 EntityType = TestsConsts.Workspaces.Identifier,
                 EntityId = TestsConsts.Workspaces.PublicWorkspace,
                 Relation = "owner",
-                SnapToken = null
+                SnapToken = SnapToken.MinValue
             },
             [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -108,7 +108,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 Relation = "owner",
                 SubjectType = TestsConsts.Users.Identifier,
                 SubjectId = TestsConsts.Users.Alice,
-                SnapToken = null
+                SnapToken = SnapToken.MinValue
             },
             [
                 new(TestsConsts.Workspaces.Identifier, TestsConsts.Workspaces.PublicWorkspace, "owner",
@@ -222,7 +222,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 EntityType = TestsConsts.Workspaces.Identifier,
                 EntityId = TestsConsts.Workspaces.PublicWorkspace,
                 Relation = "owner",
-                SnapToken = null
+                SnapToken = SnapToken.MinValue
             },
             new List<RelationTuple>
             {
@@ -282,7 +282,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
                 EntityType = TestsConsts.Workspaces.Identifier,
                 EntityId = TestsConsts.Workspaces.PublicWorkspace,
                 Relation = "owner",
-                SnapToken = null
+                SnapToken = SnapToken.MinValue
             },
             new List<RelationTuple>
             {
@@ -317,7 +317,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         {
             EntityType = "workspace",
             Relation = "owner",
-            SnapToken = null
+            SnapToken = SnapToken.MinValue
         };
         var initialSnapToken = await providers.writer.Write(seed, new List<AttributeTuple>(), default);
 
@@ -368,7 +368,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         {
             EntityType = "workspace",
             Relation = "owner",
-            SnapToken = null
+            SnapToken = SnapToken.MinValue
         };
         var initialSnapToken = await providers.writer.Write(seed, new List<AttributeTuple>(), default);
 
@@ -687,7 +687,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             EntityType = "workspace",
             EntityId = "missing",
             Attribute = "status",
-            SnapToken = null
+            SnapToken = SnapToken.MinValue
         }, default);
 
         attribute.Should().BeNull();
