@@ -15,7 +15,7 @@ internal static class SqlBuilderExtensions
 
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter filter)
     {
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
 
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -59,7 +59,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterDirectRelation(this SqlBuilder builder, RelationTupleFilter filter, string subjectId)
     {
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
         builder = builder.Where(EntityTypeFilter, new { EntityType = new DbString { Value = filter.EntityType, Length = 256 } });
         builder = builder.Where(EntityIdFilter, new { EntityId = new DbString { Value = filter.EntityId, Length = 64 } });
         builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = filter.Relation, Length = 64 } });
@@ -70,7 +70,7 @@ internal static class SqlBuilderExtensions
 
     public static SqlBuilder FilterIndirectRelations(this SqlBuilder builder, RelationTupleFilter filter)
     {
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
         builder = builder.Where(EntityTypeFilter, new { EntityType = new DbString { Value = filter.EntityType, Length = 256 } });
         builder = builder.Where(EntityIdFilter, new { EntityId = new DbString { Value = filter.EntityId, Length = 64 } });
         builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = filter.Relation, Length = 64 } });
@@ -78,13 +78,10 @@ internal static class SqlBuilderExtensions
         return builder;
     }
 
-    public static SqlBuilder FilterDirectRelationBatch(this SqlBuilder builder, SnapToken? snapToken,
+    public static SqlBuilder FilterDirectRelationBatch(this SqlBuilder builder, SnapToken snapToken,
         string entityType, string[] entityIds, string relation, string subjectId)
     {
-        if (snapToken != null)
-            builder = builder.Where(
-                "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)",
-                new { SnapToken = new DbString { Value = snapToken.Value.Value, Length = 26, IsFixedLength = true } });
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, snapToken);
         builder = builder.Where(EntityTypeFilter, new { EntityType = new DbString { Value = entityType, Length = 256 } });
         builder = builder.Where("entity_id = ANY(@EntityIds)", new { EntityIds = entityIds });
         builder = builder.Where(RelationFilter, new { Relation = new DbString { Value = relation, Length = 64 } });
@@ -97,8 +94,8 @@ internal static class SqlBuilderExtensions
         string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation)
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
-        
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
 
         if (!string.IsNullOrEmpty(subjectType))
             builder = builder.Where(SubjectTypeFilter, new {SubjectType = subjectType});
@@ -120,7 +117,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter filter,  IList<string> subjectsIds, string subjectType)
     {
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
         
         if (!string.IsNullOrEmpty(filter.EntityType))
             builder = builder.Where(EntityTypeFilter, new {filter.EntityType});
@@ -139,7 +136,7 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributeFilter filter)
     {
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
         
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -165,8 +162,8 @@ internal static class SqlBuilderExtensions
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter, IEnumerable<string> entitiesIds)
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
-        
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
           
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
@@ -188,8 +185,8 @@ internal static class SqlBuilderExtensions
     
     public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter)
     {
-        
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
 
         if (!string.IsNullOrEmpty(filter.EntityId))
         {
@@ -215,7 +212,7 @@ internal static class SqlBuilderExtensions
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
 
-        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter);
+        builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
           
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
