@@ -116,6 +116,11 @@ public static class Seeder
         // Uses hardcoded IDs to avoid disturbing the Faker random seed.
         const string reflexiveGroupId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
         const string benchmarkUserId  = "3fca4119-3bda-4370-13cd-a3d317459c73";
+        // NOTE: The reflexive group tuple below is now dead data. The schema was simplified
+        // from relation member @user @group#member; to relation member @user; to fix a
+        // StackOverflowException in the schema reader. This tuple (group-nested-in-group)
+        // is no longer valid under the schema, and no benchmark queries reflexiveGroupId.
+        // Kept for historical reference only.
         relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "group", reflexiveGroupId, "member"));
         relations.Add(new RelationTuple("group", reflexiveGroupId, "member", "user", benchmarkUserId));
 

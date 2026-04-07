@@ -24,7 +24,7 @@ entity project {
     permission cache_test := (org.admin or team.owner) and (org.admin or member);
 }
 entity group {
-    relation member @user @group#member;
+    relation member @user;
     permission access := member;
 }
 entity folder {
