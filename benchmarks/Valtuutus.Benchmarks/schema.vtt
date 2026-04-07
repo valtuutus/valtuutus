@@ -24,8 +24,14 @@ entity project {
     permission cache_test := (org.admin or team.owner) and (org.admin or member);
 }
 entity group {
-    relation member @user @group#member;
+    relation member @user;
     permission access := member;
+}
+entity folder {
+    relation owner @group#member;
+    relation editor @group#member;
+    permission view := owner or editor;
+    permission admin := owner and editor;
 }
 
 fn isActiveStatus(status int) => status == 1;
