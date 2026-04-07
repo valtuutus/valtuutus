@@ -31,7 +31,7 @@ public interface IDataReaderProvider
     /// HasDirectRelation queries into a single DB round-trip.
     /// </summary>
     Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken);
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves only indirect tuples (subject_relation IS NOT NULL) for the given filter.

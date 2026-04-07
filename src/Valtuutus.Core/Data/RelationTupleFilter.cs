@@ -1,8 +1,6 @@
-using Valtuutus.Core.Engines;
-
 namespace Valtuutus.Core.Data;
 
-public record RelationTupleFilter : IWithSnapToken
+public record RelationTupleFilter
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -10,12 +8,12 @@ public record RelationTupleFilter : IWithSnapToken
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
-    public required SnapToken? SnapToken { get; set; }
+    public required SnapToken SnapToken { get; init; }
 }
 
-public record EntityRelationFilter : IWithSnapToken
+public record EntityRelationFilter
 {
     public required string EntityType { get; init; }
     public required string Relation { get; init; }
-    public required SnapToken? SnapToken { get; set; }
+    public required SnapToken SnapToken { get; init; }
 }
