@@ -19,10 +19,9 @@ internal sealed class AttributesStore : IDisposable
     private ReadScope Read() { _rwls.EnterReadLock(); return new ReadScope(_rwls); }
     private WriteScope Write() { _rwls.EnterWriteLock(); return new WriteScope(_rwls); }
 
-    private static bool IsVisible(Entry e, SnapToken? snap)
+    private static bool IsVisible(Entry e, SnapToken snap)
     {
-        if (snap == null) return e.DeletedTxId is null;
-        var id = Ulid.Parse(snap.Value.Value);
+        var id = Ulid.Parse(snap.Value);
         return e.CreatedTxId.CompareTo(id) <= 0 &&
                (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(id) > 0);
     }

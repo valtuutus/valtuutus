@@ -258,7 +258,7 @@ public sealed class LookupEntityEngine(
             {
                 Attributes = attributeArguments,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken
+                SnapToken = req.SnapToken.Value
             },
             entityIds,
             ct);
@@ -310,7 +310,7 @@ public sealed class LookupEntityEngine(
                 {
                     Attributes = state.attributeArguments,
                     EntityType = state.req.EntityType,
-                    SnapToken = state.req.SnapToken
+                    SnapToken = state.req.SnapToken.Value
                 }, state.ct),
             (reader, attributeArguments, req, ct));
         var attributes = await attributesTask;
@@ -410,7 +410,7 @@ public sealed class LookupEntityEngine(
         var attrs = await reader.GetAttributes(
             new EntityAttributeFilter
             {
-                Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
+                Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
             }, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var a in attrs)
@@ -496,7 +496,7 @@ public sealed class LookupEntityEngine(
         using var relations = await reader.GetRelationsWithSubjectsIds(
             new EntityRelationFilter
             {
-                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
             },
             req.SubjectsIds,
             req.SubjectType,

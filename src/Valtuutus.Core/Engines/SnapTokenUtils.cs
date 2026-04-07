@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core.Data;
+using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines;
 
@@ -9,7 +9,7 @@ internal static class SnapTokenUtils
         if (req.SnapToken is null)
         {
             var latest = await reader.GetLatestSnapToken(cancellationToken);
-            req.SnapToken = latest;
+            req.SnapToken = latest ?? SnapToken.MinValue;
         }
     }
 }

@@ -4,8 +4,7 @@ namespace Valtuutus.Data.Db
 {
     public static class CommonSqlBuilderExtensions
     {
-        public static Dapper.SqlBuilder ApplySnapTokenFilter<T>(Dapper.SqlBuilder builder, T withSnapToken)
-            where T : Valtuutus.Core.Engines.IWithSnapToken { }
+        public static Dapper.SqlBuilder ApplySnapTokenFilter(Dapper.SqlBuilder builder, Valtuutus.Core.Data.SnapToken snapToken) { }
     }
     public delegate System.Data.IDbConnection DbConnectionFactory();
     public static class DependencyInjectionExtensions

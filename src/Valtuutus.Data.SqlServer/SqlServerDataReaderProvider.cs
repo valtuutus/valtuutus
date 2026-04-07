@@ -35,7 +35,6 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
     private static string? _formattedExistsRelation;
-    private static string? _getRelationsWithSingleSubjectSql;
     private static string? _getRelationsWithSingleSubjectSnapSql;
     private static readonly object Lock = new();
 
@@ -74,9 +73,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                                     FROM [{dbOptions.Schema}].[{dbOptions.AttributesTableName}] /**where**/
                                                     """;
                     var relationsTable = $"[{dbOptions.Schema}].[{dbOptions.RelationsTableName}]";
-                    _getRelationsWithSingleSubjectSql =
-                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
-                    _getRelationsWithSingleSubjectSnapSql =
+                    _getRelationsWithSingleSubjectSnapSql ??=
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
                 }
             }
@@ -286,7 +283,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     }
 
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -348,33 +345,17 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                 var pooled = PooledList<RelationTuple>.Rent();
                 try
                 {
-                    if (entityFilter.SnapToken is null)
-                    {
-                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
-                            _getRelationsWithSingleSubjectSql!,
-                            new
-                            {
-                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
-                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
-                                SubjectType = new DbString { Value = subjectType, Length = 256 },
-                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 }
-                            },
-                            cancellationToken: cancellationToken)));
-                    }
-                    else
-                    {
-                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
-                            _getRelationsWithSingleSubjectSnapSql!,
-                            new
-                            {
-                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
-                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
-                                SubjectType = new DbString { Value = subjectType, Length = 256 },
-                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
-                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value.Value, Length = 26, IsFixedLength = true }
-                            },
-                            cancellationToken: cancellationToken)));
-                    }
+                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                        _getRelationsWithSingleSubjectSnapSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                            Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                            SubjectType = new DbString { Value = subjectType, Length = 256 },
+                            SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                            SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                        },
+                        cancellationToken: cancellationToken)));
                     return pooled;
                 }
                 catch

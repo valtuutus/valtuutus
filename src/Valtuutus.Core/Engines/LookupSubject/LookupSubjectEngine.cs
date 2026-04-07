@@ -184,7 +184,7 @@ public sealed class LookupSubjectEngine(
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter
             {
-                Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken
+                Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
             }, req.EntitiesIds, ct);
 
         using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
@@ -236,7 +236,7 @@ public sealed class LookupSubjectEngine(
                 var pooled0 = await reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
-                        Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
+                        Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
                     },
                     entity.Type,
                     req.EntitiesIds,
@@ -274,7 +274,7 @@ public sealed class LookupSubjectEngine(
         var res = (await reader.GetAttributesWithEntityIds(
                     new AttributeFilter
                     {
-                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken
+                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
                     }, req.EntitiesIds, ct))
                 .Where(x => x.Value.TryGetValue<bool>(out var b) && b)
                 .ToList();
@@ -316,7 +316,7 @@ public sealed class LookupSubjectEngine(
                     var pooled1 = await reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
-                            Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
+                            Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
                         },
                         relationEntity.Type,
                         req.EntitiesIds,
@@ -348,7 +348,7 @@ public sealed class LookupSubjectEngine(
         var pooled = await reader.GetRelationsWithEntityIds(
             new EntityRelationFilter
             {
-                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
             },
             req.SubjectType,
             req.EntitiesIds,

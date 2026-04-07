@@ -43,19 +43,14 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _formattedSelectRelations;
     private static string? _formattedExistsRelation;
     private static string? _hasDirectRelationSql;
-    private static string? _hasDirectRelationSnapSql;
     private static string? _hasAnyDirectRelationSql;
-    private static string? _hasAnyDirectRelationSnapSql;
     private static string? _getIndirectRelationsSql;
-    private static string? _getIndirectRelationsSnapSql;
     private static string? _getRelationsWithSingleSubjectSql;
     private static string? _getRelationsWithSingleSubjectSnapSql;
     private static string? _getRelationsWithMultiSubjectSql;
     private static string? _getRelationsWithMultiSubjectSnapSql;
     private static string? _getAttributeSql;
     private static string? _getAttributeWithEntityIdSql;
-    private static string? _getAttributeSnapSql;
-    private static string? _getAttributeWithEntityIdSnapSql;
     private static readonly object Lock = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
@@ -175,16 +170,10 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     var relationsTable = $"{dbOptions.Schema}.{dbOptions.RelationsTableName}";
                     var attributesTable = $"{dbOptions.Schema}.{dbOptions.AttributesTableName}";
                     _hasDirectRelationSql =
-                        $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
-                    _hasDirectRelationSnapSql =
                         $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
                     _hasAnyDirectRelationSql =
-                        $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
-                    _hasAnyDirectRelationSnapSql =
                         $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
                     _getIndirectRelationsSql =
-                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''";
-                    _getIndirectRelationsSnapSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''";
                     _getRelationsWithSingleSubjectSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id";
@@ -195,12 +184,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     _getRelationsWithMultiSubjectSnapSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)";
                     _getAttributeSql =
-                        $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE entity_type = @entity_type AND attribute = @attribute LIMIT 1";
-                    _getAttributeWithEntityIdSql =
-                        $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1";
-                    _getAttributeSnapSql =
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1";
-                    _getAttributeWithEntityIdSnapSql =
+                    _getAttributeWithEntityIdSql =
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1";
                 }
             }
@@ -260,14 +245,12 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(tupleFilter.SnapToken is null ? _hasDirectRelationSql! : _hasDirectRelationSnapSql!);
-            command.CommandText = tupleFilter.SnapToken is null ? _hasDirectRelationSql : _hasDirectRelationSnapSql;
+            await using var command = _hotPathDataSource.CreateCommand(_hasDirectRelationSql!);
             AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
             AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
             AddStringParameter(command, "relation", tupleFilter.Relation, 64);
             AddStringParameter(command, "subject_id", subjectId, 64);
-            if (tupleFilter.SnapToken is { } snapToken)
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
@@ -283,13 +266,11 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(tupleFilter.SnapToken is null ? _getIndirectRelationsSql! : _getIndirectRelationsSnapSql!);
-            command.CommandText = tupleFilter.SnapToken is null ? _getIndirectRelationsSql : _getIndirectRelationsSnapSql;
+            await using var command = _hotPathDataSource.CreateCommand(_getIndirectRelationsSql!);
             AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
             AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
             AddStringParameter(command, "relation", tupleFilter.Relation, 64);
-            if (tupleFilter.SnapToken is { } snapToken)
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -320,14 +301,13 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     }
 
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(snapToken is null ? _hasAnyDirectRelationSql! : _hasAnyDirectRelationSnapSql!);
-            command.CommandText = snapToken is null ? _hasAnyDirectRelationSql : _hasAnyDirectRelationSnapSql;
+            await using var command = _hotPathDataSource.CreateCommand(_hasAnyDirectRelationSql!);
             AddStringParameter(command, "entity_type", entityType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
@@ -335,8 +315,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             });
             AddStringParameter(command, "relation", relation, 64);
             AddStringParameter(command, "subject_id", subjectId, 64);
-            if (snapToken is { } resolvedSnapToken)
-                AddFixedCharParameter(command, "snap_token", resolvedSnapToken.Value, 26);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
@@ -384,14 +363,12 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         {
             if (subjectsIds.Length == 1)
             {
-                await using var command = _hotPathDataSource.CreateCommand(
-                    entityFilter.SnapToken is null ? _getRelationsWithSingleSubjectSql! : _getRelationsWithSingleSubjectSnapSql!);
+                await using var command = _hotPathDataSource.CreateCommand(_getRelationsWithSingleSubjectSnapSql!);
                 AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
                 AddStringParameter(command, "relation", entityFilter.Relation, 64);
                 AddStringParameter(command, "subject_type", subjectType, 256);
                 AddStringParameter(command, "subject_id", subjectsIds[0], 64);
-                if (entityFilter.SnapToken is { } snapToken)
-                    AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
 
                 var pooled = PooledList<RelationTuple>.Rent();
                 try
@@ -417,8 +394,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             }
 
             {
-                await using var command = _hotPathDataSource.CreateCommand(
-                    entityFilter.SnapToken is null ? _getRelationsWithMultiSubjectSql! : _getRelationsWithMultiSubjectSnapSql!);
+                await using var command = _hotPathDataSource.CreateCommand(_getRelationsWithMultiSubjectSnapSql!);
                 AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
                 AddStringParameter(command, "relation", entityFilter.Relation, 64);
                 AddStringParameter(command, "subject_type", subjectType, 256);
@@ -426,8 +402,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 {
                     TypedValue = subjectsIds
                 });
-                if (entityFilter.SnapToken is { } snapToken)
-                    AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
 
                 var multi = PooledList<RelationTuple>.Rent();
                 try
@@ -464,22 +439,15 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_getAttributeSql!);
             var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
-            command.CommandText = filter.SnapToken switch
-            {
-                null when hasEntityId => _getAttributeWithEntityIdSql,
-                null => _getAttributeSql,
-                _ when hasEntityId => _getAttributeWithEntityIdSnapSql,
-                _ => _getAttributeSnapSql
-            };
+            await using var command = _hotPathDataSource.CreateCommand(hasEntityId ? _getAttributeWithEntityIdSql! : _getAttributeSql!);
+            command.CommandText = hasEntityId ? _getAttributeWithEntityIdSql : _getAttributeSql;
 
             AddStringParameter(command, "entity_type", filter.EntityType, 256);
             AddStringParameter(command, "attribute", filter.Attribute, 64);
             if (hasEntityId)
                 AddStringParameter(command, "entity_id", filter.EntityId!, 64);
-            if (filter.SnapToken is { } snapToken)
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
 
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
