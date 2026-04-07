@@ -71,7 +71,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     }
 
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken? snapToken, CancellationToken cancellationToken)
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
