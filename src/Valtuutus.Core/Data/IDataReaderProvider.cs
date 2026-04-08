@@ -34,6 +34,19 @@ public interface IDataReaderProvider
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Checks whether the subject has access through a tuple-to-user-set relation:
+    /// returns true if there exists an intermediate entity X such that
+    /// (entityType, entityId) has [tupleSetRelation] to X, and X has [computedRelation] to (subjectType, subjectId).
+    /// </summary>
+    Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId,
+        string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId,
+        SnapToken snapToken,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves only indirect tuples (subject_relation IS NOT NULL) for the given filter.
     /// Used after <see cref="HasDirectRelation"/> returns false to avoid fetching direct
     /// tuples that are irrelevant to recursive resolution.

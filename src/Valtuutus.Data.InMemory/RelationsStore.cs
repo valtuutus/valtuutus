@@ -96,6 +96,32 @@ internal sealed class RelationsStore : IDisposable
         return false;
     }
 
+    public bool HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken)
+    {
+        using var _ = Read();
+        if (!_byEntityRelation.TryGetValue((entityType, entityId, tupleSetRelation), out var bucket))
+            return false;
+        foreach (var e in bucket)
+        {
+            if (!IsVisible(e, snapToken)) continue;
+            if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+            if (e.Relation.SubjectType != subEntityType) continue;
+            if (!_byEntityRelation.TryGetValue((subEntityType, e.Relation.SubjectId, computedRelation), out var depBucket))
+                continue;
+            foreach (var dep in depBucket)
+            {
+                if (!IsVisible(dep, snapToken)) continue;
+                if (!string.IsNullOrEmpty(dep.Relation.SubjectRelation)) continue;
+                if (dep.Relation.SubjectType == subjectType && dep.Relation.SubjectId == subjectId)
+                    return true;
+            }
+        }
+        return false;
+    }
+
     public PooledList<RelationTuple> GetRelationsWithEntityIds(EntityRelationFilter filter, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation)
     {
