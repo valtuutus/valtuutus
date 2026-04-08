@@ -133,6 +133,42 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId)
+    {
+        using var _ = Read();
+        var snap = mainFilter.SnapToken;
+
+        // Step 1: collect intermediate IDs — sub-entities that have the subject.
+        if (!_byRelationSubjectType.TryGetValue((subEntityType, subRelation, subjectType), out var depBucket))
+            return PooledList<RelationTuple>.Rent();
+
+        HashSet<string>? intermediateIds = null;
+        foreach (var e in depBucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (e.Relation.SubjectId != subjectId) continue;
+            (intermediateIds ??= new HashSet<string>()).Add(e.Relation.EntityId);
+        }
+
+        if (intermediateIds is null || intermediateIds.Count == 0)
+            return PooledList<RelationTuple>.Rent();
+
+        // Step 2: find main entities whose subject is in the intermediate set.
+        if (!_byRelationSubjectType.TryGetValue((mainFilter.EntityType, mainFilter.Relation, subEntityType), out var mainBucket))
+            return PooledList<RelationTuple>.Rent();
+
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var e in mainBucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (!intermediateIds.Contains(e.Relation.SubjectId)) continue;
+            result.Add(e.Relation);
+        }
+        return result;
+    }
+
     public void Write(Ulid transactId, IEnumerable<RelationTuple> relations)
     {
         using var _ = Write();

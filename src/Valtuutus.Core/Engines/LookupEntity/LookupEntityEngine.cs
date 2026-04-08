@@ -361,6 +361,26 @@ public sealed class LookupEntityEngine(
         {
             foreach (var entity in relation.Entities)
             {
+                // Fast path: when the computed relation is a terminal direct relation that
+                // directly accepts the final subject type, collapse the two-hop traversal
+                // (dependent lookup + main leaf lookup) into a single joined DB query.
+                // Depth guard mirrors the depth check that LookupEntityInternal would apply
+                // to the dependent leg — if depth is already 0, the dependent returns empty.
+                if (entity.Relation is null
+                    && req.Depth > 0
+                    && schema.GetRelationType(entity.Type, computedUserSetRelation) == RelationType.DirectRelation)
+                {
+                    var computedRel = schema.GetRelation(entity.Type, computedUserSetRelation);
+                    if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(req.FinalSubjectType))
+                    {
+                        buffer[count++] = JoinedLookup(
+                            new EntityRelationFilter { EntityType = req.EntityType, Relation = tupleSetRelation, SnapToken = req.SnapToken.Value },
+                            entity.Type, computedUserSetRelation,
+                            req.FinalSubjectType, req.FinalSubjectId, ct);
+                        continue;
+                    }
+                }
+
                 var dependent = LookupEntityInternal(req with
                 {
                     EntityType = entity.Type, Permission = computedUserSetRelation,
@@ -453,6 +473,17 @@ public sealed class LookupEntityEngine(
 
                 if (subRelation is not null)
                 {
+                    // Fast path: terminal sub-relation that directly accepts the final subject
+                    // type — collapse two GetRelationsWithSubjectsIds calls into one joined query.
+                    if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
+                    {
+                        buffer[count++] = JoinedLookup(
+                            new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken.Value },
+                            relationEntity.Type, relationEntity.Relation!,
+                            req.FinalSubjectType, req.FinalSubjectId, ct);
+                        continue;
+                    }
+
                     var dependent = LookupRelation(req with
                     {
                         EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
@@ -501,6 +532,16 @@ public sealed class LookupEntityEngine(
             req.SubjectsIds,
             req.SubjectType,
             ct);
+        var result = ListPool<LookupEntityResult>.Rent();
+        foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
+        return result;
+    }
+
+    private async Task<List<LookupEntityResult>> JoinedLookup(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, CancellationToken ct)
+    {
+        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
         return result;

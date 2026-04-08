@@ -129,6 +129,22 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         }
     }
 
+    public async Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

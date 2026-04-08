@@ -49,6 +49,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _getRelationsWithSingleSubjectSnapSql;
     private static string? _getRelationsWithMultiSubjectSql;
     private static string? _getRelationsWithMultiSubjectSnapSql;
+    private static string? _getRelationsJoinedSql;
     private static string? _getAttributeSql;
     private static string? _getAttributeWithEntityIdSql;
     private static readonly object Lock = new();
@@ -183,6 +184,22 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)";
                     _getRelationsWithMultiSubjectSnapSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)";
+                    _getRelationsJoinedSql = $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.relation = @relation
+                          AND r_main.subject_type = @sub_entity_type
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                                AND entity_type = @sub_entity_type
+                                AND relation = @sub_relation
+                                AND subject_type = @subject_type
+                                AND subject_id = @subject_id
+                          )
+                        """;
                     _getAttributeSql =
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1";
                     _getAttributeWithEntityIdSql =
@@ -425,6 +442,47 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                     multi.Dispose();
                     throw;
                 }
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_getRelationsJoinedSql!);
+            AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
+            AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
+            AddStringParameter(command, "relation", mainFilter.Relation, 64);
+            AddStringParameter(command, "sub_entity_type", subEntityType, 256);
+            AddStringParameter(command, "sub_relation", subRelation, 64);
+            AddStringParameter(command, "subject_type", subjectType, 256);
+            AddStringParameter(command, "subject_id", subjectId, 64);
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    pooled.Add(new RelationTuple(
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                }
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
             }
         }
         finally
