@@ -50,6 +50,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _getRelationsWithMultiSubjectSql;
     private static string? _getRelationsWithMultiSubjectSnapSql;
     private static string? _getRelationsJoinedSql;
+    private static string? _hasTupleToUserSetRelationSql;
     private static string? _getAttributeSql;
     private static string? _getAttributeWithEntityIdSql;
     private static readonly object Lock = new();
@@ -199,6 +200,23 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                                 AND subject_type = @subject_type
                                 AND subject_id = @subject_id
                           )
+                        """;
+                    _hasTupleToUserSetRelationSql = $"""
+                        SELECT EXISTS(
+                            SELECT 1 FROM {relationsTable} r_main
+                            INNER JOIN {relationsTable} r_dep
+                                ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                            WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                              AND r_main.entity_type = @entity_type
+                              AND r_main.entity_id = @entity_id
+                              AND r_main.relation = @tuple_set_relation
+                              AND r_main.subject_relation = ''
+                              AND r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                              AND r_dep.relation = @computed_relation
+                              AND r_dep.subject_type = @subject_type
+                              AND r_dep.subject_id = @subject_id
+                              AND r_dep.subject_relation = ''
+                        )
                         """;
                     _getAttributeSql =
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1";
@@ -484,6 +502,32 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                 pooled.Dispose();
                 throw;
             }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_hasTupleToUserSetRelationSql!);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            AddStringParameter(command, "entity_id", entityId, 64);
+            AddStringParameter(command, "tuple_set_relation", tupleSetRelation, 64);
+            AddStringParameter(command, "computed_relation", computedRelation, 64);
+            AddStringParameter(command, "subject_type", subjectType, 256);
+            AddStringParameter(command, "subject_id", subjectId, 64);
+
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
         finally
         {

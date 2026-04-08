@@ -37,6 +37,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _formattedExistsRelation;
     private static string? _getRelationsWithSingleSubjectSnapSql;
     private static string? _getRelationsJoinedSql;
+    private static string? _hasTupleToUserSetRelationSql;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -91,6 +92,23 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                 AND subject_type = @SubjectType
                                 AND subject_id = @SubjectId
                           )
+                        """;
+                    _hasTupleToUserSetRelationSql ??= $"""
+                        SELECT CASE WHEN EXISTS(
+                            SELECT 1 FROM {relationsTable} r_main
+                            INNER JOIN {relationsTable} r_dep
+                                ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                            WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                              AND r_main.entity_type = @EntityType
+                              AND r_main.entity_id = @EntityId
+                              AND r_main.relation = @TupleSetRelation
+                              AND r_main.subject_relation = ''
+                              AND r_dep.created_tx_id <= @SnapToken AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @SnapToken)
+                              AND r_dep.relation = @ComputedRelation
+                              AND r_dep.subject_type = @SubjectType
+                              AND r_dep.subject_id = @SubjectId
+                              AND r_dep.subject_relation = ''
+                        ) THEN 1 ELSE 0 END
                         """;
                 }
             }
@@ -438,6 +456,37 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                 pooled.Dispose();
                 throw;
             }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var result = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                _hasTupleToUserSetRelationSql!,
+                new
+                {
+                    EntityType = new DbString { Value = entityType, Length = 256 },
+                    EntityId = new DbString { Value = entityId, Length = 64 },
+                    TupleSetRelation = new DbString { Value = tupleSetRelation, Length = 64 },
+                    ComputedRelation = new DbString { Value = computedRelation, Length = 64 },
+                    SubjectType = new DbString { Value = subjectType, Length = 256 },
+                    SubjectId = new DbString { Value = subjectId, Length = 64 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true }
+                },
+                cancellationToken: cancellationToken));
+            return result == 1;
         }
         finally
         {

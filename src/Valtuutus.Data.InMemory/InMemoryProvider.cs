@@ -129,6 +129,24 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         }
     }
 
+    public async Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasTupleToUserSetRelation(entityType, entityId, tupleSetRelation,
+                subEntityType, computedRelation, subjectType, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
         string subjectType, string subjectId, CancellationToken cancellationToken)

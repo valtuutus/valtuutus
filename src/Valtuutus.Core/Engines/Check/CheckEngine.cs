@@ -323,6 +323,29 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         string computedUserSetRelation, CheckMemo memo, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var tupleSetRelationSchema = schema.GetRelation(req.EntityType, tupleSetRelation);
+        if (tupleSetRelationSchema.Entities.Count == 1
+            && tupleSetRelationSchema.Entities[0].Relation is null
+            && req.Depth > 0
+            && !string.IsNullOrEmpty(req.SubjectType))
+        {
+            var subEntityType = tupleSetRelationSchema.Entities[0].Type;
+            if (schema.GetRelationType(subEntityType, computedUserSetRelation) == RelationType.DirectRelation)
+            {
+                var computedRel = schema.GetRelation(subEntityType, computedUserSetRelation);
+                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(req.SubjectType))
+                {
+                    return await reader.HasTupleToUserSetRelation(
+                        req.EntityType, req.EntityId,
+                        tupleSetRelation,
+                        subEntityType, computedUserSetRelation,
+                        req.SubjectType!, req.SubjectId!,
+                        req.SnapToken.Value, ct);
+                }
+            }
+        }
+
         using var relations = await reader.GetRelations(
             new RelationTupleFilter
             {
