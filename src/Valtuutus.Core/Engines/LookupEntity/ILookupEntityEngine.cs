@@ -7,9 +7,11 @@ public interface ILookupEntityEngine
 {
     /// <summary>
     /// The LookupEntity method lets you ask "Which resources of type T can entity:X do action Y?"
+    /// Optionally scoped to a parent entity via <see cref="LookupEntityRequest.Scope"/>.
+    /// Optionally paginated via <see cref="LookupEntityRequest.PageSize"/> and <see cref="LookupEntityRequest.ContinuationToken"/>.
     /// </summary>
     /// <param name="req">The object containing information about the question being asked.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The list of ids of the entities that match the criteria.</returns>
-    Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken);
+    /// <returns>A page of entity IDs and an optional continuation token for the next page.</returns>
+    Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken);
 }

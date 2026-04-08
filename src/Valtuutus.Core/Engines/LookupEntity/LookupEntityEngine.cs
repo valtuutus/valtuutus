@@ -37,7 +37,7 @@ public sealed class LookupEntityEngine(
     IDataReaderProvider reader) : ILookupEntityEngine
 {
     //<inheritdoc/>
-    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
+    public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
@@ -60,16 +60,16 @@ public sealed class LookupEntityEngine(
         };
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
-        var hs = new HashSet<string>(res.Count);
-        foreach (ref readonly var r in CollectionsMarshal.AsSpan(res)) hs.Add(r.EntityId);
+        var entityIds = new List<string>(res.Count);
+        foreach (ref readonly var r in CollectionsMarshal.AsSpan(res)) entityIds.Add(r.EntityId);
         ListPool<LookupEntityResult>.Return(res);
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
-            tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
-        return hs;
+            tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(entityIds))));
+        return new LookupEntityPage(entityIds, ContinuationToken: null);
     }
 
 
-    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(HashSet<string> result)
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(List<string> result)
     {
         yield return new KeyValuePair<string, object?>("LookupEntityResultCount", result.Count);
     }
