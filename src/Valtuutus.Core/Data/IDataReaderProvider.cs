@@ -63,6 +63,20 @@ public interface IDataReaderProvider
     Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
+    /// dependent relation. Collapses two sequential <see cref="GetRelationsWithSubjectsIds"/>
+    /// calls into a single DB round-trip. Only valid when the dependent relation is a terminal
+    /// direct relation (no sub-relation paths) that directly accepts <paramref name="subjectType"/>.
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter,
+        string subEntityType,
+        string subRelation,
+        string subjectType,
+        string subjectId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves a single AttributeTuple based on the provided filter.
     /// </summary>
     /// <param name="filter">The filter criteria for retrieving the AttributeTuple.</param>

@@ -36,6 +36,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _formattedSelectRelations;
     private static string? _formattedExistsRelation;
     private static string? _getRelationsWithSingleSubjectSnapSql;
+    private static string? _getRelationsJoinedSql;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -75,6 +76,22 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     var relationsTable = $"[{dbOptions.Schema}].[{dbOptions.RelationsTableName}]";
                     _getRelationsWithSingleSubjectSnapSql ??=
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
+                    _getRelationsJoinedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubEntityType
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                                AND entity_type = @SubEntityType
+                                AND relation = @SubRelation
+                                AND subject_type = @SubjectType
+                                AND subject_id = @SubjectId
+                          )
+                        """;
                 }
             }
         }
@@ -380,6 +397,45 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             catch
             {
                 multi.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                    _getRelationsJoinedSql!,
+                    new
+                    {
+                        EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
+                        Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
+                        SubEntityType = new DbString { Value = subEntityType, Length = 256 },
+                        SubRelation = new DbString { Value = subRelation, Length = 64 },
+                        SubjectType = new DbString { Value = subjectType, Length = 256 },
+                        SubjectId = new DbString { Value = subjectId, Length = 64 },
+                        SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                    },
+                    cancellationToken: cancellationToken)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
                 throw;
             }
         }
