@@ -54,13 +54,13 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         return Task.CompletedTask;
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         TopLevelChecks = LookupEntityEngineSpecList.TopLevelChecks;
 
     [Theory]
     [MemberData(nameof(TopLevelChecks))]
     public async Task TopLevelCheckShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes,
-        LookupEntityRequest request, HashSet<string> expected)
+        LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var engine = await CreateEngine(tuples, attributes);
@@ -69,16 +69,16 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IndirectRelationLookup = LookupEntityEngineSpecList.IndirectRelationLookup;
 
     [Theory]
     [MemberData(nameof(IndirectRelationLookup))]
     public async Task IndirectRelationLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+        AttributeTuple[] attributes, LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var engine = await CreateEngine(tuples, attributes);
@@ -87,16 +87,16 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         SimplePermissionLookup = LookupEntityEngineSpecList.SimplePermissionLookup;
 
     [Theory]
     [MemberData(nameof(SimplePermissionLookup))]
     public async Task SimplePermissionLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+        AttributeTuple[] attributes, LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var engine = await CreateEngine(tuples, attributes);
@@ -105,17 +105,17 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectWithRelationAndAttributePermissionLookup =
             LookupEntityEngineSpecList.IntersectWithRelationAndAttributePermissionLookup;
 
     [Theory]
     [MemberData(nameof(IntersectWithRelationAndAttributePermissionLookup))]
     public async Task IntersectWithRelationAndAttributeLookupShouldReturnExpectedResult(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+        AttributeTuple[] attributes, LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var engine = await CreateEngine(tuples, attributes);
@@ -124,10 +124,10 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectAttributeExpressionWithOtherNodesLookup =
             LookupEntityEngineSpecList.IntersectAttributeExpressionWithOtherNodes;
 
@@ -135,7 +135,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     [MemberData(nameof(IntersectAttributeExpressionWithOtherNodesLookup))]
     public async Task IntersectAttributeExpressionWithOtherNodesLookupShouldReturnExpectedEntities(
         RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+        AttributeTuple[] attributes, LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var engine = await CreateEngine(tuples, attributes);
@@ -144,7 +144,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             "edit", "user", "1"), default);
 
         // assert
-        result.Should().BeEquivalentTo(TestsConsts.Workspaces.PublicWorkspace, TestsConsts.Workspaces.PrivateWorkspace);
+        result.EntityIds.Should().BeEquivalentTo(TestsConsts.Workspaces.PublicWorkspace, TestsConsts.Workspaces.PrivateWorkspace);
     }
 
     [Fact]
@@ -210,16 +210,16 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             "withdraw", "user", "1"), default);
 
         // assert
-        result.Should().BeEquivalentTo("1");
+        result.EntityIds.Should().BeEquivalentTo("1");
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         UnionRelationDepthLimit = LookupEntityEngineSpecList.UnionRelationDepthLimit;
 
     [Theory]
     [MemberData(nameof(UnionRelationDepthLimit))]
     public async Task LookupEntityWithDepthLimit(RelationTuple[] tuples,
-        AttributeTuple[] attributes, LookupEntityRequest request, HashSet<string> expected)
+        AttributeTuple[] attributes, LookupEntityRequest request, IReadOnlyList<string> expected)
     {
         // Arrange
         var schema = @"
@@ -238,7 +238,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(request, default);
 
         // Assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
     public static TheoryData<string, decimal?, HashSet<string>> ContextAccessTheoryData = new()
@@ -284,7 +284,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             "withdraw", "user", "1", context: context), default);
 
         // assert
-        result.Should().BeEquivalentTo(expected);
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
     [Fact]
@@ -315,17 +315,17 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
                          permission create_task := (portfolio.owner or portfolio.admin
                                          or admin or member) and isActiveStatus(status);
                          permission edit := (portfolio.owner or portfolio.admin or admin) and isActiveStatus(status);
-                         permission view := admin or member or portfolio.view;     
+                         permission view := admin or member or portfolio.view;
                      }
 
                      entity task {
                          relation project @project;
-                         permission view := project.view;     
+                         permission view := project.view;
                      }
 
                      fn isActiveStatus(status string) => status != "Archived";
                      """;
-        
+
         // act
         var engine = await CreateEngine(
             [
@@ -341,12 +341,12 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
                 new AttributeTuple("portfolio", "portfolio-3", "public",
                     JsonValue.Create(true)),
             ], schema);
-        
+
         //
         var result = await engine.LookupEntity(new LookupEntityRequest("project",
             "view", "user", "alice"), CancellationToken.None);
-        
-        result.Should().BeEquivalentTo(["project-p1", "project-p1-2", "project-p3"]);
+
+        result.EntityIds.Should().BeEquivalentTo(["project-p1", "project-p1-2", "project-p3"]);
     }
 
     [Fact]
@@ -371,6 +371,6 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             new LookupEntityRequest("workspace", "delete", "group", "admins"),
             CancellationToken.None);
 
-        result.Should().BeEmpty();
+        result.EntityIds.Should().BeEmpty();
     }
 }

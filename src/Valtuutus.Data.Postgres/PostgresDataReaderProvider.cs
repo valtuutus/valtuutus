@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Data.Postgres.Utils;
@@ -390,7 +391,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
-    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken, EntityScope? scope = null)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -470,7 +471,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
-        string subjectType, string subjectId, CancellationToken cancellationToken)
+        string subjectType, string subjectId, CancellationToken cancellationToken, EntityScope? scope = null)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -584,7 +585,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken, EntityScope? scope = null)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);

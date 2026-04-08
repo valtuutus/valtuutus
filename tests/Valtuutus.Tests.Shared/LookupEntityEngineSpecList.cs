@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.LookupEntity;
 
@@ -6,7 +6,7 @@ namespace Valtuutus.Tests.Shared;
 
 public static class LookupEntityEngineSpecList
 {
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         TopLevelChecks => new()
     {
         {
@@ -23,9 +23,9 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Groups.Admins, TestsConsts.Groups.Designers, TestsConsts.Groups.Developers
-            ])
+            }
         },
         {
             // Checks direct relation, but alice is not a part of the group
@@ -37,7 +37,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
         {
             // Checks attribute
@@ -47,11 +47,11 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IndirectRelationLookup => new()
     {
         {
@@ -71,10 +71,10 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
-            ])
+            }
         },
         {
             // Checks indirect and direct relations
@@ -91,14 +91,14 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
-            ])
+            }
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         SimplePermissionLookup => new()
     {
         {
@@ -113,10 +113,10 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PublicWorkspace,
                 TestsConsts.Workspaces.PrivateWorkspace,
-            ])
+            }
         },
         {
             // Checks indirect relation
@@ -128,13 +128,13 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PrivateWorkspace,
-            ])
+            }
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
         {
@@ -151,9 +151,9 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PublicWorkspace,
-            ])
+            }
         },
         {
             // without public attribute
@@ -167,7 +167,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
         {
             // without public attribute as false
@@ -183,11 +183,11 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectAttributeExpressionWithOtherNodes = new()
         {
             {
@@ -209,7 +209,7 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                ["1", "2", "3"]
+                new List<string> { "1", "2", "3" }
             },
             {
                 [
@@ -230,7 +230,7 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                []
+                new List<string>()
             },
             {
                 [
@@ -247,11 +247,11 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                []
+                new List<string>()
             },
         };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>> UnionRelationDepthLimit => new()
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>> UnionRelationDepthLimit => new()
     {
         {
             [
@@ -267,7 +267,7 @@ public static class LookupEntityEngineSpecList
                 SubjectId = TestsConsts.Users.Alice,
                 Depth = 1
             },
-            new HashSet<string>()
+            new List<string>()
         },
         {
             [
@@ -283,7 +283,7 @@ public static class LookupEntityEngineSpecList
                 SubjectId = TestsConsts.Users.Alice,
                 Depth = 2
             },
-            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+            new List<string> { TestsConsts.Workspaces.PublicWorkspace }
         },
         {
             [
@@ -298,7 +298,7 @@ public static class LookupEntityEngineSpecList
                 SubjectType = TestsConsts.Users.Identifier,
                 SubjectId = TestsConsts.Users.Alice,
             },
-            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+            new List<string> { TestsConsts.Workspaces.PublicWorkspace }
         }
     };
 }

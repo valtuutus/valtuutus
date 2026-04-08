@@ -43,7 +43,7 @@ public abstract class BenchmarkBase
         }, CancellationToken.None);
 
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity")]
-    public async Task<HashSet<string>> LookupEntity()
+    public async Task<LookupEntityPage> LookupEntity()
         => await _lookupEntityEngine.LookupEntity(new()
         {
             Permission = "edit", EntityType = "project",
@@ -58,7 +58,7 @@ public abstract class BenchmarkBase
     /// pure memo hit with the optimization, two full traversals without.
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_Diamond")]
-    public async Task<HashSet<string>> LookupEntity_Diamond()
+    public async Task<LookupEntityPage> LookupEntity_Diamond()
         => await _lookupEntityEngine.LookupEntity(new()
         {
             Permission = "view", EntityType = "folder",
