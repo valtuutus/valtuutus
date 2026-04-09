@@ -342,7 +342,7 @@ public sealed class LookupEntityEngine(
 
         var attributeArguments = node.GetArgsAttributesNames();
 
-        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments) + "|" + req.Scope?.Relation + "|" + req.Scope?.SubjectType + "|" + req.Scope?.SubjectId;
+        var cacheKey = req.EntityType + "\x00" + string.Join(",", attributeArguments) + "\x00" + req.Scope?.Relation + "\x00" + req.Scope?.SubjectType + "\x00" + req.Scope?.SubjectId;
         var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,
             static (_, state) => state.reader.GetAttributes(
                 new EntityAttributesFilter
@@ -467,6 +467,25 @@ public sealed class LookupEntityEngine(
     private async Task<List<LookupEntityResult>> LookupAttribute(LookupEntityRequestInternal req,
         Schemas.Attribute attribute, CancellationToken ct)
     {
+        HashSet<string>? scopedEntityIds = null;
+        if (req.Scope is { } scope)
+        {
+            using var scopeRelations = await reader.GetRelationsWithSubjectsIds(
+                new EntityRelationFilter
+                {
+                    EntityType = req.EntityType,
+                    Relation = scope.Relation,
+                    SnapToken = req.SnapToken.Value
+                },
+                [scope.SubjectId],
+                scope.SubjectType,
+                ct);
+            if (scopeRelations.Count == 0)
+                return ListPool<LookupEntityResult>.Rent();
+            scopedEntityIds = new HashSet<string>(scopeRelations.Count);
+            foreach (var r in scopeRelations) scopedEntityIds.Add(r.EntityId);
+        }
+
         var attrs = await reader.GetAttributes(
             new EntityAttributeFilter
             {
@@ -474,8 +493,11 @@ public sealed class LookupEntityEngine(
             }, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var a in attrs)
+        {
+            if (scopedEntityIds is not null && !scopedEntityIds.Contains(a.EntityId)) continue;
             if (a.Value.TryGetValue(out bool b) && b)
                 result.Add(new LookupEntityResult(a.EntityType, a.EntityId));
+        }
         return result;
     }
 
