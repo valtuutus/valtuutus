@@ -458,4 +458,177 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var act = async () => await engine.LookupEntity(req, default);
         await act.Should().ThrowAsync<FormatException>();
     }
+
+    /// <summary>
+    /// Exercises the CheckLeafExp path with scope: a union permission contains an attribute-expression
+    /// leaf alongside a relation leaf. CheckLeafExp calls GetAttributes(filter, scope, ct) to restrict
+    /// attribute results to the scoped entity set. Without scope, doc3 (org=org2, published=true) would
+    /// appear in results; with scope restricted to org1 it must be excluded.
+    /// </summary>
+    [Fact]
+    public async Task ScopedLookup_AttributeExpressionInUnion_ExcludesOutOfScopeEntities()
+    {
+        const string schema = """
+            entity user {}
+            entity org { relation member @user; }
+            entity document {
+                relation org @org;
+                attribute published bool;
+                permission view := org.member or isPublished(published);
+            }
+            fn isPublished(published bool) => published == true;
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("org", "org1", "member", "user", "alice"),
+                new RelationTuple("document", "doc1", "org", "org", "org1"),
+                new RelationTuple("document", "doc2", "org", "org", "org1"),
+                new RelationTuple("document", "doc3", "org", "org", "org2"),
+            ],
+            [
+                new AttributeTuple("document", "doc1", "published", JsonValue.Create(true)),
+                new AttributeTuple("document", "doc2", "published", JsonValue.Create(false)),
+                new AttributeTuple("document", "doc3", "published", JsonValue.Create(true)),
+            ],
+            schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "view", "user", "alice")
+            {
+                Scope = new EntityScope("org", "org", "org1")
+            },
+            CancellationToken.None);
+
+        // doc1: in scope (org1) + alice is member of org1 → YES
+        // doc2: in scope (org1) + alice is member of org1 → YES (via org.member); published=false so not via isPublished
+        // doc3: out of scope (org2) → excluded even though published=true
+        result.EntityIds.Should().BeEquivalentTo(["doc1", "doc2"]);
+    }
+
+    /// <summary>
+    /// Exercises LookupAttribute with scope. When the requested permission name matches an attribute
+    /// directly (RelationType.Attribute), the engine resolves scope via GetRelationsWithSubjectsIds
+    /// then filters attribute results to the scoped entity set.
+    /// </summary>
+    [Fact]
+    public async Task ScopedLookup_DirectAttributePermission_FiltersToScope()
+    {
+        const string schema = """
+            entity org {}
+            entity document {
+                relation org @org;
+                attribute published bool;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "org", "org", "org1"),
+                new RelationTuple("document", "doc2", "org", "org", "org1"),
+                new RelationTuple("document", "doc3", "org", "org", "org2"),
+            ],
+            [
+                new AttributeTuple("document", "doc1", "published", JsonValue.Create(true)),
+                new AttributeTuple("document", "doc2", "published", JsonValue.Create(false)),
+                new AttributeTuple("document", "doc3", "published", JsonValue.Create(true)),
+            ],
+            schema);
+
+        // "published" resolves as RelationType.Attribute → LookupAttribute path
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "published", "user", "alice")
+            {
+                Scope = new EntityScope("org", "org", "org1")
+            },
+            CancellationToken.None);
+
+        // doc1: in scope (org1), published=true → YES
+        // doc2: in scope (org1), published=false → NO
+        // doc3: out of scope (org2) → excluded even though published=true
+        result.EntityIds.Should().BeEquivalentTo(["doc1"]);
+    }
+
+    /// <summary>
+    /// Exercises LookupIntersectionConstrained with scope: the default schema's project.edit uses
+    /// (parent.admin or team.member) AND isActiveStatus(status). With a scope on parent workspace,
+    /// only projects in that workspace are considered, and the attribute filter (status==1) further
+    /// narrows the results.
+    /// </summary>
+    [Fact]
+    public async Task ScopedLookup_IntersectionWithAttributeAndRelation_FiltersCorrectly()
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("workspace", "ws1", "admin", "user", "alice"),
+                new RelationTuple("project", "p1", "parent", "workspace", "ws1"),
+                new RelationTuple("project", "p2", "parent", "workspace", "ws1"),
+                new RelationTuple("project", "p3", "parent", "workspace", "ws2"),
+            ],
+            [
+                new AttributeTuple("project", "p1", "status", JsonValue.Create(1)),
+                new AttributeTuple("project", "p2", "status", JsonValue.Create(2)),
+                new AttributeTuple("project", "p3", "status", JsonValue.Create(1)),
+            ]);
+
+        // project.edit := (parent.admin or team.member) and isActiveStatus(status)
+        // Scope: only projects with parent relation pointing to ws1
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "edit", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "workspace", "ws1")
+            },
+            CancellationToken.None);
+
+        // p1: in scope (ws1), alice is admin of ws1 → parent.admin YES, status=1 → isActiveStatus YES → YES
+        // p2: in scope (ws1), alice is admin of ws1 → parent.admin YES, status=2 → isActiveStatus NO → NO
+        // p3: out of scope (ws2) → excluded even though status=1
+        result.EntityIds.Should().BeEquivalentTo(["p1"]);
+    }
+
+    /// <summary>
+    /// Exercises paginated lookup without scope: verifies ContinuationToken is null when the total
+    /// result count exactly equals PageSize.
+    /// </summary>
+    [Fact]
+    public async Task PaginatedLookup_ExactlyPageSize_ReturnsNullToken()
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "proj1", "member", "user", "alice"),
+                new RelationTuple("task", "aaa", "parent", "project", "proj1"),
+                new RelationTuple("task", "bbb", "parent", "project", "proj1"),
+            ], []);
+
+        var req = new LookupEntityRequest("task", "view", "user", "alice") { PageSize = 2 };
+        var result = await engine.LookupEntity(req, default);
+
+        result.EntityIds.Should().BeEquivalentTo(["aaa", "bbb"]);
+        result.ContinuationToken.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Exercises cursor pagination resumption: second page using token from first page returns
+    /// exactly the remaining items and a null next-page token.
+    /// </summary>
+    [Fact]
+    public async Task PaginatedLookup_SecondPage_ReturnsRemainingItems()
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "proj1", "member", "user", "alice"),
+                new RelationTuple("task", "aaa", "parent", "project", "proj1"),
+                new RelationTuple("task", "bbb", "parent", "project", "proj1"),
+                new RelationTuple("task", "ccc", "parent", "project", "proj1"),
+            ], []);
+
+        var req = new LookupEntityRequest("task", "view", "user", "alice") { PageSize = 2 };
+        var page1 = await engine.LookupEntity(req, default);
+        page1.EntityIds.Should().BeEquivalentTo(["aaa", "bbb"]);
+        page1.ContinuationToken.Should().NotBeNullOrEmpty();
+
+        var page2 = await engine.LookupEntity(req with { ContinuationToken = page1.ContinuationToken }, default);
+        page2.EntityIds.Should().BeEquivalentTo(["ccc"]);
+        page2.ContinuationToken.Should().BeNull();
+    }
 }
