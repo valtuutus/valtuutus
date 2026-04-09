@@ -54,6 +54,10 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _hasTupleToUserSetRelationSql;
     private static string? _getAttributeSql;
     private static string? _getAttributeWithEntityIdSql;
+    private static string? _getRelationsWithSingleSubjectScopedSql;
+    private static string? _getRelationsWithMultiSubjectScopedSql;
+    private static string? _getRelationsJoinedScopedSql;
+    private static string? _getAttributesDictScopedSql;
     private static readonly object Lock = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
@@ -223,6 +227,75 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1";
                     _getAttributeWithEntityIdSql =
                         $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1";
+                    _getRelationsWithSingleSubjectScopedSql = $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @scope_relation
+                            AND r_scope.subject_type = @scope_subject_type
+                            AND r_scope.subject_id = @scope_subject_id
+                            AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.relation = @relation
+                          AND r_main.subject_type = @subject_type
+                          AND r_main.subject_id = @subject_id
+                        """;
+                    _getRelationsWithMultiSubjectScopedSql = $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @scope_relation
+                            AND r_scope.subject_type = @scope_subject_type
+                            AND r_scope.subject_id = @scope_subject_id
+                            AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.relation = @relation
+                          AND r_main.subject_type = @subject_type
+                          AND r_main.subject_id = ANY(@subject_ids)
+                        """;
+                    _getRelationsJoinedScopedSql = $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @scope_relation
+                            AND r_scope.subject_type = @scope_subject_type
+                            AND r_scope.subject_id = @scope_subject_id
+                            AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.relation = @relation
+                          AND r_main.subject_type = @sub_entity_type
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                                AND entity_type = @sub_entity_type
+                                AND relation = @sub_relation
+                                AND subject_type = @subject_type
+                                AND subject_id = @subject_id
+                          )
+                        """;
+                    _getAttributesDictScopedSql = $"""
+                        SELECT a.entity_type, a.entity_id, a.attribute, a.value
+                        FROM {attributesTable} a
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = a.entity_type
+                            AND r_scope.entity_id = a.entity_id
+                            AND r_scope.relation = @scope_relation
+                            AND r_scope.subject_type = @scope_subject_type
+                            AND r_scope.subject_id = @scope_subject_id
+                            AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                        WHERE a.created_tx_id <= @snap_token AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > @snap_token)
+                          AND a.entity_type = @entity_type
+                          AND a.attribute = ANY(@attributes)
+                        """;
                 }
             }
         }
@@ -397,6 +470,35 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (scope is { } s)
+            {
+                var sql = subjectsIds.Length == 1
+                    ? _getRelationsWithSingleSubjectScopedSql!
+                    : _getRelationsWithMultiSubjectScopedSql!;
+                await using var command = _hotPathDataSource.CreateCommand(sql);
+                AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
+                AddStringParameter(command, "relation", entityFilter.Relation, 64);
+                AddStringParameter(command, "subject_type", subjectType, 256);
+                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
+                AddStringParameter(command, "scope_relation", s.Relation, 64);
+                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                if (subjectsIds.Length == 1)
+                    AddStringParameter(command, "subject_id", subjectsIds[0], 64);
+                else
+                    command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
+
+                var scoped = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        scoped.Add(new RelationTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    return scoped;
+                }
+                catch { scoped.Dispose(); throw; }
+            }
+
             if (subjectsIds.Length == 1)
             {
                 await using var command = _hotPathDataSource.CreateCommand(_getRelationsWithSingleSubjectSnapSql!);
@@ -477,7 +579,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_getRelationsJoinedSql!);
+            var sql = scope.HasValue ? _getRelationsJoinedScopedSql! : _getRelationsJoinedSql!;
+            await using var command = _hotPathDataSource.CreateCommand(sql);
             AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
             AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
             AddStringParameter(command, "relation", mainFilter.Relation, 64);
@@ -485,6 +588,12 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             AddStringParameter(command, "sub_relation", subRelation, 64);
             AddStringParameter(command, "subject_type", subjectType, 256);
             AddStringParameter(command, "subject_id", subjectId, 64);
+            if (scope is { } s)
+            {
+                AddStringParameter(command, "scope_relation", s.Relation, 64);
+                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+            }
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -591,6 +700,26 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
+            if (scope is { } s)
+            {
+                await using var command = _hotPathDataSource.CreateCommand(_getAttributesDictScopedSql!);
+                AddStringParameter(command, "entity_type", filter.EntityType, 256);
+                command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
+                AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+                AddStringParameter(command, "scope_relation", s.Relation, 64);
+                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+
+                var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    var tuple = ReadAttributeTuple(reader);
+                    dict[(tuple.Attribute, tuple.EntityId)] = tuple;
+                }
+                return dict;
+            }
+
             using var connection = _connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
