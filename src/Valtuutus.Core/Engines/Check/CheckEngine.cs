@@ -288,7 +288,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 SnapToken = req.SnapToken.Value
-            }, ct);
+            }, null, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(node.Args);
 

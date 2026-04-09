@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Nodes;
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.LookupEntity;
 
@@ -6,7 +6,7 @@ namespace Valtuutus.Tests.Shared;
 
 public static class LookupEntityEngineSpecList
 {
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         TopLevelChecks => new()
     {
         {
@@ -23,9 +23,9 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Groups.Admins, TestsConsts.Groups.Designers, TestsConsts.Groups.Developers
-            ])
+            }
         },
         {
             // Checks direct relation, but alice is not a part of the group
@@ -37,7 +37,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
         {
             // Checks attribute
@@ -47,11 +47,11 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Groups.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IndirectRelationLookup => new()
     {
         {
@@ -71,10 +71,10 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
-            ])
+            }
         },
         {
             // Checks indirect and direct relations
@@ -91,14 +91,14 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Teams.Identifier, "member", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Teams.OsMaisBrabos,
                 TestsConsts.Teams.OsBrabos,
-            ])
+            }
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         SimplePermissionLookup => new()
     {
         {
@@ -113,10 +113,10 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PublicWorkspace,
                 TestsConsts.Workspaces.PrivateWorkspace,
-            ])
+            }
         },
         {
             // Checks indirect relation
@@ -128,13 +128,13 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "delete", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PrivateWorkspace,
-            ])
+            }
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectWithRelationAndAttributePermissionLookup => new()
     {
         {
@@ -151,9 +151,9 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([
+            new List<string> {
                 TestsConsts.Workspaces.PublicWorkspace,
-            ])
+            }
         },
         {
             // without public attribute
@@ -167,7 +167,7 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
         {
             // without public attribute as false
@@ -183,11 +183,11 @@ public static class LookupEntityEngineSpecList
             ],
             new LookupEntityRequest(TestsConsts.Workspaces.Identifier, "comment", TestsConsts.Users.Identifier,
                 TestsConsts.Users.Alice),
-            new HashSet<string>([])
+            new List<string>()
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
         IntersectAttributeExpressionWithOtherNodes = new()
         {
             {
@@ -209,7 +209,7 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                ["1", "2", "3"]
+                new List<string> { "1", "2", "3" }
             },
             {
                 [
@@ -230,7 +230,7 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                []
+                new List<string>()
             },
             {
                 [
@@ -247,11 +247,11 @@ public static class LookupEntityEngineSpecList
                 ],
                 new LookupEntityRequest("project", "edit", TestsConsts.Users.Identifier,
                     TestsConsts.Users.Alice),
-                []
+                new List<string>()
             },
         };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, HashSet<string>> UnionRelationDepthLimit => new()
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>> UnionRelationDepthLimit => new()
     {
         {
             [
@@ -267,7 +267,7 @@ public static class LookupEntityEngineSpecList
                 SubjectId = TestsConsts.Users.Alice,
                 Depth = 1
             },
-            new HashSet<string>()
+            new List<string>()
         },
         {
             [
@@ -283,7 +283,7 @@ public static class LookupEntityEngineSpecList
                 SubjectId = TestsConsts.Users.Alice,
                 Depth = 2
             },
-            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+            new List<string> { TestsConsts.Workspaces.PublicWorkspace }
         },
         {
             [
@@ -298,7 +298,103 @@ public static class LookupEntityEngineSpecList
                 SubjectType = TestsConsts.Users.Identifier,
                 SubjectId = TestsConsts.Users.Alice,
             },
-            new HashSet<string>() { TestsConsts.Workspaces.PublicWorkspace }
+            new List<string> { TestsConsts.Workspaces.PublicWorkspace }
         }
+    };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+        ScopedLookup => new()
+    {
+        {
+            // User can view all tasks in project 1 (alice is a member of proj1 and proj2)
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("project", "proj2", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+                new("task", "task2", "parent", "project", "proj1"),
+                new("task", "task3", "parent", "project", "proj2"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1")
+            },
+            new List<string> { "task1", "task2" }
+        },
+        {
+            // User has no access — scope returns empty even though tasks exist
+            [
+                new("project", "proj1", "member", "user", "bob"),
+                new("task", "task1", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1")
+            },
+            new List<string>()
+        },
+        {
+            // Scope subject does not exist (no tuples match JOIN) — returns empty
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "nonexistent-project")
+            },
+            new List<string>()
+        },
+    };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>, string?>
+        PaginatedLookup => new()
+    {
+        {
+            // No scope, no pagination — all results, null token
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+                new("task", "task2", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice"),
+            new List<string> { "task1", "task2" },
+            null   // no pagination, token must be null
+        },
+        {
+            // Exactly pageSize results — null token (no more pages)
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "aaa", "parent", "project", "proj1"),
+                new("task", "bbb", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1"),
+                PageSize = 2
+            },
+            new List<string> { "aaa", "bbb" },
+            null   // exactly pageSize, so no next page
+        },
+        {
+            // PageSize = 1, first page — token set to base64("aaa")
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "aaa", "parent", "project", "proj1"),
+                new("task", "bbb", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1"),
+                PageSize = 1
+            },
+            new List<string> { "aaa" },
+            "YWFh"   // base64("aaa") — token for next page
+        },
     };
 }

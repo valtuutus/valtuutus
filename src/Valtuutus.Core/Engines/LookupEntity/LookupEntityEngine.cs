@@ -30,6 +30,7 @@ internal record LookupEntityRequestInternal : IWithDepth
     // Memoises the Task itself — concurrent callers await the same Task rather than
     // issuing duplicate DB queries for the same (entityType, attributeNames) combination.
     public required ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>> AttributeCache { get; init; }
+    public EntityScope? Scope { get; init; }
 }
 
 public sealed class LookupEntityEngine(
@@ -37,11 +38,19 @@ public sealed class LookupEntityEngine(
     IDataReaderProvider reader) : ILookupEntityEngine
 {
     //<inheritdoc/>
-    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
+    public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
                 tags: CreateLookupEntitySpanAttributes(req));
+
+        // Validate scope relation exists in schema
+        if (req.Scope is { } scope)
+        {
+            if (schema.GetRelationType(req.EntityType, scope.Relation) == RelationType.None)
+                throw new InvalidOperationException(
+                    $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
+        }
 
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
@@ -55,23 +64,53 @@ public sealed class LookupEntityEngine(
             SnapToken = req.SnapToken,
             Depth = req.Depth,
             Context = req.Context,
+            Scope = req.Scope,
             AttributeCache = new ConcurrentDictionary<string, Task<Dictionary<(string, string), AttributeTuple>>>(
                 concurrencyLevel: 1, capacity: 4)
         };
 
         var res = await LookupEntityInternal(internalReq, cancellationToken);
-        var hs = new HashSet<string>(res.Count);
-        foreach (ref readonly var r in CollectionsMarshal.AsSpan(res)) hs.Add(r.EntityId);
+
+        // Collect, deduplicate, sort
+        var seen = new HashSet<string>(res.Count);
+        foreach (ref readonly var r in CollectionsMarshal.AsSpan(res)) seen.Add(r.EntityId);
         ListPool<LookupEntityResult>.Return(res);
+
+        var sorted = new List<string>(seen);
+        sorted.Sort(StringComparer.Ordinal);
+
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
-            tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(hs))));
-        return hs;
+            tags: new ActivityTagsCollection(CreateLookupEntityResultAttributes(sorted.Count))));
+
+        // Apply pagination
+        if (req.PageSize is not { } pageSize)
+            return new LookupEntityPage(sorted, null);
+
+        // Decode cursor (base64 of last entity ID)
+        string? afterId = null;
+        if (!string.IsNullOrEmpty(req.ContinuationToken))
+            afterId = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(req.ContinuationToken));
+
+        // Find starting index
+        var startIndex = 0;
+        if (afterId is not null)
+        {
+            var idx = sorted.BinarySearch(afterId, StringComparer.Ordinal);
+            startIndex = idx >= 0 ? idx + 1 : ~idx;
+        }
+
+        var page = sorted.GetRange(startIndex, Math.Min(pageSize, sorted.Count - startIndex));
+        string? nextToken = null;
+        if (startIndex + pageSize < sorted.Count)
+            nextToken = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(page[^1]));
+
+        return new LookupEntityPage(page, nextToken);
     }
 
 
-    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(HashSet<string> result)
+    private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntityResultAttributes(int count)
     {
-        yield return new KeyValuePair<string, object?>("LookupEntityResultCount", result.Count);
+        yield return new KeyValuePair<string, object?>("LookupEntityResultCount", count);
     }
 
     private static IEnumerable<KeyValuePair<string, object?>> CreateLookupEntitySpanAttributes(LookupEntityRequest req)
@@ -303,7 +342,7 @@ public sealed class LookupEntityEngine(
 
         var attributeArguments = node.GetArgsAttributesNames();
 
-        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments);
+        var cacheKey = req.EntityType + "\x00" + string.Join(",", attributeArguments) + "\x00" + req.Scope?.Relation + "\x00" + req.Scope?.SubjectType + "\x00" + req.Scope?.SubjectId;
         var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,
             static (_, state) => state.reader.GetAttributes(
                 new EntityAttributesFilter
@@ -311,7 +350,7 @@ public sealed class LookupEntityEngine(
                     Attributes = state.attributeArguments,
                     EntityType = state.req.EntityType,
                     SnapToken = state.req.SnapToken.Value
-                }, state.ct),
+                }, state.req.Scope, state.ct),
             (reader, attributeArguments, req, ct));
         var attributes = await attributesTask;
 
@@ -376,7 +415,7 @@ public sealed class LookupEntityEngine(
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter { EntityType = req.EntityType, Relation = tupleSetRelation, SnapToken = req.SnapToken.Value },
                             entity.Type, computedUserSetRelation,
-                            req.FinalSubjectType, req.FinalSubjectId, ct);
+                            req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
                     }
                 }
@@ -384,6 +423,7 @@ public sealed class LookupEntityEngine(
                 var dependent = LookupEntityInternal(req with
                 {
                     EntityType = entity.Type, Permission = computedUserSetRelation,
+                    Scope = null,  // clear scope — intermediate types are not scoped
                 }, ct);
 
                 buffer[count++] = JoinEntities(
@@ -427,6 +467,26 @@ public sealed class LookupEntityEngine(
     private async Task<List<LookupEntityResult>> LookupAttribute(LookupEntityRequestInternal req,
         Schemas.Attribute attribute, CancellationToken ct)
     {
+        HashSet<string>? scopedEntityIds = null;
+        if (req.Scope is { } scope)
+        {
+            using var scopeRelations = await reader.GetRelationsWithSubjectsIds(
+                new EntityRelationFilter
+                {
+                    EntityType = req.EntityType,
+                    Relation = scope.Relation,
+                    SnapToken = req.SnapToken.Value
+                },
+                [scope.SubjectId],
+                scope.SubjectType,
+                null,
+                ct);
+            if (scopeRelations.Count == 0)
+                return ListPool<LookupEntityResult>.Rent();
+            scopedEntityIds = new HashSet<string>(scopeRelations.Count);
+            foreach (var r in scopeRelations) scopedEntityIds.Add(r.EntityId);
+        }
+
         var attrs = await reader.GetAttributes(
             new EntityAttributeFilter
             {
@@ -434,8 +494,11 @@ public sealed class LookupEntityEngine(
             }, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var a in attrs)
+        {
+            if (scopedEntityIds is not null && !scopedEntityIds.Contains(a.EntityId)) continue;
             if (a.Value.TryGetValue(out bool b) && b)
                 result.Add(new LookupEntityResult(a.EntityType, a.EntityId));
+        }
         return result;
     }
 
@@ -480,13 +543,14 @@ public sealed class LookupEntityEngine(
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken.Value },
                             relationEntity.Type, relationEntity.Relation!,
-                            req.FinalSubjectType, req.FinalSubjectId, ct);
+                            req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
                     }
 
                     var dependent = LookupRelation(req with
                     {
                         EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
+                        Scope = null,  // clear scope — sub-relation traversal is not scoped
                     }, subRelation, ct);
 
                     buffer[count++] = JoinEntities(
@@ -531,6 +595,7 @@ public sealed class LookupEntityEngine(
             },
             req.SubjectsIds,
             req.SubjectType,
+            req.Scope,
             ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
@@ -539,9 +604,9 @@ public sealed class LookupEntityEngine(
 
     private async Task<List<LookupEntityResult>> JoinedLookup(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
-        string subjectType, string subjectId, CancellationToken ct)
+        string subjectType, string subjectId, EntityScope? scope, CancellationToken ct)
     {
-        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, ct);
+        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
         return result;

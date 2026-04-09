@@ -1,4 +1,5 @@
 using Valtuutus.Core.Pools;
+using Valtuutus.Core.Engines.LookupEntity;
 
 namespace Valtuutus.Core.Data;
 
@@ -67,19 +68,20 @@ public interface IDataReaderProvider
 
     /// <summary>
     /// Retrieves a list of RelationTuples with specified subject IDs.
+    /// When <paramref name="scope"/> is provided, only entities that also have the scope relation to the scope subject are returned.
     /// </summary>
     /// <param name="entityFilter">The filter criteria for retrieving RelationTuples.</param>
     /// <param name="subjectsIds">The IDs of the subjects.</param>
     /// <param name="subjectType">The type of the subject.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="scope">Optional entity scope to filter results.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and subject IDs.</returns>
-    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
-    /// dependent relation. Collapses two sequential <see cref="GetRelationsWithSubjectsIds"/>
-    /// calls into a single DB round-trip. Only valid when the dependent relation is a terminal
-    /// direct relation (no sub-relation paths) that directly accepts <paramref name="subjectType"/>.
+    /// dependent relation. When <paramref name="scope"/> is provided, only main entities
+    /// that also have the scope relation to the scope subject are returned.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter,
@@ -87,6 +89,7 @@ public interface IDataReaderProvider
         string subRelation,
         string subjectType,
         string subjectId,
+        EntityScope? scope,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -107,13 +110,15 @@ public interface IDataReaderProvider
 
     /// <summary>
     /// Retrieves a Dictionary of AttributeTuples based on the provided filter.
+    /// When <paramref name="scope"/> is provided, only entities that have the scope relation to the scope subject are returned.
     /// The key of the dictionary is the attribute name and entityId,
     /// so that each entity instance will have only on attribute by name
     /// </summary>
     /// <param name="filter">The filter criteria for retrieving AttributeTuples.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <param name="scope">Optional entity scope to filter results.</param>
     /// <returns>A Dictionary of AttributeTuples matching the filter criteria.</returns>
-    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken);
+    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of AttributeTuples with specified entity IDs.
