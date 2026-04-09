@@ -17,13 +17,6 @@ The implementation is inspired on [permify](https://github.com/Permify/permify) 
 
 <a href="https://bencher.dev/perf/valtuutus?key=true&reports_per_page=4&branches_per_page=8&testbeds_per_page=8&benchmarks_per_page=8&plots_per_page=8&reports_page=1&branches_page=1&testbeds_page=1&benchmarks_page=1&plots_page=1&report=f7c35e30-f513-402c-af44-56d8c876fff3&branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&lower_boundary=false&upper_boundary=false&clear=true&lower_value=false&upper_value=false&x_axis=date_time&end_time=1796083200000&utm_medium=share&utm_source=bencher&utm_content=img&utm_campaign=perf%2Bimg&utm_term=valtuutus"><img src="https://api.bencher.dev/v0/projects/valtuutus/perf/img?branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&end_time=1797083200000" title="valtuutus" alt="valtuutus - Bencher" /></a>
 
-## Upgrading from 0.7.x
-
-- **Target frameworks**: `netstandard2.0` is no longer supported. Minimum is `net8.0`.
-- **`LookupEntity` return type**: Changed from `HashSet<string>` to `LookupEntityPage`. Access entity IDs via `.EntityIds`.
-- **`IDataReaderProvider`**: If you implement a custom data provider, three methods now have a required `EntityScope? scope` parameter before `CancellationToken`.
-- **`SnapToken`**: Now required (non-nullable) in all data-layer filter types.
-
 ## Functionality
 The library is designed to be simple and easy to use. Each subset of functionality is divided in engines. The engines are:
 - [ICheckEngine](src/Valtuutus.Core/Engines/Check/ICheckEngine.cs): The engine that handles the answering of two questions:
