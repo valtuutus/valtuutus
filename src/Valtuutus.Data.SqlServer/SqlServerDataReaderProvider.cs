@@ -39,6 +39,9 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _getRelationsWithSingleSubjectSnapSql;
     private static string? _getRelationsJoinedSql;
     private static string? _hasTupleToUserSetRelationSql;
+    private static string? _getRelationsWithSingleSubjectScopedSql;
+    private static string? _getRelationsJoinedScopedSql;
+    private static string? _getAttributesDictScopedSql;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -111,6 +114,60 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                               AND r_dep.subject_relation = ''
                         ) THEN 1 ELSE 0 END
                         """;
+                    var attributesTable = $"[{dbOptions.Schema}].[{dbOptions.AttributesTableName}]";
+                    _getRelationsWithSingleSubjectScopedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubjectType
+                          AND r_main.subject_id = @SubjectId
+                        """;
+                    _getRelationsJoinedScopedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubEntityType
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                                AND entity_type = @SubEntityType
+                                AND relation = @SubRelation
+                                AND subject_type = @SubjectType
+                                AND subject_id = @SubjectId
+                          )
+                        """;
+                    _getAttributesDictScopedSql ??= $"""
+                        SELECT a.entity_type, a.entity_id, a.attribute, a.value
+                        FROM {attributesTable} a
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = a.entity_type
+                            AND r_scope.entity_id = a.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE a.created_tx_id <= @SnapToken AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > @SnapToken)
+                          AND a.entity_type = @EntityType
+                          AND a.attribute IN @Attributes
+                        """;
                 }
             }
         }
@@ -165,6 +222,24 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
+
+            if (scope is { } s)
+            {
+                return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(
+                        _getAttributesDictScopedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = filter.EntityType, Length = 256 },
+                            Attributes = filter.Attributes,
+                            SnapToken = new DbString { Value = filter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                            ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                            ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                            ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                        },
+                        cancellationToken: cancellationToken)))
+                    .ToDictionary(x => (x.Attribute, x.EntityId));
+            }
+
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
@@ -381,17 +456,37 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                 var pooled = PooledList<RelationTuple>.Rent();
                 try
                 {
-                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
-                        _getRelationsWithSingleSubjectSnapSql!,
-                        new
-                        {
-                            EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
-                            Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
-                            SubjectType = new DbString { Value = subjectType, Length = 256 },
-                            SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
-                            SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
-                        },
-                        cancellationToken: cancellationToken)));
+                    if (scope is { } s)
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectScopedSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                                ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                                ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                                ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
+                    else
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectSnapSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
                     return pooled;
                 }
                 catch
@@ -411,6 +506,48 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             {
                 multi.AddRange(await fallbackConnection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
                         queryTemplate.Parameters, cancellationToken: cancellationToken)));
+
+                if (scope is { } ms)
+                {
+                    // For multi-subject scoped case, filter results in-memory by fetching which entity IDs
+                    // belong to the scope. SqlBuilder-based path does not support JOIN, so we post-filter.
+                    await using var scopeConnection = (SqlConnection)_connectionFactory();
+                    var scopeQueryTemplate = new SqlBuilder()
+                        .FilterRelations(
+                            new EntityRelationFilter
+                            {
+                                EntityType = entityFilter.EntityType,
+                                Relation = ms.Relation,
+                                SnapToken = entityFilter.SnapToken
+                            },
+                            new[] { ms.SubjectId },
+                            ms.SubjectType)
+                        .AddTemplate(_formattedSelectRelations!);
+                    var scopeRelations = (await scopeConnection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            scopeQueryTemplate.RawSql,
+                            scopeQueryTemplate.Parameters,
+                            cancellationToken: cancellationToken)))
+                        .Select(r => r.EntityId)
+                        .ToHashSet();
+
+                    var filtered = PooledList<RelationTuple>.Rent();
+                    try
+                    {
+                        foreach (var tuple in multi)
+                        {
+                            if (scopeRelations.Contains(tuple.EntityId))
+                                filtered.Add(tuple);
+                        }
+                        multi.Dispose();
+                        return filtered;
+                    }
+                    catch
+                    {
+                        filtered.Dispose();
+                        throw;
+                    }
+                }
+
                 return multi;
             }
             catch
@@ -437,19 +574,41 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             var pooled = PooledList<RelationTuple>.Rent();
             try
             {
-                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
-                    _getRelationsJoinedSql!,
-                    new
-                    {
-                        EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
-                        Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
-                        SubEntityType = new DbString { Value = subEntityType, Length = 256 },
-                        SubRelation = new DbString { Value = subRelation, Length = 64 },
-                        SubjectType = new DbString { Value = subjectType, Length = 256 },
-                        SubjectId = new DbString { Value = subjectId, Length = 64 },
-                        SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
-                    },
-                    cancellationToken: cancellationToken)));
+                if (scope is { } s)
+                {
+                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                        _getRelationsJoinedScopedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
+                            Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
+                            SubEntityType = new DbString { Value = subEntityType, Length = 256 },
+                            SubRelation = new DbString { Value = subRelation, Length = 64 },
+                            SubjectType = new DbString { Value = subjectType, Length = 256 },
+                            SubjectId = new DbString { Value = subjectId, Length = 64 },
+                            SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                            ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                            ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                            ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                        },
+                        cancellationToken: cancellationToken)));
+                }
+                else
+                {
+                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                        _getRelationsJoinedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
+                            Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
+                            SubEntityType = new DbString { Value = subEntityType, Length = 256 },
+                            SubRelation = new DbString { Value = subRelation, Length = 64 },
+                            SubjectType = new DbString { Value = subjectType, Length = 256 },
+                            SubjectId = new DbString { Value = subjectId, Length = 64 },
+                            SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                        },
+                        cancellationToken: cancellationToken)));
+                }
                 return pooled;
             }
             catch
