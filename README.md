@@ -17,16 +17,79 @@ The implementation is inspired on [permify](https://github.com/Permify/permify) 
 
 <a href="https://bencher.dev/perf/valtuutus?key=true&reports_per_page=4&branches_per_page=8&testbeds_per_page=8&benchmarks_per_page=8&plots_per_page=8&reports_page=1&branches_page=1&testbeds_page=1&benchmarks_page=1&plots_page=1&report=f7c35e30-f513-402c-af44-56d8c876fff3&branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&lower_boundary=false&upper_boundary=false&clear=true&lower_value=false&upper_value=false&x_axis=date_time&end_time=1796083200000&utm_medium=share&utm_source=bencher&utm_content=img&utm_campaign=perf%2Bimg&utm_term=valtuutus"><img src="https://api.bencher.dev/v0/projects/valtuutus/perf/img?branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&end_time=1797083200000" title="valtuutus" alt="valtuutus - Bencher" /></a>
 
+## Upgrading from 0.7.x
+
+- **Target frameworks**: `netstandard2.0` is no longer supported. Minimum is `net8.0`.
+- **`LookupEntity` return type**: Changed from `HashSet<string>` to `LookupEntityPage`. Access entity IDs via `.EntityIds`.
+- **`IDataReaderProvider`**: If you implement a custom data provider, three methods now have a required `EntityScope? scope` parameter before `CancellationToken`.
+- **`SnapToken`**: Now required (non-nullable) in all data-layer filter types.
+
 ## Functionality
 The library is designed to be simple and easy to use. Each subset of functionality is divided in engines. The engines are:
 - [ICheckEngine](src/Valtuutus.Core/Engines/Check/ICheckEngine.cs): The engine that handles the answering of two questions:
   - `Can entity U perform action Y in resource Z`? For that, use the `Check` function.
   - `What permissions entity U have in resource Z`? For that, use the `SubjectPermission` function.
 - [ILookupSubjectEngine](src/Valtuutus.Core/Engines/LookupSubject/ILookupSubjectEngine.cs): The engine that can answer: `Which subjects of type T have permission Y on entity:X?` For that, use the `Lookup` function.
-- [ILookupEntityEngine](src/Valtuutus.Core/Engines/LookupEntity/ILookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function.
+- [ILookupEntityEngine](src/Valtuutus.Core/Engines/LookupEntity/ILookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function. Supports **scoped queries** and **cursor pagination** — see below.
 - [IDataWriterProvider](src/Valtuutus.Core/Data/IDataWriterProvider.cs): This is the provider that can write your relational or attribute data.
 - [IDbDataWriterProvider](src/Valtuutus.Data.Db/IDbDataWriterProvider.cs): Works similarly to `IDataWriterProvider`, with the addition of accepting a connection and transaction as parameters.
 - [Read here](Storing%20Data.md) about how the relational data is stored.
+
+## LookupEntity — scoped queries and pagination
+
+`LookupEntity` returns a `LookupEntityPage`:
+
+```csharp
+LookupEntityPage page = await lookupEntityEngine.LookupEntity(
+    new LookupEntityRequest("task", "view", "user", "alice"),
+    cancellationToken);
+
+// page.EntityIds — IReadOnlyList<string>
+// page.ContinuationToken — null if no more pages
+```
+
+### Scope — constrain results to a parent entity
+
+Use `EntityScope` when you need to answer a scoped question like
+**"which tasks in project X can this user view?"** — the same query you'd back a
+`GET /projects/{projectId}/tasks` endpoint with.
+
+Without scope, `LookupEntity` returns all tasks the user can view across the entire system.
+With scope, results are limited to tasks that have the specified relation to the given parent entity —
+so only tasks belonging to `project-1` are considered.
+
+```csharp
+var page = await lookupEntityEngine.LookupEntity(
+    new LookupEntityRequest("task", "view", "user", "alice")
+    {
+        Scope = new EntityScope(
+            Relation: "parent",      // the relation on "task" that points to its parent
+            SubjectType: "project",  // the parent entity type
+            SubjectId: "project-1"   // the specific parent to scope to
+        )
+    },
+    cancellationToken);
+```
+
+### Pagination
+
+```csharp
+string? token = null;
+do
+{
+    var page = await lookupEntityEngine.LookupEntity(
+        new LookupEntityRequest("task", "view", "user", "alice")
+        {
+            Scope = new EntityScope("parent", "project", "project-1"),
+            PageSize = 50,
+            ContinuationToken = token
+        },
+        cancellationToken);
+
+    Process(page.EntityIds);
+    token = page.ContinuationToken;
+} while (token is not null);
+```
 
 ## Usage
 Install the package from NuGet:
