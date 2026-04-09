@@ -23,10 +23,66 @@ The library is designed to be simple and easy to use. Each subset of functionali
   - `Can entity U perform action Y in resource Z`? For that, use the `Check` function.
   - `What permissions entity U have in resource Z`? For that, use the `SubjectPermission` function.
 - [ILookupSubjectEngine](src/Valtuutus.Core/Engines/LookupSubject/ILookupSubjectEngine.cs): The engine that can answer: `Which subjects of type T have permission Y on entity:X?` For that, use the `Lookup` function.
-- [ILookupEntityEngine](src/Valtuutus.Core/Engines/LookupEntity/ILookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function.
+- [ILookupEntityEngine](src/Valtuutus.Core/Engines/LookupEntity/ILookupEntityEngine.cs): The engine that can answer: `Which resources of type T can entity:X have permission Y?` For that, use the `LookupEntity` function. Supports **scoped queries** and **cursor pagination** — see below.
 - [IDataWriterProvider](src/Valtuutus.Core/Data/IDataWriterProvider.cs): This is the provider that can write your relational or attribute data.
 - [IDbDataWriterProvider](src/Valtuutus.Data.Db/IDbDataWriterProvider.cs): Works similarly to `IDataWriterProvider`, with the addition of accepting a connection and transaction as parameters.
 - [Read here](Storing%20Data.md) about how the relational data is stored.
+
+## LookupEntity — scoped queries and pagination
+
+`LookupEntity` returns a `LookupEntityPage`:
+
+```csharp
+LookupEntityPage page = await lookupEntityEngine.LookupEntity(
+    new LookupEntityRequest("task", "view", "user", "alice"),
+    cancellationToken);
+
+// page.EntityIds — IReadOnlyList<string>
+// page.ContinuationToken — null if no more pages
+```
+
+### Scope — constrain results to a parent entity
+
+Use `EntityScope` when you need to answer a scoped question like
+**"which tasks in project X can this user view?"** — the same query you'd back a
+`GET /projects/{projectId}/tasks` endpoint with.
+
+Without scope, `LookupEntity` returns all tasks the user can view across the entire system.
+With scope, results are limited to tasks that have the specified relation to the given parent entity —
+so only tasks belonging to `project-1` are considered.
+
+```csharp
+var page = await lookupEntityEngine.LookupEntity(
+    new LookupEntityRequest("task", "view", "user", "alice")
+    {
+        Scope = new EntityScope(
+            Relation: "parent",      // the relation on "task" that points to its parent
+            SubjectType: "project",  // the parent entity type
+            SubjectId: "project-1"   // the specific parent to scope to
+        )
+    },
+    cancellationToken);
+```
+
+### Pagination
+
+```csharp
+string? token = null;
+do
+{
+    var page = await lookupEntityEngine.LookupEntity(
+        new LookupEntityRequest("task", "view", "user", "alice")
+        {
+            Scope = new EntityScope("parent", "project", "project-1"),
+            PageSize = 50,
+            ContinuationToken = token
+        },
+        cancellationToken);
+
+    Process(page.EntityIds);
+    token = page.ContinuationToken;
+} while (token is not null);
+```
 
 ## Usage
 Install the package from NuGet:

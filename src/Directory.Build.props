@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.7.3.1-beta</VersionPrefix>
+    <VersionPrefix>0.8.0-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,8 +17,18 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.7.3.1-beta:
-      - FIX: LookupEntityEngine throwing nullreference (#96)
+    <PackageReleaseNotes>Version 0.8.0-beta:
+      BREAKING: Dropped netstandard2.0 — targets are net8.0, net9.0, net10.0
+      BREAKING: LookupEntity now returns LookupEntityPage instead of HashSet&lt;string&gt;
+      BREAKING: IDataReaderProvider methods gain a required EntityScope? scope parameter
+      BREAKING: SnapToken is now required (non-nullable) in data-layer filter types
+      NEW: net10.0 target framework support
+      NEW: LookupEntity parent-scoped queries via EntityScope
+      NEW: Cursor pagination for LookupEntity via PageSize + ContinuationToken
+      PERF: ~93% allocation reduction in LookupEntity engine
+      PERF: CheckEngine memoization, reachability pruning, and batched dispatch
+      PERF: Two-hop and TTU EXISTS JOIN eliminates extra DB round-trips
+      PERF: Native Npgsql hot-path readers for relation queries
     </PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup>
