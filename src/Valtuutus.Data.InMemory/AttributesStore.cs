@@ -77,7 +77,7 @@ internal sealed class AttributesStore : IDisposable
         return result;
     }
 
-    public Dictionary<(string, string), AttributeTuple> GetByNames(EntityAttributesFilter filter)
+    public Dictionary<(string, string), AttributeTuple> GetByNames(EntityAttributesFilter filter, HashSet<string>? scopedEntityIds = null)
     {
         using var _ = Read();
         var result = new Dictionary<(string, string), AttributeTuple>(filter.Attributes.Length);
@@ -88,6 +88,7 @@ internal sealed class AttributesStore : IDisposable
             foreach (var e in bucket)
             {
                 if (!IsVisible(e, snap)) continue;
+                if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Attribute.EntityId)) continue;
                 var k = (e.Attribute.Attribute, e.Attribute.EntityId);
                 if (!result.ContainsKey(k)) result[k] = e.Attribute;
             }

@@ -122,7 +122,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType);
+            return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType, scope);
         }
         finally
         {
@@ -156,7 +156,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId);
+            return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope);
         }
         finally
         {
@@ -199,7 +199,23 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            return _attributes.GetByNames(filter);
+            HashSet<string>? scopedEntityIds = null;
+            if (scope.HasValue)
+            {
+                var s = scope.Value;
+                var scopeFilter = new EntityRelationFilter
+                {
+                    EntityType = filter.EntityType,
+                    Relation = s.Relation,
+                    SnapToken = filter.SnapToken
+                };
+                using var scopedRelations = _relations.GetRelationsWithSubjectIds(scopeFilter, [s.SubjectId], s.SubjectType);
+                if (scopedRelations.Count == 0)
+                    return new Dictionary<(string, string), AttributeTuple>(0);
+                scopedEntityIds = new HashSet<string>(scopedRelations.Count);
+                foreach (var r in scopedRelations) scopedEntityIds.Add(r.EntityId);
+            }
+            return _attributes.GetByNames(filter, scopedEntityIds);
         }
         finally
         {

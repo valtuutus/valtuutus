@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Data.InMemory;
@@ -142,18 +143,39 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
-    public PooledList<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, string[] subjectIds, string subjectType)
+    public PooledList<RelationTuple> GetRelationsWithSubjectIds(EntityRelationFilter filter, string[] subjectIds, string subjectType, EntityScope? scope = null)
     {
         using var _ = Read();
         if (!_byRelationSubjectType.TryGetValue((filter.EntityType, filter.Relation, subjectType), out var bucket))
             return PooledList<RelationTuple>.Rent();
 
+        // If scope is set, build a HashSet of entity IDs that satisfy the scope relation
+        HashSet<string>? scopedEntityIds = null;
+        if (scope.HasValue)
+        {
+            var s = scope.Value;
+            if (_byRelationSubjectType.TryGetValue((filter.EntityType, s.Relation, s.SubjectType), out var scopeBucket))
+            {
+                scopedEntityIds = new HashSet<string>();
+                var snap = filter.SnapToken;
+                foreach (var e in scopeBucket)
+                {
+                    if (!IsVisible(e, snap)) continue;
+                    if (e.Relation.SubjectId != s.SubjectId) continue;
+                    scopedEntityIds.Add(e.Relation.EntityId);
+                }
+            }
+            if (scopedEntityIds is null || scopedEntityIds.Count == 0)
+                return PooledList<RelationTuple>.Rent();
+        }
+
         var result = PooledList<RelationTuple>.Rent();
-        var snap = filter.SnapToken;
+        var snapToken = filter.SnapToken;
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapToken)) continue;
             if (!subjectIds.Contains(e.Relation.SubjectId)) continue;
+            if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
             result.Add(e.Relation);
         }
         return result;
@@ -161,7 +183,7 @@ internal sealed class RelationsStore : IDisposable
 
     public PooledList<RelationTuple> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
-        string subjectType, string subjectId)
+        string subjectType, string subjectId, EntityScope? scope = null)
     {
         using var _ = Read();
         var snap = mainFilter.SnapToken;
@@ -181,6 +203,24 @@ internal sealed class RelationsStore : IDisposable
         if (intermediateIds is null || intermediateIds.Count == 0)
             return PooledList<RelationTuple>.Rent();
 
+        HashSet<string>? scopedEntityIds = null;
+        if (scope.HasValue)
+        {
+            var s = scope.Value;
+            if (_byRelationSubjectType.TryGetValue((mainFilter.EntityType, s.Relation, s.SubjectType), out var scopeBucket))
+            {
+                scopedEntityIds = new HashSet<string>();
+                foreach (var e in scopeBucket)
+                {
+                    if (!IsVisible(e, snap)) continue;
+                    if (e.Relation.SubjectId != s.SubjectId) continue;
+                    scopedEntityIds.Add(e.Relation.EntityId);
+                }
+            }
+            if (scopedEntityIds is null || scopedEntityIds.Count == 0)
+                return PooledList<RelationTuple>.Rent();
+        }
+
         // Step 2: find main entities whose subject is in the intermediate set.
         if (!_byRelationSubjectType.TryGetValue((mainFilter.EntityType, mainFilter.Relation, subEntityType), out var mainBucket))
             return PooledList<RelationTuple>.Rent();
@@ -190,6 +230,7 @@ internal sealed class RelationsStore : IDisposable
         {
             if (!IsVisible(e, snap)) continue;
             if (!intermediateIds.Contains(e.Relation.SubjectId)) continue;
+            if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
             result.Add(e.Relation);
         }
         return result;
