@@ -1,6 +1,8 @@
 on:
   push:
-    branches: main
+    branches:
+      - main
+      - dev
 
 jobs:
   benchmark_base_branch:
@@ -30,7 +32,7 @@ jobs:
             bencher run \
             --project valtuutus \
             --token "$BENCHER_API_TOKEN" \
-            --branch main \
+            --branch "${{ github.ref_name }}" \
             --testbed ubuntu-latest \
             --threshold-measure latency \
             --threshold-test t_test \
