@@ -50,6 +50,22 @@ public abstract class BenchmarkBase
             SubjectType = "user", SubjectId = UserId
         }, CancellationToken.None);
 
+    /// <summary>
+    /// Same as LookupEntity but scoped to a single organization via a DB-level JOIN.
+    /// Answers "which projects in org X can user Y edit?" — the primary use case for
+    /// scoped lookup (e.g. GET /orgs/{id}/projects).
+    /// Expected to be faster than the unscoped variant because the JOIN pre-filters
+    /// the candidate set to ~100 projects instead of all 5000.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_Scoped")]
+    public async Task<LookupEntityPage> LookupEntity_Scoped()
+        => await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "edit", EntityType = "project",
+            SubjectType = "user", SubjectId = UserId,
+            Scope = new EntityScope("org", "organization", OrgId)
+        }, CancellationToken.None);
+
     // ── diamond scenarios ───────────────────────────────────────────────────
 
     /// <summary>
