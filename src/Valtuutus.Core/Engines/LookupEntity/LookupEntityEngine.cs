@@ -342,7 +342,7 @@ public sealed class LookupEntityEngine(
 
         var attributeArguments = node.GetArgsAttributesNames();
 
-        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments) + "|" + req.Scope?.SubjectId;
+        var cacheKey = req.EntityType + "|" + string.Join(",", attributeArguments) + "|" + req.Scope?.Relation + "|" + req.Scope?.SubjectType + "|" + req.Scope?.SubjectId;
         var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,
             static (_, state) => state.reader.GetAttributes(
                 new EntityAttributesFilter

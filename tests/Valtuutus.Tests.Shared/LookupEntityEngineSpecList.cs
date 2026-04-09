@@ -349,7 +349,7 @@ public static class LookupEntityEngineSpecList
         },
     };
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>, string?>
         PaginatedLookup => new()
     {
         {
@@ -361,7 +361,40 @@ public static class LookupEntityEngineSpecList
             ],
             [],
             new LookupEntityRequest("task", "view", "user", "alice"),
-            new List<string> { "task1", "task2" }
+            new List<string> { "task1", "task2" },
+            null   // no pagination, token must be null
+        },
+        {
+            // Exactly pageSize results — null token (no more pages)
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "aaa", "parent", "project", "proj1"),
+                new("task", "bbb", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1"),
+                PageSize = 2
+            },
+            new List<string> { "aaa", "bbb" },
+            null   // exactly pageSize, so no next page
+        },
+        {
+            // PageSize = 1, first page — token set to base64("aaa")
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "aaa", "parent", "project", "proj1"),
+                new("task", "bbb", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1"),
+                PageSize = 1
+            },
+            new List<string> { "aaa" },
+            "YWFh"   // base64("aaa") — token for next page
         },
     };
 }

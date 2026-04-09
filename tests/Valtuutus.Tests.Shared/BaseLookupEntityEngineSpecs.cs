@@ -387,17 +387,18 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         result.EntityIds.Should().BeEquivalentTo(expected);
     }
 
-    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>, string?>
         PaginatedLookup = LookupEntityEngineSpecList.PaginatedLookup;
 
     [Theory]
     [MemberData(nameof(PaginatedLookup))]
     public async Task PaginatedLookupShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes,
-        LookupEntityRequest request, IReadOnlyList<string> expected)
+        LookupEntityRequest request, IReadOnlyList<string> expected, string? expectedToken)
     {
         var engine = await CreateEngine(tuples, attributes);
         var result = await engine.LookupEntity(request, default);
         result.EntityIds.Should().BeEquivalentTo(expected);
+        result.ContinuationToken.Should().Be(expectedToken);
     }
 
     [Fact]
