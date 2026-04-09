@@ -464,7 +464,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
-    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken, EntityScope? scope = null)
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -573,7 +573,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
-        string subjectType, string subjectId, CancellationToken cancellationToken, EntityScope? scope = null)
+        string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -694,7 +694,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         }
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken, EntityScope? scope = null)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);

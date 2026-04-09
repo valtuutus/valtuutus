@@ -381,6 +381,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             filter with { SnapToken = initialSnapToken },
             ["charlie", "alice", "bob"],
             "user",
+            null,
             default
         );
 
@@ -394,6 +395,7 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             filter with { SnapToken = newSnapToken },
             ["charlie", "alice", "bob"],
             "user",
+            null,
             default
         );
         relationsWithNewToken.Should().BeEquivalentTo(new List<RelationTuple>

@@ -76,7 +76,7 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <param name="scope">Optional entity scope to filter results.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and subject IDs.</returns>
-    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, CancellationToken cancellationToken, EntityScope? scope = null);
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
@@ -89,8 +89,8 @@ public interface IDataReaderProvider
         string subRelation,
         string subjectType,
         string subjectId,
-        CancellationToken cancellationToken,
-        EntityScope? scope = null);
+        EntityScope? scope,
+        CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a single AttributeTuple based on the provided filter.
@@ -118,7 +118,7 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <param name="scope">Optional entity scope to filter results.</param>
     /// <returns>A Dictionary of AttributeTuples matching the filter criteria.</returns>
-    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken, EntityScope? scope = null);
+    Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of AttributeTuples with specified entity IDs.

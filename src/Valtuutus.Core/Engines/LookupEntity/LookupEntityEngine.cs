@@ -350,7 +350,7 @@ public sealed class LookupEntityEngine(
                     Attributes = state.attributeArguments,
                     EntityType = state.req.EntityType,
                     SnapToken = state.req.SnapToken.Value
-                }, state.ct, state.req.Scope),
+                }, state.req.Scope, state.ct),
             (reader, attributeArguments, req, ct));
         var attributes = await attributesTask;
 
@@ -479,6 +479,7 @@ public sealed class LookupEntityEngine(
                 },
                 [scope.SubjectId],
                 scope.SubjectType,
+                null,
                 ct);
             if (scopeRelations.Count == 0)
                 return ListPool<LookupEntityResult>.Rent();
@@ -594,8 +595,8 @@ public sealed class LookupEntityEngine(
             },
             req.SubjectsIds,
             req.SubjectType,
-            ct,
-            req.Scope);
+            req.Scope,
+            ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
         return result;
@@ -605,7 +606,7 @@ public sealed class LookupEntityEngine(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken ct)
     {
-        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, ct, scope);
+        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
         return result;

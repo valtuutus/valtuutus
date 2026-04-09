@@ -116,7 +116,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        string[] subjectsIds, string subjectType, CancellationToken cancellationToken, EntityScope? scope = null)
+        string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -150,7 +150,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
-        string subjectType, string subjectId, CancellationToken cancellationToken, EntityScope? scope = null)
+        string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
@@ -193,7 +193,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(
-        EntityAttributesFilter filter, CancellationToken cancellationToken, EntityScope? scope = null)
+        EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
