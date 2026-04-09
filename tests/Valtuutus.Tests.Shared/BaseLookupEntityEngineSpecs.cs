@@ -373,4 +373,88 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEmpty();
     }
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+        ScopedLookup = LookupEntityEngineSpecList.ScopedLookup;
+
+    [Theory]
+    [MemberData(nameof(ScopedLookup))]
+    public async Task ScopedLookupShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes,
+        LookupEntityRequest request, IReadOnlyList<string> expected)
+    {
+        var engine = await CreateEngine(tuples, attributes);
+        var result = await engine.LookupEntity(request, default);
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+        PaginatedLookup = LookupEntityEngineSpecList.PaginatedLookup;
+
+    [Theory]
+    [MemberData(nameof(PaginatedLookup))]
+    public async Task PaginatedLookupShouldReturnExpectedResult(RelationTuple[] tuples, AttributeTuple[] attributes,
+        LookupEntityRequest request, IReadOnlyList<string> expected)
+    {
+        var engine = await CreateEngine(tuples, attributes);
+        var result = await engine.LookupEntity(request, default);
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task PaginatedLookupShouldPageCorrectly()
+    {
+        var tuples = new RelationTuple[]
+        {
+            new("project", "proj1", "member", "user", "alice"),
+            new("task", "aaa", "parent", "project", "proj1"),
+            new("task", "bbb", "parent", "project", "proj1"),
+            new("task", "ccc", "parent", "project", "proj1"),
+            new("task", "ddd", "parent", "project", "proj1"),
+            new("task", "eee", "parent", "project", "proj1"),
+        };
+        var engine = await CreateEngine(tuples, []);
+
+        var req = new LookupEntityRequest("task", "view", "user", "alice")
+        {
+            Scope = new EntityScope("parent", "project", "proj1"),
+            PageSize = 2
+        };
+
+        var page1 = await engine.LookupEntity(req, default);
+        page1.EntityIds.Should().BeEquivalentTo(["aaa", "bbb"]);
+        page1.ContinuationToken.Should().NotBeNullOrEmpty();
+
+        var page2 = await engine.LookupEntity(req with { ContinuationToken = page1.ContinuationToken }, default);
+        page2.EntityIds.Should().BeEquivalentTo(["ccc", "ddd"]);
+        page2.ContinuationToken.Should().NotBeNullOrEmpty();
+
+        var page3 = await engine.LookupEntity(req with { ContinuationToken = page2.ContinuationToken }, default);
+        page3.EntityIds.Should().BeEquivalentTo(["eee"]);
+        page3.ContinuationToken.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ScopedLookupWithScopeRelationNotInSchemaShouldThrow()
+    {
+        var engine = await CreateEngine([], []);
+        var req = new LookupEntityRequest("task", "view", "user", "alice")
+        {
+            Scope = new EntityScope("nonexistent_relation", "project", "proj1")
+        };
+        var act = async () => await engine.LookupEntity(req, default);
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task PaginationWithMalformedCursorShouldThrow()
+    {
+        var engine = await CreateEngine([], []);
+        var req = new LookupEntityRequest("task", "view", "user", "alice")
+        {
+            PageSize = 2,
+            ContinuationToken = "!!!not-valid-base64!!!"
+        };
+        var act = async () => await engine.LookupEntity(req, default);
+        await act.Should().ThrowAsync<FormatException>();
+    }
 }

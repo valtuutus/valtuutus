@@ -301,4 +301,67 @@ public static class LookupEntityEngineSpecList
             new List<string> { TestsConsts.Workspaces.PublicWorkspace }
         }
     };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+        ScopedLookup => new()
+    {
+        {
+            // User can view all tasks in project 1 (alice is a member of proj1 and proj2)
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("project", "proj2", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+                new("task", "task2", "parent", "project", "proj1"),
+                new("task", "task3", "parent", "project", "proj2"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1")
+            },
+            new List<string> { "task1", "task2" }
+        },
+        {
+            // User has no access — scope returns empty even though tasks exist
+            [
+                new("project", "proj1", "member", "user", "bob"),
+                new("task", "task1", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "proj1")
+            },
+            new List<string>()
+        },
+        {
+            // Scope subject does not exist (no tuples match JOIN) — returns empty
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice")
+            {
+                Scope = new EntityScope("parent", "project", "nonexistent-project")
+            },
+            new List<string>()
+        },
+    };
+
+    public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
+        PaginatedLookup => new()
+    {
+        {
+            // No scope, no pagination — all results, null token
+            [
+                new("project", "proj1", "member", "user", "alice"),
+                new("task", "task1", "parent", "project", "proj1"),
+                new("task", "task2", "parent", "project", "proj1"),
+            ],
+            [],
+            new LookupEntityRequest("task", "view", "user", "alice"),
+            new List<string> { "task1", "task2" }
+        },
+    };
 }
