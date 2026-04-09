@@ -3,6 +3,8 @@ name: Run Benchmarks
 on:
   pull_request:
     types: [opened, reopened, edited, synchronize]
+    branches:
+      - dev
 
 jobs:
   benchmark_base_branch:
