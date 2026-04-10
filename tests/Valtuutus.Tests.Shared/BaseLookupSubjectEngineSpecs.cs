@@ -325,4 +325,31 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
         result.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task LookupSubject_Not_Relation_Returns_Subjects_That_Are_Not_Owner()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_owner := not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "editor", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("document", "non_owner", "user", "doc1"),
+            CancellationToken.None);
+
+        // alice is owner → excluded; bob is editor (exists in relation_tuples) but not owner → included
+        result.Should().Contain("bob");
+        result.Should().NotContain("alice");
+    }
 }

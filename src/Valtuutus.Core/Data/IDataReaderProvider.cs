@@ -138,5 +138,19 @@ public interface IDataReaderProvider
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A Dictionary of AttributeTuples matching the filter criteria.</returns>
     Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all distinct entity IDs of the given type that are NOT in <paramref name="excludeIds"/>.
+    /// Pass an empty collection to retrieve all entity IDs (no exclusion filter).
+    /// Implements DB-side set complement for negation support in LookupEntity.
+    /// </summary>
+    Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns all distinct subject IDs of the given subject type (direct tuples only, subject_relation IS NULL)
+    /// that are NOT in <paramref name="excludeIds"/>.
+    /// Implements DB-side set complement for negation support in LookupSubject.
+    /// </summary>
+    Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken);
 }
 

@@ -206,8 +206,18 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: false),
             PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: true),
+            PermissionOperation.Negate => NegateCheck(req, node.ExpressionNode!.Children[0], memo, ct),
             _ => throw new InvalidOperationException()
         };
+    }
+
+    private async Task<bool> NegateCheck(CheckRequest req, PermissionNode child, CheckMemo memo, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var result = child.Type == PermissionNodeType.Expression
+            ? await CheckExpression(req, child, memo, ct)
+            : await CheckLeaf(req, child, memo, ct);
+        return !result;
     }
 
     private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CancellationToken ct, bool isUnion)

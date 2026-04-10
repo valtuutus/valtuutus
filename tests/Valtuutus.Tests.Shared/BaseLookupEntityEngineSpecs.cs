@@ -631,4 +631,88 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         page2.EntityIds.Should().BeEquivalentTo(["ccc"]);
         page2.ContinuationToken.Should().BeNull();
     }
+
+    [Fact]
+    public async Task LookupEntity_Not_Relation_Returns_Entities_User_Does_Not_Own()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc2", "owner", "user", "bob"),
+                new RelationTuple("document", "doc3", "owner", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "non_owner", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEquivalentTo(["doc2", "doc3"]);
+    }
+
+    [Fact]
+    public async Task LookupEntity_Not_Inside_And_Returns_Entities_Viewer_But_Not_Owner()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation viewer @user;
+                permission restricted_view := viewer and not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "viewer", "user", "alice"),
+                new RelationTuple("document", "doc2", "viewer", "user", "alice"),
+                new RelationTuple("document", "doc3", "viewer", "user", "alice"),
+                new RelationTuple("document", "doc3", "owner", "user", "alice"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "restricted_view", "user", "alice"),
+            CancellationToken.None);
+
+        // doc1 and doc3: alice is both viewer and owner → fails not(owner)
+        // doc2: alice is viewer but not owner → passes
+        result.EntityIds.Should().BeEquivalentTo(["doc2"]);
+    }
+
+    [Fact]
+    public async Task LookupEntity_Not_Compound_Expression_Returns_Entities_User_Has_Neither_Relation()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_contributor := not(owner or editor);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc2", "editor", "user", "alice"),
+                new RelationTuple("document", "doc3", "owner", "user", "bob"),
+                new RelationTuple("document", "doc4", "editor", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "non_contributor", "user", "alice"),
+            CancellationToken.None);
+
+        // doc1: alice is owner → excluded; doc2: alice is editor → excluded
+        // doc3 and doc4: alice has neither relation → included
+        result.EntityIds.Should().BeEquivalentTo(["doc3", "doc4"]);
+    }
 }

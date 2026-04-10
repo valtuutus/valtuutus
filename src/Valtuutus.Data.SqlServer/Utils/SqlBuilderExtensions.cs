@@ -7,7 +7,7 @@ namespace Valtuutus.Data.SqlServer.Utils;
 
 internal static class SqlBuilderExtensions
 {
-    private const string TvpListIds = "TVP_ListIds";
+    internal const string TvpListIds = "TVP_ListIds";
     private const string EntityTypeFilter = "entity_type = @EntityType";
     private const string EntityIdFilter = "entity_id = @EntityId";
     private const string RelationFilter = "relation = @Relation";

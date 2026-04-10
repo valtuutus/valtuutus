@@ -58,6 +58,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _getRelationsWithMultiSubjectScopedSql;
     private static string? _getRelationsJoinedScopedSql;
     private static string? _getAttributesDictScopedSql;
+    private static string? _getEntityIdsExcludingSql;
+    private static string? _getSubjectIdsExcludingSql;
     private static readonly object Lock = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
@@ -281,6 +283,25 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                                 AND subject_type = @subject_type
                                 AND subject_id = @subject_id
                           )
+                        """;
+                    _getEntityIdsExcludingSql = $"""
+                        SELECT DISTINCT entity_id
+                        FROM (
+                            SELECT entity_id FROM {relationsTable}
+                            WHERE {SnapTokenPredicate} AND entity_type = @entity_type
+                            UNION
+                            SELECT entity_id FROM {attributesTable}
+                            WHERE {SnapTokenPredicate} AND entity_type = @entity_type
+                        ) universe
+                        WHERE entity_id <> ALL(@exclude_ids)
+                        """;
+                    _getSubjectIdsExcludingSql = $"""
+                        SELECT DISTINCT subject_id
+                        FROM {relationsTable}
+                        WHERE {SnapTokenPredicate}
+                          AND subject_type = @subject_type
+                          AND subject_relation = ''
+                          AND subject_id <> ALL(@exclude_ids)
                         """;
                     _getAttributesDictScopedSql = $"""
                         SELECT a.entity_type, a.entity_id, a.attribute, a.value
@@ -771,6 +792,54 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
             var rows = await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
                 queryTemplate.Parameters, cancellationToken: cancellationToken));
             return MaterializeAttributeDictionary(rows);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var conn = await _hotPathDataSource.OpenConnectionAsync(cancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = _getEntityIdsExcludingSql!;
+            cmd.Parameters.Add(new NpgsqlParameter<string>("entity_type", NpgsqlDbType.Varchar) { TypedValue = entityType });
+            cmd.Parameters.Add(new NpgsqlParameter<string>("snap_token", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken.Value });
+            cmd.Parameters.Add(new NpgsqlParameter<string[]>("exclude_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = excludeIds.ToArray() });
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            var result = new List<string>();
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var conn = await _hotPathDataSource.OpenConnectionAsync(cancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = _getSubjectIdsExcludingSql!;
+            cmd.Parameters.Add(new NpgsqlParameter<string>("subject_type", NpgsqlDbType.Varchar) { TypedValue = subjectType });
+            cmd.Parameters.Add(new NpgsqlParameter<string>("snap_token", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken.Value });
+            cmd.Parameters.Add(new NpgsqlParameter<string[]>("exclude_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = excludeIds.ToArray() });
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            var result = new List<string>();
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
         }
         finally
         {

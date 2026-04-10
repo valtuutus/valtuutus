@@ -253,6 +253,45 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         }
     }
 
+    public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var ids = _relations.GetAllEntityIds(entityType, snapToken);
+            _attributes.GetAllEntityIds(entityType, snapToken, ids);
+            var result = new List<string>(ids.Count);
+            foreach (var id in ids)
+                if (!excludeIds.Contains(id))
+                    result.Add(id);
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var ids = _relations.GetAllSubjectIds(subjectType, snapToken);
+            var result = new List<string>(ids.Count);
+            foreach (var id in ids)
+                if (!excludeIds.Contains(id))
+                    result.Add(id);
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

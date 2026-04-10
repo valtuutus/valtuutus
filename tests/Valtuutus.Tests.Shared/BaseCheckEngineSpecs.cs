@@ -808,4 +808,143 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         // assert
         result.Should().Be(shouldPass);
     }
+
+    [Fact]
+    public async Task Check_Not_Relation_Should_Return_False_For_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [new RelationTuple("document", "doc1", "owner", "user", "alice")],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Relation_Should_Return_True_For_Non_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [new RelationTuple("document", "doc1", "owner", "user", "alice")],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "bob"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_Not_Inside_And_Returns_False_When_Subject_Matches_Negate()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation viewer @user;
+                permission restricted_view := viewer and not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "viewer", "user", "alice"),
+            ],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Inside_And_Returns_True_When_Subject_Is_Viewer_But_Not_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation viewer @user;
+                permission restricted_view := viewer and not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "viewer", "user", "bob"),
+            ],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "bob"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_Not_Compound_Expression_Returns_False_When_Subject_Matches_Inner_Union()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_contributor := not(owner or editor);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "editor", "user", "alice"),
+            ],
+            [], schema);
+
+        // alice is editor → matches inner union → not(union) = false
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Compound_Expression_Returns_True_When_Subject_Matches_Nothing_Inside()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_contributor := not(owner or editor);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "editor", "user", "bob"),
+            ],
+            [], schema);
+
+        // charlie has neither relation → not(owner or editor) = true
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "charlie"), default);
+
+        result.Should().BeTrue();
+    }
 }

@@ -236,6 +236,33 @@ internal sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public HashSet<string> GetAllEntityIds(string entityType, SnapToken snap)
+    {
+        using var _ = Read();
+        var result = new HashSet<string>();
+        foreach (var e in _all)
+        {
+            if (e.Relation.EntityType != entityType) continue;
+            if (!IsVisible(e, snap)) continue;
+            result.Add(e.Relation.EntityId);
+        }
+        return result;
+    }
+
+    public HashSet<string> GetAllSubjectIds(string subjectType, SnapToken snap)
+    {
+        using var _ = Read();
+        var result = new HashSet<string>();
+        foreach (var e in _all)
+        {
+            if (e.Relation.SubjectType != subjectType) continue;
+            if (!e.Relation.IsDirectSubject()) continue;
+            if (!IsVisible(e, snap)) continue;
+            result.Add(e.Relation.SubjectId);
+        }
+        return result;
+    }
+
     public void Write(Ulid transactId, IEnumerable<RelationTuple> relations)
     {
         using var _ = Write();

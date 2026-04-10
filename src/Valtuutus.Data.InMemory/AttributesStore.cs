@@ -116,6 +116,17 @@ internal sealed class AttributesStore : IDisposable
         return result;
     }
 
+    public void GetAllEntityIds(string entityType, SnapToken snap, HashSet<string> target)
+    {
+        using var _ = Read();
+        foreach (var e in _all)
+        {
+            if (e.Attribute.EntityType != entityType) continue;
+            if (!IsVisible(e, snap)) continue;
+            target.Add(e.Attribute.EntityId);
+        }
+    }
+
     public void Write(Ulid transactId, IEnumerable<AttributeTuple> attributes)
     {
         var list = attributes as IList<AttributeTuple> ?? attributes.ToList();

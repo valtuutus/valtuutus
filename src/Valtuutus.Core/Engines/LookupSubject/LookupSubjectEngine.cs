@@ -115,8 +115,33 @@ public sealed class LookupSubjectEngine(
         {
             PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, ct, isUnion: false),
             PermissionOperation.Union => LookupExpressionChildren(req, node.Children, ct, isUnion: true),
+            PermissionOperation.Negate => LookupNegate(req, node.Children[0], ct),
             _ => throw new InvalidOperationException()
         };
+    }
+
+    private async Task<RelationOrAttributeTuples> LookupNegate(
+        LookupSubjectRequestInternal req, PermissionNode child, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var matching = await (child.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, child.ExpressionNode!, ct)
+            : LookupLeaf(req, child.LeafNode!, ct));
+
+        var matchingIds = new HashSet<string>();
+        if (matching.Type == RelationOrAttributeType.Relation && matching.RelationsTuples is { } tuples)
+            foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples))
+                matchingIds.Add(t.SubjectId);
+
+        var complementIds = await reader.GetSubjectIdsExcluding(
+            req.FinalSubjectType, matchingIds, req.SnapToken!.Value, ct);
+
+        var syntheticTuples = new List<RelationTuple>(complementIds.Count);
+        foreach (var id in complementIds)
+            syntheticTuples.Add(new RelationTuple(req.RootEntityType, req.RootEntityId, req.Permission,
+                req.FinalSubjectType, id));
+        return new RelationOrAttributeTuples(syntheticTuples);
     }
 
     private async Task<RelationOrAttributeTuples> LookupExpressionChildren(LookupSubjectRequestInternal req,

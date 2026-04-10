@@ -41,6 +41,7 @@ type
 permissionExpression
     : permissionExpression AND permissionExpression       #andPermissionExpression
     | permissionExpression OR permissionExpression        #orPermissionExpression
+    | NOT LPAREN permissionExpression RPAREN              #notPermissionExpression
     | functionCall                                        #functionCallPermissionExpression
     | ID (DOT ID)?                                        #identifierPermissionExpression
     | LPAREN permissionExpression RPAREN                  #parenthesisPermissionExpression

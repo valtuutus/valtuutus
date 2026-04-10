@@ -120,11 +120,65 @@ entity repository {
         var schemaFilePath = Assembly.GetExecutingAssembly()
             .GetManifestResourceNames()
             .First(c => c.EndsWith("example1.vtt"));
-        
+
         var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
-        
+
         var parseResult = new SchemaReader().Parse(schema);
-        
+
         parseResult.IsT0.Should().BeTrue();
-    } 
+    }
+
+    [Fact]
+    public void Should_parse_permission_with_single_negation()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+entity document {
+    relation owner @user;
+    permission view := not(owner);
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Should_parse_permission_with_negation_inside_union()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+entity document {
+    relation owner @user;
+    relation viewer @user;
+    permission view := viewer or not(owner);
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Should_parse_permission_with_negation_of_compound_expression()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+entity document {
+    relation owner @user;
+    relation editor @user;
+    permission view := not(owner and editor);
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Should_parse_permission_with_double_negation()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+entity document {
+    relation owner @user;
+    permission view := not(not(owner));
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
 }

@@ -21,6 +21,8 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
         {
             ValtuutusParser.AndPermissionExpressionContext andCtx => ParseIntersectExp(entityName, andCtx),
             ValtuutusParser.OrPermissionExpressionContext orCtx => ParseUnionExp(entityName, orCtx),
+            ValtuutusParser.NotPermissionExpressionContext notCtx =>
+                PermissionNode.Negate(BuildPermissionNode(entityName, notCtx.permissionExpression())),
             ValtuutusParser.IdentifierPermissionExpressionContext idCtx => ParseIdentifierExp(entityName, idCtx),
             ValtuutusParser.FunctionCallPermissionExpressionContext fnCtx => ParseFunctionCallExp(entityName, fnCtx),
             ValtuutusParser.ParenthesisPermissionExpressionContext parenCtx => BuildPermissionNode(entityName,

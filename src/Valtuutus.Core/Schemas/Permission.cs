@@ -12,6 +12,7 @@ internal enum PermissionOperation
 {
     Intersect,
     Union,
+    Negate,
 }
 
 internal enum PermissionNodeLeafType
@@ -164,6 +165,12 @@ internal record PermissionNode(PermissionNodeType Type)
                 PermissionNode = new PermissionNodeLeafPermission(permName)
             }
         };
+    }
+
+    public static PermissionNode Negate(PermissionNode child)
+    {
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Negate, [child]) };
     }
 
     public static PermissionNode Expression(string functionName, PermissionNodeExpArgument[] args)

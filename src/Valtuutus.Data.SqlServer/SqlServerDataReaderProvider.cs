@@ -1,3 +1,4 @@
+using System.Data;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -42,6 +43,8 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _getRelationsWithSingleSubjectScopedSql;
     private static string? _getRelationsJoinedScopedSql;
     private static string? _getAttributesDictScopedSql;
+    private static string? _getEntityIdsExcludingSql;
+    private static string? _getSubjectIdsExcludingSql;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -153,6 +156,26 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                 AND subject_type = @SubjectType
                                 AND subject_id = @SubjectId
                           )
+                        """;
+                    var snapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+                    _getEntityIdsExcludingSql ??= $"""
+                        SELECT DISTINCT entity_id
+                        FROM (
+                            SELECT entity_id FROM {relationsTable}
+                            WHERE {snapPredicate} AND entity_type = @EntityType
+                            UNION
+                            SELECT entity_id FROM {attributesTable}
+                            WHERE {snapPredicate} AND entity_type = @EntityType
+                        ) universe
+                        WHERE entity_id NOT IN (SELECT id FROM @ExcludeIds)
+                        """;
+                    _getSubjectIdsExcludingSql ??= $"""
+                        SELECT DISTINCT subject_id
+                        FROM {relationsTable}
+                        WHERE {snapPredicate}
+                          AND subject_type = @SubjectType
+                          AND subject_relation = ''
+                          AND subject_id NOT IN (SELECT id FROM @ExcludeIds)
                         """;
                     _getAttributesDictScopedSql ??= $"""
                         SELECT a.entity_type, a.entity_id, a.attribute, a.value
@@ -647,6 +670,60 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                 },
                 cancellationToken: cancellationToken));
             return result == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            using var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var id in excludeIds) dt.Rows.Add(id);
+            var rows = await connection.QueryAsync<string>(new CommandDefinition(
+                _getEntityIdsExcludingSql!,
+                new
+                {
+                    EntityType = new DbString { Value = entityType, Length = 256 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
+                    ExcludeIds = dt.AsTableValuedParameter(SqlBuilderExtensions.TvpListIds)
+                },
+                cancellationToken: cancellationToken));
+            return rows is List<string> list ? list : rows.ToList();
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            using var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var id in excludeIds) dt.Rows.Add(id);
+            var rows = await connection.QueryAsync<string>(new CommandDefinition(
+                _getSubjectIdsExcludingSql!,
+                new
+                {
+                    SubjectType = new DbString { Value = subjectType, Length = 256 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
+                    ExcludeIds = dt.AsTableValuedParameter(SqlBuilderExtensions.TvpListIds)
+                },
+                cancellationToken: cancellationToken));
+            return rows is List<string> list ? list : rows.ToList();
         }
         finally
         {

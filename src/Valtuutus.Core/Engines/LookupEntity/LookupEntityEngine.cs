@@ -153,6 +153,7 @@ public sealed class LookupEntityEngine(
         {
             PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, ct, isUnion: false),
             PermissionOperation.Union => LookupExpressionChildren(req, node.Children, ct, isUnion: true),
+            PermissionOperation.Negate => LookupNegate(req, node.Children[0], ct),
             _ => throw new InvalidOperationException()
         };
     }
@@ -164,6 +165,9 @@ public sealed class LookupEntityEngine(
 
         if (!isUnion && HasMixedAttributeAndRelationChildren(children))
             return await LookupIntersectionConstrained(req, children, ct);
+
+        if (!isUnion && HasNegateAndPositiveChildren(children))
+            return await LookupIntersectionWithNegate(req, children, ct);
 
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
         var buffer = pool.Rent(children.Count);
@@ -638,6 +642,127 @@ public sealed class LookupEntityEngine(
         ListPool<LookupEntityResult>.Return(mainResult);
 
         return result;
+    }
+
+    private static bool HasNegateAndPositiveChildren(List<PermissionNode> children)
+    {
+        bool hasNegate = false, hasPositive = false;
+        foreach (var child in children)
+        {
+            if (child.Type == PermissionNodeType.Expression &&
+                child.ExpressionNode!.Operation == PermissionOperation.Negate)
+                hasNegate = true;
+            else
+                hasPositive = true;
+            if (hasNegate && hasPositive) return true;
+        }
+        return false;
+    }
+
+    private async Task<List<LookupEntityResult>> LookupNegate(
+        LookupEntityRequestInternal req, PermissionNode child, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var matching = await (child.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, child.ExpressionNode!, ct)
+            : LookupLeaf(req, child.LeafNode!, ct));
+
+        List<string> excludeIds;
+        try
+        {
+            excludeIds = new List<string>(matching.Count);
+            foreach (ref readonly var m in CollectionsMarshal.AsSpan(matching))
+                excludeIds.Add(m.EntityId);
+        }
+        finally
+        {
+            ListPool<LookupEntityResult>.Return(matching);
+        }
+
+        var complementIds = await reader.GetEntityIdsExcluding(req.EntityType, excludeIds, req.SnapToken!.Value, ct);
+
+        var result = ListPool<LookupEntityResult>.Rent();
+        foreach (var id in complementIds)
+            result.Add(new LookupEntityResult(req.EntityType, id));
+        return result;
+    }
+
+    // Fast path B: when Intersect has both positive and Negate children.
+    // Evaluates positive children first, then subtracts the Negate children's matches
+    // in-memory — avoids the full-table-scan GetEntityIdsExcluding DB call.
+    private async Task<List<LookupEntityResult>> LookupIntersectionWithNegate(
+        LookupEntityRequestInternal req, List<PermissionNode> children, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
+        var positiveBuffer = pool.Rent(children.Count);
+        var negateBuffer = pool.Rent(children.Count);
+        int positiveCount = 0, negateCount = 0;
+        List<LookupEntityResult>[]? positiveResults = null;
+        List<LookupEntityResult>[]? negateResults = null;
+
+        try
+        {
+            foreach (var child in children)
+            {
+                if (child.Type == PermissionNodeType.Expression &&
+                    child.ExpressionNode!.Operation == PermissionOperation.Negate)
+                {
+                    var inner = child.ExpressionNode.Children[0];
+                    negateBuffer[negateCount++] = inner.Type == PermissionNodeType.Expression
+                        ? LookupExpression(req, inner.ExpressionNode!, ct)
+                        : LookupLeaf(req, inner.LeafNode!, ct);
+                }
+                else
+                {
+                    positiveBuffer[positiveCount++] = child.Type == PermissionNodeType.Expression
+                        ? LookupExpression(req, child.ExpressionNode!, ct)
+                        : LookupLeaf(req, child.LeafNode!, ct);
+                }
+            }
+
+            positiveResults = await Task.WhenAll(new ArraySegment<Task<List<LookupEntityResult>>>(positiveBuffer, 0, positiveCount));
+            negateResults = await Task.WhenAll(new ArraySegment<Task<List<LookupEntityResult>>>(negateBuffer, 0, negateCount));
+
+            // Build positive intersection set
+            var positiveSet = new HashSet<string>(positiveResults[0].Count);
+            foreach (ref readonly var item in CollectionsMarshal.AsSpan(positiveResults[0]))
+                positiveSet.Add(item.EntityId);
+
+            for (var i = 1; i < positiveResults.Length; i++)
+            {
+                var ids = new HashSet<string>(positiveResults[i].Count);
+                foreach (ref readonly var item in CollectionsMarshal.AsSpan(positiveResults[i]))
+                    ids.Add(item.EntityId);
+                positiveSet.IntersectWith(ids);
+                if (positiveSet.Count == 0)
+                    return ListPool<LookupEntityResult>.Rent();
+            }
+
+            // Build exclusion set from all Negate children evaluations
+            var excludeSet = new HashSet<string>();
+            foreach (var negResult in negateResults)
+                foreach (ref readonly var item in CollectionsMarshal.AsSpan(negResult))
+                    excludeSet.Add(item.EntityId);
+
+            // Return positiveSet - excludeSet
+            var result = ListPool<LookupEntityResult>.Rent();
+            foreach (var entityId in positiveSet)
+                if (!excludeSet.Contains(entityId))
+                    result.Add(new LookupEntityResult(req.EntityType, entityId));
+            return result;
+        }
+        finally
+        {
+            pool.Return(positiveBuffer, clearArray: true);
+            pool.Return(negateBuffer, clearArray: true);
+            if (positiveResults is not null)
+                foreach (var r in positiveResults) ListPool<LookupEntityResult>.Return(r);
+            if (negateResults is not null)
+                foreach (var r in negateResults) ListPool<LookupEntityResult>.Return(r);
+        }
     }
 
     private static async Task<List<LookupEntityResult>> UnionEntities(
