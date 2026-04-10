@@ -158,6 +158,36 @@ builder.Services.AddValtuutusCore("""
 
 You can see that you can compose complex permissions by using these two operators to achieve your desired access control logic.
 
+#### Negation
+The `not()` operator negates a permission expression, returning `true` when the inner expression evaluates to `false`, and vice versa. It can wrap any expression — a single relation, an attribute, or a compound `and`/`or` expression.
+
+```csharp
+builder.Services.AddValtuutusCore("""
+    entity user {}
+    entity document {
+        relation owner @user;
+        relation viewer @user;
+        // true for any user who is NOT an owner
+        permission non_owner := not(owner);
+        // true for viewers who are not owners
+        permission read_only := viewer and not(owner);
+        // true for users who are neither owner nor viewer
+        permission outsider := not(owner or viewer);
+    }
+""");
+```
+
+`not()` composes freely with `and` and `or`. Some useful patterns:
+
+| Expression | Meaning |
+|---|---|
+| `not(owner)` | User does not have the `owner` relation |
+| `viewer and not(owner)` | User is a viewer but not an owner |
+| `not(owner or editor)` | User has neither `owner` nor `editor` |
+| `not(owner and editor)` | User is not simultaneously owner and editor |
+
+> **Note:** Negation is evaluated against the set of subjects/entities known in the data store. If no tuples or attributes exist for a given type, the complement may be empty.
+
 ## Attribute Based Permissions (ABAC)
 To support Attribute Based Access Control (ABAC) in Valtuutus, you can define attributes for entities and use them in your permissions.
 
