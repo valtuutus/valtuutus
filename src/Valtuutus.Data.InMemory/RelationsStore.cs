@@ -288,16 +288,18 @@ internal sealed class RelationsStore : IDisposable
     {
         using var _ = Write();
         foreach (var f in filters)
-        foreach (var e in _all)
         {
-            if (e.DeletedTxId is not null) continue;
-            if (!string.IsNullOrWhiteSpace(f.EntityId) && f.EntityId != e.Relation.EntityId) continue;
-            if (!string.IsNullOrWhiteSpace(f.EntityType) && f.EntityType != e.Relation.EntityType) continue;
-            if (!string.IsNullOrWhiteSpace(f.SubjectId) && f.SubjectId != e.Relation.SubjectId) continue;
-            if (!string.IsNullOrWhiteSpace(f.SubjectType) && f.SubjectType != e.Relation.SubjectType) continue;
-            if (!string.IsNullOrWhiteSpace(f.SubjectRelation) && f.SubjectRelation != e.Relation.SubjectRelation) continue;
-            if (!string.IsNullOrWhiteSpace(f.Relation) && f.Relation != e.Relation.Relation) continue;
-            e.DeletedTxId = transactId;
+            foreach (var e in _all)
+            {
+                if (e.DeletedTxId is not null) continue;
+                if (!string.IsNullOrWhiteSpace(f.EntityId) && f.EntityId != e.Relation.EntityId) continue;
+                if (!string.IsNullOrWhiteSpace(f.EntityType) && f.EntityType != e.Relation.EntityType) continue;
+                if (!string.IsNullOrWhiteSpace(f.SubjectId) && f.SubjectId != e.Relation.SubjectId) continue;
+                if (!string.IsNullOrWhiteSpace(f.SubjectType) && f.SubjectType != e.Relation.SubjectType) continue;
+                if (!string.IsNullOrWhiteSpace(f.SubjectRelation) && f.SubjectRelation != e.Relation.SubjectRelation) continue;
+                if (!string.IsNullOrWhiteSpace(f.Relation) && f.Relation != e.Relation.Relation) continue;
+                e.DeletedTxId = transactId;
+            }
         }
     }
 

@@ -204,8 +204,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         return node.ExpressionNode!.Operation switch
         {
-            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: false),
-            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: true),
+            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: false, ct),
+            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: true, ct),
             PermissionOperation.Negate => NegateCheck(req, node.ExpressionNode!.Children[0], memo, ct),
             _ => throw new InvalidOperationException()
         };
@@ -220,7 +220,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return !result;
     }
 
-    private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CancellationToken ct, bool isUnion)
+    private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 

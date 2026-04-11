@@ -151,15 +151,15 @@ public sealed class LookupEntityEngine(
     {
         return node.Operation switch
         {
-            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, ct, isUnion: false),
-            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, ct, isUnion: true),
+            PermissionOperation.Intersect => LookupExpressionChildren(req, node.Children, isUnion: false, ct),
+            PermissionOperation.Union => LookupExpressionChildren(req, node.Children, isUnion: true, ct),
             PermissionOperation.Negate => LookupNegate(req, node.Children[0], ct),
             _ => throw new InvalidOperationException()
         };
     }
 
     private async Task<List<LookupEntityResult>> LookupExpressionChildren(LookupEntityRequestInternal req,
-        List<PermissionNode> children, CancellationToken ct, bool isUnion)
+        List<PermissionNode> children, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
