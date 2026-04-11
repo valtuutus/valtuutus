@@ -159,11 +159,12 @@ On the consuming project, add the source generator from nuget:
 dotnet add package Valtuutus.Lang.SourceGen
 ```
 
-Then add your schema as an **embedded resource** with the `.vtt` extension. In your `.csproj`:
+Then add your schema file with the `.vtt` extension to your `.csproj` as both an `EmbeddedResource` and an `AdditionalFiles` entry — both are required for the generator to run:
 
 ```xml
 <ItemGroup>
   <EmbeddedResource Include="schema.vtt" />
+  <AdditionalFiles Include="schema.vtt" />
 </ItemGroup>
 ```
 
