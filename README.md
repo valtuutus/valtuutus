@@ -27,6 +27,7 @@ The library is designed to be simple and easy to use. Each subset of functionali
 - [IDataWriterProvider](src/Valtuutus.Core/Data/IDataWriterProvider.cs): This is the provider that can write your relational or attribute data.
 - [IDbDataWriterProvider](src/Valtuutus.Data.Db/IDbDataWriterProvider.cs): Works similarly to `IDataWriterProvider`, with the addition of accepting a connection and transaction as parameters.
 - [Read here](Storing%20Data.md) about how the relational data is stored.
+- [Read here](Using%20the%20Engines.md) for engine usage examples (Check, SubjectPermission, LookupSubject, LookupEntity).
 
 ## LookupEntity — scoped queries and pagination
 
@@ -84,6 +85,20 @@ do
 } while (token is not null);
 ```
 
+## Documentation
+
+| Guide | Description |
+|---|---|
+| [Getting Started](Getting%20Started.md) | End-to-end quickstart — install, configure, write data, check permissions |
+| [Modeling Authorization](Modeling%20Authorization.md) | Schema DSL walkthrough with the GitHub example |
+| [Schema Reference](Schema%20Reference.md) | Complete reference for every keyword, operator, and type in the DSL |
+| [Authorization Patterns](Authorization%20Patterns.md) | Ready-made patterns: RBAC, hierarchical RBAC, ABAC, multi-tenancy |
+| [Using the Engines](Using%20the%20Engines.md) | Code examples for Check, SubjectPermission, LookupSubject, LookupEntity, depth |
+| [Storing Data](Storing%20Data.md) | Writing, deleting, snap tokens, source generator |
+| [Testing](Testing.md) | Unit-testing your authorization model with the InMemory provider |
+| [Caching](Caching.md) | Reducing database load with FusionCache |
+| [Telemetry](Telemetry.md) | OpenTelemetry activity sources, emitted spans, and what to monitor |
+
 ## Usage
 Install the package from NuGet:
 
@@ -133,7 +148,41 @@ If you are using a DB provider to store your data, please look at the scripts th
 - [SqlServer](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
 
 ## Schema and table name customization
-Our database providers allows the customization of schema and table names to your needs. When adding to dependency injection, checkout the optional parameter.
+
+Both relational providers accept an optional options object to customise the database schema and table names. Pass it as the second argument to `AddPostgres` or `AddSqlServer`:
+
+```csharp
+// Postgres — defaults: schema="public", tables="transactions", "relation_tuples", "attributes"
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddPostgres(
+        _ => () => new NpgsqlConnection(connectionString),
+        new ValtuutusPostgresOptions(
+            schema:                 "authz",
+            transactionsTableName:  "transactions",
+            relationsTableName:     "relation_tuples",
+            attributesTableName:    "attributes"));
+
+// SQL Server — defaults: schema="dbo", same table names
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddSqlServer(
+        _ => () => new SqlConnection(connectionString),
+        new ValtuutusSqlServerOptions(
+            schema:                 "authz",
+            transactionsTableName:  "transactions",
+            relationsTableName:     "relation_tuples",
+            attributesTableName:    "attributes"));
+```
+
+Make sure the migration script targets the same schema and table names you configure here.
+
+`ValtuutusPostgresOptions` also exposes two Npgsql-specific properties for automatic prepared statements:
+
+| Property | Default | Meaning |
+|---|---|---|
+| `MaxAutoPrepare` | `64` | Maximum number of statements Npgsql will auto-prepare |
+| `AutoPrepareMinUsages` | `2` | Minimum executions before a statement is prepared |
+
+These map directly to [Npgsql's prepared statement feature](https://www.npgsql.org/doc/prepare.html) and can improve performance for repeated queries under load.
 
 ## Using query concurrent limiting
 It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:

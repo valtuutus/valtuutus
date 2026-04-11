@@ -31,7 +31,7 @@ builder.Services.AddValtuutusCore("""
         relation owner @user;
         relation maintainer @user @team#member;
         permission push := owner or maintainer and notArchived(archived);
-        permission read := public and (org.admin or owner or maintainer or org.member);
+        permission read := public and (parent.admin or owner or maintainer or parent.member);
         permission delete := parent.admin or owner;
    }
    
@@ -151,7 +151,7 @@ builder.Services.AddValtuutusCore("""
     ...
     entity repository {
         ...
-        permission read := org.admin and (owner or mantainer or org.member);
+        permission read := org.admin and (owner or maintainer or org.member);
     }
 """);
 ```
@@ -186,7 +186,17 @@ builder.Services.AddValtuutusCore("""
 | `not(owner or editor)` | User has neither `owner` nor `editor` |
 | `not(owner and editor)` | User is not simultaneously owner and editor |
 
-> **Note:** Negation is evaluated against the set of subjects/entities known in the data store. If no tuples or attributes exist for a given type, the complement may be empty.
+> **Important — data store requirement for lookup operations:**
+>
+> `not()` behaves differently depending on which engine is called:
+>
+> - **`Check()`** — works correctly regardless of whether the subject has any relation tuples. If a user has no `owner` tuple, `not(owner)` evaluates to `true` as expected.
+>
+> - **`LookupSubject` / `LookupEntity`** — the complement is computed from subjects/entities that are **already known in the data store** (i.e. have at least one relation tuple). Subjects with no tuples at all are invisible to the engine and will **not** be included in the result.
+>
+> **Practical consequence:** if you use `not(owner)` in a `LookupSubject` call to find all non-owners of a document, only users who already have *some* relation tuple (e.g. `viewer`, `editor`, etc.) will be considered. A user with no tuples at all won't appear in the results, even though they are technically not an owner.
+>
+> To ensure `not()` works correctly in lookup operations, make sure every subject that should participate in the permission model has at least one relation tuple stored for the relevant entity type.
 
 ## Attribute Based Permissions (ABAC)
 To support Attribute Based Access Control (ABAC) in Valtuutus, you can define attributes for entities and use them in your permissions.
@@ -204,7 +214,7 @@ builder.Services.AddValtuutusCore("""
     entity repository {
         ...
         attribute public bool;
-        permission read := org.admin and (owner or mantainer or org.member or public);
+        permission read := org.admin and (owner or maintainer or org.member or public);
     }
 """);
 ```
@@ -216,7 +226,7 @@ builder.Services.AddValtuutusCore("""
     entity repository {
         ...
         attribute status string;
-        permission write := org.admin and (owner or mantainer or org.member) and isActiveStatus(status);
+        permission write := org.admin and (owner or maintainer or org.member) and isActiveStatus(status);
    
     }
     fn isActiveStatus(status string) => status == "active";
@@ -261,7 +271,7 @@ Calling a function inside a permission is simple:
         ...
 """
 ```
-Functions can receive the number of parameters you want, currently there's no limit to it. There is no way to define a optional parameter.
+Functions can receive any number of parameters, currently there's no limit to it. There is no way to define a optional parameter.
 During a function call, you can use a special accessor, called `context`.
 You can get data from the context to use as a parameter to a function. For example:
 
