@@ -632,6 +632,100 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         page2.ContinuationToken.Should().BeNull();
     }
 
+    /// <summary>
+    /// Verifies two-hop permission composition in LookupEntity:
+    /// project.edit := contributor or parent.manage, where team.manage := owner or parent.admin.
+    /// LookupEntity for "edit" should return projects reachable via the full org→team→project chain.
+    /// </summary>
+    [Fact]
+    public async Task LookupEntity_TwoHopNestedPermission_OrgAdminCanEditAllLinkedProjects()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1",  "admin",  "user", "alice"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("team",         "team-2", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+            new RelationTuple("project",      "proj-2", "parent", "team", "team-2"),
+            // proj-3 belongs to a team in a different org — alice has no access
+            new RelationTuple("organization", "org-2",  "admin",  "user", "bob"),
+            new RelationTuple("team",         "team-3", "parent", "organization", "org-2"),
+            new RelationTuple("project",      "proj-3", "parent", "team", "team-3"),
+        ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "edit", "user", "alice"),
+            CancellationToken.None);
+
+        // alice is org-1 admin → team-1.manage and team-2.manage → proj-1 and proj-2
+        // proj-3 is under org-2 where alice has no role
+        result.EntityIds.Should().BeEquivalentTo(["proj-1", "proj-2"]);
+    }
+
+    [Fact]
+    public async Task LookupEntity_TwoHopNestedPermission_OrgMemberCanViewButNotEdit()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1",  "member", "user", "carol"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+            new RelationTuple("project",      "proj-2", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // carol is org member → team.view true → can view both projects
+        var viewResult = await engine.LookupEntity(
+            new LookupEntityRequest("project", "view", "user", "carol"),
+            CancellationToken.None);
+        viewResult.EntityIds.Should().BeEquivalentTo(["proj-1", "proj-2"]);
+
+        // carol is only org member, not admin → team.manage false → cannot edit
+        var editResult = await engine.LookupEntity(
+            new LookupEntityRequest("project", "edit", "user", "carol"),
+            CancellationToken.None);
+        editResult.EntityIds.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task LookupEntity_Not_Relation_Returns_Entities_User_Does_Not_Own()
     {
