@@ -922,6 +922,122 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Verifies two-hop permission composition: project.edit := contributor or parent.manage,
+    /// where team.manage := owner or parent.admin and parent is an organization.
+    /// A user who is org admin should be able to edit the project without any direct project relation.
+    /// </summary>
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_OrgAdminCanEditProject()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "admin",  "user", "alice"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // alice is org admin → team.manage is true → project.edit is true
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "alice"), default))
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_OrgMemberCanViewProject()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "member", "user", "bob"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // bob is org member → team.view is true → project.view is true
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "bob"), default))
+            .Should().BeTrue();
+
+        // bob is only an org member, not admin → team.manage is false → project.edit is false
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "bob"), default))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_UnrelatedUserCannotAccess()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "admin",  "user", "alice"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // charlie has no relation to anything → both false
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "charlie"), default))
+            .Should().BeFalse();
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "charlie"), default))
+            .Should().BeFalse();
+    }
+
     [Fact]
     public async Task Check_Not_Compound_Expression_Returns_True_When_Subject_Matches_Nothing_Inside()
     {
