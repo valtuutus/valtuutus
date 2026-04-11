@@ -190,7 +190,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
         if (attribute is null)
@@ -297,7 +297,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attributes = attributeArguments,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, null, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(node.Args);
@@ -351,7 +351,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                         tupleSetRelation,
                         subEntityType, computedUserSetRelation,
                         req.SubjectType!, req.SubjectId!,
-                        req.SnapToken.Value, ct);
+                        req.SnapToken ?? SnapToken.MinValue, ct);
                 }
             }
         }
@@ -362,7 +362,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = tupleSetRelation,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
         if (relations.Count == 0) return false;
@@ -392,7 +392,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             try
             {
                 return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
-                    req.SubjectId!, req.SnapToken.Value, ct);
+                    req.SubjectId!, req.SnapToken ?? SnapToken.MinValue, ct);
             }
             finally
             {
@@ -448,7 +448,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             EntityId = req.EntityId,
             EntityType = req.EntityType,
             Relation = req.Permission,
-            SnapToken = req.SnapToken.Value
+            SnapToken = req.SnapToken ?? SnapToken.MinValue
         };
 
         var hasDirect = await reader.HasDirectRelation(filter, req.SubjectId!, ct);

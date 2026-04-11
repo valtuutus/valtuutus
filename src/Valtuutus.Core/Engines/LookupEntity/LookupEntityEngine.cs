@@ -301,7 +301,7 @@ public sealed class LookupEntityEngine(
             {
                 Attributes = attributeArguments,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             },
             entityIds,
             ct);
@@ -353,7 +353,7 @@ public sealed class LookupEntityEngine(
                 {
                     Attributes = state.attributeArguments,
                     EntityType = state.req.EntityType,
-                    SnapToken = state.req.SnapToken.Value
+                    SnapToken = state.req.SnapToken ?? SnapToken.MinValue
                 }, state.req.Scope, state.ct),
             (reader, attributeArguments, req, ct));
         var attributes = await attributesTask;
@@ -417,7 +417,7 @@ public sealed class LookupEntityEngine(
                     if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(req.FinalSubjectType))
                     {
                         buffer[count++] = JoinedLookup(
-                            new EntityRelationFilter { EntityType = req.EntityType, Relation = tupleSetRelation, SnapToken = req.SnapToken.Value },
+                            new EntityRelationFilter { EntityType = req.EntityType, Relation = tupleSetRelation, SnapToken = req.SnapToken ?? SnapToken.MinValue },
                             entity.Type, computedUserSetRelation,
                             req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
@@ -479,7 +479,7 @@ public sealed class LookupEntityEngine(
                 {
                     EntityType = req.EntityType,
                     Relation = scope.Relation,
-                    SnapToken = req.SnapToken.Value
+                    SnapToken = req.SnapToken ?? SnapToken.MinValue
                 },
                 [scope.SubjectId],
                 scope.SubjectType,
@@ -494,7 +494,7 @@ public sealed class LookupEntityEngine(
         var attrs = await reader.GetAttributes(
             new EntityAttributeFilter
             {
-                Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var a in attrs)
@@ -545,7 +545,7 @@ public sealed class LookupEntityEngine(
                     if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
                     {
                         buffer[count++] = JoinedLookup(
-                            new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken.Value },
+                            new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken ?? SnapToken.MinValue },
                             relationEntity.Type, relationEntity.Relation!,
                             req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
@@ -595,7 +595,7 @@ public sealed class LookupEntityEngine(
         using var relations = await reader.GetRelationsWithSubjectsIds(
             new EntityRelationFilter
             {
-                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken ?? SnapToken.MinValue
             },
             req.SubjectsIds,
             req.SubjectType,
@@ -680,7 +680,7 @@ public sealed class LookupEntityEngine(
             ListPool<LookupEntityResult>.Return(matching);
         }
 
-        var complementIds = await reader.GetEntityIdsExcluding(req.EntityType, excludeIds, req.SnapToken!.Value, ct);
+        var complementIds = await reader.GetEntityIdsExcluding(req.EntityType, excludeIds, req.SnapToken ?? SnapToken.MinValue, ct);
 
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var id in complementIds)
