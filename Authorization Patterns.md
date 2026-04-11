@@ -204,9 +204,11 @@ builder.Services.AddValtuutusCore(/* schema */)
 
 Each tenant's data is fully isolated; there is no risk of cross-tenant data leakage at the database level.
 
-### Option 2: Tenant-per-schema (Postgres only)
+### Option 2: Tenant-per-schema
 
-Postgres supports multiple schemas within a single database. Valtuutus lets you configure the schema name at DI registration time. By combining this with a schema-per-tenant convention and setting `search_path` on the connection, you get isolation with shared infrastructure:
+Both Postgres and SQL Server support multiple schemas within a single database. Valtuutus lets you configure the schema name via `ValtuutusPostgresOptions` / `ValtuutusSqlServerOptions` at DI registration time, so each tenant's tables can live in their own schema.
+
+**Postgres** — schemas can be switched dynamically per request using `search_path` on the connection, which makes this pattern easy to implement in a multi-tenant DI setup:
 
 ```csharp
 builder.Services.AddValtuutusCore(/* schema */)
@@ -216,7 +218,6 @@ builder.Services.AddValtuutusCore(/* schema */)
         return () =>
         {
             var conn = new NpgsqlConnection(sharedConnectionString);
-            // Direct Postgres to the tenant's schema
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $"SET search_path TO \"{tenantResolver.GetSchemaName()}\"";
@@ -224,6 +225,15 @@ builder.Services.AddValtuutusCore(/* schema */)
             return conn;
         };
     });
+```
+
+**SQL Server** — does not have a `search_path` equivalent, so the schema name is configured statically at registration time. For SQL Server multi-tenancy, tenant-per-database (Option 1) is the more practical approach. If you do need schema isolation on SQL Server, provision one DI container (or named service registration) per tenant, each with its own `ValtuutusSqlServerOptions`:
+
+```csharp
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddSqlServer(
+        _ => () => new SqlConnection(sharedConnectionString),
+        new ValtuutusSqlServerOptions("tenant_a", "transactions", "relation_tuples", "attributes"));
 ```
 
 Run the Valtuutus migration once per tenant schema when a new tenant is provisioned.
