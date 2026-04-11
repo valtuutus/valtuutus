@@ -25,6 +25,8 @@
       NEW: net10.0 target framework support
       NEW: LookupEntity parent-scoped queries via EntityScope
       NEW: Cursor pagination for LookupEntity via PageSize + ContinuationToken
+      NEW: not() negation operator in permission expressions
+      FIX: Valtuutus.Lang.SourceGen NuGet package now auto-imports its .props file; only &lt;EmbeddedResource&gt; is required in consuming projects
       PERF: ~93% allocation reduction in LookupEntity engine
       PERF: CheckEngine memoization, reachability pruning, and batched dispatch
       PERF: Two-hop and TTU EXISTS JOIN eliminates extra DB round-trips
