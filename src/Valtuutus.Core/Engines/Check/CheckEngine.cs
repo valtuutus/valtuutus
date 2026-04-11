@@ -190,7 +190,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attribute = req.Permission,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
         if (attribute is null)
@@ -204,8 +204,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         return node.ExpressionNode!.Operation switch
         {
-            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: false),
-            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, ct, isUnion: true),
+            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: false, ct),
+            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: true, ct),
             PermissionOperation.Negate => NegateCheck(req, node.ExpressionNode!.Children[0], memo, ct),
             _ => throw new InvalidOperationException()
         };
@@ -220,7 +220,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return !result;
     }
 
-    private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CancellationToken ct, bool isUnion)
+    private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
@@ -297,7 +297,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Attributes = attributeArguments,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, null, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(node.Args);
@@ -351,7 +351,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                         tupleSetRelation,
                         subEntityType, computedUserSetRelation,
                         req.SubjectType!, req.SubjectId!,
-                        req.SnapToken.Value, ct);
+                        req.SnapToken ?? SnapToken.MinValue, ct);
                 }
             }
         }
@@ -362,7 +362,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 Relation = tupleSetRelation,
-                SnapToken = req.SnapToken.Value
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
         if (relations.Count == 0) return false;
@@ -392,7 +392,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             try
             {
                 return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
-                    req.SubjectId!, req.SnapToken.Value, ct);
+                    req.SubjectId!, req.SnapToken ?? SnapToken.MinValue, ct);
             }
             finally
             {
@@ -448,7 +448,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             EntityId = req.EntityId,
             EntityType = req.EntityType,
             Relation = req.Permission,
-            SnapToken = req.SnapToken.Value
+            SnapToken = req.SnapToken ?? SnapToken.MinValue
         };
 
         var hasDirect = await reader.HasDirectRelation(filter, req.SubjectId!, ct);

@@ -561,14 +561,14 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                             if (scopeRelations.Contains(tuple.EntityId))
                                 filtered.Add(tuple);
                         }
-                        multi.Dispose();
-                        return filtered;
                     }
                     catch
                     {
                         filtered.Dispose();
                         throw;
                     }
+                    multi.Dispose();
+                    return filtered;
                 }
 
                 return multi;

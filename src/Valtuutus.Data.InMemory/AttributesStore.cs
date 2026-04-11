@@ -154,13 +154,15 @@ internal sealed class AttributesStore : IDisposable
     {
         using var _ = Write();
         foreach (var f in filters)
-        foreach (var e in _all)
         {
-            if (e.DeletedTxId is not null) continue;
-            if (!string.IsNullOrWhiteSpace(f.EntityId) && f.EntityId != e.Attribute.EntityId) continue;
-            if (!string.IsNullOrWhiteSpace(f.EntityType) && f.EntityType != e.Attribute.EntityType) continue;
-            if (!string.IsNullOrWhiteSpace(f.Attribute) && f.Attribute != e.Attribute.Attribute) continue;
-            e.DeletedTxId = transactId;
+            foreach (var e in _all)
+            {
+                if (e.DeletedTxId is not null) continue;
+                if (!string.IsNullOrWhiteSpace(f.EntityId) && f.EntityId != e.Attribute.EntityId) continue;
+                if (!string.IsNullOrWhiteSpace(f.EntityType) && f.EntityType != e.Attribute.EntityType) continue;
+                if (!string.IsNullOrWhiteSpace(f.Attribute) && f.Attribute != e.Attribute.Attribute) continue;
+                e.DeletedTxId = transactId;
+            }
         }
     }
 

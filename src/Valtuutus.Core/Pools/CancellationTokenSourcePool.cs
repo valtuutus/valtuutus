@@ -17,7 +17,7 @@ internal static class CancellationTokenSourcePool
     internal static void Return(CancellationTokenSource cts) => _pool.Return(cts);
 }
 
-file class CtsPooledObjectPolicy : PooledObjectPolicy<CancellationTokenSource>
+file sealed class CtsPooledObjectPolicy : PooledObjectPolicy<CancellationTokenSource>
 {
     public override CancellationTokenSource Create() => new();
 

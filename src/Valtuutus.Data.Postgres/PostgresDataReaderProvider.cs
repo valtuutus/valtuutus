@@ -46,9 +46,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
     private static string? _hasDirectRelationSql;
     private static string? _hasAnyDirectRelationSql;
     private static string? _getIndirectRelationsSql;
-    private static string? _getRelationsWithSingleSubjectSql;
     private static string? _getRelationsWithSingleSubjectSnapSql;
-    private static string? _getRelationsWithMultiSubjectSql;
     private static string? _getRelationsWithMultiSubjectSnapSql;
     private static string? _getRelationsJoinedSql;
     private static string? _hasTupleToUserSetRelationSql;
@@ -156,7 +154,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         _hotPathDataSource = GetOrCreateDataSource(probeConnection.ConnectionString, dbOptions);
     }
 
-    private static void InitializeQueries(IValtuutusDbOptions dbOptions)
+    private static void InitializeQueries(ValtuutusPostgresOptions dbOptions)
     {
         if (_formattedSelectAttributes == null || _formattedSelectRelations == null ||
             _formattedGetLatestSnapTokenQuery == null || _formattedSelect1Attribute == null)
@@ -184,12 +182,8 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
                         $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
                     _getIndirectRelationsSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''";
-                    _getRelationsWithSingleSubjectSql =
-                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id";
                     _getRelationsWithSingleSubjectSnapSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id";
-                    _getRelationsWithMultiSubjectSql =
-                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)";
                     _getRelationsWithMultiSubjectSnapSql =
                         $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)";
                     _getRelationsJoinedSql = $"""

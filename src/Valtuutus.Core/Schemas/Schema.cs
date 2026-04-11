@@ -120,7 +120,7 @@ public record Schema
         }
         else if (entity.Relations.TryGetValue(name, out var rel))
         {
-            result = ComputeRelation(rel, entityType, entities, cache, inProgress);
+            result = ComputeRelation(rel, entities, cache, inProgress);
         }
         else if (entity.Permissions.TryGetValue(name, out var perm))
         {
@@ -138,7 +138,7 @@ public record Schema
         return result;
     }
 
-    private static HashSet<string>? ComputeRelation(Relation rel, string entityType,
+    private static HashSet<string>? ComputeRelation(Relation rel,
         FrozenDictionary<string, Entity> entities,
         Dictionary<(string, string), HashSet<string>?> cache,
         HashSet<(string, string)> inProgress)
