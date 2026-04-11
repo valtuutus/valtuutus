@@ -60,7 +60,6 @@ builder.Services.AddValtuutusCore("""
         relation owner @user;
         relation member @user;
 
-        // inherit admin from the parent organization
         permission manage := owner or parent.admin;
         permission view   := member or owner or parent.admin or parent.member;
     }
@@ -68,11 +67,14 @@ builder.Services.AddValtuutusCore("""
         relation parent @team;
         relation contributor @user;
 
-        permission edit   := contributor or parent.owner or parent.parent.admin;
-        permission view   := contributor or parent.member or parent.owner or parent.parent.member or parent.parent.admin;
+        // parent.manage and parent.view already encode the full team + org hierarchy
+        permission edit := contributor or parent.manage;
+        permission view := contributor or parent.view;
     }
 """);
 ```
+
+The dot notation resolves permissions, not just relations. `parent.manage` on `project` walks to the linked `team` and evaluates its `manage` permission — which itself already encodes `owner or parent.admin`. The full org → team → project hierarchy is expressed without repeating any logic.
 
 **Write tuples:**
 ```csharp
