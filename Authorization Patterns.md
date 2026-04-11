@@ -180,67 +180,20 @@ await checkEngine.Check(new CheckRequest("repository", "repo-1", "push", "user",
 
 ## Multi-Tenancy
 
-Valtuutus does not have a built-in tenant column. The two supported approaches are described below.
-
-### Option 1: Tenant-per-database (strongest isolation)
-
-Give each tenant its own database. At request time, resolve the correct connection string for the tenant and pass it via `IDbDataWriterProvider` / `IDbDataReaderProvider`:
-
-```csharp
-// Register with a tenant-aware connection factory
-builder.Services.AddValtuutusCore(/* schema */)
-    .AddPostgres(sp =>
-    {
-        var tenantResolver = sp.GetRequiredService<ITenantResolver>();
-        return () =>
-        {
-            var connectionString = tenantResolver.GetConnectionString();
-            return new NpgsqlConnection(connectionString);
-        };
-    });
-```
-
-`ITenantResolver` is your own service — it could read the tenant from the current HTTP context, a claim, or a scoped dependency.
-
-Each tenant's data is fully isolated; there is no risk of cross-tenant data leakage at the database level.
-
-### Option 2: Tenant-per-schema
-
-Both Postgres and SQL Server support multiple schemas within a single database. Valtuutus lets you configure the schema name via `ValtuutusPostgresOptions` / `ValtuutusSqlServerOptions` at DI registration time, so each tenant's tables can live in their own schema.
-
-**Postgres** — schemas can be switched dynamically per request using `search_path` on the connection, which makes this pattern easy to implement in a multi-tenant DI setup:
+The recommended approach is **tenant-per-database**: give each tenant its own database and resolve the correct connection string at request time via the connection factory:
 
 ```csharp
 builder.Services.AddValtuutusCore(/* schema */)
     .AddPostgres(sp =>
     {
         var tenantResolver = sp.GetRequiredService<ITenantResolver>();
-        return () =>
-        {
-            var conn = new NpgsqlConnection(sharedConnectionString);
-            conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SET search_path TO \"{tenantResolver.GetSchemaName()}\"";
-            cmd.ExecuteNonQuery();
-            return conn;
-        };
+        return () => new NpgsqlConnection(tenantResolver.GetConnectionString());
     });
 ```
 
-**SQL Server** — does not have a `search_path` equivalent, so the schema name is configured statically at registration time. For SQL Server multi-tenancy, tenant-per-database (Option 1) is the more practical approach. If you do need schema isolation on SQL Server, provision one DI container (or named service registration) per tenant, each with its own `ValtuutusSqlServerOptions`:
+`ITenantResolver` is your own service — it could read the tenant from the current HTTP context, a claim, or a scoped dependency. Each tenant's data is fully isolated with no risk of cross-tenant leakage.
 
-```csharp
-builder.Services.AddValtuutusCore(/* schema */)
-    .AddSqlServer(
-        _ => () => new SqlConnection(sharedConnectionString),
-        new ValtuutusSqlServerOptions("tenant_a", "transactions", "relation_tuples", "attributes"));
-```
-
-Run the Valtuutus migration once per tenant schema when a new tenant is provisioned.
-
-### What is not currently supported
-
-Shared tables with a `tenant_id` column are not supported in the current data model. If you need this pattern, please open an issue — it would require a schema change to `relation_tuples` and `attributes`, and updated queries across all providers.
+> **Note:** Shared-table multi-tenancy (a `tenant_id` column on `relation_tuples` and `attributes`) is not currently supported. If this is a requirement for you, please open an issue.
 
 ---
 
