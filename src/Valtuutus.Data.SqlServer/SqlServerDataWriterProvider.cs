@@ -74,11 +74,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-#if NETSTANDARD2_0
-        using var db = (SqlConnection) _factory();
-#else
         await using var db = (SqlConnection)_factory();
-#endif
         await db.OpenAsync(ct);
 
         return await Write(db, relations, attributes, ct);
@@ -90,18 +86,10 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-#if NETSTANDARD2_0
-        var transaction = connection.BeginTransaction();
-#else
         var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-#endif
         var snapToken = await Write(connection, transaction, relations, attributes, ct);
 
-#if !NETCOREAPP3_0_OR_GREATER
-        transaction.Commit();
-#else
         await transaction.CommitAsync(ct);
-#endif
         return snapToken;
     }
 
@@ -118,9 +106,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var relationsBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
         relationsBulkCopy.DestinationTableName = _relationsDestinationTableName;
 
-#if !NETSTANDARD2_0
         await
-#endif
         using var relationsReader = ObjectReader.Create(relations.Select(x => new
         {
             x.EntityType,
@@ -148,9 +134,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var attributesBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
         attributesBulkCopy.DestinationTableName = "#temp_attributes";
 
-#if !NETSTANDARD2_0
         await
-#endif
 
         using var attributesReader = ObjectReader.Create(attributes.Select(t => new
         {
@@ -178,11 +162,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-#if NETSTANDARD2_0
-        using var db = (SqlConnection) _factory();
-#else
         await using var db = (SqlConnection)_factory();
-#endif
         await db.OpenAsync(ct);
 
         return await Delete(db, filter, ct);
@@ -190,18 +170,10 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     public async Task<SnapToken> Delete(IDbConnection connection, DeleteFilter filter, CancellationToken ct)
     {
-#if NETSTANDARD2_0
-        var transaction = connection.BeginTransaction();
-#else
         var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-#endif
         var snapToken = await Delete(connection, transaction, filter, ct);
 
-#if NETSTANDARD2_0
-        transaction.Commit();
-#else
         await transaction.CommitAsync(ct);
-#endif
         return snapToken;
     }
 

@@ -66,6 +66,90 @@ await writer.Write(connection, [new RelationTuple("document", "2", "owner", "use
 await writer.Write(connection, transaction, [new RelationTuple("document", "2", "owner", "user", "1")], [], default);
 ```
 
+## Deleting Authorization Data
+
+Relations and attributes can be deleted by calling `Delete` on `IDataWriterProvider` (or `IDbDataWriterProvider`). Like `Write`, `Delete` returns a `SnapToken` reflecting the state after the deletion.
+
+```csharp
+// Remove a specific relation tuple
+await writer.Delete(
+    new DeleteFilter
+    {
+        Relations =
+        [
+            new DeleteRelationsFilter
+            {
+                EntityType  = "document",
+                EntityId    = "2",
+                Relation    = "owner",
+                SubjectType = "user",
+                SubjectId   = "1"
+            }
+        ]
+    },
+    cancellationToken);
+```
+
+All fields on `DeleteRelationsFilter` are optional — only the filters you set are applied, making it easy to delete in bulk. For example, to remove all relations of a deleted document:
+
+```csharp
+await writer.Delete(
+    new DeleteFilter
+    {
+        Relations = [new DeleteRelationsFilter { EntityType = "document", EntityId = "2" }]
+    },
+    cancellationToken);
+```
+
+Attributes can be deleted the same way using `DeleteAttributesFilter`:
+
+```csharp
+await writer.Delete(
+    new DeleteFilter
+    {
+        Attributes =
+        [
+            new DeleteAttributesFilter
+            {
+                EntityType = "document",
+                EntityId   = "2",
+                Attribute  = "public"   // omit to delete all attributes for this entity
+            }
+        ]
+    },
+    cancellationToken);
+```
+
+You can mix relation and attribute deletions in a single `Delete` call by populating both `Relations` and `Attributes`.
+
+If using `IDbDataWriterProvider`, pass a connection (and optionally a transaction) as the first parameters — the signature is identical to `Write`.
+
+### How deletes work — soft deletes and data retention
+
+`Delete` does **not** physically remove rows. It performs an `UPDATE` that sets the `deleted_tx_id` column on matching rows. The engines filter out soft-deleted rows on every read.
+
+This means:
+- Tables grow over time as data accumulates. Deleting a relation tuple does not reclaim disk space.
+- Old soft-deleted rows must be periodically purged manually.
+
+To reclaim space in Postgres, run a query like:
+
+```sql
+DELETE FROM relation_tuples WHERE deleted_tx_id IS NOT NULL;
+DELETE FROM attributes       WHERE deleted_tx_id IS NOT NULL;
+```
+
+For SQL Server, the equivalent:
+
+```sql
+DELETE FROM relation_tuples WHERE deleted_tx_id IS NOT NULL;
+DELETE FROM attributes       WHERE deleted_tx_id IS NOT NULL;
+```
+
+After a bulk purge in Postgres, run `VACUUM ANALYZE` on both tables to update statistics and reclaim pages.
+
+How often to purge depends on your write volume. For high-throughput applications (frequent permission changes), consider scheduling a periodic purge job. For low-write applications, manual purges as needed are fine.
+
 ### Schema constants
 We understand that passing around arbitrary strings can lead to errors. We developed our source generator, that reads the schema and generates
 constants for Entity names, relations, permissions and attributes.
@@ -75,15 +159,105 @@ On the consuming project, add the source generator from nuget:
 dotnet add package Valtuutus.Lang.SourceGen
 ```
 
-Then you should add your schema as an embedded file ending with .vtt;
-The source generator will pick it up and generate the consts in the Valtuutus.Lang namespace.
+Then add your schema file with the `.vtt` extension to your `.csproj` as an `EmbeddedResource`:
 
-### Snap Tokens
-In Valtuutus, each modification to the authorization data returns a snap token.
-```json
-{
-  "snapToken": "01J59G4294E1AR1AMCJTD0SPXW"
+```xml
+<ItemGroup>
+  <EmbeddedResource Include="schema.vtt" />
+</ItemGroup>
+```
+
+The source generator picks it up at build time and generates a `SchemaConstsGen` class in the `Valtuutus.Lang` namespace. For example, given this schema:
+
+```
+entity user {}
+entity document {
+    relation owner @user;
+    attribute public bool;
+    permission view := owner or public;
+    permission edit := owner;
 }
 ```
-This token consists of an [ULID](https://github.com/ulid/spec) that can be used to get fresh or older results in access control queries.
+
+The generator produces:
+
+```csharp
+namespace Valtuutus.Lang;
+
+public static class SchemaConstsGen
+{
+    public static class User
+    {
+        public const string Name = "user";
+    }
+
+    public static class Document
+    {
+        public const string Name = "document";
+
+        public static class Attributes
+        {
+            public const string Public = "public";
+        }
+
+        public static class Relations
+        {
+            public const string Owner = "owner";
+        }
+
+        public static class Permissions
+        {
+            public const string View = "view";
+            public const string Edit = "edit";
+        }
+    }
+}
+```
+
+Use these constants instead of raw strings throughout your application:
+
+```csharp
+await writer.Write(
+    [new RelationTuple(
+        SchemaConstsGen.Document.Name,
+        "2",
+        SchemaConstsGen.Document.Relations.Owner,
+        SchemaConstsGen.User.Name,
+        "1")],
+    [],
+    cancellationToken);
+
+bool canView = await checkEngine.Check(
+    new CheckRequest(
+        SchemaConstsGen.Document.Name,
+        "2",
+        SchemaConstsGen.Document.Permissions.View,
+        SchemaConstsGen.User.Name,
+        "1"),
+    cancellationToken);
+```
+
+### Snap Tokens
+
+Every `Write` and `Delete` call returns a `SnapToken`:
+
+```csharp
+SnapToken token = await writer.Write(
+    [new RelationTuple("document", "2", "owner", "user", "1")],
+    [],
+    cancellationToken);
+// token.Value => "01J59G4294E1AR1AMCJTD0SPXW"
+```
+
+The token is a [ULID](https://github.com/ulid/spec) that encodes the point-in-time of the write. Pass it back on subsequent engine requests to guarantee **read-after-write consistency** — the engine will only read data at least as recent as that write:
+
+```csharp
+bool canView = await checkEngine.Check(
+    new CheckRequest("document", "2", "view", "user", "1", snapToken: token),
+    cancellationToken);
+```
+
+If you don't need strict consistency (e.g. read-heavy paths where eventual consistency is acceptable), omit the token entirely — the engine will use the latest available snapshot.
+
+A common pattern is to store the token alongside the resource in your application database after a write, then read it back and pass it on the next authorization check for that resource.
 

@@ -1,4 +1,6 @@
-﻿namespace Valtuutus.Core.Schemas;
+﻿using System.Collections.Frozen;
+
+namespace Valtuutus.Core.Schemas;
 
 internal class SchemaBuilder
 {
@@ -15,8 +17,8 @@ internal class SchemaBuilder
     public Schema Build()
     {
         var schema = new Schema(
-            _entities.Select(e => e.Build()).ToDictionary(e => e.Name, e => e),
-            _functions.ToDictionary(e => e.Name)
+            _entities.Select(e => e.Build()).ToDictionary(e => e.Name, e => e, StringComparer.Ordinal),
+            _functions.ToDictionary(e => e.Name, StringComparer.Ordinal)
         );
         return schema;
     }
@@ -30,9 +32,9 @@ internal class SchemaBuilder
 
 internal class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 {
-    private readonly Dictionary<string, Relation> _relations = new();
-    private readonly Dictionary<string, Permission> _permissions = new();
-    private readonly Dictionary<string, Attribute> _attributes = new();
+    private readonly Dictionary<string, Relation> _relations = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Permission> _permissions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Attribute> _attributes = new(StringComparer.Ordinal);
 
     public EntitySchemaBuilder WithRelation(string relationName, Action<RelationSchemaBuilder> config)
     {
@@ -63,7 +65,13 @@ internal class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 
     public Entity Build()
     {
-        return new Entity { Name = name, Relations = _relations, Permissions = _permissions, Attributes = _attributes };
+        return new Entity
+        {
+            Name = name,
+            Relations = _relations.ToFrozenDictionary(StringComparer.Ordinal),
+            Permissions = _permissions.ToFrozenDictionary(StringComparer.Ordinal),
+            Attributes = _attributes.ToFrozenDictionary(StringComparer.Ordinal)
+        };
     }
 }
 
@@ -79,6 +87,13 @@ internal class RelationSchemaBuilder(string name)
 
     public Relation Build()
     {
-        return new Relation { Entities = _entities, Name = name };
+        var entityTypes = new HashSet<string>();
+        var hasSubRelationPaths = false;
+        foreach (var e in _entities)
+        {
+            entityTypes.Add(e.Type);
+            if (e.Relation is not null) hasSubRelationPaths = true;
+        }
+        return new Relation { Entities = _entities, Name = name, EntityTypes = entityTypes, HasSubRelationPaths = hasSubRelationPaths };
     }
 }

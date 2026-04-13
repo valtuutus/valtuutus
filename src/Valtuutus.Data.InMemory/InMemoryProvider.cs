@@ -1,95 +1,305 @@
-﻿using Valtuutus.Core;
+using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
+using Valtuutus.Data;
 
 namespace Valtuutus.Data.InMemory;
 
 internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
-    private readonly InMemoryController _controller;
+    private readonly RelationsStore _relations;
+    private readonly AttributesStore _attributes;
     private readonly ValtuutusDataOptions _options;
     private readonly IServiceProvider _provider;
 
-    public InMemoryProvider(InMemoryController controller,
+    private readonly object _txLock = new();
+    private Ulid? _latestTransaction;
+
+    public InMemoryProvider(RelationsStore relations, AttributesStore attributes,
         ValtuutusDataOptions options, IServiceProvider provider) : base(options)
     {
-        _controller = controller;
+        _relations = relations;
+        _attributes = attributes;
         _options = options;
         _provider = provider;
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit((ct) => _controller.GetLatestSnapToken(ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        Ulid? id;
+        lock (_txLock) { id = _latestTransaction; }
+        SnapToken? token = id is null ? null : new SnapToken(id.Value.ToString());
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return token;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        return await ExecuteWithRateLimit((ct) => _controller.GetRelations(tupleFilter, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelations(tupleFilter);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
-        IEnumerable<string> entityIds,
-        string? subjectRelation, CancellationToken cancellationToken)
+    public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit((ct) => _controller.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasDirectRelation(tupleFilter, subjectId);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+    public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit((ct) => _controller.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
-    
+
+    public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetIndirectRelations(tupleFilter);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
+        IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
+        string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType, scope);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasTupleToUserSetRelation(entityType, entityId, tupleSetRelation,
+                subEntityType, computedRelation, subjectType, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit((ct) => _controller.GetAttribute(filter, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _attributes.GetAttribute(filter);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        return await ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, ct), cancellationToken);
-
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _attributes.GetAttributes(filter);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(
+        EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        return await ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            HashSet<string>? scopedEntityIds = null;
+            if (scope.HasValue)
+            {
+                var s = scope.Value;
+                var scopeFilter = new EntityRelationFilter
+                {
+                    EntityType = filter.EntityType,
+                    Relation = s.Relation,
+                    SnapToken = filter.SnapToken
+                };
+                using var scopedRelations = _relations.GetRelationsWithSubjectIds(scopeFilter, [s.SubjectId], s.SubjectType);
+                if (scopedRelations.Count == 0)
+                    return new Dictionary<(string, string), AttributeTuple>(0);
+                scopedEntityIds = new HashSet<string>(scopedRelations.Count);
+                foreach (var r in scopedRelations) scopedEntityIds.Add(r.EntityId);
+            }
+            return _attributes.GetByNames(filter, scopedEntityIds);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
+    public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter,
+        IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit((ct) => _controller.GetAttributes(filter, entitiesIds, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _attributes.GetAttributesWithEntityIds(filter, entitiesIds);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(
+        EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        return await ExecuteWithRateLimit((ct) => _controller.GetAttributesWithEntityIds(filter, entitiesIds, ct), cancellationToken);
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _attributes.GetByNamesWithEntityIds(filter, entitiesIds);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
+    public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var ids = _relations.GetAllEntityIds(entityType, snapToken);
+            _attributes.GetAllEntityIds(entityType, snapToken, ids);
+            var result = new List<string>(ids.Count);
+            foreach (var id in ids)
+                if (!excludeIds.Contains(id))
+                    result.Add(id);
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            var ids = _relations.GetAllSubjectIds(subjectType, snapToken);
+            var result = new List<string>(ids.Count);
+            foreach (var id in ids)
+                if (!excludeIds.Contains(id))
+                    result.Add(id);
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
 
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-
+        using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
         await Task.Delay(10, ct);
-        _controller.CreateTransaction(transactId);
-        _controller.Write(transactId, relations, attributes, ct);
+        lock (_txLock) { _latestTransaction = transactId; }
+        _relations.Write(transactId, relations);
+        _attributes.Write(transactId, attributes);
         var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
@@ -97,13 +307,13 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
-        _controller.CreateTransaction(transactId);
-        _controller.Delete(transactId, filter, ct);
+        lock (_txLock) { _latestTransaction = transactId; }
+        _attributes.Delete(transactId, filter.Attributes);
+        _relations.Delete(transactId, filter.Relations);
         var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
-        
     }
 }

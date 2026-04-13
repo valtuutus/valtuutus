@@ -23,8 +23,8 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
             };
         }
 
-        var refRelations = ParseRelationReferences(relation);
-        
+        var refRelations = ParseRelationReferences(relation, entityName);
+
         var relationSymbol = new RelationSymbol(relationName, relation.Start.Line, relation.Start.Column, entityName,
             refRelations);
 
@@ -51,10 +51,11 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
         return (relationName, config);
     }
 
-    private List<RelationReference> ParseRelationReferences(ValtuutusParser.RelationDefinitionContext relation)
+    private List<RelationReference> ParseRelationReferences(ValtuutusParser.RelationDefinitionContext relation, string entityName)
     {
+        var currentRelationName = relation.ID().GetText();
         var refRelations = new List<RelationReference>();
-        
+
         foreach (var member in relation.relationMember())
         {
             var subjectRelation = member.POUND() != null;
@@ -73,7 +74,11 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
             {
                 var refEntityRelation = member.ID(1).GetText();
 
-                ValidateEntityRelationExists(relation, refEntityName, refEntityRelation);
+                // Allow self-reference: an entity's relation may reference itself (e.g. group#member @group#member).
+                // At parse time the symbol hasn't been registered yet, so skip validation for this specific case.
+                var isSelfReference = refEntityName == entityName && refEntityRelation == currentRelationName;
+                if (!isSelfReference)
+                    ValidateEntityRelationExists(relation, refEntityName, refEntityRelation);
 
                 refRelations.Add(new RelationReference()
                 {

@@ -591,6 +591,180 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeTrue();
     }
     
+    [Fact]
+    public async Task ReflexiveFastPath_ShouldReturnTrue_WithoutDbCall()
+    {
+        // Arrange — schema allows group#member as subject of group.member (self-referential)
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user @group#member;
+            }
+        ";
+        // No tuples needed — reflexive fast-path short-circuits before any DB call
+        var engine = await CreateEngine([], [], schema);
+
+        // Act — group:admins#member checking group:admins#member (reflexive)
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "group",
+            EntityId = "admins",
+            Permission = "member",
+            SubjectType = "group",
+            SubjectId = "admins",
+            SubjectRelation = "member"
+        }, default);
+
+        // Assert
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TypeGuard_ShouldReturnFalse_WhenSubjectTypeNotAllowedInRelation()
+    {
+        // Arrange — workspace.owner only allows @user, not @group
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation owner @user;
+                permission delete := owner;
+            }
+        ";
+        // No tuples — type guard prunes before any DB call
+        var engine = await CreateEngine([], [], schema);
+
+        // Act — subject type "group" is not listed in workspace.owner relation
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "delete",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReachabilityPruning_ShouldNotPrune_AttributeDrivenUnion()
+    {
+        var schema = @"
+            entity user {}
+            entity group {}
+            entity workspace {
+                relation owner @user;
+                attribute public bool;
+                permission view := owner or public;
+            }
+        ";
+
+        var engine = await CreateEngine([], [
+            new AttributeTuple("workspace", "1", "public", JsonValue.Create(true))
+        ], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ReachabilityPruning_ShouldReturnFalse_ForImpossibleNestedPath()
+    {
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity workspace {
+                relation parent @group;
+                permission view := parent.member;
+            }
+        ";
+
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "workspace",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "group",
+            SubjectId = "admins"
+        }, default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ReachabilityPruning_ShouldRemainConservative_ForCyclicPermission()
+    {
+        var schema = @"
+            entity user {}
+            entity group {
+                relation member @user @group#member;
+                permission access := member;
+            }
+        ";
+
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "group",
+            EntityId = "admins",
+            Permission = "access",
+            SubjectType = "group",
+            SubjectId = "admins",
+            SubjectRelation = "member"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task TupleToUserSet_BatchPath_Should_Return_True_For_Homogeneous_DirectRelation()
+    {
+        var schema = @"
+            entity user {}
+            entity team {
+                relation member @user;
+            }
+            entity project {
+                relation team_link @team;
+                permission view := team_link.member;
+            }
+        ";
+
+        var engine = await CreateEngine([
+            new RelationTuple("project", "1", "team_link", "team", "alpha"),
+            new RelationTuple("project", "1", "team_link", "team", "beta"),
+            new RelationTuple("team", "beta", "member", "user", "alice")
+        ], [], schema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "project",
+            EntityId = "1",
+            Permission = "view",
+            SubjectType = "user",
+            SubjectId = "alice"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
     public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, true},
@@ -633,5 +807,260 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         // assert
         result.Should().Be(shouldPass);
+    }
+
+    [Fact]
+    public async Task Check_Not_Relation_Should_Return_False_For_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [new RelationTuple("document", "doc1", "owner", "user", "alice")],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Relation_Should_Return_True_For_Non_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [new RelationTuple("document", "doc1", "owner", "user", "alice")],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "bob"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_Not_Inside_And_Returns_False_When_Subject_Matches_Negate()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation viewer @user;
+                permission restricted_view := viewer and not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "viewer", "user", "alice"),
+            ],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Inside_And_Returns_True_When_Subject_Is_Viewer_But_Not_Owner()
+    {
+        var schema = @"
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation viewer @user;
+                permission restricted_view := viewer and not(owner);
+            }
+        ";
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "viewer", "user", "bob"),
+            ],
+            [], schema);
+
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "bob"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_Not_Compound_Expression_Returns_False_When_Subject_Matches_Inner_Union()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_contributor := not(owner or editor);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "editor", "user", "alice"),
+            ],
+            [], schema);
+
+        // alice is editor → matches inner union → not(union) = false
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "alice"), default);
+
+        result.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Verifies two-hop permission composition: project.edit := contributor or parent.manage,
+    /// where team.manage := owner or parent.admin and parent is an organization.
+    /// A user who is org admin should be able to edit the project without any direct project relation.
+    /// </summary>
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_OrgAdminCanEditProject()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "admin",  "user", "alice"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // alice is org admin → team.manage is true → project.edit is true
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "alice"), default))
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_OrgMemberCanViewProject()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "member", "user", "bob"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // bob is org member → team.view is true → project.view is true
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "bob"), default))
+            .Should().BeTrue();
+
+        // bob is only an org member, not admin → team.manage is false → project.edit is false
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "bob"), default))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_TwoHopNestedPermission_UnrelatedUserCannotAccess()
+    {
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+                relation member @user;
+            }
+            entity team {
+                relation parent @organization;
+                relation owner @user;
+                relation member @user;
+                permission manage := owner or parent.admin;
+                permission view   := member or owner or parent.admin or parent.member;
+            }
+            entity project {
+                relation parent @team;
+                relation contributor @user;
+                permission edit := contributor or parent.manage;
+                permission view := contributor or parent.view;
+            }
+            """;
+
+        var engine = await CreateEngine([
+            new RelationTuple("organization", "org-1", "admin",  "user", "alice"),
+            new RelationTuple("team",         "team-1", "parent", "organization", "org-1"),
+            new RelationTuple("project",      "proj-1", "parent", "team", "team-1"),
+        ], [], schema);
+
+        // charlie has no relation to anything → both false
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "charlie"), default))
+            .Should().BeFalse();
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "charlie"), default))
+            .Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Check_Not_Compound_Expression_Returns_True_When_Subject_Matches_Nothing_Inside()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_contributor := not(owner or editor);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "editor", "user", "bob"),
+            ],
+            [], schema);
+
+        // charlie has neither relation → not(owner or editor) = true
+        var result = await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "charlie"), default);
+
+        result.Should().BeTrue();
     }
 }

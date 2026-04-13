@@ -300,4 +300,56 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         // assert
         result.Should().BeEquivalentTo(expected);
     }
+
+    [Fact]
+    public async Task TypeGuard_ShouldReturnEmpty_WhenSubjectTypeNotAllowedInRelation()
+    {
+        // The 'owner' relation on 'workspace' only allows 'user', not 'group'.
+        // LookupSubject for subject type 'group' should return nothing without a DB call.
+        const string schema = """
+            entity user {}
+            entity group { relation member @user; }
+            entity workspace {
+                relation owner @user;
+                permission delete := owner;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [new RelationTuple("workspace", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)],
+            [], schema);
+
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("workspace", "delete", "group", "1"),
+            CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LookupSubject_Not_Relation_Returns_Subjects_That_Are_Not_Owner()
+    {
+        const string schema = """
+            entity user {}
+            entity document {
+                relation owner @user;
+                relation editor @user;
+                permission non_owner := not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc1", "editor", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("document", "non_owner", "user", "doc1"),
+            CancellationToken.None);
+
+        // alice is owner → excluded; bob is editor (exists in relation_tuples) but not owner → included
+        result.Should().Contain("bob");
+        result.Should().NotContain("alice");
+    }
 }

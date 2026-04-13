@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core.Data;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using ZiggyCreatures.Caching.Fusion;
@@ -18,17 +18,19 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
         _cache = cache;
     }
 
-    // <inheritdoc />
-    public async Task<HashSet<string>> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
+    public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookupEntity");
 
         await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
         return await _cache.GetOrSetAsync(GetLookupCacheKey(req), ct => _engine.LookupEntity(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
-    
+
     private static string GetLookupCacheKey(LookupEntityRequest req)
     {
-        return $"lookup-entity:{req.EntityType}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SnapToken?.Value}";
+        var scopePart = req.Scope is { } s
+            ? $":{s.Relation}:{s.SubjectType}:{s.SubjectId}"
+            : ":";
+        return $"lookup-entity:{req.EntityType}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SnapToken?.Value}{scopePart}:{req.PageSize}:{req.ContinuationToken}";
     }
 }

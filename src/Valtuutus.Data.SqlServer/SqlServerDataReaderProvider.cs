@@ -1,12 +1,16 @@
-﻿using Valtuutus.Core;
+using System.Data;
+using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
+using Valtuutus.Core.Pools;
 using Valtuutus.Data.SqlServer.Utils;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
+
 internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private const string UnformattedSelectAttributes = @"SELECT
@@ -16,23 +20,34 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     value
                 FROM [{0}].[{1}] /**where**/";
 
-    private const string UnformattedSelectRelations = @"SELECT 
+    private const string UnformattedSelectRelations = @"SELECT
                     entity_type,
                     entity_id,
                     relation,
                     subject_type,
-                    subject_id, 
-                    subject_relation 
+                    subject_id,
+                    subject_relation
                 FROM [{0}].[{1}] /**where**/";
+
+    private const string UnformattedExistsRelation = "SELECT CASE WHEN EXISTS(SELECT 1 FROM [{0}].[{1}] /**where**/) THEN 1 ELSE 0 END";
 
     private readonly DbConnectionFactory _connectionFactory;
     private static string? _formattedSelect1Attribute;
     private static string? _formattedGetLatestSnapTokenQuery;
     private static string? _formattedSelectAttributes;
     private static string? _formattedSelectRelations;
+    private static string? _formattedExistsRelation;
+    private static string? _getRelationsWithSingleSubjectSnapSql;
+    private static string? _getRelationsJoinedSql;
+    private static string? _hasTupleToUserSetRelationSql;
+    private static string? _getRelationsWithSingleSubjectScopedSql;
+    private static string? _getRelationsJoinedScopedSql;
+    private static string? _getAttributesDictScopedSql;
+    private static string? _getEntityIdsExcludingSql;
+    private static string? _getSubjectIdsExcludingSql;
     private static readonly object Lock = new();
 
-    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory, 
+    public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
         ValtuutusDataOptions options,
         IValtuutusDbOptions dbOptions) : base(options)
     {
@@ -56,6 +71,8 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                     _formattedGetLatestSnapTokenQuery ??= string.Format(
                         "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY created_at DESC",
                         dbOptions.Schema, dbOptions.TransactionsTableName);
+                    _formattedExistsRelation ??= string.Format(UnformattedExistsRelation, dbOptions.Schema,
+                        dbOptions.RelationsTableName);
                     _formattedSelect1Attribute ??= $"""
                                                         SELECT TOP 1
                                                         entity_type,
@@ -64,6 +81,116 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                                         value
                                                     FROM [{dbOptions.Schema}].[{dbOptions.AttributesTableName}] /**where**/
                                                     """;
+                    var relationsTable = $"[{dbOptions.Schema}].[{dbOptions.RelationsTableName}]";
+                    _getRelationsWithSingleSubjectSnapSql ??=
+                        $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId";
+                    _getRelationsJoinedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubEntityType
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                                AND entity_type = @SubEntityType
+                                AND relation = @SubRelation
+                                AND subject_type = @SubjectType
+                                AND subject_id = @SubjectId
+                          )
+                        """;
+                    _hasTupleToUserSetRelationSql ??= $"""
+                        SELECT CASE WHEN EXISTS(
+                            SELECT 1 FROM {relationsTable} r_main
+                            INNER JOIN {relationsTable} r_dep
+                                ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                            WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                              AND r_main.entity_type = @EntityType
+                              AND r_main.entity_id = @EntityId
+                              AND r_main.relation = @TupleSetRelation
+                              AND r_main.subject_relation = ''
+                              AND r_dep.created_tx_id <= @SnapToken AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @SnapToken)
+                              AND r_dep.relation = @ComputedRelation
+                              AND r_dep.subject_type = @SubjectType
+                              AND r_dep.subject_id = @SubjectId
+                              AND r_dep.subject_relation = ''
+                        ) THEN 1 ELSE 0 END
+                        """;
+                    var attributesTable = $"[{dbOptions.Schema}].[{dbOptions.AttributesTableName}]";
+                    _getRelationsWithSingleSubjectScopedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubjectType
+                          AND r_main.subject_id = @SubjectId
+                        """;
+                    _getRelationsJoinedScopedSql ??= $"""
+                        SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                        FROM {relationsTable} AS r_main
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = r_main.entity_type
+                            AND r_scope.entity_id = r_main.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_type = @SubEntityType
+                          AND r_main.subject_id IN (
+                              SELECT entity_id FROM {relationsTable}
+                              WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                                AND entity_type = @SubEntityType
+                                AND relation = @SubRelation
+                                AND subject_type = @SubjectType
+                                AND subject_id = @SubjectId
+                          )
+                        """;
+                    var snapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+                    _getEntityIdsExcludingSql ??= $"""
+                        SELECT DISTINCT entity_id
+                        FROM (
+                            SELECT entity_id FROM {relationsTable}
+                            WHERE {snapPredicate} AND entity_type = @EntityType
+                            UNION
+                            SELECT entity_id FROM {attributesTable}
+                            WHERE {snapPredicate} AND entity_type = @EntityType
+                        ) universe
+                        WHERE entity_id NOT IN (SELECT id FROM @ExcludeIds)
+                        """;
+                    _getSubjectIdsExcludingSql ??= $"""
+                        SELECT DISTINCT subject_id
+                        FROM {relationsTable}
+                        WHERE {snapPredicate}
+                          AND subject_type = @SubjectType
+                          AND subject_relation = ''
+                          AND subject_id NOT IN (SELECT id FROM @ExcludeIds)
+                        """;
+                    _getAttributesDictScopedSql ??= $"""
+                        SELECT a.entity_type, a.entity_id, a.attribute, a.value
+                        FROM {attributesTable} a
+                        INNER JOIN {relationsTable} r_scope
+                            ON r_scope.entity_type = a.entity_type
+                            AND r_scope.entity_id = a.entity_id
+                            AND r_scope.relation = @ScopeRelation
+                            AND r_scope.subject_type = @ScopeSubjectType
+                            AND r_scope.subject_id = @ScopeSubjectId
+                            AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                        WHERE a.created_tx_id <= @SnapToken AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > @SnapToken)
+                          AND a.entity_type = @EntityType
+                          AND a.attribute IN @Attributes
+                        """;
                 }
             }
         }
@@ -72,189 +199,535 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) => { 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelect1Attribute);
-            
+
             return await connection.QuerySingleOrDefaultAsync<AttributeTuple>(new CommandDefinition(
                 queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: ct));
-        }, cancellationToken);
+                queryTemplate.Parameters, cancellationToken: cancellationToken));
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) => { 
-
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToList();
-        }, cancellationToken);
-    
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
-            using var connection = _connectionFactory();
+            await using var connection = (SqlConnection)_connectionFactory();
+
+            if (scope is { } s)
+            {
+                return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(
+                        _getAttributesDictScopedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = filter.EntityType, Length = 256 },
+                            Attributes = filter.Attributes,
+                            SnapToken = new DbString { Value = filter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                            ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                            ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                            ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                        },
+                        cancellationToken: cancellationToken)))
+                    .ToDictionary(x => (x.Attribute, x.EntityId));
+            }
 
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToDictionary(x => (x.Attribute, x.EntityId));
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-
-        return await ExecuteWithRateLimit(async (ct) => { 
-
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(_formattedSelectAttributes!);
 
-
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToList();
-        }, cancellationToken);
-        
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
-            using var connection = _connectionFactory();
-
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterAttributes(filter, entitiesIds)
                 .AddTemplate(_formattedSelectAttributes!);
-            
+
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)))
                 .ToDictionary(x => (x.Attribute, x.EntityId));
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
-            using var connection = _connectionFactory();
-            
-            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(_formattedGetLatestSnapTokenQuery!, cancellationToken: ct));
+            await using var connection = (SqlConnection)_connectionFactory();
+            var res = await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(_formattedGetLatestSnapTokenQuery!, cancellationToken: cancellationToken));
             return res != null ? new SnapToken(res) : (SnapToken?)null;
-        }, cancellationToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 
-    public async Task<List<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) => { 
-
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(tupleFilter)
                 .AddTemplate(_formattedSelectRelations!);
-            
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
 
-            return res;
-        }, cancellationToken);
-       
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
-    
-    public async Task<List<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+
+    public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-
-        return await ExecuteWithRateLimit(async (ct) =>
+        await Semaphore.WaitAsync(cancellationToken);
+        try
         {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelation(tupleFilter, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
 
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+            return await connection.ExecuteScalarAsync<int>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: cancellationToken)) == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterIndirectRelations(tupleFilter)
+                .AddTemplate(_formattedSelectRelations!);
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterDirectRelationBatch(snapToken, entityType, entityIds, relation, subjectId)
+                .AddTemplate(_formattedExistsRelation!);
+
+            return await connection.ExecuteScalarAsync<int>(new CommandDefinition(queryTemplate.RawSql,
+                queryTemplate.Parameters, cancellationToken: cancellationToken)) == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
                 .AddTemplate(_formattedSelectRelations!);
-            
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
 
-            return res;
-        }, cancellationToken);
-
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
-    
-    public async Task<List<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,  IList<string> subjectsIds, string subjectType, CancellationToken cancellationToken)
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (subjectsIds.Length == 1)
+            {
+                await using var connection = (SqlConnection)_connectionFactory();
+                var pooled = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    if (scope is { } s)
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectScopedSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                                ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                                ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                                ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
+                    else
+                    {
+                        pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            _getRelationsWithSingleSubjectSnapSql!,
+                            new
+                            {
+                                EntityType = new DbString { Value = entityFilter.EntityType, Length = 256 },
+                                Relation = new DbString { Value = entityFilter.Relation, Length = 64 },
+                                SubjectType = new DbString { Value = subjectType, Length = 256 },
+                                SubjectId = new DbString { Value = subjectsIds[0], Length = 64 },
+                                SnapToken = new DbString { Value = entityFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                            },
+                            cancellationToken: cancellationToken)));
+                    }
+                    return pooled;
+                }
+                catch
+                {
+                    pooled.Dispose();
+                    throw;
+                }
+            }
 
-        return await ExecuteWithRateLimit(async (ct) => { 
-
-#if NETSTANDARD2_0
-            using var connection = (SqlConnection) _connectionFactory();
-#else
-            await using var connection = (SqlConnection) _connectionFactory();
-#endif
+            await using var fallbackConnection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
                 .FilterRelations(entityFilter, subjectsIds, subjectType)
                 .AddTemplate(_formattedSelectRelations!);
 
-            var res = (await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: ct)))
-                .ToList();
+            var multi = PooledList<RelationTuple>.Rent();
+            try
+            {
+                multi.AddRange(await fallbackConnection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
+                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
 
-            return res;
-        }, cancellationToken);
-        
+                if (scope is { } ms)
+                {
+                    // For multi-subject scoped case, filter results in-memory by fetching which entity IDs
+                    // belong to the scope. SqlBuilder-based path does not support JOIN, so we post-filter.
+                    await using var scopeConnection = (SqlConnection)_connectionFactory();
+                    var scopeQueryTemplate = new SqlBuilder()
+                        .FilterRelations(
+                            new EntityRelationFilter
+                            {
+                                EntityType = entityFilter.EntityType,
+                                Relation = ms.Relation,
+                                SnapToken = entityFilter.SnapToken
+                            },
+                            new[] { ms.SubjectId },
+                            ms.SubjectType)
+                        .AddTemplate(_formattedSelectRelations!);
+                    var scopeRelations = (await scopeConnection.QueryAsync<RelationTuple>(new CommandDefinition(
+                            scopeQueryTemplate.RawSql,
+                            scopeQueryTemplate.Parameters,
+                            cancellationToken: cancellationToken)))
+                        .Select(r => r.EntityId)
+                        .ToHashSet();
+
+                    var filtered = PooledList<RelationTuple>.Rent();
+                    try
+                    {
+                        foreach (var tuple in multi)
+                        {
+                            if (scopeRelations.Contains(tuple.EntityId))
+                                filtered.Add(tuple);
+                        }
+                    }
+                    catch
+                    {
+                        filtered.Dispose();
+                        throw;
+                    }
+                    multi.Dispose();
+                    return filtered;
+                }
+
+                return multi;
+            }
+            catch
+            {
+                multi.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoined(
+        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                if (scope is { } s)
+                {
+                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                        _getRelationsJoinedScopedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
+                            Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
+                            SubEntityType = new DbString { Value = subEntityType, Length = 256 },
+                            SubRelation = new DbString { Value = subRelation, Length = 64 },
+                            SubjectType = new DbString { Value = subjectType, Length = 256 },
+                            SubjectId = new DbString { Value = subjectId, Length = 64 },
+                            SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true },
+                            ScopeRelation = new DbString { Value = s.Relation, Length = 64 },
+                            ScopeSubjectType = new DbString { Value = s.SubjectType, Length = 256 },
+                            ScopeSubjectId = new DbString { Value = s.SubjectId, Length = 64 },
+                        },
+                        cancellationToken: cancellationToken)));
+                }
+                else
+                {
+                    pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(
+                        _getRelationsJoinedSql!,
+                        new
+                        {
+                            EntityType = new DbString { Value = mainFilter.EntityType, Length = 256 },
+                            Relation = new DbString { Value = mainFilter.Relation, Length = 64 },
+                            SubEntityType = new DbString { Value = subEntityType, Length = 256 },
+                            SubRelation = new DbString { Value = subRelation, Length = 64 },
+                            SubjectType = new DbString { Value = subjectType, Length = 256 },
+                            SubjectId = new DbString { Value = subjectId, Length = 64 },
+                            SnapToken = new DbString { Value = mainFilter.SnapToken.Value, Length = 26, IsFixedLength = true }
+                        },
+                        cancellationToken: cancellationToken)));
+                }
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasTupleToUserSetRelation(
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var result = await connection.ExecuteScalarAsync<int>(new CommandDefinition(
+                _hasTupleToUserSetRelationSql!,
+                new
+                {
+                    EntityType = new DbString { Value = entityType, Length = 256 },
+                    EntityId = new DbString { Value = entityId, Length = 64 },
+                    TupleSetRelation = new DbString { Value = tupleSetRelation, Length = 64 },
+                    ComputedRelation = new DbString { Value = computedRelation, Length = 64 },
+                    SubjectType = new DbString { Value = subjectType, Length = 256 },
+                    SubjectId = new DbString { Value = subjectId, Length = 64 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true }
+                },
+                cancellationToken: cancellationToken));
+            return result == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            using var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var id in excludeIds) dt.Rows.Add(id);
+            var rows = await connection.QueryAsync<string>(new CommandDefinition(
+                _getEntityIdsExcludingSql!,
+                new
+                {
+                    EntityType = new DbString { Value = entityType, Length = 256 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
+                    ExcludeIds = dt.AsTableValuedParameter(SqlBuilderExtensions.TvpListIds)
+                },
+                cancellationToken: cancellationToken));
+            return rows is List<string> list ? list : rows.ToList();
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            using var dt = new DataTable();
+            dt.Columns.Add("id", typeof(string));
+            foreach (var id in excludeIds) dt.Rows.Add(id);
+            var rows = await connection.QueryAsync<string>(new CommandDefinition(
+                _getSubjectIdsExcludingSql!,
+                new
+                {
+                    SubjectType = new DbString { Value = subjectType, Length = 256 },
+                    SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
+                    ExcludeIds = dt.AsTableValuedParameter(SqlBuilderExtensions.TvpListIds)
+                },
+                cancellationToken: cancellationToken));
+            return rows is List<string> list ? list : rows.ToList();
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
     }
 }

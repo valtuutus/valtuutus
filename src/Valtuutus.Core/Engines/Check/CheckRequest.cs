@@ -5,6 +5,8 @@ namespace Valtuutus.Core.Engines.Check;
 
 public record CheckRequest : IWithDepth, IWithSnapToken
 {
+    private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
+
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
     public required string Permission { get; init; }
@@ -13,7 +15,7 @@ public record CheckRequest : IWithDepth, IWithSnapToken
     public string? SubjectRelation { get; init; }
     public SnapToken? SnapToken { get; set; }
     public int Depth { get; set; } = 10;
-    public IDictionary<string, object> Context { get; set; } = new Dictionary<string, object>();
+    public IDictionary<string, object> Context { get; set; } = EmptyContext;
 
     public CheckRequest() { }
 
@@ -28,6 +30,6 @@ public record CheckRequest : IWithDepth, IWithSnapToken
         SubjectId = subjectId;
         SubjectRelation = subjectRelation;
         SnapToken = snapToken;
-        Context = context ?? new Dictionary<string, object>();
+        Context = context ?? EmptyContext;
     }
 }

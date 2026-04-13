@@ -26,4 +26,6 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
     public string TransactionsTableName  { get; private set; } = "transactions";
     public string RelationsTableName  { get; private set; } = "relation_tuples";
     public string AttributesTableName  { get; private set; } = "attributes";
+    public int MaxAutoPrepare { get; init; } = 64;
+    public int AutoPrepareMinUsages { get; init; } = 2;
 }

@@ -3,6 +3,8 @@ name: Run Benchmarks
 on:
   pull_request:
     types: [opened, reopened, edited, synchronize]
+    branches:
+      - dev
 
 jobs:
   benchmark_base_branch:
@@ -11,9 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v4.3.1
+        uses: actions/setup-dotnet@v5.0.0
         with:
           dotnet-version: |
+            10.x
             9.x
             8.x
             7.x
@@ -24,8 +27,8 @@ jobs:
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark_results.json
-          path: BenchmarkDotNet.Artifacts/results/Valtuutus.Benchmarks.Benchmarks-report-full-compressed.json
+          name: benchmark_results
+          path: BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json
       - name: Upload GitHub Pull Request Event
         uses: actions/upload-artifact@v7
         with:

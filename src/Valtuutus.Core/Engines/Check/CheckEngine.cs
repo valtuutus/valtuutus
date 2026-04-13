@@ -1,11 +1,12 @@
-﻿using System.Diagnostics;
-using System.Reflection;
-using System.Text.Json.Nodes;
+using System.Buffers;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
-using CheckFunction = System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<bool>>;
 
 namespace Valtuutus.Core.Engines.Check;
 
@@ -19,6 +20,45 @@ public enum RelationType
 
 public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICheckEngine
 {
+    private readonly struct CheckMemoKey : IEquatable<CheckMemoKey>
+    {
+        public readonly string EntityType;
+        public readonly string EntityId;
+        public readonly string Permission;
+        public readonly string? SubjectType;
+        public readonly string? SubjectId;
+
+        public CheckMemoKey(string entityType, string entityId, string permission, string? subjectType, string? subjectId)
+        {
+            EntityType = entityType;
+            EntityId = entityId;
+            Permission = permission;
+            SubjectType = subjectType;
+            SubjectId = subjectId;
+        }
+
+        public bool Equals(CheckMemoKey other) =>
+            EntityType == other.EntityType && EntityId == other.EntityId &&
+            Permission == other.Permission && SubjectType == other.SubjectType &&
+            SubjectId == other.SubjectId;
+
+        public override bool Equals(object? obj) => obj is CheckMemoKey other && Equals(other);
+        public override int GetHashCode() => HashCode.Combine(EntityType, EntityId, Permission, SubjectType, SubjectId);
+    }
+
+    private sealed class CheckMemo
+    {
+        private readonly ConcurrentDictionary<CheckMemoKey, Task<bool>> _cache = new(concurrencyLevel: 1, capacity: 4);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool TryGet(CheckMemoKey key, [MaybeNullWhen(false)] out Task<bool> task)
+            => _cache.TryGetValue(key, out task);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Task<bool> GetOrAdd(CheckMemoKey key, Task<bool> task)
+            => _cache.GetOrAdd(key, task);
+    }
+
     //<inheritdoc/>
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
@@ -26,7 +66,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
 
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
-        var val = await CheckInternal(req)(cancellationToken);
+        var val = await CheckInternal(req, new CheckMemo(), cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
         return val;
@@ -49,23 +89,37 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
-        var permission = schema.GetPermissions(req.EntityType);
+        var permissions = schema.GetPermissions(req.EntityType);
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
 
-        var tasks = permission.Select(x => new KeyValuePair<string, Task<bool>>(x.Name,
-            CheckInternal(new CheckRequest
+        var count = permissions.Count;
+        var names = new string[count];
+        var tasks = new Task<bool>[count];
+        var memo = new CheckMemo();
+
+        var i = 0;
+        foreach (var perm in permissions)
+        {
+            names[i] = perm.Name;
+            tasks[i] = CheckInternal(new CheckRequest
             {
                 EntityType = req.EntityType,
                 EntityId = req.EntityId,
-                Permission = x.Name,
+                Permission = perm.Name,
                 SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            })(cancellationToken))).ToArray();
+            }, memo, cancellationToken);
+            i++;
+        }
 
-        await Task.WhenAll(tasks.Select(x => x.Value));
-        var dict = new Dictionary<string, bool>(tasks.ToDictionary(k => k.Key, v => v.Value.Result));
+        await Task.WhenAll(tasks);
+
+        var dict = new Dictionary<string, bool>(count);
+        for (var j = 0; j < count; j++)
+            dict[names[j]] = tasks[j].Result;
+
         activity?.AddEvent(new ActivityEvent("SubjectPermissionFinished",
             tags: new ActivityTagsCollection(CreateSubjectPermissionResultAttributes(dict))));
         return dict;
@@ -84,326 +138,379 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         yield return new KeyValuePair<string, object?>("SubjectPermissionRequest", req);
     }
 
-    private static CheckFunction Fail()
-    {
-        return (_) => Task.FromResult(false);
-    }
-
-    private CheckFunction CheckInternal(CheckRequest req)
+    private Task<bool> CheckInternal(CheckRequest req, CheckMemo memo, CancellationToken ct)
     {
         if (req.CheckDepthLimit())
-            return Fail();
+            return Task.FromResult(false);
+
+        if (!string.IsNullOrEmpty(req.SubjectRelation)
+            && req.SubjectType == req.EntityType
+            && req.SubjectId == req.EntityId
+            && req.SubjectRelation == req.Permission)
+            return Task.FromResult(true);
+
+        if (!string.IsNullOrEmpty(req.SubjectType)
+            && !schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
+            return Task.FromResult(false);
 
         req.DecreaseDepth();
 
-        return schema.GetRelationType(req.EntityType, req.Permission) switch
+        var key = new CheckMemoKey(req.EntityType, req.EntityId, req.Permission, req.SubjectType, req.SubjectId);
+        if (memo.TryGet(key, out var cached))
+            return cached;
+
+        var task = schema.GetRelationType(req.EntityType, req.Permission) switch
         {
-            RelationType.DirectRelation => CheckRelation(req),
-            RelationType.Permission => CheckPermission(req, schema.GetPermission(req.EntityType, req.Permission)),
-            RelationType.Attribute => CheckAttribute(req),
-            _ => Fail()
+            RelationType.DirectRelation => CheckRelation(req, memo, ct),
+            RelationType.Permission => CheckPermission(req, schema.GetPermission(req.EntityType, req.Permission), memo, ct),
+            RelationType.Attribute => CheckAttribute(req, ct),
+            _ => Task.FromResult(false)
         };
+
+        return memo.GetOrAdd(key, task);
     }
 
-    private CheckFunction CheckPermission(CheckRequest req, Permission permission)
+    private Task<bool> CheckPermission(CheckRequest req, Permission permission, CheckMemo memo, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity("CheckPermission");
 
         var permissionNode = permission!.Tree;
 
         return permissionNode.Type == PermissionNodeType.Expression
-            ? CheckExpression(req, permissionNode)
-            : CheckLeaf(req, permissionNode);
+            ? CheckExpression(req, permissionNode, memo, ct)
+            : CheckLeaf(req, permissionNode, memo, ct);
     }
 
-    private CheckFunction CheckAttribute(CheckRequest req)
+    private async Task<bool> CheckAttribute(CheckRequest req, CancellationToken ct)
     {
-        return async (ct) =>
-        {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var attribute = await reader.GetAttribute(
-                new EntityAttributeFilter
-                {
-                    Attribute = req.Permission,
-                    EntityId = req.EntityId,
-                    EntityType = req.EntityType,
-                    SnapToken = req.SnapToken
-                }, ct);
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var attribute = await reader.GetAttribute(
+            new EntityAttributeFilter
+            {
+                Attribute = req.Permission,
+                EntityId = req.EntityId,
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
+            }, ct);
 
-            if (attribute is null)
-                return false;
+        if (attribute is null)
+            return false;
 
-            var attrValue = attribute.Value.GetValue<bool>();
-
-            return attrValue;
-        };
+        return attribute.Value.GetValue<bool>();
     }
 
-    private CheckFunction CheckExpression(CheckRequest req, PermissionNode node)
+    private Task<bool> CheckExpression(CheckRequest req, PermissionNode node, CheckMemo memo, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         return node.ExpressionNode!.Operation switch
         {
-            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, CheckIntersect),
-            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, CheckUnion),
+            PermissionOperation.Intersect => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: false, ct),
+            PermissionOperation.Union => CheckExpressionChild(req, node.ExpressionNode!.Children, memo, isUnion: true, ct),
+            PermissionOperation.Negate => NegateCheck(req, node.ExpressionNode!.Children[0], memo, ct),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private CheckFunction CheckExpressionChild(CheckRequest req, List<PermissionNode> children,
-        Func<List<CheckFunction>, CancellationToken, Task<bool>> operationCombiner)
+    private async Task<bool> NegateCheck(CheckRequest req, PermissionNode child, CheckMemo memo, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        var result = child.Type == PermissionNodeType.Expression
+            ? await CheckExpression(req, child, memo, ct)
+            : await CheckLeaf(req, child, memo, ct);
+        return !result;
+    }
+
+    private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var checkFunctions = new List<CheckFunction>(capacity: children.Count);
-        foreach (var child in children)
+        var count = children.Count;
+        if (count == 0) return !isUnion;
+        if (count == 1)
         {
-            switch (child.Type)
-            {
-                case PermissionNodeType.Expression:
-                    checkFunctions.Add(CheckExpression(req, child));
-                    break;
-                case PermissionNodeType.Leaf:
-                    checkFunctions.Add(CheckLeaf(req, child));
-                    break;
-            }
+            var only = children[0];
+            return await (only.Type == PermissionNodeType.Expression
+                ? CheckExpression(req, only, memo, ct)
+                : CheckLeaf(req, only, memo, ct));
         }
 
-        return (ct) => operationCombiner(checkFunctions, ct);
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
+        var innerCts = pooledCts.InnerSource;
+
+        var tasks = new Task<bool>[count];
+        for (var i = 0; i < count; i++)
+        {
+            var child = children[i];
+            var rawTask = child.Type == PermissionNodeType.Expression
+                ? CheckExpression(req, child, memo, cancellationToken)
+                : CheckLeaf(req, child, memo, cancellationToken);
+            tasks[i] = isUnion
+                ? rawTask.ContinueWith(
+                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current)
+                : rawTask.ContinueWith(
+                    static (t, s) => { if (!t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                    innerCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
+        }
+
+        try
+        {
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return isUnion ? results.AsSpan().Contains(true) : !results.AsSpan().Contains(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return isUnion;
+        }
     }
 
-    private CheckFunction CheckLeaf(CheckRequest req, PermissionNode node)
+    private Task<bool> CheckLeaf(CheckRequest req, PermissionNode node, CheckMemo memo, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
         return node.LeafNode!.Type switch
         {
-            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.LeafNode!.PermissionNode!),
-            PermissionNodeLeafType.Expression => CheckLeafFn(req, node.LeafNode!.ExpressionNode!),
+            PermissionNodeLeafType.Permission => CheckLeafPermission(req, node.LeafNode!.PermissionNode!, memo, ct),
+            PermissionNodeLeafType.Expression => CheckLeafFn(req, node.LeafNode!.ExpressionNode!, ct),
             _ => throw new InvalidOperationException()
         };
     }
 
-    private CheckFunction CheckLeafFn(CheckRequest req, PermissionNodeLeafExp node)
+    private async Task<bool> CheckLeafFn(CheckRequest req, PermissionNodeLeafExp node, CancellationToken ct)
     {
-        return async (ct) =>
-        {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-            var fn = schema.Functions[node.FunctionName];
+        var fn = schema.Functions[node.FunctionName];
 
-            if (fn is null)
+        if (fn is null)
+            throw new InvalidOperationException();
+
+        if (!node.IsContextValid(req.Context))
+            return false;
+
+        var attributeArguments = node.GetArgsAttributesNames();
+
+        var attributes = await reader.GetAttributes(
+            new EntityAttributesFilter
             {
-                throw new InvalidOperationException();
-            }
+                Attributes = attributeArguments,
+                EntityId = req.EntityId,
+                EntityType = req.EntityType,
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
+            }, null, ct);
 
-            if (!node.IsContextValid(req.Context))
+        using var paramToArg = fn.CreateParamToArgMap(node.Args);
+
+        using var fnArgs = paramToArg.ToLambdaArgs(
+            static (arg, state) =>
             {
-                return false;
-            }
-
-            var attributeArguments = node.GetArgsAttributesNames();
-
-            var attributes = await reader.GetAttributes(
-                new EntityAttributesFilter
-                {
-                    Attributes = attributeArguments,
-                    EntityId = req.EntityId,
-                    EntityType = req.EntityType,
-                    SnapToken = req.SnapToken
-                }, ct);
-
-
-            using var paramToArg = fn.CreateParamToArgMap(node.Args);
-            
-            var getDynamicallyTypedAttribute = (PermissionNodeExpArgumentAttribute arg) =>
-            {
-                if (!attributes.TryGetValue((arg.AttributeName, req.EntityId), out var attr))
-                {
+                var (attrs, entityId, entityType, sch) = state;
+                if (!attrs.TryGetValue((arg.AttributeName, entityId), out var attr))
                     return null;
-                }
+                return attr.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+            },
+            (attributes, req.EntityId, req.EntityType, schema),
+            req.Context);
 
-                var attrType = schema.GetAttribute(req.EntityType, arg.AttributeName).Type;
-
-                return attr.GetValue(attrType);
-            };
-
-            using var fnArgs = paramToArg.ToLambdaArgs(getDynamicallyTypedAttribute, req.Context);
-            
-            var res = fn.Lambda(fnArgs.Dictionary);
-            return res;
-        };
+        return fn.Lambda(fnArgs.Dictionary);
     }
 
-    private CheckFunction CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission node)
+    private Task<bool> CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission node, CheckMemo memo, CancellationToken ct)
     {
-        var perm = node.Permission;
+        if (node.IsIndirect)
+            return CheckTupleToUserSet(req, node.UserSet!, node.ComputedUserSet!, memo, ct);
+        return CheckComputedUserSet(req, node.Permission, memo, ct);
+    }
 
-        if (perm.Split('.') is [{ } userSet, { } computedUserSet])
+    private Task<bool> CheckComputedUserSet(CheckRequest req, string computedUserSetRelation, CheckMemo memo, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        return CheckInternal(req with { Permission = computedUserSetRelation }, memo, ct);
+    }
+
+    private async Task<bool> CheckTupleToUserSet(CheckRequest req, string tupleSetRelation,
+        string computedUserSetRelation, CheckMemo memo, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var tupleSetRelationSchema = schema.GetRelation(req.EntityType, tupleSetRelation);
+        if (tupleSetRelationSchema.Entities.Count == 1
+            && tupleSetRelationSchema.Entities[0].Relation is null
+            && req.Depth > 0
+            && !string.IsNullOrEmpty(req.SubjectType))
         {
-            // Indirect Relation
-            return CheckTupleToUserSet(req, userSet, computedUserSet);
+            var subEntityType = tupleSetRelationSchema.Entities[0].Type;
+            if (schema.GetRelationType(subEntityType, computedUserSetRelation) == RelationType.DirectRelation)
+            {
+                var computedRel = schema.GetRelation(subEntityType, computedUserSetRelation);
+                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(req.SubjectType))
+                {
+                    return await reader.HasTupleToUserSetRelation(
+                        req.EntityType, req.EntityId,
+                        tupleSetRelation,
+                        subEntityType, computedUserSetRelation,
+                        req.SubjectType!, req.SubjectId!,
+                        req.SnapToken ?? SnapToken.MinValue, ct);
+                }
+            }
         }
 
-        // Direct Relation
-        return CheckComputedUserSet(req, perm);
-    }
-
-    private CheckFunction CheckComputedUserSet(CheckRequest req, string computedUserSetRelation)
-    {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
-        return CheckInternal(req with { Permission = computedUserSetRelation });
-    }
-
-    private CheckFunction CheckTupleToUserSet(CheckRequest req, string tupleSetRelation,
-        string computedUserSetRelation)
-    {
-        return async (ct) =>
-        {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-            var relations = await reader.GetRelations(
-                new RelationTupleFilter
-                {
-                    EntityId = req.EntityId,
-                    EntityType = req.EntityType,
-                    Relation = tupleSetRelation,
-                    SnapToken = req.SnapToken
-                }, ct);
-
-            var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
-            checkFunctions.AddRange(relations.Select(relation =>
-                    CheckComputedUserSet(
-                        new CheckRequest
-                        {
-                            EntityType = relation.SubjectType,
-                            EntityId = relation.SubjectId,
-                            Permission = relation.SubjectRelation,
-                            SubjectId = req.SubjectId,
-                            SnapToken = req.SnapToken,
-                            Depth = req.Depth
-                        }, computedUserSetRelation)
-                )
-            );
-
-            return await CheckUnion(checkFunctions, ct);
-        };
-    }
-
-    private CheckFunction CheckRelation(CheckRequest req)
-    {
-        return async (ct) =>
-        {
-            using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
-            var relations = await reader.GetRelations(
-                new RelationTupleFilter
-                {
-                    EntityId = req.EntityId,
-                    EntityType = req.EntityType,
-                    Relation = req.Permission,
-                    SnapToken = req.SnapToken
-                }, ct);
-
-            var checkFunctions = new List<CheckFunction>(capacity: relations.Count);
-
-            foreach (var relation in relations)
+        using var relations = await reader.GetRelations(
+            new RelationTupleFilter
             {
-                if (relation.SubjectId == req.SubjectId)
-                {
-                    return true;
-                }
+                EntityId = req.EntityId,
+                EntityType = req.EntityType,
+                Relation = tupleSetRelation,
+                SnapToken = req.SnapToken ?? SnapToken.MinValue
+            }, ct);
 
-                if (!relation.IsDirectSubject())
-                {
-                    checkFunctions.Add(CheckInternal(new CheckRequest
-                    {
-                        EntityType = relation.SubjectType,
-                        EntityId = relation.SubjectId,
-                        Permission = relation.SubjectRelation,
-                        SubjectId = req.SubjectId,
-                        SnapToken = req.SnapToken,
-                        Depth = req.Depth
-                    }));
-                }
+        if (relations.Count == 0) return false;
+        if (relations.Count == 1)
+        {
+            var only = relations[0];
+            return await CheckComputedUserSet(new CheckRequest
+            {
+                EntityType = only.SubjectType,
+                EntityId = only.SubjectId,
+                Permission = only.SubjectRelation,
+                SubjectId = req.SubjectId,
+                SnapToken = req.SnapToken,
+                Depth = req.Depth
+            }, computedUserSetRelation, memo, ct);
+        }
+
+        var firstSubjectType = relations.AsSpan()[0].SubjectType;
+        if (AllSameSubjectType(relations.AsSpan(), firstSubjectType)
+            && schema.GetRelationType(firstSubjectType, computedUserSetRelation) == RelationType.DirectRelation
+            && !schema.GetRelation(firstSubjectType, computedUserSetRelation).HasSubRelationPaths)
+        {
+            var entityIds = ArrayPool<string>.Shared.Rent(relations.Count);
+            for (var i = 0; i < relations.Count; i++)
+                entityIds[i] = relations[i].SubjectId;
+            Array.Clear(entityIds, relations.Count, entityIds.Length - relations.Count);
+            try
+            {
+                return await reader.HasAnyDirectRelation(firstSubjectType, entityIds, computedUserSetRelation,
+                    req.SubjectId!, req.SnapToken ?? SnapToken.MinValue, ct);
             }
+            finally
+            {
+                Array.Clear(entityIds, 0, relations.Count);
+                ArrayPool<string>.Shared.Return(entityIds);
+            }
+        }
 
-            return await CheckUnion(checkFunctions, ct);
-        };
-    }
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
+        var innerCts = pooledCts.InnerSource;
 
-    private static async Task<bool> CheckUnion(List<CheckFunction> functions, CancellationToken ct)
-    {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var cancellationToken = cancellationTokenSource.Token;
+        var tasks = new Task<bool>[relations.Count];
+        for (var i = 0; i < relations.Count; i++)
+        {
+            var relation = relations[i];
+            tasks[i] = CheckComputedUserSet(new CheckRequest
+            {
+                EntityType = relation.SubjectType,
+                EntityId = relation.SubjectId,
+                Permission = relation.SubjectRelation,
+                SubjectId = req.SubjectId,
+                SnapToken = req.SnapToken,
+                Depth = req.Depth
+            }, computedUserSetRelation, memo, cancellationToken)
+            .ContinueWith(
+                static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+        }
 
         try
         {
-            var results = await Task.WhenAll(functions
-                .Select(f =>
-                {
-                    return f(cancellationToken).ContinueWith(t =>
-                    {
-                        if (t.Result)
-                        {
-                            cancellationTokenSource.Cancel();
-                        }
-
-                        return t.Result;
-                    }, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-                })).ConfigureAwait(false);
-
-            if (Array.Exists(results, b => b))
-            {
-                return true;
-            }
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return results.AsSpan().Contains(true);
         }
         catch (OperationCanceledException)
         {
             return true;
         }
-        finally
-        {
-            cancellationTokenSource.Dispose();
-        }
-
-        return false;
     }
 
-    private static async Task<bool> CheckIntersect(List<CheckFunction> functions, CancellationToken ct)
+    private async Task<bool> CheckRelation(CheckRequest req, CheckMemo memo, CancellationToken ct)
     {
+        if (!string.IsNullOrEmpty(req.SubjectType)
+            && !schema.IsSubjectTypeAllowedInRelation(req.EntityType, req.Permission,
+                req.SubjectType, req.SubjectRelation))
+            return false;
+
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        var cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var cancellationToken = cancellationTokenSource.Token;
+
+        var filter = new RelationTupleFilter
+        {
+            EntityId = req.EntityId,
+            EntityType = req.EntityType,
+            Relation = req.Permission,
+            SnapToken = req.SnapToken ?? SnapToken.MinValue
+        };
+
+        var hasDirect = await reader.HasDirectRelation(filter, req.SubjectId!, ct);
+        if (hasDirect) return true;
+
+        if (!schema.GetRelation(req.EntityType, req.Permission).HasSubRelationPaths)
+            return false;
+
+        using var indirectRelations = await reader.GetIndirectRelations(filter, ct);
+
+        if (indirectRelations.Count == 0) return false;
+        if (indirectRelations.Count == 1)
+        {
+            ref readonly var only = ref indirectRelations.AsSpan()[0];
+            return await CheckInternal(new CheckRequest
+            {
+                EntityType = only.SubjectType,
+                EntityId = only.SubjectId,
+                Permission = only.SubjectRelation,
+                SubjectId = req.SubjectId,
+                SnapToken = req.SnapToken,
+                Depth = req.Depth
+            }, memo, ct);
+        }
+
+        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
+        var cancellationToken = pooledCts.Token;
+        var innerCts = pooledCts.InnerSource;
+
+        var tasks = new Task<bool>[indirectRelations.Count];
+        var count = 0;
+        foreach (ref readonly var relation in indirectRelations.AsSpan())
+        {
+            tasks[count++] = CheckInternal(new CheckRequest
+            {
+                EntityType = relation.SubjectType,
+                EntityId = relation.SubjectId,
+                Permission = relation.SubjectRelation,
+                SubjectId = req.SubjectId,
+                SnapToken = req.SnapToken,
+                Depth = req.Depth
+            }, memo, cancellationToken)
+            .ContinueWith(
+                static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+        }
 
         try
         {
-            var results = await Task.WhenAll(functions
-                .Select(f =>
-                {
-                    return f(cancellationToken).ContinueWith(t =>
-                    {
-                        if (!t.Result)
-                        {
-                            cancellationTokenSource.Cancel();
-                        }
-
-                        return t.Result;
-                    }, cancellationToken);
-                })).ConfigureAwait(false);
-
-            var result = Array.TrueForAll(results, b => b);
-            return result;
+            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            return results.AsSpan().Contains(true);
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return true;
         }
-        finally
-        {
-            cancellationTokenSource.Dispose();
-        }
+    }
+
+    private static bool AllSameSubjectType(ReadOnlySpan<RelationTuple> relations, string expectedType)
+    {
+        foreach (ref readonly var r in relations)
+            if (r.SubjectType != expectedType) return false;
+        return true;
     }
 }

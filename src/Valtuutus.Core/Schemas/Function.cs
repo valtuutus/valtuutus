@@ -28,10 +28,11 @@ public record Function
     {
         var pooled = PooledDictionary<FunctionParameter, PermissionNodeExpArgument>.Rent();
 
+        var argsByOrder = new Dictionary<int, PermissionNodeExpArgument>(args.Count);
+        foreach (var arg in args) argsByOrder[arg.ArgOrder] = arg;
+
         foreach (var parameter in Parameters)
-        {
-            pooled.Dictionary[parameter] = args.First(a => a.ArgOrder == parameter.ParamOrder);
-        }
+            pooled.Dictionary[parameter] = argsByOrder[parameter.ParamOrder];
 
         return pooled;
     }
@@ -56,6 +57,32 @@ internal static class ParamToArgMapExtensions
             object? value = pair.Value switch
             {
                 PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg),
+                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
+                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
+                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
+                PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
+                _ => throw new NotSupportedException("Unsupported argument type.")
+            };
+
+            pooled.Dictionary[pair.Key.ParamName] = value;
+        }
+
+        return pooled;
+    }
+
+    public static PooledDictionary<string, object?> ToLambdaArgs<TState>(
+        this PooledDictionary<FunctionParameter, PermissionNodeExpArgument> map,
+        Func<PermissionNodeExpArgumentAttribute, TState, object?> attrValueMapper,
+        TState state,
+        IDictionary<string, object> context)
+    {
+        var pooled = PooledDictionary<string, object?>.Rent();
+
+        foreach (var pair in map.Dictionary)
+        {
+            object? value = pair.Value switch
+            {
+                PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg, state),
                 PermissionNodeExpArgumentStringLiteral arg => arg.Value,
                 PermissionNodeExpArgumentIntLiteral arg => arg.Value,
                 PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,

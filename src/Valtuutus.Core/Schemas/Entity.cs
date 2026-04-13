@@ -1,9 +1,11 @@
-﻿namespace Valtuutus.Core.Schemas;
+using System.Collections.Frozen;
+
+namespace Valtuutus.Core.Schemas;
 
 public class Entity
 {
     public required string Name { get; init; }
-    public Dictionary<string, Relation> Relations { get; init; } = new();
-    public Dictionary<string, Permission> Permissions { get; init; } = new();
-    public Dictionary<string, Attribute> Attributes { get; init; } = new();
+    public FrozenDictionary<string, Relation> Relations { get; init; } = FrozenDictionary<string, Relation>.Empty;
+    public FrozenDictionary<string, Permission> Permissions { get; init; } = FrozenDictionary<string, Permission>.Empty;
+    public FrozenDictionary<string, Attribute> Attributes { get; init; } = FrozenDictionary<string, Attribute>.Empty;
 }
