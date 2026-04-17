@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.8.1-beta</VersionPrefix>
+    <VersionPrefix>0.8.2-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,7 +17,10 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.8.1-beta:
+    <PackageReleaseNotes>Version 0.8.2-beta:
+      FIX: Microsoft.Extensions.ObjectPool is now a proper transitive dependency — resolves TypeLoadException in Blazor WASM and other strict-linking environments
+
+Version 0.8.1-beta:
       FIX: Microsoft.Extensions.* packages now use open-ended version ranges [8.0.0,) instead of exact pins, resolving runtime version conflicts on .NET 10+
 
 Version 0.8.0-beta:
