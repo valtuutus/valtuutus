@@ -380,6 +380,76 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         ttuNode.Children.Should().NotBeEmpty("slow-path creates child nodes for the resolved relation");
     }
 
+    [Fact]
+    public async Task Explain_SubjectTypeCannotReach_ReturnsFalseWithDetail()
+    {
+        // "organization" cannot reach workspace.delete (only users can via owner relation)
+        var engine = await CreateEngine([], []);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "workspace", EntityId = "expl-sc1",
+            Permission = "delete",
+            SubjectType = "organization", SubjectId = "org-1"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+        result.Root.Detail.Should().Be("subject type cannot reach permission");
+    }
+
+    [Fact]
+    public async Task Explain_IndirectRelation_MultipleIndirectPaths_RecordsAllChildren()
+    {
+        // project.member has @user @team#member — two indirect team tuples, alice in one
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "expl-11", "member", "team", "expl-t11a", "member"),
+                new RelationTuple("project", "expl-11", "member", "team", "expl-t11b", "member"),
+                new RelationTuple("team", "expl-t11a", "member", "user", "alice"),
+            ],
+            []);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "project", EntityId = "expl-11",
+            Permission = "view",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        // The member Relation node resolves via multiple indirect paths
+        var memberNode = FindNode(result.Root, n => n.Type == CheckNodeType.Relation && n.Name == "member");
+        memberNode.Should().NotBeNull();
+        memberNode!.Children.Count.Should().BeGreaterThanOrEqualTo(2, "one child per indirect relation tuple");
+    }
+
+    [Fact]
+    public async Task Explain_TupleToUserSet_MultipleRelations_ParallelPath_RecordsNodes()
+    {
+        // project.edit with two team tuples — team.member has sub-relation paths so batch
+        // fast-path is skipped; falls through to parallel multi-relation path in CheckTupleToUserSet
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "expl-12", "team", "team", "expl-t12a"),
+                new RelationTuple("project", "expl-12", "team", "team", "expl-t12b"),
+                new RelationTuple("team", "expl-t12a", "member", "user", "alice"),
+            ],
+            [new AttributeTuple("project", "expl-12", "status", System.Text.Json.Nodes.JsonValue.Create(1))]);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "project", EntityId = "expl-12",
+            Permission = "edit",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        var ttuNode = FindNode(result.Root, n => n.Type == CheckNodeType.TupleToUserSet && n.Name == "team.member");
+        ttuNode.Should().NotBeNull();
+        ttuNode!.Result.Should().BeTrue();
+        ttuNode.Children.Count.Should().BeGreaterThanOrEqualTo(2, "one child per relation tuple in the parallel path");
+    }
+
     private static CheckNode? FindNodeByType(CheckNode root, CheckNodeType type)
     {
         if (root.Type == type) return root;
