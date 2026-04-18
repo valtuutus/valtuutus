@@ -568,12 +568,13 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < relations.Count; i++)
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation };
 
+        var rawTasks = new Task<bool>[relations.Count];
         var tasks = new Task<bool>[relations.Count];
         for (var i = 0; i < relations.Count; i++)
         {
             var relation = relations[i];
             var childNode = childNodes?[i];
-            tasks[i] = CheckComputedUserSet(new CheckRequest
+            rawTasks[i] = CheckComputedUserSet(new CheckRequest
             {
                 EntityType = relation.SubjectType,
                 EntityId = relation.SubjectId,
@@ -581,8 +582,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, computedUserSetRelation, memo, childNode, cancellationToken)
-            .ContinueWith(
+            }, computedUserSetRelation, memo, childNode, cancellationToken);
+            tasks[i] = rawTasks[i].ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
         }
@@ -591,13 +592,22 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             if (childNodes is not null)
-                foreach (var cn in childNodes) node!._children.Add(cn);
+                for (var i = 0; i < childNodes.Length; i++)
+                {
+                    childNodes[i].Result = results[i];
+                    node!._children.Add(childNodes[i]);
+                }
             return results.AsSpan().Contains(true);
         }
         catch (OperationCanceledException)
         {
             if (childNodes is not null)
-                foreach (var cn in childNodes) node!._children.Add(cn);
+                for (var i = 0; i < childNodes.Length; i++)
+                {
+                    if (rawTasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = rawTasks[i].Result;
+                    node!._children.Add(childNodes[i]);
+                }
             return true;
         }
     }
@@ -677,12 +687,13 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = r.SubjectRelation ?? r.SubjectType };
             }
 
+        var rawTasks = new Task<bool>[indirectRelations.Count];
         var tasks = new Task<bool>[indirectRelations.Count];
         var count = 0;
         foreach (ref readonly var relation in indirectRelations.AsSpan())
         {
             var childNode = childNodes?[count];
-            tasks[count++] = CheckInternal(new CheckRequest
+            rawTasks[count] = CheckInternal(new CheckRequest
             {
                 EntityType = relation.SubjectType,
                 EntityId = relation.SubjectId,
@@ -690,23 +701,33 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, memo, childNode, cancellationToken)
-            .ContinueWith(
+            }, memo, childNode, cancellationToken);
+            tasks[count] = rawTasks[count].ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+            count++;
         }
 
         try
         {
             var results = await Task.WhenAll(tasks).ConfigureAwait(false);
             if (childNodes is not null)
-                foreach (var cn in childNodes) node!._children.Add(cn);
+                for (var i = 0; i < childNodes.Length; i++)
+                {
+                    childNodes[i].Result = results[i];
+                    node!._children.Add(childNodes[i]);
+                }
             return results.AsSpan().Contains(true);
         }
         catch (OperationCanceledException)
         {
             if (childNodes is not null)
-                foreach (var cn in childNodes) node!._children.Add(cn);
+                for (var i = 0; i < childNodes.Length; i++)
+                {
+                    if (rawTasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = rawTasks[i].Result;
+                    node!._children.Add(childNodes[i]);
+                }
             return true;
         }
     }
