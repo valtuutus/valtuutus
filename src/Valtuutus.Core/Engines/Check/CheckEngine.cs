@@ -374,7 +374,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     if (rawTasks[i].IsCompletedSuccessfully)
                         childNodes[i].Result = rawTasks[i].Result;
                     else
-                        childNodes[i].Detail = "short-circuited";
+                        childNodes[i].Detail = isUnion
+                            ? "skipped (evaluation stopped after a success)"
+                            : "skipped (evaluation stopped after a failure)";
                     node!._children.Add(childNodes[i]);
                 }
             }
