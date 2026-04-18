@@ -568,13 +568,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < relations.Count; i++)
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation };
 
-        var rawTasks = new Task<bool>[relations.Count];
         var tasks = new Task<bool>[relations.Count];
         for (var i = 0; i < relations.Count; i++)
         {
             var relation = relations[i];
             var childNode = childNodes?[i];
-            rawTasks[i] = CheckComputedUserSet(new CheckRequest
+            tasks[i] = CheckComputedUserSet(new CheckRequest
             {
                 EntityType = relation.SubjectType,
                 EntityId = relation.SubjectId,
@@ -582,8 +581,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, computedUserSetRelation, memo, childNode, cancellationToken);
-            tasks[i] = rawTasks[i].ContinueWith(
+            }, computedUserSetRelation, memo, childNode, cancellationToken)
+            .ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
         }
@@ -604,8 +603,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             if (childNodes is not null)
                 for (var i = 0; i < childNodes.Length; i++)
                 {
-                    if (rawTasks[i].IsCompletedSuccessfully)
-                        childNodes[i].Result = rawTasks[i].Result;
+                    if (tasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = tasks[i].Result;
                     node!._children.Add(childNodes[i]);
                 }
             return true;
@@ -687,13 +686,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = r.SubjectRelation ?? r.SubjectType };
             }
 
-        var rawTasks = new Task<bool>[indirectRelations.Count];
         var tasks = new Task<bool>[indirectRelations.Count];
         var count = 0;
         foreach (ref readonly var relation in indirectRelations.AsSpan())
         {
             var childNode = childNodes?[count];
-            rawTasks[count] = CheckInternal(new CheckRequest
+            tasks[count] = CheckInternal(new CheckRequest
             {
                 EntityType = relation.SubjectType,
                 EntityId = relation.SubjectId,
@@ -701,8 +699,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, memo, childNode, cancellationToken);
-            tasks[count] = rawTasks[count].ContinueWith(
+            }, memo, childNode, cancellationToken)
+            .ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
             count++;
@@ -724,8 +722,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             if (childNodes is not null)
                 for (var i = 0; i < childNodes.Length; i++)
                 {
-                    if (rawTasks[i].IsCompletedSuccessfully)
-                        childNodes[i].Result = rawTasks[i].Result;
+                    if (tasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = tasks[i].Result;
                     node!._children.Add(childNodes[i]);
                 }
             return true;
