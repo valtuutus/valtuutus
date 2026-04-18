@@ -230,6 +230,156 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         result.Root.Name.Should().Be("view");
     }
 
+    [Fact]
+    public async Task Explain_NegateExpression_ReturnsNegatedResult()
+    {
+        // Custom schema: permission banned := not(member)
+        // alice is NOT a member → banned = true
+        const string negateSchema = """
+            entity user {}
+            entity doc {
+                relation member @user;
+                permission banned := not(member);
+            }
+            """;
+        var engine = await CreateEngine([], [], negateSchema);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "doc", EntityId = "expl-n1",
+            Permission = "banned",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        result.Root.Children.Should().HaveCount(1);
+        var memberNode = result.Root.Children[0];
+        memberNode.Name.Should().Be("member");
+        memberNode.Result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Explain_MemoizedSubCheck_RecordsMemoizedDetail()
+    {
+        // edit := owner and view; view := owner
+        // The "owner" relation is evaluated twice in one Explain call —
+        // the second evaluation should hit the memo cache.
+        const string memoSchema = """
+            entity user {}
+            entity doc {
+                relation owner @user;
+                permission view := owner;
+                permission edit := owner and view;
+            }
+            """;
+        var engine = await CreateEngine(
+            [new RelationTuple("doc", "expl-m1", "owner", "user", "alice")],
+            [], memoSchema);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "doc", EntityId = "expl-m1",
+            Permission = "edit",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        var memoizedNode = FindNode(result.Root, n => n.Detail == "memoized");
+        memoizedNode.Should().NotBeNull("a repeated sub-check should be recorded as memoized");
+    }
+
+    [Fact]
+    public async Task Explain_DepthLimitReached_ReturnsFalseWithDetail()
+    {
+        var engine = await CreateEngine(
+            [new RelationTuple("workspace", "expl-dl1", "owner", "user", "alice")],
+            []);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "workspace", EntityId = "expl-dl1",
+            Permission = "delete",
+            SubjectType = "user", SubjectId = "alice",
+            Depth = 0
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+        result.Root.Detail.Should().Be("depth limit reached");
+    }
+
+    [Fact]
+    public async Task Explain_IndirectRelationViaSubRelation_ResolvesAndRecordsChildNode()
+    {
+        // project.member @user @team#member — indirect path via team
+        // alice is a direct member of team expl-t9; team is project member via #member
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "expl-9", "member", "team", "expl-t9", "member"),
+                new RelationTuple("team", "expl-t9", "member", "user", "alice"),
+            ],
+            []);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "project", EntityId = "expl-9",
+            Permission = "view",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        // The Relation node for "member" resolves via the indirect (sub-relation) path
+        var memberRelationNode = FindNode(result.Root, n => n.Type == CheckNodeType.Relation && n.Name == "member");
+        memberRelationNode.Should().NotBeNull("member relation node should appear in tree");
+        memberRelationNode!.Children.Should().NotBeEmpty("indirect path creates child nodes");
+    }
+
+    [Fact]
+    public async Task Explain_MissingAttribute_ReturnsAttributeFalseDetail()
+    {
+        // public attribute not seeded — CheckAttribute gets null from the reader
+        var engine = await CreateEngine([], []);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "workspace", EntityId = "expl-attr1",
+            Permission = "view",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+        var publicNode = FindNode(result.Root, n => n.Type == CheckNodeType.Attribute && n.Name == "public");
+        publicNode.Should().NotBeNull("public attribute node should appear in tree");
+        publicNode!.Detail.Should().Be("attribute=False");
+    }
+
+    [Fact]
+    public async Task Explain_TupleToUserSet_SlowPathSingleRelation_RecordsNode()
+    {
+        // project.edit := (parent.admin or team.member) and isActiveStatus(status)
+        // team.member has sub-relation paths (@group#member) → fast path skipped
+        // One team tuple → slow path single-relation branch
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "expl-10", "team", "team", "expl-t10"),
+                new RelationTuple("team", "expl-t10", "member", "user", "alice"),
+            ],
+            [new AttributeTuple("project", "expl-10", "status", System.Text.Json.Nodes.JsonValue.Create(1))]);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "project", EntityId = "expl-10",
+            Permission = "edit",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+        // parent.admin (fast-path) is also a TTU node but returns false — find team.member specifically
+        var ttuNode = FindNode(result.Root, n => n.Type == CheckNodeType.TupleToUserSet && n.Name == "team.member");
+        ttuNode.Should().NotBeNull("TTU node for team.member should appear in tree");
+        ttuNode!.Result.Should().BeTrue();
+        ttuNode.Children.Should().NotBeEmpty("slow-path creates child nodes for the resolved relation");
+    }
+
     private static CheckNode? FindNodeByType(CheckNode root, CheckNodeType type)
     {
         if (root.Type == type) return root;
