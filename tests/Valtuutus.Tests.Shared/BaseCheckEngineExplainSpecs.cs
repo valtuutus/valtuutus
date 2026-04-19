@@ -131,10 +131,12 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
 
         result.Result.Should().BeFalse();
         result.Root.Name.Should().Be("comment");
-        // Binary parse: exactly 2 top-level children
-        result.Root.Children.Should().HaveCount(2);
+        // Intersect wraps children under a single "and" expression node
+        result.Root.Children.Should().HaveCount(1);
+        result.Root.Children[0].Name.Should().Be("and");
+        result.Root.Children[0].Type.Should().Be(CheckNodeType.Expression);
         // member resolves false (no tuple), public resolves true or short-circuited
-        result.Root.Children.Should().Contain(n => n.Name == "member" && !n.Result);
+        result.Root.Children[0].Children.Should().Contain(n => n.Name == "member" && !n.Result);
     }
 
     [Fact]
@@ -448,6 +450,52 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         ttuNode.Should().NotBeNull();
         ttuNode!.Result.Should().BeTrue();
         ttuNode.Children.Count.Should().BeGreaterThanOrEqualTo(2, "one child per relation tuple in the parallel path");
+    }
+
+    [Fact]
+    public async Task Explain_UnionFailed_NoDuplicatedNodes()
+    {
+        // read := viewer or editor or admin — three-way union, none granted
+        const string schema = """
+            entity user {}
+            entity resource {
+                relation viewer @user;
+                relation editor @user;
+                relation admin @user;
+                permission read := viewer or editor or admin;
+            }
+            """;
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "resource", EntityId = "res-1",
+            Permission = "read",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+
+        // Each relation should appear exactly once — no duplicate nodes with the same name.
+        var allNodes = CollectAllNodes(result.Root);
+        var nameGroups = allNodes.GroupBy(n => n.Name).Where(g => g.Count() > 1).ToList();
+        nameGroups.Should().BeEmpty("each relation name should appear at most once in the tree");
+
+        // All three leaf relations must be present and failed.
+        foreach (var rel in new[] { "viewer", "editor", "admin" })
+        {
+            var node = FindNode(result.Root, n => n.Name == rel);
+            node.Should().NotBeNull($"{rel} node should exist in tree");
+            node!.Result.Should().BeFalse();
+        }
+    }
+
+    private static List<CheckNode> CollectAllNodes(CheckNode root)
+    {
+        var result = new List<CheckNode> { root };
+        foreach (var child in root.Children)
+            result.AddRange(CollectAllNodes(child));
+        return result;
     }
 
     private static CheckNode? FindNodeByType(CheckNode root, CheckNodeType type)
