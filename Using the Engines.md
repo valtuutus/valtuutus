@@ -95,6 +95,71 @@ bool canPush = await checkEngine.Check(
 
 Pass the correct runtime type for each context value (`bool`, `int`, `string`, `decimal`) to avoid runtime errors.
 
+### Explain — why was a permission granted or denied?
+
+`Explain` walks the same graph as `Check` but returns a full resolution tree showing every evaluated relation, attribute, function, and expression — including which branches short-circuited and which results came from the memo cache.
+
+```csharp
+CheckExplainResult explain = await checkEngine.Explain(
+    new CheckRequest(
+        entityType:  "document",
+        entityId:    "2",
+        permission:  "edit",
+        subjectType: "user",
+        subjectId:   "1"),
+    cancellationToken);
+
+Console.WriteLine(explain.Result); // true / false
+
+void Print(CheckNode node, int indent = 0)
+{
+    var prefix = new string(' ', indent * 2);
+    Console.WriteLine($"{prefix}[{node.Type}] {node.Name} => {node.Result}" +
+                      (node.Detail is not null ? $" ({node.Detail})" : ""));
+    foreach (var child in node.Children)
+        Print(child, indent + 1);
+}
+
+Print(explain.Root);
+```
+
+Example output for `edit := (owner or maintainer or parent.admin) and ...` where alice is a direct owner:
+
+```
+[Permission] edit => True
+  [Expression] AND => True
+    [Expression] OR => True
+      [Relation] owner => True (direct tuple)
+      [Relation] maintainer => False (skipped (evaluation stopped after a success))
+      [TupleToUserSet] parent => False (skipped (evaluation stopped after a success))
+    ...
+```
+
+#### Node types
+
+| `CheckNodeType` | Meaning |
+|---|---|
+| `Permission` | A named permission or relation being evaluated |
+| `Expression` | A binary `AND` / `OR` / `NOT` expression node |
+| `Relation` | A direct relation tuple lookup |
+| `TupleToUserSet` | An indirect lookup via a related entity (e.g. `parent.admin`) |
+| `Attribute` | A boolean attribute lookup |
+| `Function` | A custom `fn` call |
+
+#### Detail strings
+
+| Detail | Meaning |
+|---|---|
+| `"direct tuple"` | A matching relation tuple was found |
+| `"no matching tuple"` | No relation tuple exists |
+| `"attribute=True"` / `"attribute=False"` | The attribute value that was read |
+| `"fn result=True"` / `"fn result=False"` | The return value of a custom function |
+| `"memoized"` | Result was served from the per-request memo cache |
+| `"skipped (evaluation stopped after a success)"` | Branch was not evaluated because an OR sibling already returned true |
+| `"skipped (evaluation stopped after a failure)"` | Branch was not evaluated because an AND sibling already returned false |
+
+> **Performance note:** `Explain` allocates a `CheckNode` tree on every call. Use `Check` on hot paths; reserve `Explain` for debugging, audit logging, or developer tooling.
+
 ### SubjectPermission — what permissions does user U have on resource Z?
 
 Returns a dictionary of every permission defined on the entity and whether the subject has it:

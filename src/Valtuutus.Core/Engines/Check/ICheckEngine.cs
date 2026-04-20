@@ -18,4 +18,13 @@ public interface ICheckEngine
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A dictionary containing every permission for the entity and if the subject has access to it.</returns>
     Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Walks the schema graph like Check(), but returns a full resolution tree explaining
+    /// which relations, attributes, and expressions determined the result.
+    /// </summary>
+    /// <param name="req">Same request as Check().</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The boolean result plus a tree of every evaluated node.</returns>
+    Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken);
 }

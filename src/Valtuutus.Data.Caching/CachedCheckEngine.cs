@@ -37,6 +37,10 @@ public sealed class CachedCheckEngine : ICheckEngine
         return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(req), ct => _engine.SubjectPermission(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
     
+    /// <inheritdoc />
+    public Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
+        => _engine.Explain(req, cancellationToken);
+
     private static string GetCheckCacheKey(CheckRequest req)
     {
         return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{req.SnapToken}";

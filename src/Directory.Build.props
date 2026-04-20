@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.8.2-beta</VersionPrefix>
+    <VersionPrefix>0.9.0-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -17,7 +17,11 @@
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <PropertyGroup>
-    <PackageReleaseNotes>Version 0.8.2-beta:
+    <PackageReleaseNotes>Version 0.9.0-beta:
+      NEW: ICheckEngine.Explain() — returns a full resolution tree showing why a permission check passed or failed
+      FIX: TTU (tuple-to-userset) nodes now correctly terminate in ReBAC explain graphs
+
+Version 0.8.2-beta:
       FIX: Microsoft.Extensions.ObjectPool is now a proper transitive dependency — resolves TypeLoadException in Blazor WASM and other strict-linking environments
 
 Version 0.8.1-beta:

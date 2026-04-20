@@ -124,12 +124,14 @@ namespace Valtuutus.Core.Data
                 "AttributeName",
                 "EntityId"})]
         System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetEntityIdsExcluding(string entityType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetIndirectRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoined(Valtuutus.Core.Data.EntityRelationFilter mainFilter, string subEntityType, string subRelation, string subjectType, string subjectId, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
@@ -171,7 +173,45 @@ namespace Valtuutus.Core.Engines.Check
     {
         public CheckEngine(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema) { }
         public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Engines.Check.CheckExplainResult> Explain(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken) { }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class CheckExplainResult
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public CheckExplainResult() { }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public bool Result { get; init; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public Valtuutus.Core.Engines.Check.CheckNode Root { get; init; }
+    }
+    [System.Runtime.CompilerServices.RequiredMember]
+    public sealed class CheckNode
+    {
+        [System.Obsolete("Constructors of types with required members are not supported in this version of " +
+            "your compiler.", true)]
+        public CheckNode() { }
+        public System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.Check.CheckNode> Children { get; }
+        public string? Detail { get; }
+        public string? EntityId { get; }
+        public string? EntityType { get; }
+        [System.Runtime.CompilerServices.RequiredMember]
+        public string Name { get; init; }
+        public bool Result { get; }
+        public string? SubjectId { get; }
+        public string? SubjectType { get; }
+        public Valtuutus.Core.Engines.Check.CheckNodeType Type { get; }
+    }
+    public enum CheckNodeType
+    {
+        Permission = 0,
+        Expression = 1,
+        Relation = 2,
+        TupleToUserSet = 3,
+        Attribute = 4,
+        Function = 5,
     }
     [System.Runtime.CompilerServices.RequiredMember]
     public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
@@ -197,6 +237,7 @@ namespace Valtuutus.Core.Engines.Check
     public interface ICheckEngine
     {
         System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Engines.Check.CheckExplainResult> Explain(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public enum RelationType
