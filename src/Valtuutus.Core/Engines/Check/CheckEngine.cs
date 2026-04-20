@@ -143,6 +143,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         var result = await CheckInternal(req, new CheckMemo(), root, cancellationToken);
         root.Result = result;
+        FlattenExpressionTree(root);
         activity?.AddEvent(new ActivityEvent("ExplainFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(result))));
         return new CheckExplainResult { Result = result, Root = root };
@@ -644,11 +645,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private async Task<bool> CheckRelation(CheckRequest req, CheckMemo memo, CheckNode? node, CancellationToken ct)
     {
-        if (!string.IsNullOrEmpty(req.SubjectType)
-            && !schema.IsSubjectTypeAllowedInRelation(req.EntityType, req.Permission,
-                req.SubjectType, req.SubjectRelation))
-            return false;
-
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         if (node is not null) node.Type = CheckNodeType.Relation;
 
@@ -767,9 +763,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             var opName = child.ExpressionNode!.Operation switch
             {
-                PermissionOperation.Union => "OR",
-                PermissionOperation.Intersect => "AND",
-                PermissionOperation.Negate => "NOT",
+                PermissionOperation.Union => "or",
+                PermissionOperation.Intersect => "and",
+                PermissionOperation.Negate => "not",
                 _ => "expression"
             };
             return (CheckNodeType.Expression, opName);
@@ -782,6 +778,35 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return perm.IsIndirect
             ? (CheckNodeType.TupleToUserSet, perm.Permission)
             : (CheckNodeType.Permission, perm.Permission);
+    }
+
+    // Flatten consecutive same-named Expression nodes so e.g. "a or b or c" (parsed as a
+    // left-associative binary tree) renders as one OR node with three children instead of two nested ORs.
+    private static void FlattenExpressionTree(CheckNode node)
+    {
+        foreach (var child in node.Children)
+            FlattenExpressionTree(child);
+
+        if (node.Type != CheckNodeType.Expression) return;
+
+        bool changed = false;
+        for (var i = 0; i < node._children.Count; i++)
+        {
+            if (node._children[i].Type == CheckNodeType.Expression && node._children[i].Name == node.Name)
+            { changed = true; break; }
+        }
+        if (!changed) return;
+
+        var flat = new List<CheckNode>(node._children.Count + 2);
+        foreach (var child in node._children)
+        {
+            if (child.Type == CheckNodeType.Expression && child.Name == node.Name)
+                flat.AddRange(child._children);
+            else
+                flat.Add(child);
+        }
+        node._children.Clear();
+        node._children.AddRange(flat);
     }
 
     private static bool AllSameSubjectType(ReadOnlySpan<RelationTuple> relations, string expectedType)
