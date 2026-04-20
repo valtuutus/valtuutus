@@ -195,9 +195,13 @@ namespace Valtuutus.Core.Engines.Check
         public CheckNode() { }
         public System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.Check.CheckNode> Children { get; }
         public string? Detail { get; }
+        public string? EntityId { get; }
+        public string? EntityType { get; }
         [System.Runtime.CompilerServices.RequiredMember]
         public string Name { get; init; }
         public bool Result { get; }
+        public string? SubjectId { get; }
+        public string? SubjectType { get; }
         public Valtuutus.Core.Engines.Check.CheckNodeType Type { get; }
     }
     public enum CheckNodeType
