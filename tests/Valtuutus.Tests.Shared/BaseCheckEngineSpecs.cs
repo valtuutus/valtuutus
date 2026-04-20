@@ -765,6 +765,40 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Check_RbacViaSubRelation_ReturnsTrue()
+    {
+        // admin @role#assignee — "user" is not a direct entity, reaches via sub-relation path.
+        // Regression test: IsSubjectTypeAllowedInRelation was blocking this path early.
+        const string rbacSchema = """
+            entity user {}
+            entity role {
+                relation assignee @user;
+            }
+            entity resource {
+                relation admin  @role#assignee;
+                relation editor @role#assignee;
+                relation viewer @role#assignee;
+                permission read := viewer or editor or admin;
+            }
+            """;
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("role", "admin_role", "assignee", "user", "alice"),
+                new RelationTuple("resource", "api", "admin", "role", "admin_role", "assignee"),
+            ],
+            [], rbacSchema);
+
+        var result = await engine.Check(new CheckRequest
+        {
+            EntityType = "resource", EntityId = "api",
+            Permission = "read",
+            SubjectType = "user", SubjectId = "alice"
+        }, default);
+
+        result.Should().BeTrue();
+    }
+
     public static TheoryData<string, decimal?, bool> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, true},

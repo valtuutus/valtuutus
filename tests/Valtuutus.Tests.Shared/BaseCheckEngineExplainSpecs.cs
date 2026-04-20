@@ -131,10 +131,12 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
 
         result.Result.Should().BeFalse();
         result.Root.Name.Should().Be("comment");
-        // Binary parse: exactly 2 top-level children
-        result.Root.Children.Should().HaveCount(2);
+        // Intersect wraps children under a single "and" expression node
+        result.Root.Children.Should().HaveCount(1);
+        result.Root.Children[0].Name.Should().Be("and");
+        result.Root.Children[0].Type.Should().Be(CheckNodeType.Expression);
         // member resolves false (no tuple), public resolves true or short-circuited
-        result.Root.Children.Should().Contain(n => n.Name == "member" && !n.Result);
+        result.Root.Children[0].Children.Should().Contain(n => n.Name == "member" && !n.Result);
     }
 
     [Fact]
@@ -448,6 +450,103 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         ttuNode.Should().NotBeNull();
         ttuNode!.Result.Should().BeTrue();
         ttuNode.Children.Count.Should().BeGreaterThanOrEqualTo(2, "one child per relation tuple in the parallel path");
+    }
+
+    [Fact]
+    public async Task Explain_UnionFailed_NoDuplicatedNodes()
+    {
+        // read := viewer or editor or admin — three-way union, none granted
+        const string schema = """
+            entity user {}
+            entity resource {
+                relation viewer @user;
+                relation editor @user;
+                relation admin @user;
+                permission read := viewer or editor or admin;
+            }
+            """;
+        var engine = await CreateEngine([], [], schema);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "resource", EntityId = "res-1",
+            Permission = "read",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+
+        // Each relation should appear exactly once — no duplicate nodes with the same name.
+        var allNodes = CollectAllNodes(result.Root);
+        var nameGroups = allNodes.GroupBy(n => n.Name).Where(g => g.Count() > 1).ToList();
+        nameGroups.Should().BeEmpty("each relation name should appear at most once in the tree");
+
+        // All three leaf relations must be present and failed.
+        foreach (var rel in new[] { "viewer", "editor", "admin" })
+        {
+            var node = FindNode(result.Root, n => n.Name == rel);
+            node.Should().NotBeNull($"{rel} node should exist in tree");
+            node!.Result.Should().BeFalse();
+        }
+    }
+
+    [Fact]
+    public async Task Explain_RbacTupleToUserSet_ShowsRoleChildNodes()
+    {
+        // RBAC schema: admin/editor/viewer are @role#assignee (tuple-to-userset)
+        // alice is assignee of admin_role, which has admin on resource:api
+        const string rbacSchema = """
+            entity user {}
+            entity role {
+                relation assignee @user;
+            }
+            entity resource {
+                relation admin  @role#assignee;
+                relation editor @role#assignee;
+                relation viewer @role#assignee;
+                permission manage := admin;
+                permission write  := editor or admin;
+                permission read   := viewer or editor or admin;
+            }
+            """;
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("role", "admin_role", "assignee", "user", "alice"),
+                new RelationTuple("role", "editor_role", "assignee", "user", "bob"),
+                new RelationTuple("role", "viewer_role", "assignee", "user", "charlie"),
+                new RelationTuple("resource", "api", "admin", "role", "admin_role", "assignee"),
+                new RelationTuple("resource", "api", "editor", "role", "editor_role", "assignee"),
+                new RelationTuple("resource", "api", "viewer", "role", "viewer_role", "assignee"),
+            ],
+            [], rbacSchema);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "resource", EntityId = "api",
+            Permission = "read",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeTrue();
+
+        // admin is a plain relation reference (not TTU notation), so its node type is Relation.
+        // It resolves via the indirect sub-relation path: admin @role#assignee → checks role:admin_role#assignee.
+        var adminNode = FindNode(result.Root, n => n.Name == "admin" && n.Type == CheckNodeType.Relation);
+        adminNode.Should().NotBeNull("admin Relation node should exist");
+        adminNode!.Children.Should().NotBeEmpty("admin should have a child showing role:admin_role was checked via sub-relation path");
+
+        var childOfAdmin = adminNode.Children[0];
+        childOfAdmin.EntityType.Should().Be("role");
+        childOfAdmin.EntityId.Should().Be("admin_role");
+        childOfAdmin.Result.Should().BeTrue();
+    }
+
+    private static List<CheckNode> CollectAllNodes(CheckNode root)
+    {
+        var result = new List<CheckNode> { root };
+        foreach (var child in root.Children)
+            result.AddRange(CollectAllNodes(child));
+        return result;
     }
 
     private static CheckNode? FindNodeByType(CheckNode root, CheckNodeType type)

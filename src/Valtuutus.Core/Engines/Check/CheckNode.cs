@@ -16,6 +16,10 @@ public sealed class CheckNode
     public required string Name { get; init; }
     public bool Result { get; internal set; }
     public string? Detail { get; internal set; }
+    public string? EntityType { get; internal set; }
+    public string? EntityId { get; internal set; }
+    public string? SubjectType { get; internal set; }
+    public string? SubjectId { get; internal set; }
     public IReadOnlyList<CheckNode> Children => _children;
     internal readonly List<CheckNode> _children = [];
 }

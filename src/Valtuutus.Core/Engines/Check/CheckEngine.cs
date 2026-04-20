@@ -140,9 +140,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             tags: CreateCheckSpanAttributes(req));
 
         await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
-        var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission };
+        var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         var result = await CheckInternal(req, new CheckMemo(), root, cancellationToken);
         root.Result = result;
+        FlattenExpressionTree(root);
         activity?.AddEvent(new ActivityEvent("ExplainFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(result))));
         return new CheckExplainResult { Result = result, Root = root };
@@ -263,11 +264,42 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         return permNode.ExpressionNode!.Operation switch
         {
-            PermissionOperation.Intersect => CheckExpressionChild(req, permNode.ExpressionNode!.Children, memo, node, isUnion: false, ct),
-            PermissionOperation.Union => CheckExpressionChild(req, permNode.ExpressionNode!.Children, memo, node, isUnion: true, ct),
+            PermissionOperation.Intersect => CheckExpressionWithWrapper(req, permNode, memo, node, "and", isUnion: false, ct),
+            PermissionOperation.Union => CheckExpressionWithWrapper(req, permNode, memo, node, "or", isUnion: true, ct),
             PermissionOperation.Negate => NegateCheck(req, permNode.ExpressionNode!.Children[0], memo, node, ct),
             _ => throw new InvalidOperationException()
         };
+    }
+
+    private async Task<bool> CheckExpressionWithWrapper(CheckRequest req, PermissionNode permNode, CheckMemo memo, CheckNode? node, string opName, bool isUnion, CancellationToken ct)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        CheckNode? exprNode;
+        bool owned;
+        if (node is not null && node.Type == CheckNodeType.Expression)
+        {
+            // Reuse the pre-allocated expression node from the parent's CheckExpressionChild call.
+            // The parent will add it to its own parent after WhenAll, so we must not double-add.
+            exprNode = node;
+            owned = false;
+        }
+        else if (node is not null)
+        {
+            exprNode = new CheckNode { Type = CheckNodeType.Expression, Name = opName, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
+            owned = true;
+        }
+        else
+        {
+            exprNode = null;
+            owned = false;
+        }
+        var result = await CheckExpressionChild(req, permNode.ExpressionNode!.Children, memo, exprNode, isUnion, ct);
+        if (exprNode is not null)
+        {
+            exprNode.Result = result;
+            if (owned) node!._children.Add(exprNode);
+        }
+        return result;
     }
 
     private async Task<bool> NegateCheck(CheckRequest req, PermissionNode child, CheckMemo memo, CheckNode? node, CancellationToken ct)
@@ -278,7 +310,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         if (node is not null)
         {
             var (type, name) = GetNodeInfo(child);
-            childNode = new CheckNode { Type = type, Name = name };
+            childNode = new CheckNode { Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         }
 
         var inner = child.Type == PermissionNodeType.Expression
@@ -308,7 +340,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             if (node is not null)
             {
                 var (type, name) = GetNodeInfo(only);
-                childNode = new CheckNode { Type = type, Name = name };
+                childNode = new CheckNode { Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
             var result = await (only.Type == PermissionNodeType.Expression
                 ? CheckExpression(req, only, memo, childNode, ct)
@@ -328,7 +360,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < count; i++)
             {
                 var (type, name) = GetNodeInfo(children[i]);
-                childNodes[i] = new CheckNode { Type = type, Name = name };
+                childNodes[i] = new CheckNode { Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
         }
 
@@ -454,17 +486,17 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        CheckNode? childNode = parentNode is null ? null
-            : new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation };
+        // If parentNode already represents this relation (same name — created by GetNodeInfo in CheckExpressionChild
+        // or by the caller in CheckTupleToUserSet), pass it directly to avoid a duplicate node.
+        // Hot path (parentNode is null) is also handled here with no allocations.
+        if (parentNode is null || parentNode.Name == computedUserSetRelation)
+            return await CheckInternal(req with { Permission = computedUserSetRelation }, memo, parentNode, ct);
 
+        // Node represents a different permission (e.g. "delete" resolving to "owner") — create a child.
+        var childNode = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         var result = await CheckInternal(req with { Permission = computedUserSetRelation }, memo, childNode, ct);
-
-        if (childNode is not null)
-        {
-            childNode.Result = result;
-            parentNode!._children.Add(childNode);
-        }
-
+        childNode.Result = result;
+        parentNode._children.Add(childNode);
         return result;
     }
 
@@ -516,7 +548,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             var only = relations[0];
             CheckNode? childNode = node is null ? null
-                : new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation };
+                : new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation, EntityType = only.SubjectType, EntityId = only.SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
 
             var singleResult = await CheckComputedUserSet(new CheckRequest
             {
@@ -566,7 +598,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         CheckNode[]? childNodes = node is null ? null : new CheckNode[relations.Count];
         if (childNodes is not null)
             for (var i = 0; i < relations.Count; i++)
-                childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation };
+                childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation, EntityType = relations[i].SubjectType, EntityId = relations[i].SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
 
         var tasks = new Task<bool>[relations.Count];
         for (var i = 0; i < relations.Count; i++)
@@ -613,11 +645,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private async Task<bool> CheckRelation(CheckRequest req, CheckMemo memo, CheckNode? node, CancellationToken ct)
     {
-        if (!string.IsNullOrEmpty(req.SubjectType)
-            && !schema.IsSubjectTypeAllowedInRelation(req.EntityType, req.Permission,
-                req.SubjectType, req.SubjectRelation))
-            return false;
-
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
         if (node is not null) node.Type = CheckNodeType.Relation;
 
@@ -654,7 +681,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             ref readonly var only = ref indirectRelations.AsSpan()[0];
             CheckNode? childNode = node is null ? null
-                : new CheckNode { Type = CheckNodeType.Permission, Name = only.SubjectRelation ?? only.SubjectType };
+                : new CheckNode { Type = CheckNodeType.Permission, Name = only.SubjectRelation ?? only.SubjectType, EntityType = only.SubjectType, EntityId = only.SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
 
             var singleResult = await CheckInternal(new CheckRequest
             {
@@ -683,7 +710,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < indirectRelations.Count; i++)
             {
                 ref readonly var r = ref indirectRelations.AsSpan()[i];
-                childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = r.SubjectRelation ?? r.SubjectType };
+                childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = r.SubjectRelation ?? r.SubjectType, EntityType = r.SubjectType, EntityId = r.SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
 
         var tasks = new Task<bool>[indirectRelations.Count];
@@ -736,9 +763,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             var opName = child.ExpressionNode!.Operation switch
             {
-                PermissionOperation.Union => "OR",
-                PermissionOperation.Intersect => "AND",
-                PermissionOperation.Negate => "NOT",
+                PermissionOperation.Union => "or",
+                PermissionOperation.Intersect => "and",
+                PermissionOperation.Negate => "not",
                 _ => "expression"
             };
             return (CheckNodeType.Expression, opName);
@@ -751,6 +778,35 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return perm.IsIndirect
             ? (CheckNodeType.TupleToUserSet, perm.Permission)
             : (CheckNodeType.Permission, perm.Permission);
+    }
+
+    // Flatten consecutive same-named Expression nodes so e.g. "a or b or c" (parsed as a
+    // left-associative binary tree) renders as one OR node with three children instead of two nested ORs.
+    private static void FlattenExpressionTree(CheckNode node)
+    {
+        foreach (var child in node.Children)
+            FlattenExpressionTree(child);
+
+        if (node.Type != CheckNodeType.Expression) return;
+
+        bool changed = false;
+        for (var i = 0; i < node._children.Count; i++)
+        {
+            if (node._children[i].Type == CheckNodeType.Expression && node._children[i].Name == node.Name)
+            { changed = true; break; }
+        }
+        if (!changed) return;
+
+        var flat = new List<CheckNode>(node._children.Count + 2);
+        foreach (var child in node._children)
+        {
+            if (child.Type == CheckNodeType.Expression && child.Name == node.Name)
+                flat.AddRange(child._children);
+            else
+                flat.Add(child);
+        }
+        node._children.Clear();
+        node._children.AddRange(flat);
     }
 
     private static bool AllSameSubjectType(ReadOnlySpan<RelationTuple> relations, string expectedType)
