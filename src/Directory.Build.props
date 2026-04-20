@@ -19,8 +19,6 @@
   <PropertyGroup>
     <PackageReleaseNotes>Version 0.9.0-beta:
       NEW: ICheckEngine.Explain() — returns a full resolution tree showing why a permission check passed or failed
-      FIX: TTU (tuple-to-userset) nodes now correctly terminate in ReBAC explain graphs
-      NEW: Explain graph improvements — OR/AND wrapper nodes, entity/subject context, and deduplication of nodes
 
 Version 0.8.2-beta:
       FIX: Microsoft.Extensions.ObjectPool is now a proper transitive dependency — resolves TypeLoadException in Blazor WASM and other strict-linking environments
