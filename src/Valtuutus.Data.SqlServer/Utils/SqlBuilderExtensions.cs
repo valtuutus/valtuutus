@@ -1,5 +1,4 @@
-﻿using System.Data;
-using Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Data;
 using Dapper;
 using Valtuutus.Data.Db;
 
@@ -122,13 +121,10 @@ internal static class SqlBuilderExtensions
 
         if (entitiesIdsArr.Length > 0)
         {
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var entityId in entitiesIdsArr)
-                dt.Rows.Add(entityId);
-            builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter(TvpListIds)});
+            var tvpParam = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
         }
-        
+
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = new DbString()
             {
@@ -165,13 +161,10 @@ internal static class SqlBuilderExtensions
 
         if (subjectsIds.Length > 0)
         {
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var subjectId in subjectsIds)
-                dt.Rows.Add(subjectId);
-            builder = builder.Where("subject_id in (select id from @subjectsIds)", new {subjectsIds = dt.AsTableValuedParameter(TvpListIds)});
+            var tvpParam = TvpHelper.CreateTvpParameter("@subjectsIds", subjectsIds);
+            builder = builder.Where("subject_id in (select id from @subjectsIds)", new { subjectsIds = tvpParam });
         }
-        
+
         return builder;
     }
 
@@ -219,12 +212,8 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
 
-        using var dt = new DataTable();
-        dt.Columns.Add("id", typeof(string));
-        foreach (var entityId in entitiesIdsArr)
-            dt.Rows.Add(entityId);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter(TvpListIds)});
-
+        var tvpParam = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr);
+        builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
 
         return builder;
     }
@@ -240,19 +229,15 @@ internal static class SqlBuilderExtensions
             Value = filter.EntityType,
             Length = 256
         }});
-        
-        
-        using var attributesDt = new DataTable();
-        attributesDt.Columns.Add("id", typeof(string));
-        foreach (var attribute in filter.Attributes)
-            attributesDt.Rows.Add(attribute);
-        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter(TvpListIds)});
-        
-        using var entitiesIdDt = new DataTable();
-        entitiesIdDt.Columns.Add("id", typeof(string));
-        foreach (var entityId in entitiesIdsArr)
-            entitiesIdDt.Rows.Add(entityId);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = entitiesIdDt.AsTableValuedParameter(TvpListIds)});
+
+        var attributesTvp = TvpHelper.CreateTvpParameter("@Attributes", filter.Attributes);
+        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+
+        if (entitiesIdsArr.Length > 0)
+        {
+            var entitiesTvp = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = entitiesTvp });
+        }
 
         return builder;
     }
@@ -276,13 +261,10 @@ internal static class SqlBuilderExtensions
             Value = filter.EntityType,
             Length = 256
         }});
-        
-        
-        using var attributesDt = new DataTable();
-        attributesDt.Columns.Add("id", typeof(string));
-        foreach (var attribute in filter.Attributes)
-            attributesDt.Rows.Add(attribute);
-        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter(TvpListIds)});
+
+        var attributesTvp = TvpHelper.CreateTvpParameter("@Attributes", filter.Attributes);
+        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+
         return builder;
     }
     
