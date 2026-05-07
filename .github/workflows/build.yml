@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: dotnet build Valtuutus.sln --no-incremental
       - name: Test with coverage
-        run: dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f cobertura -o 'coverage.xml'
+        run: dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f cobertura -o 'coverage.xml' -s coverage.runsettings
       - name: Coverage summary
         uses: irongut/CodeCoverageSummary@v1.3.0
         with:
