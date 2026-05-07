@@ -22,13 +22,13 @@ jobs:
       PR_EVENT: pr_event
     steps:
       - name: Download coverage results
-        uses: dawidd6/action-download-artifact@v20
+        uses: dawidd6/action-download-artifact@v21
         with:
           name: ${{ env.COVERAGE_ARTIFACT }}
           run_id: ${{ github.event.workflow_run.id }}
 
       - name: Download PR event
-        uses: dawidd6/action-download-artifact@v20
+        uses: dawidd6/action-download-artifact@v21
         with:
           name: ${{ env.PR_EVENT }}
           run_id: ${{ github.event.workflow_run.id }}
