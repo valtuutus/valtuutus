@@ -1,14 +1,20 @@
-name: Track Benchmarks with Bencher
+name: Post Benchmark Results
 
 on:
   workflow_run:
     workflows: [Run Benchmarks]
     types: [completed]
 
+concurrency:
+  group: post-benchmarks-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
 jobs:
   track_fork_pr_branch:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     env:
       BENCHMARK_RESULTS: benchmark_results
       PR_EVENT: event.json
@@ -49,7 +55,6 @@ jobs:
             --start-point-clone-thresholds \
             --start-point-reset \
             --testbed ubuntu-latest \
-            --err \
             --adapter c_sharp_dot_net \
             --github-actions "$GITHUB_TOKEN" \
             --ci-number "$PR_NUMBER" \
