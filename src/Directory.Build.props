@@ -1,7 +1,6 @@
 <Project>
   <PropertyGroup>
     <Authors>Valtuutus</Authors>
-    <VersionPrefix>0.9.0-beta</VersionPrefix>
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -16,40 +15,13 @@
   <PropertyGroup>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
-  <PropertyGroup>
-    <PackageReleaseNotes>Version 0.9.0-beta:
-      NEW: ICheckEngine.Explain() — returns a full resolution tree showing why a permission check passed or failed
-      FIX: TTU (tuple-to-userset) nodes now correctly terminate in ReBAC explain graphs
-
-Version 0.8.2-beta:
-      FIX: Microsoft.Extensions.ObjectPool is now a proper transitive dependency — resolves TypeLoadException in Blazor WASM and other strict-linking environments
-
-Version 0.8.1-beta:
-      FIX: Microsoft.Extensions.* packages now use open-ended version ranges [8.0.0,) instead of exact pins, resolving runtime version conflicts on .NET 10+
-
-Version 0.8.0-beta:
-      BREAKING: Dropped netstandard2.0 — targets are net8.0, net9.0, net10.0
-      BREAKING: LookupEntity now returns LookupEntityPage instead of HashSet&lt;string&gt;
-      BREAKING: IDataReaderProvider methods gain a required EntityScope? scope parameter
-      BREAKING: SnapToken is now required (non-nullable) in data-layer filter types
-      NEW: net10.0 target framework support
-      NEW: LookupEntity parent-scoped queries via EntityScope
-      NEW: Cursor pagination for LookupEntity via PageSize + ContinuationToken
-      PERF: ~93% allocation reduction in LookupEntity engine
-      PERF: CheckEngine memoization, reachability pruning, and batched dispatch
-      PERF: Two-hop and TTU EXISTS JOIN eliminates extra DB round-trips
-      PERF: Native Npgsql hot-path readers for relation queries
-    </PackageReleaseNotes>
-  </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
     <None Include="$(MSBuildThisFileDirectory)\..\README.md" Pack="true" Visible="false" PackagePath="\" />
   </ItemGroup>
   <PropertyGroup>
     <RepositoryUrl>https://github.com/valtuutus/valtuutus</RepositoryUrl>
-    <!-- Optional: Embed source files that are not tracked by the source control manager in the PDB -->
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <!-- Optional: Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
