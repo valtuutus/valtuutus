@@ -1,5 +1,8 @@
 var target = Argument("target", "Default");
 var configuration = Argument("configuration", "Release");
+var packageVersion = Argument("packageVersion", "");
+var releaseNotesPropsFile = Argument("releaseNotesPropsFile", "");
+
 //////////////////////////////////////////////////////////////////////
 // TASKS
 //////////////////////////////////////////////////////////////////////
@@ -14,7 +17,7 @@ Task("Restore")
               {
                   Information($"Building { project.ToString()}");
                   DotNetRestore(project.ToString());
-              } 
+              }
 });
 
 
@@ -37,17 +40,25 @@ Task("Build")
 Task("Pack")
  .IsDependentOn("Build")
  .Does(() => {
- 
+
+   var msbuild = new DotNetMSBuildSettings()
+       .WithProperty("Copyright", $"© Copyright Valtuutus {DateTime.Now.Year}");
+
+   if (!string.IsNullOrEmpty(packageVersion))
+       msbuild = msbuild.WithProperty("PackageVersion", packageVersion);
+
+   if (!string.IsNullOrEmpty(releaseNotesPropsFile))
+       msbuild = msbuild.WithProperty("CustomAfterMicrosoftCommonProps", releaseNotesPropsFile);
+
    var settings = new DotNetPackSettings
     {
         Configuration = configuration,
         OutputDirectory = "./.artifacts",
         NoBuild = true,
         NoRestore = true,
-        MSBuildSettings = new DotNetMSBuildSettings()
-                        .WithProperty("Copyright", $"© Copyright Valtuutus {DateTime.Now.Year}")
+        MSBuildSettings = msbuild
     };
-    
+
     DotNetPack("./Valtuutus.sln", settings);
  });
 
@@ -63,7 +74,7 @@ Task("PublishNuget")
           SkipDuplicate = true
        });
    }
- }); 
+ });
 
 
 
