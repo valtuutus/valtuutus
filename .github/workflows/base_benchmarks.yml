@@ -31,6 +31,11 @@ jobs:
       - name: Run Benchmarks
         run: |
           dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
+      - name: Strip failed benchmarks from results
+        run: |
+          for f in BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json; do
+            jq '.Benchmarks |= map(select(.Statistics != null))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
       - uses: bencherdev/bencher@main
       - name: Track base branch benchmarks with Bencher
         env:
@@ -38,17 +43,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           for f in BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json; do
-            bencher run \
-            --project valtuutus \
-            --token "$BENCHER_API_TOKEN" \
-            --branch "${{ github.ref_name }}" \
-            --testbed ubuntu-latest \
-            --threshold-measure latency \
-            --threshold-test t_test \
-            --threshold-max-sample-size 64 \
-            --threshold-upper-boundary 0.99 \
-            --thresholds-reset \
-            --adapter c_sharp_dot_net \
-            --file "$f" \
-            --github-actions "$GITHUB_TOKEN"
+            count=$(jq '.Benchmarks | length' "$f")
+            if [ "$count" -gt 0 ]; then
+              bencher run \
+              --project valtuutus \
+              --token "$BENCHER_API_TOKEN" \
+              --branch "${{ github.ref_name }}" \
+              --testbed ubuntu-latest \
+              --threshold-measure latency \
+              --threshold-test t_test \
+              --threshold-max-sample-size 64 \
+              --threshold-upper-boundary 0.99 \
+              --thresholds-reset \
+              --adapter c_sharp_dot_net \
+              --file "$f" \
+              --github-actions "$GITHUB_TOKEN"
+            else
+              echo "Skipping $f — no successful benchmark results"
+            fi
           done
