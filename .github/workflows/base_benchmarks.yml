@@ -1,8 +1,17 @@
+name: Track Base Branch Benchmarks
+
 on:
   push:
     branches:
       - main
       - dev
+
+concurrency:
+  group: base-benchmarks-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  checks: write
 
 jobs:
   benchmark_base_branch:
@@ -39,7 +48,6 @@ jobs:
             --threshold-max-sample-size 64 \
             --threshold-upper-boundary 0.99 \
             --thresholds-reset \
-            --err \
             --adapter c_sharp_dot_net \
             --file "$f" \
             --github-actions "$GITHUB_TOKEN"
