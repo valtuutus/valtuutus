@@ -6,9 +6,13 @@ on:
     branches:
       - dev
 
+concurrency:
+  group: benchmarks-${{ github.head_ref }}
+  cancel-in-progress: true
+
 jobs:
   benchmark_base_branch:
-    name: Continuous Benchmarking with Bencher
+    name: Run Benchmarks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -21,7 +25,7 @@ jobs:
             8.x
             7.x
             6.x
-      - name: Track base branch benchmarks with Bencher
+      - name: Run Benchmarks
         run: |
           dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
       - name: Upload Benchmark Results

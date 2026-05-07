@@ -1,14 +1,20 @@
-name: Track Benchmarks with Bencher
+name: Post Benchmark Results
 
 on:
   workflow_run:
     workflows: [Run Benchmarks]
     types: [completed]
 
+concurrency:
+  group: post-benchmarks-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
 jobs:
-  track_fork_pr_branch:
+  post_results:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     env:
       BENCHMARK_RESULTS: benchmark_results
       PR_EVENT: event.json
@@ -23,35 +29,47 @@ jobs:
         with:
           name: ${{ env.PR_EVENT }}
           run_id: ${{ github.event.workflow_run.id }}
-      - name: Export PR Event Data
+      - name: Export PR number
         uses: actions/github-script@v9
         with:
           script: |
-            let fs = require('fs');
-            let prEvent = JSON.parse(fs.readFileSync(process.env.PR_EVENT, {encoding: 'utf8'}));
-            core.exportVariable("PR_HEAD", prEvent.pull_request.head.ref);
-            core.exportVariable("PR_BASE", prEvent.pull_request.base.ref);
-            core.exportVariable("PR_BASE_SHA", prEvent.pull_request.base.sha);
+            const fs = require('fs');
+            const prEvent = JSON.parse(fs.readFileSync(process.env.PR_EVENT, {encoding: 'utf8'}));
             core.exportVariable("PR_NUMBER", prEvent.number);
-      - uses: bencherdev/bencher@main
-      - name: Track Benchmarks with Bencher
-        env:
-          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for f in *-report-full-compressed.json; do
-            bencher run \
-            --project valtuutus \
-            --token "$BENCHER_API_TOKEN" \
-            --branch "$PR_HEAD" \
-            --start-point "$PR_BASE" \
-            --start-point-hash "$PR_BASE_SHA" \
-            --start-point-clone-thresholds \
-            --start-point-reset \
-            --testbed ubuntu-latest \
-            --err \
-            --adapter c_sharp_dot_net \
-            --github-actions "$GITHUB_TOKEN" \
-            --ci-number "$PR_NUMBER" \
-            --file "$f"
-          done
+      - name: Build benchmark comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const files = fs.readdirSync('.').filter(f => f.endsWith('-report-full-compressed.json'));
+
+            const rows = [];
+            for (const file of files) {
+              const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+              for (const b of (data.Benchmarks || [])) {
+                const mean = b.Statistics?.Mean;
+                const alloc = b.Memory?.BytesAllocatedPerOperation;
+                rows.push([
+                  b.Method || b.FullName,
+                  (b.Categories || []).join(', '),
+                  mean != null ? `${(mean / 1_000_000).toFixed(3)} ms` : 'N/A',
+                  alloc != null ? `${alloc.toLocaleString()} B` : 'N/A',
+                ]);
+              }
+            }
+
+            const lines = [
+              '## Benchmark Results',
+              '',
+              '| Benchmark | Category | Mean | Allocated |',
+              '|-----------|----------|------|-----------|',
+              ...rows.map(([name, cat, mean, alloc]) => `| ${name} | ${cat} | ${mean} | ${alloc} |`),
+            ];
+
+            fs.writeFileSync('benchmark-results.md', lines.join('\n'));
+      - name: Post benchmark PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          number: ${{ env.PR_NUMBER }}
+          recreate: true
+          path: benchmark-results.md
