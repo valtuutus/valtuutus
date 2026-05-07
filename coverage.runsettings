@@ -5,15 +5,11 @@
       <DataCollector friendlyName="Code Coverage">
         <Configuration>
           <CodeCoverage>
-            <ModulePaths>
+            <Sources>
               <Include>
-                <ModulePath>.*Valtuutus\..*\.dll$</ModulePath>
+                <Source>.*[/\\]src[/\\]Valtuutus.*</Source>
               </Include>
-              <Exclude>
-                <ModulePath>.*Tests.*\.dll$</ModulePath>
-                <ModulePath>.*testhost.*</ModulePath>
-              </Exclude>
-            </ModulePaths>
+            </Sources>
           </CodeCoverage>
         </Configuration>
       </DataCollector>
