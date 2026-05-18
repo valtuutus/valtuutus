@@ -9,10 +9,7 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
 {
     public PermissionNode Parse(ValtuutusParser.PermissionDefinitionContext permission, string entityName)
     {
-        var permissionTree = BuildPermissionNode(entityName, permission.permissionExpression());
-        schemaReader.AddSymbol(new PermissionSymbol(permission.ID().GetText(), permission.Start.Line,
-            permission.Start.Column, entityName));
-        return permissionTree;
+        return BuildPermissionNode(entityName, permission.permissionExpression());
     }
 
     private PermissionNode BuildPermissionNode(string entityName, ValtuutusParser.PermissionExpressionContext context)
