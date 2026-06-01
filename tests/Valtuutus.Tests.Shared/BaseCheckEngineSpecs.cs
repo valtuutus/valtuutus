@@ -1139,4 +1139,72 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         result.Should().BeTrue();
     }
+
+    // Diamond pattern: both `owner` and `editor` are TTU pointing to the same group#member.
+    // A union short-circuit (view) must not cancel the memoized task that the intersection (admin) also awaits.
+    private const string DiamondSchema = """
+        entity user {}
+        entity group {
+            relation member @user;
+        }
+        entity folder {
+            relation owner @group#member;
+            relation editor @group#member;
+            permission view  := owner or editor;
+            permission admin := owner and editor;
+        }
+        """;
+
+    [Fact]
+    public async Task Check_Diamond_TTU_Intersection_ReturnsTrue_WhenSubjectIsGroupMember()
+    {
+        var engine = await CreateEngine([
+            new RelationTuple("group",  "g1", "member", "user", "alice"),
+            new RelationTuple("folder", "f1", "owner",  "group", "g1", "member"),
+            new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
+        ], [], DiamondSchema);
+
+        var result = await engine.Check(
+            new CheckRequest("folder", "f1", "admin", "user", "alice"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Check_Diamond_TTU_Union_ReturnsTrue_WhenSubjectIsGroupMember()
+    {
+        var engine = await CreateEngine([
+            new RelationTuple("group",  "g1", "member", "user", "alice"),
+            new RelationTuple("folder", "f1", "owner",  "group", "g1", "member"),
+            new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
+        ], [], DiamondSchema);
+
+        var result = await engine.Check(
+            new CheckRequest("folder", "f1", "view", "user", "alice"), default);
+
+        result.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SubjectPermission_Diamond_TTU_ReturnsBothTrue_WhenSubjectIsGroupMember()
+    {
+        // SubjectPermission checks view+admin concurrently with a shared CheckMemo.
+        // view (union) short-circuits as soon as `owner` is true, cancelling its pooled CTS.
+        // admin (intersection) must still resolve correctly from the same memoized group#member task.
+        var engine = await CreateEngine([
+            new RelationTuple("group",  "g1", "member", "user", "alice"),
+            new RelationTuple("folder", "f1", "owner",  "group", "g1", "member"),
+            new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
+        ], [], DiamondSchema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "folder", EntityId = "f1",
+                SubjectType = "user", SubjectId = "alice"
+            }, default);
+
+        result.Should().ContainKey("view").WhoseValue.Should().BeTrue();
+        result.Should().ContainKey("admin").WhoseValue.Should().BeTrue();
+    }
 }
