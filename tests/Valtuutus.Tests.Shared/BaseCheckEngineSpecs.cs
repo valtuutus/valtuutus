@@ -1072,6 +1072,48 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             .Should().BeFalse();
     }
 
+    /// <summary>
+    /// Verifies a self-referential permission cascades through a chain of same-type parents:
+    /// organisation.manage_users := user_manager or parent.manage_users, where parent is an
+    /// organisation. A user who is a user_manager at the root org should have manage_users at
+    /// every descendant org via the recursive parent.manage_users, while an unrelated user does not.
+    /// </summary>
+    [Fact]
+    public async Task Check_SelfReferentialPermission_CascadesThroughParentChain()
+    {
+        const string schema = """
+            entity user {}
+            entity organisation {
+                relation parent       @organisation;
+                relation user_manager @user;
+                permission manage_users := user_manager or parent.manage_users;
+            }
+            """;
+
+        // org-root <- org-child <- org-grandchild ; alice is user_manager only at org-root
+        var engine = await CreateEngine([
+            new RelationTuple("organisation", "org-root",       "user_manager", "user",         "alice"),
+            new RelationTuple("organisation", "org-child",      "parent",       "organisation", "org-root"),
+            new RelationTuple("organisation", "org-grandchild", "parent",       "organisation", "org-child"),
+        ], [], schema);
+
+        // direct: alice is user_manager at root
+        (await engine.Check(new CheckRequest("organisation", "org-root", "manage_users", "user", "alice"), default))
+            .Should().BeTrue();
+
+        // one hop up the parent chain
+        (await engine.Check(new CheckRequest("organisation", "org-child", "manage_users", "user", "alice"), default))
+            .Should().BeTrue();
+
+        // two hops up the parent chain (the cascading case)
+        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "alice"), default))
+            .Should().BeTrue();
+
+        // negative: bob has no relation anywhere → false at every level
+        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "bob"), default))
+            .Should().BeFalse();
+    }
+
     [Fact]
     public async Task Check_Not_Compound_Expression_Returns_True_When_Subject_Matches_Nothing_Inside()
     {
