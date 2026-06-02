@@ -5,7 +5,7 @@ using Testcontainers.MsSql;
 using Valtuutus.Data.Db;
 using Valtuutus.Tests.Shared;
 
-namespace Valtuutus.Data.SqlServer.NonDefaultSchema.Tests;
+namespace Valtuutus.Data.SqlServer.Tests;
 
 
 [CollectionDefinition("SqlServerAuthzSpec")]
