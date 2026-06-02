@@ -375,8 +375,8 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             var child = children[i];
             var childNode = childNodes?[i];
             rawTasks[i] = child.Type == PermissionNodeType.Expression
-                ? CheckExpression(req, child, memo, childNode, cancellationToken)
-                : CheckLeaf(req, child, memo, childNode, cancellationToken);
+                ? CheckExpression(req, child, memo, childNode, ct)
+                : CheckLeaf(req, child, memo, childNode, ct);
             tasks[i] = isUnion
                 ? rawTasks[i].ContinueWith(
                     static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
@@ -613,7 +613,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, computedUserSetRelation, memo, childNode, cancellationToken)
+            }, computedUserSetRelation, memo, childNode, ct)
             .ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
@@ -726,7 +726,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
-            }, memo, childNode, cancellationToken)
+            }, memo, childNode, ct)
             .ContinueWith(
                 static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
                 innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
