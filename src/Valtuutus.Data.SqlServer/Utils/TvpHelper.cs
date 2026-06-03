@@ -19,12 +19,12 @@ internal static class TvpHelper
         }
     }
 
-    internal static SqlParameter CreateTvpParameter(string parameterName, IEnumerable<string> values) =>
+    internal static SqlParameter CreateTvpParameter(string parameterName, IEnumerable<string> values, string typeName) =>
         new()
         {
             ParameterName = parameterName,
             SqlDbType = SqlDbType.Structured,
-            TypeName = TvpListIds,
+            TypeName = typeName,
             Value = CreateIdTvp(values)
         };
 

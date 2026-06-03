@@ -45,6 +45,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
     private static string? _getAttributesDictScopedSql;
     private static string? _getEntityIdsExcludingSql;
     private static string? _getSubjectIdsExcludingSql;
+    private static string? _tvpListIdsTypeName;
     private static readonly object Lock = new();
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -64,6 +65,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             {
                 if (_formattedSelectAttributes == null)
                 {
+                    _tvpListIdsTypeName ??= SqlBuilderExtensions.FormatTvpListIdsName(dbOptions.Schema);
                     _formattedSelectAttributes ??= string.Format(UnformattedSelectAttributes, dbOptions.Schema,
                         dbOptions.AttributesTableName);
                     _formattedSelectRelations ??= string.Format(UnformattedSelectRelations, dbOptions.Schema,
@@ -264,7 +266,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             }
 
             var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter)
+                .FilterAttributes(filter, _tvpListIdsTypeName!)
                 .AddTemplate(_formattedSelectAttributes!);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -285,7 +287,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter, entitiesIds)
+                .FilterAttributes(filter, entitiesIds, _tvpListIdsTypeName!)
                 .AddTemplate(_formattedSelectAttributes!);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -307,7 +309,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter, entitiesIds)
+                .FilterAttributes(filter, entitiesIds, _tvpListIdsTypeName!)
                 .AddTemplate(_formattedSelectAttributes!);
 
             return (await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
@@ -445,7 +447,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
-                .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
+                .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation, _tvpListIdsTypeName!)
                 .AddTemplate(_formattedSelectRelations!);
 
             var pooled = PooledList<RelationTuple>.Rent();
@@ -521,7 +523,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
 
             await using var fallbackConnection = (SqlConnection)_connectionFactory();
             var queryTemplate = new SqlBuilder()
-                .FilterRelations(entityFilter, subjectsIds, subjectType)
+                .FilterRelations(entityFilter, subjectsIds, subjectType, _tvpListIdsTypeName!)
                 .AddTemplate(_formattedSelectRelations!);
 
             var multi = PooledList<RelationTuple>.Rent();
@@ -544,7 +546,8 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
                                 SnapToken = entityFilter.SnapToken
                             },
                             new[] { ms.SubjectId },
-                            ms.SubjectType)
+                            ms.SubjectType,
+                            _tvpListIdsTypeName!)
                         .AddTemplate(_formattedSelectRelations!);
                     var scopeRelations = (await scopeConnection.QueryAsync<RelationTuple>(new CommandDefinition(
                             scopeQueryTemplate.RawSql,
@@ -685,7 +688,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
 
-            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds);
+            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getEntityIdsExcludingSql!,
                 new
@@ -711,7 +714,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
 
-            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds);
+            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getSubjectIdsExcludingSql!,
                 new
