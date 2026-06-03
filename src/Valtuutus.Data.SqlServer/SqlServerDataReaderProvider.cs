@@ -687,16 +687,15 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var id in excludeIds) dt.Rows.Add(id);
+
+            var excludeIdsParam = TvpHelper.AsTvpParameter(excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getEntityIdsExcludingSql!,
                 new
                 {
                     EntityType = new DbString { Value = entityType, Length = 256 },
                     SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
-                    ExcludeIds = dt.AsTableValuedParameter(_tvpListIdsTypeName!)
+                    ExcludeIds = excludeIdsParam
                 },
                 cancellationToken: cancellationToken));
             return rows is List<string> list ? list : rows.ToList();
@@ -714,16 +713,15 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var id in excludeIds) dt.Rows.Add(id);
+
+            var excludeIdsParam = TvpHelper.AsTvpParameter(excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getSubjectIdsExcludingSql!,
                 new
                 {
                     SubjectType = new DbString { Value = subjectType, Length = 256 },
                     SnapToken = new DbString { Value = snapToken.Value, Length = 26, IsFixedLength = true },
-                    ExcludeIds = dt.AsTableValuedParameter(_tvpListIdsTypeName!)
+                    ExcludeIds = excludeIdsParam
                 },
                 cancellationToken: cancellationToken));
             return rows is List<string> list ? list : rows.ToList();
