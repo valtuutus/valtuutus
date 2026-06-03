@@ -688,7 +688,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
 
-            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds, _tvpListIdsTypeName!);
+            var excludeIdsParam = TvpHelper.AsTvpParameter(excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getEntityIdsExcludingSql!,
                 new
@@ -714,7 +714,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         {
             await using var connection = (SqlConnection)_connectionFactory();
 
-            var excludeIdsParam = TvpHelper.CreateTvpParameter("@ExcludeIds", excludeIds, _tvpListIdsTypeName!);
+            var excludeIdsParam = TvpHelper.AsTvpParameter(excludeIds, _tvpListIdsTypeName!);
             var rows = await connection.QueryAsync<string>(new CommandDefinition(
                 _getSubjectIdsExcludingSql!,
                 new

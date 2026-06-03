@@ -126,7 +126,7 @@ internal static class SqlBuilderExtensions
 
         if (entitiesIdsArr.Length > 0)
         {
-            var tvpParam = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr, tvpTypeName);
+            var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
         }
 
@@ -166,7 +166,7 @@ internal static class SqlBuilderExtensions
 
         if (subjectsIds.Length > 0)
         {
-            var tvpParam = TvpHelper.CreateTvpParameter("@subjectsIds", subjectsIds, tvpTypeName);
+            var tvpParam = TvpHelper.AsTvpParameter(subjectsIds, tvpTypeName);
             builder = builder.Where("subject_id in (select id from @subjectsIds)", new { subjectsIds = tvpParam });
         }
 
@@ -217,7 +217,7 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
 
-        var tvpParam = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr, tvpTypeName);
+        var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
         builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
 
         return builder;
@@ -235,12 +235,12 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
 
-        var attributesTvp = TvpHelper.CreateTvpParameter("@Attributes", filter.Attributes, tvpTypeName);
+        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
         builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
 
         if (entitiesIdsArr.Length > 0)
         {
-            var entitiesTvp = TvpHelper.CreateTvpParameter("@entitiesIds", entitiesIdsArr, tvpTypeName);
+            var entitiesTvp = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = entitiesTvp });
         }
 
@@ -267,7 +267,7 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
 
-        var attributesTvp = TvpHelper.CreateTvpParameter("@Attributes", filter.Attributes, tvpTypeName);
+        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
         builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
 
         return builder;
