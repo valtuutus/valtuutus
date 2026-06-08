@@ -5,6 +5,7 @@ on:
       - '**.md'
     branches:
       - main
+      - dev
   pull_request:
     types: [opened, synchronize, reopened]
     paths-ignore:
