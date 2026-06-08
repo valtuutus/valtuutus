@@ -6,6 +6,7 @@ using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Data.SqlServer.Utils;
+using Valtuutus.Data.Db;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Data.Db;
