@@ -20,9 +20,8 @@ public sealed class SqlServerAuthzSpecsFixture : ICollectionFixture<NonDefaultSc
 /// default schema, so without the fix the bare "TVP_ListIds" fails to resolve in [authz] and
 /// every lookup/exclusion/batch-attribute query errors.
 ///
-/// This lives in its own test assembly on purpose: SqlServerDataReaderProvider /
-/// SqlServerDataWriterProvider cache their schema-qualified SQL in process-wide static fields,
-/// so a non-default-schema test cannot share a process with the default-schema (dbo) tests.
+/// The query cache is now keyed by <see cref="DbQueryCacheKey"/> in a ConcurrentDictionary, so the
+/// default-schema (dbo) and non-default-schema ("authz") fixtures can safely run in the same process.
 /// </summary>
 public class NonDefaultSchemaSqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {
