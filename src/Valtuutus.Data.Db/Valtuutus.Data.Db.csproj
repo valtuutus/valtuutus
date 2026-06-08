@@ -17,4 +17,13 @@
       <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.Postgres</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.SqlServer</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
 </Project>

@@ -6,6 +6,7 @@ using Npgsql;
 using NpgsqlTypes;
 using Valtuutus.Data.Db;
 using System.Data;
+using System.Collections.Concurrent;
 
 namespace Valtuutus.Data.Postgres;
 
@@ -14,12 +15,18 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly IServiceProvider _provider;
     private readonly ValtuutusDataOptions _options;
-    private static string? _deleteAttributesCommandText;
-    private static string? _copyRelationsCommand;
-    private static string? _insertTransactionCommandText;
-    private static string? _deleteRelationsCommandText;
-    private static string? _mergeAttributesCommandText;
-    private static readonly object Lock = new();
+
+    private sealed record WriterCommands
+    {
+        public required string CopyRelations { get; init; }
+        public required string InsertTransaction { get; init; }
+        public required string DeleteRelations { get; init; }
+        public required string DeleteAttributes { get; init; }
+        public required string MergeAttributes { get; init; }
+    }
+
+    private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
+    private readonly WriterCommands _c;
 
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
@@ -29,44 +36,33 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
         _factory = factory;
         _provider = provider;
         _options = options;
-        InitializeCommands(dbOptions);
+        _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildCommands(key));
     }
 
-    private static void InitializeCommands(IValtuutusDbOptions dbOptions)
+    private static WriterCommands BuildCommands(DbQueryCacheKey key) => new()
     {
-        if (_copyRelationsCommand == null || _insertTransactionCommandText == null ||
-            _deleteRelationsCommandText == null || _deleteAttributesCommandText == null ||
-            _mergeAttributesCommandText == null)
-        {
-            lock (Lock)
-            {
-                if (_copyRelationsCommand == null)
-                {
-                    _copyRelationsCommand ??=
-                        $"copy {dbOptions.Schema}.{dbOptions.RelationsTableName} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)";
-                    _insertTransactionCommandText ??=
-                        $"INSERT INTO {dbOptions.Schema}.{dbOptions.TransactionsTableName} (id, created_at) VALUES (@id, @created_at)";
-                    _deleteRelationsCommandText ??=
-                        $@"UPDATE {dbOptions.Schema}.{dbOptions.RelationsTableName} set deleted_tx_id = @SnapToken /**where**/";
-                    _deleteAttributesCommandText ??=
-                        $@"UPDATE {dbOptions.Schema}.{dbOptions.AttributesTableName} set deleted_tx_id = @SnapToken /**where**/";
-                    _mergeAttributesCommandText ??= $""""
-                                                     MERGE INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} AS target
-                                                     USING temp_attributes AS source
-                                                     ON (target.entity_type = source.entity_type 
-                                                         AND target.entity_id = source.entity_id 
-                                                         AND target.attribute = source.attribute)
-                                                     WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
-                                                         UPDATE SET deleted_tx_id = source.created_tx_id;
+        CopyRelations =
+            $"copy {key.Schema}.{key.RelationsTable} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
+        InsertTransaction =
+            $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at)",
+        DeleteRelations =
+            $@"UPDATE {key.Schema}.{key.RelationsTable} set deleted_tx_id = @SnapToken /**where**/",
+        DeleteAttributes =
+            $@"UPDATE {key.Schema}.{key.AttributesTable} set deleted_tx_id = @SnapToken /**where**/",
+        MergeAttributes = $""""
+                           MERGE INTO {key.Schema}.{key.AttributesTable} AS target
+                           USING temp_attributes AS source
+                           ON (target.entity_type = source.entity_type
+                               AND target.entity_id = source.entity_id
+                               AND target.attribute = source.attribute)
+                           WHEN MATCHED AND target.deleted_tx_id IS NULL THEN
+                               UPDATE SET deleted_tx_id = source.created_tx_id;
 
-                                                     INSERT INTO {dbOptions.Schema}.{dbOptions.AttributesTableName} (entity_type, entity_id, attribute, value, created_tx_id)
-                                                     SELECT entity_type, entity_id, attribute, value, created_tx_id
-                                                     FROM temp_attributes;
-                                                     """";
-                }
-            }
-        }
-    }
+                           INSERT INTO {key.Schema}.{key.AttributesTable} (entity_type, entity_id, attribute, value, created_tx_id)
+                           SELECT entity_type, entity_id, attribute, value, created_tx_id
+                           FROM temp_attributes;
+                           """"
+    };
 
     public async Task<SnapToken> Write(
         IEnumerable<RelationTuple> relations,
@@ -108,7 +104,7 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
         await InsertTransaction((NpgsqlConnection)connection, transactId, (NpgsqlTransaction)transaction, ct);
 
         await using var relationsWriter = await ((NpgsqlConnection)connection).BeginBinaryImportAsync(
-            _copyRelationsCommand!,
+            _c.CopyRelations,
             ct);
         foreach (var record in relations)
         {
@@ -147,7 +143,7 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
         await attributesWriter.CloseAsync(ct);
 
         await connection.ExecuteAsync(new CommandDefinition(
-            _mergeAttributesCommandText!, transaction, cancellationToken: ct));
+            _c.MergeAttributes, transaction, cancellationToken: ct));
 
         var snapToken = new SnapToken(transactId.ToString());
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
@@ -158,7 +154,7 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
         NpgsqlTransaction transaction, CancellationToken ct)
     {
         await db.ExecuteAsync(new CommandDefinition(
-            _insertTransactionCommandText!,
+            _c.InsertTransaction,
             new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
             cancellationToken: ct));
     }
@@ -207,7 +203,7 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
             relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
             var queryTemplate =
                 relationsBuilder.AddTemplate(
-                    _deleteRelationsCommandText!, snapTokenParam);
+                    _c.DeleteRelations, snapTokenParam);
 
             await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
                 cancellationToken: ct, transaction: transaction));
@@ -218,7 +214,7 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
             var attributesBuilder = new SqlBuilder();
             attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
             var queryTemplate =
-                attributesBuilder.AddTemplate(_deleteAttributesCommandText,
+                attributesBuilder.AddTemplate(_c.DeleteAttributes,
                     snapTokenParam);
 
             await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,

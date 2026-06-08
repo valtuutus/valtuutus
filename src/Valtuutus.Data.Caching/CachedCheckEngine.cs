@@ -1,4 +1,4 @@
-﻿using Valtuutus.Core.Data;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
 using ZiggyCreatures.Caching.Fusion;
@@ -17,14 +17,15 @@ public sealed class CachedCheckEngine : ICheckEngine
         _cache = cache;
         _engine = engine;
     }
-    
+
     /// <inheritdoc />
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedCheck");
 
-        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
-        return await _cache.GetOrSetAsync(GetCheckCacheKey(req), ct => _engine.Check(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
+        var resolvedReq = req with { SnapToken = snapToken };
+        return await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq), ct => _engine.Check(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
 
 
@@ -33,10 +34,11 @@ public sealed class CachedCheckEngine : ICheckEngine
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedSubjectPermission");
 
-        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
-        return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(req), ct => _engine.SubjectPermission(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
+        var resolvedReq = req with { SnapToken = snapToken };
+        return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq), ct => _engine.SubjectPermission(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
-    
+
     /// <inheritdoc />
     public Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
         => _engine.Explain(req, cancellationToken);
@@ -45,7 +47,7 @@ public sealed class CachedCheckEngine : ICheckEngine
     {
         return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{req.SnapToken}";
     }
-    
+
     private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req)
     {
         return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{req.SnapToken?.Value}";
