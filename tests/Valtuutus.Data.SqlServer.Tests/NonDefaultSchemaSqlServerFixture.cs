@@ -5,7 +5,7 @@ using Testcontainers.MsSql;
 using Valtuutus.Data.Db;
 using Valtuutus.Tests.Shared;
 
-namespace Valtuutus.Data.SqlServer.NonDefaultSchema.Tests;
+namespace Valtuutus.Data.SqlServer.Tests;
 
 
 [CollectionDefinition("SqlServerAuthzSpec")]
@@ -20,9 +20,7 @@ public sealed class SqlServerAuthzSpecsFixture : ICollectionFixture<NonDefaultSc
 /// default schema, so without the fix the bare "TVP_ListIds" fails to resolve in [authz] and
 /// every lookup/exclusion/batch-attribute query errors.
 ///
-/// This lives in its own test assembly on purpose: SqlServerDataReaderProvider /
-/// SqlServerDataWriterProvider cache their schema-qualified SQL in process-wide static fields,
-/// so a non-default-schema test cannot share a process with the default-schema (dbo) tests.
+/// The <see cref="DbQueryCacheKey"/>-keyed ConcurrentDictionary cache lets this fixture share a process with the default-schema (dbo) tests.
 /// </summary>
 public class NonDefaultSchemaSqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {

@@ -52,7 +52,7 @@ public sealed class LookupEntityEngine(
                     $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
         }
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -61,7 +61,7 @@ public sealed class LookupEntityEngine(
             SubjectsIds = [req.SubjectId],
             FinalSubjectType = req.SubjectType,
             FinalSubjectId = req.SubjectId,
-            SnapToken = req.SnapToken,
+            SnapToken = snapToken,
             Depth = req.Depth,
             Context = req.Context,
             Scope = req.Scope,

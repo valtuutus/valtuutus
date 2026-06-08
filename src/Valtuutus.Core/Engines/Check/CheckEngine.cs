@@ -73,7 +73,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
         var val = await CheckInternal(req, new CheckMemo(), cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
@@ -98,7 +98,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
         var permissions = schema.GetPermissions(req.EntityType);
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
 
         var count = permissions.Count;
         var names = new string[count];
@@ -116,7 +116,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Permission = perm.Name,
                 SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
-                SnapToken = req.SnapToken,
+                SnapToken = snapToken,
                 Depth = req.Depth
             }, memo, cancellationToken);
             i++;
@@ -139,7 +139,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateCheckSpanAttributes(req));
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
         var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         var result = await CheckInternal(req, new CheckMemo(), root, cancellationToken);
         root.Result = result;

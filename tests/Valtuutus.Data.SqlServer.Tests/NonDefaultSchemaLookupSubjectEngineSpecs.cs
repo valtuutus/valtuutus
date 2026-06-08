@@ -2,12 +2,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Data;
 using Valtuutus.Tests.Shared;
 
-namespace Valtuutus.Data.SqlServer.NonDefaultSchema.Tests;
+namespace Valtuutus.Data.SqlServer.Tests;
 
 [Collection("SqlServerAuthzSpec")]
-public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
+public sealed class NonDefaultSchemaLookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
 {
-    public LookupSubjectEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
+    public NonDefaultSchemaLookupSubjectEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

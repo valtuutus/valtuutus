@@ -4,12 +4,12 @@ using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Tests.Shared;
 
-namespace Valtuutus.Data.SqlServer.NonDefaultSchema.Tests;
+namespace Valtuutus.Data.SqlServer.Tests;
 
 [Collection("SqlServerAuthzSpec")]
-public sealed class DataEngineSpecs : BaseDataEngineSpecs
+public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
 {
-    public DataEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
+    public NonDefaultSchemaDataEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {
