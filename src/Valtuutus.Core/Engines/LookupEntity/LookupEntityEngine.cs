@@ -295,7 +295,7 @@ public sealed class LookupEntityEngine(
         if (fn is null) throw new InvalidOperationException();
         if (!node.IsContextValid(req.Context)) return ListPool<LookupEntityResult>.Rent();
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter
             {
@@ -344,7 +344,7 @@ public sealed class LookupEntityEngine(
             return ListPool<LookupEntityResult>.Rent();
         }
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
 
         var cacheKey = req.EntityType + "\x00" + string.Join(",", attributeArguments) + "\x00" + req.Scope?.Relation + "\x00" + req.Scope?.SubjectType + "\x00" + req.Scope?.SubjectId;
         var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,

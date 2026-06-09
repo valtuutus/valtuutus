@@ -104,7 +104,7 @@ internal record PermissionNodeExpArgumentBooleanLiteral : PermissionNodeExpArgum
 
 internal record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
 {
-    internal string[] GetArgsAttributesNames() => Args
+    internal string[] AttributeArgNames { get; } = Args
         .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)
         .Cast<PermissionNodeExpArgumentAttribute>()
         .Select(x => x.AttributeName)
