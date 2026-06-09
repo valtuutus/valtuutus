@@ -140,6 +140,12 @@ public interface IDataReaderProvider
     Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Retrieves attributes for a single entity. Optimized path for Check engine — avoids dictionary allocation.
+    /// <paramref name="filter"/>.<see cref="EntityAttributesFilter.EntityId"/> must be set.
+    /// </summary>
+    Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Returns all distinct entity IDs of the given type that are NOT in <paramref name="excludeIds"/>.
     /// Pass an empty collection to retrieve all entity IDs (no exclusion filter).
     /// Implements DB-side set complement for negation support in LookupEntity.
