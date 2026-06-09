@@ -61,7 +61,7 @@ internal static class LangTypeExtensions
     }
 }
 
-internal record LiteralValueUnion : IComparable<LiteralValueUnion>
+internal record struct LiteralValueUnion : IComparable<LiteralValueUnion>
 {
     public LangType LiteralType { get; set; }
     public int? IntValue { get; set; }
@@ -69,34 +69,18 @@ internal record LiteralValueUnion : IComparable<LiteralValueUnion>
     public decimal? DecimalValue { get; set; }
     public bool? BooleanValue { get; set; }
 
-    public int CompareTo(LiteralValueUnion? other)
+    public int CompareTo(LiteralValueUnion other)
     {
-        if (ReferenceEquals(this, other))
-        {
-            return 0;
-        }
-
-        if (other is null)
-        {
-            return 1;
-        }
-
         if (LiteralType != other.LiteralType)
-        {
             throw new ArgumentException("Incompatible literal type comparison");
-        }
 
         var intValueComparison = Nullable.Compare(IntValue, other.IntValue);
         if (intValueComparison != 0)
-        {
             return intValueComparison;
-        }
 
         var stringValueComparison = string.Compare(StringValue, other.StringValue, StringComparison.Ordinal);
         if (stringValueComparison != 0)
-        {
             return stringValueComparison;
-        }
 
         return Nullable.Compare(DecimalValue, other.DecimalValue);
     }
