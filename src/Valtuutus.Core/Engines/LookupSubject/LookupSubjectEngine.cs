@@ -204,7 +204,7 @@ public sealed class LookupSubjectEngine(
             return new RelationOrAttributeTuples(new List<RelationTuple>());
         }
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
 
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter
