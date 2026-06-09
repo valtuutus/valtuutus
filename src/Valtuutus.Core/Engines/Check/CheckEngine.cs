@@ -453,26 +453,29 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
         var attributeArguments = leafExp.AttributeArgNames;
 
-        var attributes = await reader.GetAttributes(
+        using var attributes = await reader.GetAttributesSingleEntity(
             new EntityAttributesFilter
             {
                 Attributes = attributeArguments,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 SnapToken = req.SnapToken ?? SnapToken.MinValue
-            }, null, ct);
+            }, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
 
         using var fnArgs = paramToArg.ToLambdaArgs(
             static (arg, state) =>
             {
-                var (attrs, entityId, entityType, sch) = state;
-                if (!attrs.TryGetValue((arg.AttributeName, entityId), out var attr))
-                    return null;
-                return attr.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                var (attrs, entityType, sch) = state;
+                foreach (var a in attrs)
+                {
+                    if (a.Attribute == arg.AttributeName)
+                        return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                }
+                return null;
             },
-            (attributes, req.EntityId, req.EntityType, schema),
+            (attributes, req.EntityType, schema),
             req.Context);
 
         var result = fn.Lambda(fnArgs.Dictionary);

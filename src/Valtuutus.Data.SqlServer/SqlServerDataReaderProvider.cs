@@ -277,6 +277,36 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
         }
     }
 
+    public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            var queryTemplate = new SqlBuilder()
+                .FilterAttributes(filter, _q.TvpListIdsTypeName)
+                .AddTemplate(_q.SelectAttributes);
+
+            var pooled = PooledList<AttributeTuple>.Rent();
+            try
+            {
+                pooled.AddRange(await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
+                    queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
