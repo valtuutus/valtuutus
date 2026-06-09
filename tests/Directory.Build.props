@@ -5,7 +5,7 @@
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
-    <NetLibVersion>net8.0;net9.0;net10.0</NetLibVersion>
+    <NetLibVersion>net8.0;net9.0;net10.0;net11.0</NetLibVersion>
   </PropertyGroup>
  
 </Project>

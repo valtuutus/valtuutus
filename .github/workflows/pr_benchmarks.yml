@@ -20,14 +20,14 @@ jobs:
         uses: actions/setup-dotnet@v5.3.0
         with:
           dotnet-version: |
+            11.x
             10.x
             9.x
             8.x
-            7.x
-            6.x
+          include-prerelease: true
       - name: Run Benchmarks
         run: |
-          dotnet run -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
+          dotnet run -f net10.0 -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v7
         with:
