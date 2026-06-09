@@ -1,6 +1,6 @@
 namespace Valtuutus.Core.Data;
 
-public class EntityAttributeFilter
+public readonly struct EntityAttributeFilter
 {
     public required string EntityType { get; init; }
     public string? EntityId { get; init; }
@@ -8,7 +8,7 @@ public class EntityAttributeFilter
     public required SnapToken SnapToken { get; init; }
 }
 
-public class EntityAttributesFilter
+public readonly struct EntityAttributesFilter
 {
     public required string EntityType { get; init; }
     public string? EntityId { get; init; }
@@ -16,7 +16,7 @@ public class EntityAttributesFilter
     public required SnapToken SnapToken { get; init; }
 }
 
-public class AttributeFilter
+public readonly struct AttributeFilter
 {
     public required string EntityType { get; init; }
     public required string Attribute { get; init; }

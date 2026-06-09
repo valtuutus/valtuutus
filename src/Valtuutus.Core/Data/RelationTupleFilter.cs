@@ -1,6 +1,6 @@
 namespace Valtuutus.Core.Data;
 
-public record RelationTupleFilter
+public readonly record struct RelationTupleFilter
 {
     public required string EntityType { get; init; }
     public required string EntityId { get; init; }
@@ -11,7 +11,7 @@ public record RelationTupleFilter
     public required SnapToken SnapToken { get; init; }
 }
 
-public record EntityRelationFilter
+public readonly record struct EntityRelationFilter
 {
     public required string EntityType { get; init; }
     public required string Relation { get; init; }
