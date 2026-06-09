@@ -52,7 +52,7 @@ public sealed class LookupEntityEngine(
                     $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
         }
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -61,7 +61,7 @@ public sealed class LookupEntityEngine(
             SubjectsIds = [req.SubjectId],
             FinalSubjectType = req.SubjectType,
             FinalSubjectId = req.SubjectId,
-            SnapToken = req.SnapToken,
+            SnapToken = snapToken,
             Depth = req.Depth,
             Context = req.Context,
             Scope = req.Scope,
@@ -295,7 +295,7 @@ public sealed class LookupEntityEngine(
         if (fn is null) throw new InvalidOperationException();
         if (!node.IsContextValid(req.Context)) return ListPool<LookupEntityResult>.Rent();
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter
             {
@@ -344,7 +344,7 @@ public sealed class LookupEntityEngine(
             return ListPool<LookupEntityResult>.Rent();
         }
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
 
         var cacheKey = req.EntityType + "\x00" + string.Join(",", attributeArguments) + "\x00" + req.Scope?.Relation + "\x00" + req.Scope?.SubjectType + "\x00" + req.Scope?.SubjectId;
         var attributesTask = req.AttributeCache.GetOrAdd(cacheKey,

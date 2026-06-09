@@ -181,4 +181,37 @@ entity document {
 ");
         parseResult.IsT0.Should().BeTrue();
     }
+
+    [Fact]
+    public void Should_parse_self_referential_permission_for_cascading_through_parent()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+
+entity organisation {
+    relation parent       @organisation;
+    relation user_manager @user;
+
+    permission manage_users := user_manager or parent.manage_users;
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Should_parse_permission_that_forward_references_another_permission_in_the_same_entity()
+    {
+        var parseResult = new SchemaReader().Parse(@"
+entity user {}
+
+entity document {
+    relation owner  @user;
+    relation editor @user;
+
+    permission edit := owner or view;
+    permission view := owner or editor;
+}
+");
+        parseResult.IsT0.Should().BeTrue();
+    }
 }

@@ -1,5 +1,6 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Data.InMemory;
 
@@ -88,9 +89,29 @@ internal sealed class AttributesStore : IDisposable
             foreach (var e in bucket)
             {
                 if (!IsVisible(e, snap)) continue;
+                if (filter.EntityId is not null && e.Attribute.EntityId != filter.EntityId) continue;
                 if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Attribute.EntityId)) continue;
                 var k = (e.Attribute.Attribute, e.Attribute.EntityId);
                 if (!result.ContainsKey(k)) result[k] = e.Attribute;
+            }
+        }
+        return result;
+    }
+
+    public PooledList<AttributeTuple> GetByNamesSingleEntity(EntityAttributesFilter filter)
+    {
+        using var _ = Read();
+        var result = PooledList<AttributeTuple>.Rent();
+        var snap = filter.SnapToken;
+        foreach (var attrName in filter.Attributes)
+        {
+            if (!_byEntityTypeAttr.TryGetValue((filter.EntityType, attrName), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snap)) continue;
+                if (filter.EntityId is not null && e.Attribute.EntityId != filter.EntityId) continue;
+                result.Add(e.Attribute);
+                break;
             }
         }
         return result;

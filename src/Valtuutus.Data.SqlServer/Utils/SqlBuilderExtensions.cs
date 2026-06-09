@@ -1,5 +1,4 @@
-﻿using System.Data;
-using Valtuutus.Core.Data;
+﻿using Valtuutus.Core.Data;
 using Dapper;
 using Valtuutus.Data.Db;
 
@@ -13,6 +12,11 @@ internal static class SqlBuilderExtensions
     private const string RelationFilter = "relation = @Relation";
     private const string SubjectTypeFilter = "subject_type = @SubjectType";
     private const string SubjectRelationFilter = "subject_relation = @subjectRelation";
+
+    // SQL Server resolves unqualified UDTT names against the connection's default schema,
+    // not the configured ValtuutusSqlServerOptions.Schema. Always pass the schema-qualified
+    // type name (e.g. "[valtuutus].[TVP_ListIds]") to AsTableValuedParameter.
+    internal static string FormatTvpListIdsName(string schema) => $"[{schema}].[{TvpListIds}]";
 
     public static SqlBuilder FilterRelations(this SqlBuilder builder, RelationTupleFilter tupleFilter)
     {
@@ -92,27 +96,27 @@ internal static class SqlBuilderExtensions
     }
 
     public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityRelationFilter,
-        string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation)
+        string subjectType, IEnumerable<string> entitiesIds, string? subjectRelation, string tvpTypeName)
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
 
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, entityRelationFilter.SnapToken);
 
-        
+
         if (!string.IsNullOrEmpty(subjectType))
             builder = builder.Where(SubjectTypeFilter, new {SubjectType = new DbString()
             {
                 Value = subjectType,
                 Length = 256
             }});
-    
+
         if (!string.IsNullOrEmpty(entityRelationFilter.EntityType))
             builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
             {
                 Value = entityRelationFilter.EntityType,
                 Length = 256
             }});
-        
+
         if (!string.IsNullOrEmpty(entityRelationFilter.Relation))
             builder = builder.Where(RelationFilter, new {Relation = new DbString()
             {
@@ -122,24 +126,21 @@ internal static class SqlBuilderExtensions
 
         if (entitiesIdsArr.Length > 0)
         {
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var entityId in entitiesIdsArr)
-                dt.Rows.Add(entityId);
-            builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter(TvpListIds)});
+            var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
         }
-        
+
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = new DbString()
             {
                 Value = subjectRelation,
                 Length = 64
             }});
-        
+
         return builder;
     }
-    
-    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType)
+
+    public static SqlBuilder FilterRelations(this SqlBuilder builder, EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, string tvpTypeName)
     {
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, entityFilter.SnapToken);
 
@@ -149,14 +150,14 @@ internal static class SqlBuilderExtensions
                 Value = entityFilter.EntityType,
                 Length = 256
             }});
-        
+
         if (!string.IsNullOrEmpty(entityFilter.Relation))
             builder = builder.Where(RelationFilter, new {Relation = new DbString()
             {
                 Value = entityFilter.Relation,
                 Length = 64
             }});
-        
+
         builder.Where(SubjectTypeFilter, new {SubjectType = new DbString()
         {
             Value = subjectType,
@@ -165,13 +166,10 @@ internal static class SqlBuilderExtensions
 
         if (subjectsIds.Length > 0)
         {
-            using var dt = new DataTable();
-            dt.Columns.Add("id", typeof(string));
-            foreach (var subjectId in subjectsIds)
-                dt.Rows.Add(subjectId);
-            builder = builder.Where("subject_id in (select id from @subjectsIds)", new {subjectsIds = dt.AsTableValuedParameter(TvpListIds)});
+            var tvpParam = TvpHelper.AsTvpParameter(subjectsIds, tvpTypeName);
+            builder = builder.Where("subject_id in (select id from @subjectsIds)", new { subjectsIds = tvpParam });
         }
-        
+
         return builder;
     }
 
@@ -202,12 +200,12 @@ internal static class SqlBuilderExtensions
         return builder;
     }
 
-    public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter, IEnumerable<string> entitiesIds)
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, AttributeFilter filter, IEnumerable<string> entitiesIds, string tvpTypeName)
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
 
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
-        
+
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
@@ -219,45 +217,37 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
 
-        using var dt = new DataTable();
-        dt.Columns.Add("id", typeof(string));
-        foreach (var entityId in entitiesIdsArr)
-            dt.Rows.Add(entityId);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = dt.AsTableValuedParameter(TvpListIds)});
-
+        var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
+        builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
 
         return builder;
     }
 
-    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter, IEnumerable<string> entitiesIds)
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter, IEnumerable<string> entitiesIds, string tvpTypeName)
     {
         var entitiesIdsArr = entitiesIds as string[] ?? entitiesIds.ToArray();
 
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
-        
+
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
             Length = 256
         }});
-        
-        
-        using var attributesDt = new DataTable();
-        attributesDt.Columns.Add("id", typeof(string));
-        foreach (var attribute in filter.Attributes)
-            attributesDt.Rows.Add(attribute);
-        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter(TvpListIds)});
-        
-        using var entitiesIdDt = new DataTable();
-        entitiesIdDt.Columns.Add("id", typeof(string));
-        foreach (var entityId in entitiesIdsArr)
-            entitiesIdDt.Rows.Add(entityId);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new {entitiesIds = entitiesIdDt.AsTableValuedParameter(TvpListIds)});
+
+        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
+        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+
+        if (entitiesIdsArr.Length > 0)
+        {
+            var entitiesTvp = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = entitiesTvp });
+        }
 
         return builder;
     }
 
-    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter)
+    public static SqlBuilder FilterAttributes(this SqlBuilder builder, EntityAttributesFilter filter, string tvpTypeName)
     {
 
         builder = CommonSqlBuilderExtensions.ApplySnapTokenFilter(builder, filter.SnapToken);
@@ -270,19 +260,16 @@ internal static class SqlBuilderExtensions
                 Length = 64
             }});
         }
-        
+
         builder = builder.Where(EntityTypeFilter, new {EntityType = new DbString()
         {
             Value = filter.EntityType,
             Length = 256
         }});
-        
-        
-        using var attributesDt = new DataTable();
-        attributesDt.Columns.Add("id", typeof(string));
-        foreach (var attribute in filter.Attributes)
-            attributesDt.Rows.Add(attribute);
-        builder = builder.Where("attribute in (select id from @Attributes)", new {Attributes = attributesDt.AsTableValuedParameter(TvpListIds)});
+
+        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
+        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+
         return builder;
     }
     

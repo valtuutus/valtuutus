@@ -40,7 +40,7 @@ public sealed class LookupSubjectEngine(
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
                 tags: CreateLookupSubjectSpanAttributes(req));
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
         var internalReq = new LookupSubjectRequestInternal
         {
             Permission = req.Permission,
@@ -50,7 +50,7 @@ public sealed class LookupSubjectEngine(
             FinalSubjectType = req.SubjectType,
             RootEntityId = req.EntityId,
             RootEntityType = req.EntityType,
-            SnapToken = req.SnapToken,
+            SnapToken = snapToken,
             Depth = req.Depth,
             Context = req.Context
         };
@@ -204,7 +204,7 @@ public sealed class LookupSubjectEngine(
             return new RelationOrAttributeTuples(new List<RelationTuple>());
         }
 
-        var attributeArguments = node.GetArgsAttributesNames();
+        var attributeArguments = node.AttributeArgNames;
 
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter

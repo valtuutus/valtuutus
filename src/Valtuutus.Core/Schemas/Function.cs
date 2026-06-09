@@ -27,13 +27,8 @@ public record Function
     internal PooledDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
     {
         var pooled = PooledDictionary<FunctionParameter, PermissionNodeExpArgument>.Rent();
-
-        var argsByOrder = new Dictionary<int, PermissionNodeExpArgument>(args.Count);
-        foreach (var arg in args) argsByOrder[arg.ArgOrder] = arg;
-
         foreach (var parameter in Parameters)
-            pooled.Dictionary[parameter] = argsByOrder[parameter.ParamOrder];
-
+            pooled.Dictionary[parameter] = args[parameter.ParamOrder];
         return pooled;
     }
 

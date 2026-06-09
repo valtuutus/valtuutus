@@ -73,7 +73,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity =
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
         var val = await CheckInternal(req, new CheckMemo(), cancellationToken);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
@@ -98,7 +98,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateSubjectPermissionSpanAttributes(req));
         var permissions = schema.GetPermissions(req.EntityType);
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
 
         var count = permissions.Count;
         var names = new string[count];
@@ -116,7 +116,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 Permission = perm.Name,
                 SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
-                SnapToken = req.SnapToken,
+                SnapToken = snapToken,
                 Depth = req.Depth
             }, memo, cancellationToken);
             i++;
@@ -139,7 +139,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
             tags: CreateCheckSpanAttributes(req));
 
-        await SnapTokenUtils.LoadLatestSnapToken(reader, req, cancellationToken);
+        req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
         var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
         var result = await CheckInternal(req, new CheckMemo(), root, cancellationToken);
         root.Result = result;
@@ -368,51 +368,59 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         var cancellationToken = pooledCts.Token;
         var innerCts = pooledCts.InnerSource;
 
-        var rawTasks = new Task<bool>[count];
-        var tasks = new Task<bool>[count];
-        for (var i = 0; i < count; i++)
-        {
-            var child = children[i];
-            var childNode = childNodes?[i];
-            rawTasks[i] = child.Type == PermissionNodeType.Expression
-                ? CheckExpression(req, child, memo, childNode, cancellationToken)
-                : CheckLeaf(req, child, memo, childNode, cancellationToken);
-            tasks[i] = isUnion
-                ? rawTasks[i].ContinueWith(
-                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current)
-                : rawTasks[i].ContinueWith(
-                    static (t, s) => { if (!t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                    innerCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
-        }
-
+        var rawTasks = ArrayPool<Task<bool>>.Shared.Rent(count);
+        var tasks = ArrayPool<Task<bool>>.Shared.Rent(count);
         try
         {
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            if (childNodes is not null)
-                for (var i = 0; i < count; i++)
-                {
-                    childNodes[i].Result = results[i];
-                    node!._children.Add(childNodes[i]);
-                }
-            return isUnion ? results.AsSpan().Contains(true) : !results.AsSpan().Contains(false);
-        }
-        catch (OperationCanceledException)
-        {
-            if (childNodes is not null)
+            for (var i = 0; i < count; i++)
             {
-                for (var i = 0; i < count; i++)
-                {
-                    if (rawTasks[i].IsCompletedSuccessfully)
-                        childNodes[i].Result = rawTasks[i].Result;
-                    else
-                        childNodes[i].Detail = isUnion
-                            ? "skipped (evaluation stopped after a success)"
-                            : "skipped (evaluation stopped after a failure)";
-                    node!._children.Add(childNodes[i]);
-                }
+                var child = children[i];
+                var childNode = childNodes?[i];
+                rawTasks[i] = child.Type == PermissionNodeType.Expression
+                    ? CheckExpression(req, child, memo, childNode, ct)
+                    : CheckLeaf(req, child, memo, childNode, ct);
+                tasks[i] = isUnion
+                    ? rawTasks[i].ContinueWith(
+                        static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                        innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current)
+                    : rawTasks[i].ContinueWith(
+                        static (t, s) => { if (!t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                        innerCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
             }
-            return isUnion;
+
+            try
+            {
+                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, count)).ConfigureAwait(false);
+                if (childNodes is not null)
+                    for (var i = 0; i < count; i++)
+                    {
+                        childNodes[i].Result = results[i];
+                        node!._children.Add(childNodes[i]);
+                    }
+                return isUnion ? results.AsSpan().Contains(true) : !results.AsSpan().Contains(false);
+            }
+            catch (OperationCanceledException)
+            {
+                if (childNodes is not null)
+                {
+                    for (var i = 0; i < count; i++)
+                    {
+                        if (rawTasks[i].IsCompletedSuccessfully)
+                            childNodes[i].Result = rawTasks[i].Result;
+                        else
+                            childNodes[i].Detail = isUnion
+                                ? "skipped (evaluation stopped after a success)"
+                                : "skipped (evaluation stopped after a failure)";
+                        node!._children.Add(childNodes[i]);
+                    }
+                }
+                return isUnion;
+            }
+        }
+        finally
+        {
+            ArrayPool<Task<bool>>.Shared.Return(rawTasks, clearArray: true);
+            ArrayPool<Task<bool>>.Shared.Return(tasks, clearArray: true);
         }
     }
 
@@ -443,28 +451,31 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             return false;
         }
 
-        var attributeArguments = leafExp.GetArgsAttributesNames();
+        var attributeArguments = leafExp.AttributeArgNames;
 
-        var attributes = await reader.GetAttributes(
+        using var attributes = await reader.GetAttributesSingleEntity(
             new EntityAttributesFilter
             {
                 Attributes = attributeArguments,
                 EntityId = req.EntityId,
                 EntityType = req.EntityType,
                 SnapToken = req.SnapToken ?? SnapToken.MinValue
-            }, null, ct);
+            }, ct);
 
         using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
 
         using var fnArgs = paramToArg.ToLambdaArgs(
             static (arg, state) =>
             {
-                var (attrs, entityId, entityType, sch) = state;
-                if (!attrs.TryGetValue((arg.AttributeName, entityId), out var attr))
-                    return null;
-                return attr.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                var (attrs, entityType, sch) = state;
+                foreach (var a in attrs)
+                {
+                    if (a.Attribute == arg.AttributeName)
+                        return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
+                }
+                return null;
             },
-            (attributes, req.EntityId, req.EntityType, schema),
+            (attributes, req.EntityType, schema),
             req.Context);
 
         var result = fn.Lambda(fnArgs.Dictionary);
@@ -600,46 +611,54 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < relations.Count; i++)
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = computedUserSetRelation, EntityType = relations[i].SubjectType, EntityId = relations[i].SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
 
-        var tasks = new Task<bool>[relations.Count];
-        for (var i = 0; i < relations.Count; i++)
-        {
-            var relation = relations[i];
-            var childNode = childNodes?[i];
-            tasks[i] = CheckComputedUserSet(new CheckRequest
-            {
-                EntityType = relation.SubjectType,
-                EntityId = relation.SubjectId,
-                Permission = relation.SubjectRelation,
-                SubjectId = req.SubjectId,
-                SnapToken = req.SnapToken,
-                Depth = req.Depth
-            }, computedUserSetRelation, memo, childNode, cancellationToken)
-            .ContinueWith(
-                static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-        }
-
+        var taskCount = relations.Count;
+        var tasks = ArrayPool<Task<bool>>.Shared.Rent(taskCount);
         try
         {
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            if (childNodes is not null)
-                for (var i = 0; i < childNodes.Length; i++)
+            for (var i = 0; i < taskCount; i++)
+            {
+                var relation = relations[i];
+                var childNode = childNodes?[i];
+                tasks[i] = CheckComputedUserSet(new CheckRequest
                 {
-                    childNodes[i].Result = results[i];
-                    node!._children.Add(childNodes[i]);
-                }
-            return results.AsSpan().Contains(true);
+                    EntityType = relation.SubjectType,
+                    EntityId = relation.SubjectId,
+                    Permission = relation.SubjectRelation,
+                    SubjectId = req.SubjectId,
+                    SnapToken = req.SnapToken,
+                    Depth = req.Depth
+                }, computedUserSetRelation, memo, childNode, ct)
+                .ContinueWith(
+                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+            }
+
+            try
+            {
+                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, taskCount)).ConfigureAwait(false);
+                if (childNodes is not null)
+                    for (var i = 0; i < childNodes.Length; i++)
+                    {
+                        childNodes[i].Result = results[i];
+                        node!._children.Add(childNodes[i]);
+                    }
+                return results.AsSpan().Contains(true);
+            }
+            catch (OperationCanceledException)
+            {
+                if (childNodes is not null)
+                    for (var i = 0; i < childNodes.Length; i++)
+                    {
+                        if (tasks[i].IsCompletedSuccessfully)
+                            childNodes[i].Result = tasks[i].Result;
+                        node!._children.Add(childNodes[i]);
+                    }
+                return true;
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            if (childNodes is not null)
-                for (var i = 0; i < childNodes.Length; i++)
-                {
-                    if (tasks[i].IsCompletedSuccessfully)
-                        childNodes[i].Result = tasks[i].Result;
-                    node!._children.Add(childNodes[i]);
-                }
-            return true;
+            ArrayPool<Task<bool>>.Shared.Return(tasks, clearArray: true);
         }
     }
 
@@ -713,47 +732,55 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 childNodes[i] = new CheckNode { Type = CheckNodeType.Permission, Name = r.SubjectRelation ?? r.SubjectType, EntityType = r.SubjectType, EntityId = r.SubjectId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
 
-        var tasks = new Task<bool>[indirectRelations.Count];
-        var count = 0;
-        foreach (ref readonly var relation in indirectRelations.AsSpan())
-        {
-            var childNode = childNodes?[count];
-            tasks[count] = CheckInternal(new CheckRequest
-            {
-                EntityType = relation.SubjectType,
-                EntityId = relation.SubjectId,
-                Permission = relation.SubjectRelation,
-                SubjectId = req.SubjectId,
-                SnapToken = req.SnapToken,
-                Depth = req.Depth
-            }, memo, childNode, cancellationToken)
-            .ContinueWith(
-                static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-            count++;
-        }
-
+        var taskCount = indirectRelations.Count;
+        var tasks = ArrayPool<Task<bool>>.Shared.Rent(taskCount);
         try
         {
-            var results = await Task.WhenAll(tasks).ConfigureAwait(false);
-            if (childNodes is not null)
-                for (var i = 0; i < childNodes.Length; i++)
+            var count = 0;
+            foreach (ref readonly var relation in indirectRelations.AsSpan())
+            {
+                var childNode = childNodes?[count];
+                tasks[count] = CheckInternal(new CheckRequest
                 {
-                    childNodes[i].Result = results[i];
-                    node!._children.Add(childNodes[i]);
-                }
-            return results.AsSpan().Contains(true);
+                    EntityType = relation.SubjectType,
+                    EntityId = relation.SubjectId,
+                    Permission = relation.SubjectRelation,
+                    SubjectId = req.SubjectId,
+                    SnapToken = req.SnapToken,
+                    Depth = req.Depth
+                }, memo, childNode, ct)
+                .ContinueWith(
+                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
+                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+                count++;
+            }
+
+            try
+            {
+                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, taskCount)).ConfigureAwait(false);
+                if (childNodes is not null)
+                    for (var i = 0; i < childNodes.Length; i++)
+                    {
+                        childNodes[i].Result = results[i];
+                        node!._children.Add(childNodes[i]);
+                    }
+                return results.AsSpan().Contains(true);
+            }
+            catch (OperationCanceledException)
+            {
+                if (childNodes is not null)
+                    for (var i = 0; i < childNodes.Length; i++)
+                    {
+                        if (tasks[i].IsCompletedSuccessfully)
+                            childNodes[i].Result = tasks[i].Result;
+                        node!._children.Add(childNodes[i]);
+                    }
+                return true;
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            if (childNodes is not null)
-                for (var i = 0; i < childNodes.Length; i++)
-                {
-                    if (tasks[i].IsCompletedSuccessfully)
-                        childNodes[i].Result = tasks[i].Result;
-                    node!._children.Add(childNodes[i]);
-                }
-            return true;
+            ArrayPool<Task<bool>>.Shared.Return(tasks, clearArray: true);
         }
     }
 

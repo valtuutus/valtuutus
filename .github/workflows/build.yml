@@ -5,6 +5,7 @@ on:
       - '**.md'
     branches:
       - main
+      - dev
   pull_request:
     types: [opened, synchronize, reopened]
     paths-ignore:
@@ -25,39 +26,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v5.0.0
+        uses: actions/setup-dotnet@v5.3.0
         with:
           dotnet-version: |
+            11.x
             10.x
             9.x
             8.x
-            7.x
-            6.x
+          include-prerelease: true
       - name: Install dotnet-coverage
         run: dotnet tool install --global dotnet-coverage
       - name: Build
         run: dotnet build Valtuutus.sln --no-incremental
       - name: Test with coverage
         run: dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f cobertura -o 'coverage.xml' -s coverage.runsettings
-      - name: Coverage summary
-        uses: irongut/CodeCoverageSummary@v1.3.0
+      - name: Upload coverage to Coveralls
+        uses: coverallsapp/github-action@v2
         with:
-          filename: coverage.xml
-          badge: true
-          format: markdown
-          output: both
-      - name: Upload coverage artifact
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage_results
-          path: coverage.xml
-      - name: Upload PR event
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v7
-        with:
-          name: pr_event
-          path: ${{ github.event_path }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          format: cobertura
+          file: coverage.xml
       - name: Upload Test Result Files
         uses: actions/upload-artifact@v7
         with:

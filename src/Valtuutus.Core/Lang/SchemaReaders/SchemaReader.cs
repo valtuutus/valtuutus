@@ -168,6 +168,16 @@ internal class SchemaReader
 
             var permissionCtx = entityCtx.entityBody().permissionDefinition()!;
 
+            // Pre-register permission symbols so a permission body can reference itself
+            // (e.g. `permission p := r or parent.p`) or another permission declared later
+            // in the same entity. Without this pre-pass the body's identifier lookups fail
+            // because the symbol isn't added until after the body is validated.
+            foreach (var permission in permissionCtx)
+            {
+                _symbols.Add(new PermissionSymbol(permission.ID().GetText(),
+                    permission.Start.Line, permission.Start.Column, entityName));
+            }
+
             foreach (var permission in permissionCtx)
             {
                 try

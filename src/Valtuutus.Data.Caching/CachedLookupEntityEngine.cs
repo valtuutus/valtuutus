@@ -22,8 +22,9 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookupEntity");
 
-        await CachingUtils.LoadLatestSnapToken(_reader, _cache, req, cancellationToken);
-        return await _cache.GetOrSetAsync(GetLookupCacheKey(req), ct => _engine.LookupEntity(req, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
+        var resolvedReq = req with { SnapToken = snapToken };
+        return await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq), ct => _engine.LookupEntity(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
     }
 
     private static string GetLookupCacheKey(LookupEntityRequest req)
