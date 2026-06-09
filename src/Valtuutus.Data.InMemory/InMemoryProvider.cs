@@ -192,6 +192,20 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         }
     }
 
+    public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _attributes.GetByNamesSingleEntity(filter);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(
         EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
