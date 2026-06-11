@@ -436,9 +436,9 @@ public sealed class LookupSubjectEngine(
 
     private static List<string> ToSubjectIdList(List<RelationTuple> tuples)
     {
-        var list = new List<string>(tuples.Count);
-        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.SubjectId);
-        return list;
+        var seen = new HashSet<string>(tuples.Count);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) seen.Add(t.SubjectId);
+        return new List<string>(seen);
     }
 }
 
