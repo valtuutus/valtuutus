@@ -129,6 +129,12 @@ internal static class SqlBuilderExtensions
             var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
         }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = new DbString()

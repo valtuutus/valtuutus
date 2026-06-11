@@ -108,7 +108,11 @@ internal static class SqlBuilderExtensions
         
         if (entitiesIdsArr.Length > 0)
             builder = builder.Where("entity_id = ANY(@EntitiesIds)", new {EntitiesIds = entitiesIdsArr});
-        
+        else
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (entity scope dropped).
+            builder = builder.Where("1 = 0");
+
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = subjectRelation});
         
