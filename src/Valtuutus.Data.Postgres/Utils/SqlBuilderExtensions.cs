@@ -107,11 +107,15 @@ internal static class SqlBuilderExtensions
             builder = builder.Where(RelationFilter, new {filter.Relation});
         
         if (entitiesIdsArr.Length > 0)
+        {
             builder = builder.Where("entity_id = ANY(@EntitiesIds)", new {EntitiesIds = entitiesIdsArr});
+        }
         else
+        {
             // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
             // predicate here would return every row of this relation/subject_type (entity scope dropped).
             builder = builder.Where("1 = 0");
+        }
 
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = subjectRelation});
@@ -132,8 +136,16 @@ internal static class SqlBuilderExtensions
         builder.Where(SubjectTypeFilter, new {SubjectType = subjectType});
 
         if (subjectsIds.Count != 0)
+        {
             builder = builder.Where("subject_id = ANY(@SubjectsIds)", new {SubjectsIds = subjectsIds});
-        
+        }
+        else
+        {
+            // An empty subject-id set means "no subjects to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (subject scope dropped).
+            builder = builder.Where("1 = 0");
+        }
+
         return builder;
     }
 
@@ -182,8 +194,16 @@ internal static class SqlBuilderExtensions
 
         
         if (entitiesIdsArr.Length != 0)
+        {
             builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
-        
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
+
         return builder;
     }
     

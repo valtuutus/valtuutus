@@ -175,6 +175,12 @@ internal static class SqlBuilderExtensions
             var tvpParam = TvpHelper.AsTvpParameter(subjectsIds, tvpTypeName);
             builder = builder.Where("subject_id in (select id from @subjectsIds)", new { subjectsIds = tvpParam });
         }
+        else
+        {
+            // An empty subject-id set means "no subjects to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (subject scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         return builder;
     }
@@ -248,6 +254,12 @@ internal static class SqlBuilderExtensions
         {
             var entitiesTvp = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = entitiesTvp });
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
         }
 
         return builder;
