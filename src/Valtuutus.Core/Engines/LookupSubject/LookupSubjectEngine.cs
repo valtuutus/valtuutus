@@ -434,11 +434,15 @@ public sealed class LookupSubjectEngine(
         return new RelationOrAttributeTuples([.. hashSet]);
     }
 
-    private static List<string> ToSubjectIdList(List<RelationTuple> tuples)
+    private static string[] ToSubjectIdList(List<RelationTuple> tuples)
     {
-        var list = new List<string>(tuples.Count);
-        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.SubjectId);
-        return list;
+        using var pooled = PooledHashSet<string>.Rent();
+        var seen = pooled.Set;
+        seen.EnsureCapacity(tuples.Count);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) seen.Add(t.SubjectId);
+        var arr = new string[seen.Count];
+        seen.CopyTo(arr);
+        return arr;
     }
 }
 
