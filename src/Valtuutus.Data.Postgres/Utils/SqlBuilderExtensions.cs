@@ -245,9 +245,18 @@ internal static class SqlBuilderExtensions
         }});
         
         builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
-        
-        builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
-        
+
+        if (entitiesIdsArr.Length > 0)
+        {
+            builder = builder.Where("entity_id = ANY(@entitiesIds)", new {entitiesIds = entitiesIdsArr});
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
+
         return builder;
     }
 
