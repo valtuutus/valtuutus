@@ -44,13 +44,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     private async ValueTask<ILookupSubjectEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         string? schema = null)
     {
-        var serviceProvider = CreateServiceProvider(schema);
-        var scope = serviceProvider.CreateScope();
-        var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
-        if(tuples.Length == 0 && attributes.Length == 0) return lookupSubjectEngine;
-        var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
-        await provider.Write(tuples, attributes, default);
-        return lookupSubjectEngine;
+        var scope = await CreateScope(tuples, attributes, schema);
+        return scope.GetRequiredService<ILookupSubjectEngine>();
     }
 
     /// <summary>
