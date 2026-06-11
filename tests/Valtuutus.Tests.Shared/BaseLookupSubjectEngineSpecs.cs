@@ -374,6 +374,49 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task LookupSubject_CascadingHop_StaysEntityScoped()
+    {
+        // Regression: when a cascading hop (parent.is_member) dead-ends, the engine forwards an
+        // empty entity-id list to the next level. The SQL builders used to drop the entity_id
+        // predicate on an empty list and return every subject system-wide, diverging from the
+        // entity-scoped Check engine. Run against every provider to catch the SQL-specific defect.
+        const string schema = """
+            entity user {}
+            entity organisation {
+                relation parent @organisation;
+                relation member @user;
+                permission is_member := member or parent.is_member;
+                permission direct_member := member;
+            }
+            """;
+
+        var engine = await CreateEngine(
+        [
+            new RelationTuple("organisation", "2", "parent", "organisation", "1"),
+            new RelationTuple("organisation", "1", "member", "user", "alice"),
+            new RelationTuple("organisation", "1", "member", "user", "bob"),
+            new RelationTuple("organisation", "2", "member", "user", "carol"),
+            new RelationTuple("organisation", "3", "member", "user", "dave"),
+        ], [], schema);
+
+        // direct_member is a plain alias: strictly the org's own members, never system-wide.
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default))
+            .Should().BeEquivalentTo("alice", "bob");
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default))
+            .Should().BeEquivalentTo("carol");
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "999"), default))
+            .Should().BeEmpty();
+
+        // is_member cascades through parent.is_member, but stays scoped (org2 -> org1 members only).
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "2"), default))
+            .Should().BeEquivalentTo("alice", "bob", "carol");
+
+        // org1 has no parent: the empty parent hop must not leak dave (org3) or anyone else.
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "1"), default))
+            .Should().BeEquivalentTo("alice", "bob");
+    }
+
+    [Fact]
     public async Task LookupSubject_Not_Relation_Returns_Subjects_That_Are_Not_Owner()
     {
         const string schema = """
