@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data;
 using Valtuutus.Core.Data;
@@ -90,6 +91,25 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         if (original.ImplementationFactory is not null)
             return (IDataReaderProvider)original.ImplementationFactory(sp)!;
         return (IDataReaderProvider)ActivatorUtilities.CreateInstance(sp, original.ImplementationType!);
+    }
+
+    /// <summary>
+    /// Seeds a scope and returns its <see cref="IServiceProvider"/> so a test can resolve several
+    /// services from the same scope (e.g. the writer for interleaved deletes, or both the
+    /// LookupSubject and Check engines).
+    /// </summary>
+    private async ValueTask<IServiceProvider> CreateScope(RelationTuple[] tuples, AttributeTuple[] attributes,
+        string? schema = null)
+    {
+        var serviceProvider = CreateServiceProvider(schema);
+        var scope = serviceProvider.CreateScope();
+        if (tuples.Length != 0 || attributes.Length != 0)
+        {
+            var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+            await provider.Write(tuples, attributes, default);
+        }
+
+        return scope.ServiceProvider;
     }
 
 
@@ -373,47 +393,127 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         result.Should().BeEmpty();
     }
 
-    [Fact]
-    public async Task LookupSubject_CascadingHop_StaysEntityScoped()
-    {
-        // Regression: when a cascading hop (parent.is_member) dead-ends, the engine forwards an
-        // empty entity-id list to the next level. The SQL builders used to drop the entity_id
-        // predicate on an empty list and return every subject system-wide, diverging from the
-        // entity-scoped Check engine. Run against every provider to catch the SQL-specific defect.
-        const string schema = """
-            entity user {}
-            entity organisation {
-                relation parent @organisation;
-                relation member @user;
-                permission is_member := member or parent.is_member;
-                permission direct_member := member;
-            }
-            """;
+    // Regression coverage for LookupSubject entity scoping. A cascading hop (e.g. parent.is_member)
+    // can dead-end and forward an EMPTY entity-id list to the next recursion level. The SQL builders
+    // used to drop the entity_id predicate on an empty list and return every subject system-wide,
+    // diverging from the entity-scoped Check engine. These run against every provider to catch the
+    // SQL-specific defect.
+    private const string OrganisationScopeSchema = """
+        entity user {}
+        entity organisation {
+            relation parent @organisation;
+            relation member @user;
+            permission is_member := member or parent.is_member;
+            permission direct_member := member;
+        }
+        """;
 
+    [Fact]
+    public async Task DirectMember_IsEntityScoped()
+    {
         var engine = await CreateEngine(
+        [
+            new RelationTuple("organisation", "1", "member", "user", "alice"),
+            new RelationTuple("organisation", "1", "member", "user", "bob"),
+            new RelationTuple("organisation", "2", "member", "user", "carol"),
+        ], [], OrganisationScopeSchema);
+
+        var org1 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default);
+        var org2 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default);
+        var org999 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "999"), default);
+
+        org1.Should().BeEquivalentTo("alice", "bob");
+        org2.Should().BeEquivalentTo("carol");
+        org999.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CascadingMember_ResolvesParentChain_StaysScoped()
+    {
+        // org2 has org1 as parent. alice is a direct member of org1.
+        var engine = await CreateEngine(
+        [
+            new RelationTuple("organisation", "2", "parent", "organisation", "1"),
+            new RelationTuple("organisation", "1", "member", "user", "alice"),
+            new RelationTuple("organisation", "3", "member", "user", "carol"),
+        ], [], OrganisationScopeSchema);
+
+        // is_member cascades through parent.is_member -> alice, but stays scoped (no carol from org3).
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "2"), default))
+            .Should().BeEquivalentTo("alice");
+
+        // direct_member must NOT cross the parent edge.
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default))
+            .Should().BeEmpty();
+
+        // A leaf org with no parent: is_member resolves only its own members (empty-hop must not leak).
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "1"), default))
+            .Should().BeEquivalentTo("alice");
+    }
+
+    [Fact]
+    public async Task SoftDelete_StaysScoped_AndDeduplicated()
+    {
+        var sp = await CreateScope([], [], OrganisationScopeSchema);
+        var writer = sp.GetRequiredService<IDataWriterProvider>();
+        var engine = sp.GetRequiredService<ILookupSubjectEngine>();
+
+        await writer.Write(
+        [
+            new RelationTuple("organisation", "1", "member", "user", "alice"),
+            new RelationTuple("organisation", "2", "member", "user", "carol"),
+        ], [], default);
+
+        // Add then soft-delete dave on org1 multiple times, leaving one active row.
+        await writer.Write([new RelationTuple("organisation", "1", "member", "user", "dave")], [], default);
+        await writer.Delete(new DeleteFilter
+        {
+            Relations = [new DeleteRelationsFilter { EntityType = "organisation", EntityId = "1", Relation = "member", SubjectType = "user", SubjectId = "dave" }]
+        }, default);
+        await writer.Write([new RelationTuple("organisation", "1", "member", "user", "dave")], [], default);
+        await writer.Delete(new DeleteFilter
+        {
+            Relations = [new DeleteRelationsFilter { EntityType = "organisation", EntityId = "1", Relation = "member", SubjectType = "user", SubjectId = "dave" }]
+        }, default);
+        await writer.Write([new RelationTuple("organisation", "1", "member", "user", "dave")], [], default);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default);
+
+        // alice (active) + dave (one active row among several deleted), still scoped to org1 (no carol).
+        result.Should().BeEquivalentTo("alice", "dave");
+        result.Should().NotContain("carol");
+    }
+
+    [Fact]
+    public async Task LookupSubject_And_Check_Agree()
+    {
+        var sp = await CreateScope(
         [
             new RelationTuple("organisation", "2", "parent", "organisation", "1"),
             new RelationTuple("organisation", "1", "member", "user", "alice"),
             new RelationTuple("organisation", "1", "member", "user", "bob"),
             new RelationTuple("organisation", "2", "member", "user", "carol"),
             new RelationTuple("organisation", "3", "member", "user", "dave"),
-        ], [], schema);
+        ], [], OrganisationScopeSchema);
+        var lookup = sp.GetRequiredService<ILookupSubjectEngine>();
+        var check = sp.GetRequiredService<ICheckEngine>();
 
-        // direct_member is a plain alias: strictly the org's own members, never system-wide.
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default))
-            .Should().BeEquivalentTo("alice", "bob");
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default))
-            .Should().BeEquivalentTo("carol");
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "999"), default))
-            .Should().BeEmpty();
+        string[] subjects = ["alice", "bob", "carol", "dave"];
+        string[] orgs = ["1", "2", "3"];
 
-        // is_member cascades through parent.is_member, but stays scoped (org2 -> org1 members only).
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "2"), default))
-            .Should().BeEquivalentTo("alice", "bob", "carol");
-
-        // org1 has no parent: the empty parent hop must not leak dave (org3) or anyone else.
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "1"), default))
-            .Should().BeEquivalentTo("alice", "bob");
+        foreach (var permission in new[] { "direct_member", "is_member" })
+        foreach (var org in orgs)
+        {
+            var set = await lookup.Lookup(new LookupSubjectRequest("organisation", permission, "user", org), default);
+            foreach (var subject in subjects)
+            {
+                var inLookup = set.Contains(subject);
+                var checkResult = await check.Check(
+                    new CheckRequest("organisation", org, permission, "user", subject), default);
+                inLookup.Should().Be(checkResult,
+                    $"LookupSubject and Check must agree for permission={permission} org={org} subject={subject}");
+            }
+        }
     }
 
     [Fact]

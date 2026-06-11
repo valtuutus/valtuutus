@@ -229,8 +229,17 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
 
-        var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
+        if (entitiesIdsArr.Length > 0)
+        {
+            var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         return builder;
     }
