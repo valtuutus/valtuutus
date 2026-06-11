@@ -227,8 +227,17 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
         
-        builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
-        
+        if (filter.Attributes.Length > 0)
+        {
+            builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
+        }
+        else
+        {
+            // An empty attribute set means "no attributes to resolve" -> match nothing. ANY(empty) already
+            // yields no rows, but make the match-nothing intent explicit and consistent with the sibling guards.
+            builder = builder.Where("1 = 0");
+        }
+
         return builder;
     }
 
@@ -244,7 +253,16 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
         
-        builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
+        if (filter.Attributes.Length > 0)
+        {
+            builder = builder.Where("attribute = ANY(@Attributes)", new { filter.Attributes });
+        }
+        else
+        {
+            // An empty attribute set means "no attributes to resolve" -> match nothing. ANY(empty) already
+            // yields no rows, but make the match-nothing intent explicit and consistent with the sibling guards.
+            builder = builder.Where("1 = 0");
+        }
 
         if (entitiesIdsArr.Length > 0)
         {
