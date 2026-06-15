@@ -129,6 +129,12 @@ internal static class SqlBuilderExtensions
             var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
         }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         if (!string.IsNullOrEmpty(subjectRelation))
             builder = builder.Where(SubjectRelationFilter, new {SubjectRelation = new DbString()
@@ -168,6 +174,12 @@ internal static class SqlBuilderExtensions
         {
             var tvpParam = TvpHelper.AsTvpParameter(subjectsIds, tvpTypeName);
             builder = builder.Where("subject_id in (select id from @subjectsIds)", new { subjectsIds = tvpParam });
+        }
+        else
+        {
+            // An empty subject-id set means "no subjects to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this relation/subject_type (subject scope dropped).
+            builder = builder.Where("1 = 0");
         }
 
         return builder;
@@ -217,8 +229,17 @@ internal static class SqlBuilderExtensions
             Length = 64
         }});
 
-        var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
-        builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
+        if (entitiesIdsArr.Length > 0)
+        {
+            var tvpParam = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
+            builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = tvpParam });
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         return builder;
     }
@@ -235,13 +256,28 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
 
-        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
-        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+        if (filter.Attributes.Length > 0)
+        {
+            var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
+            builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+        }
+        else
+        {
+            // An empty attribute set means "no attributes to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type (attribute scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         if (entitiesIdsArr.Length > 0)
         {
             var entitiesTvp = TvpHelper.AsTvpParameter(entitiesIdsArr, tvpTypeName);
             builder = builder.Where("entity_id in (select id from @entitiesIds)", new { entitiesIds = entitiesTvp });
+        }
+        else
+        {
+            // An empty entity-id set means "no entities to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type/attribute (entity scope dropped).
+            builder = builder.Where("1 = 0");
         }
 
         return builder;
@@ -267,12 +303,21 @@ internal static class SqlBuilderExtensions
             Length = 256
         }});
 
-        var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
-        builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+        if (filter.Attributes.Length > 0)
+        {
+            var attributesTvp = TvpHelper.AsTvpParameter(filter.Attributes, tvpTypeName);
+            builder = builder.Where("attribute in (select id from @Attributes)", new { Attributes = attributesTvp });
+        }
+        else
+        {
+            // An empty attribute set means "no attributes to resolve" -> match nothing. Omitting the
+            // predicate here would return every row of this entity_type (attribute scope dropped).
+            builder = builder.Where("1 = 0");
+        }
 
         return builder;
     }
-    
+
     public static SqlBuilder FilterDeleteRelations(this SqlBuilder builder, DeleteRelationsFilter[] filters)
     {
         builder.Where("deleted_tx_id IS NULL");

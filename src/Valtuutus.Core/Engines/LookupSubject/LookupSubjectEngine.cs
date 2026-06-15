@@ -87,6 +87,13 @@ public sealed class LookupSubjectEngine(
         if (req.CheckDepthLimit())
             return _failTask;
 
+        // A cascading hop (e.g. parent.is_member) can dead-end and produce an empty entity-id set.
+        // There are no entities left to resolve subjects for, so the answer is empty. Short-circuiting
+        // here also keeps the empty list out of the data layer, where the SQL builders would otherwise
+        // drop the entity_id predicate entirely and return every subject system-wide.
+        if (req.EntitiesIds.Count == 0)
+            return _failTask;
+
         req.DecreaseDepth();
 
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
@@ -434,11 +441,15 @@ public sealed class LookupSubjectEngine(
         return new RelationOrAttributeTuples([.. hashSet]);
     }
 
-    private static List<string> ToSubjectIdList(List<RelationTuple> tuples)
+    private static string[] ToSubjectIdList(List<RelationTuple> tuples)
     {
-        var list = new List<string>(tuples.Count);
-        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) list.Add(t.SubjectId);
-        return list;
+        using var pooled = PooledHashSet<string>.Rent();
+        var seen = pooled.Set;
+        seen.EnsureCapacity(tuples.Count);
+        foreach (ref readonly var t in CollectionsMarshal.AsSpan(tuples)) seen.Add(t.SubjectId);
+        var arr = new string[seen.Count];
+        seen.CopyTo(arr);
+        return arr;
     }
 }
 

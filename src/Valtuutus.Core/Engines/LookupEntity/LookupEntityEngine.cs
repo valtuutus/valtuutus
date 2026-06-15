@@ -808,9 +808,13 @@ public sealed class LookupEntityEngine(
 
     private static string[] ToEntityIdList(List<LookupEntityResult> tuples)
     {
-        var arr = new string[tuples.Count];
+        using var pooled = PooledHashSet<string>.Rent();
+        var seen = pooled.Set;
+        seen.EnsureCapacity(tuples.Count);
         var span = CollectionsMarshal.AsSpan(tuples);
-        for (var i = 0; i < span.Length; i++) arr[i] = span[i].EntityId;
+        for (var i = 0; i < span.Length; i++) seen.Add(span[i].EntityId);
+        var arr = new string[seen.Count];
+        seen.CopyTo(arr);
         return arr;
     }
 }
