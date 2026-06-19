@@ -15,7 +15,7 @@ jobs:
     name: Run Benchmarks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup dotnet
         uses: actions/setup-dotnet@v5.3.0
         with:
