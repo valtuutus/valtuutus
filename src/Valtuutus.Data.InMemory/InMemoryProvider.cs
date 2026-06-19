@@ -311,7 +311,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
         using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
         await Task.Delay(10, ct);
-        lock (_txLock) { _latestTransaction = transactId; }
+        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         _relations.Write(transactId, relations);
         _attributes.Write(transactId, attributes);
         var snapToken = new SnapToken(transactId.ToString());
@@ -323,7 +323,7 @@ internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvide
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
-        lock (_txLock) { _latestTransaction = transactId; }
+        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         _attributes.Delete(transactId, filter.Attributes);
         _relations.Delete(transactId, filter.Relations);
         var snapToken = new SnapToken(transactId.ToString());
