@@ -897,6 +897,29 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             ]);
     }
 
+    [Fact]
+    public async Task GetLatestSnapToken_With_Concurrent_Writes_Returns_True_Maximum()
+    {
+        var providers = CreateProviders();
+
+        // Fire many writes concurrently to maximise the chance that two land in the same millisecond.
+        // The bug (ORDER BY created_at DESC instead of ORDER BY id DESC) caused non-deterministic
+        // results when two transactions shared the same created_at value.
+        var tokens = await Task.WhenAll(
+            Enumerable.Range(0, 20).Select(i =>
+                providers.writer.Write(
+                    [new RelationTuple("workspace", $"ws-{i}", "owner", "user", $"user-{i}")],
+                    [],
+                    default)));
+
+        var latest = await providers.reader.GetLatestSnapToken(default);
+
+        // ULID values are lexicographically time-ordered, so the largest string is the true latest.
+        var expected = tokens.MaxBy(t => t.Value, StringComparer.Ordinal);
+
+        latest.Should().Be(expected);
+    }
+
     public async Task InitializeAsync()
     {
         await Fixture.ResetDatabaseAsync();

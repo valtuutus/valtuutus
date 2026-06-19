@@ -58,7 +58,7 @@ internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataRe
             SelectAttributes = string.Format(UnformattedSelectAttributes, key.Schema, key.AttributesTable),
             SelectRelations = string.Format(UnformattedSelectRelations, key.Schema, key.RelationsTable),
             GetLatestSnapToken = string.Format(
-                "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY created_at DESC", key.Schema, key.TransactionsTable),
+                "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY id DESC", key.Schema, key.TransactionsTable),
             ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             Select1Attribute = $"""
                                     SELECT TOP 1

@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Setup dotnet
         uses: actions/setup-dotnet@v5.3.0
         with:
@@ -53,7 +53,7 @@ jobs:
           path: ${{ github.workspace }}/**/TestResults/**/*
           retention-days: 5
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.23.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
         if: always()
         with:
           trx_files: "${{ github.workspace }}/**/*.trx"

@@ -171,7 +171,7 @@ internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataRea
         {
             SelectAttributes = selectAttributes,
             SelectRelations = selectRelations,
-            GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY created_at DESC LIMIT 1",
+            GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
             Select1Attribute = $"{selectAttributes} LIMIT 1",
             ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             HasDirectRelation =
