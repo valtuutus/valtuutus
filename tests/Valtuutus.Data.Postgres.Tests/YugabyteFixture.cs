@@ -72,9 +72,9 @@ public class YugabyteFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         }
     }
 
-    // The full production schema (matches Valtuutus' Postgres migration / the CCA authz migration), including
-    // the INCLUDE covering and partial indexes — so this fixture also proves YugabyteDB accepts those DDLs,
-    // not just that the writer round-trips against a minimal schema.
+    // The full schema from Valtuutus' Postgres migration, including the INCLUDE covering and partial indexes —
+    // so this fixture also proves YugabyteDB accepts those DDLs, not just that the writer round-trips against a
+    // minimal schema.
     private const string DbMigration =
         """
         CREATE TABLE "public"."attributes" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "attribute" character varying(64) NOT NULL, "value" jsonb NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
