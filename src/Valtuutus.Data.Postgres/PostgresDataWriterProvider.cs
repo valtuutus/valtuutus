@@ -10,7 +10,7 @@ using System.Collections.Concurrent;
 
 namespace Valtuutus.Data.Postgres;
 
-internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
+internal class PostgresDataWriterProvider : IDbDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly IServiceProvider _provider;
@@ -103,9 +103,28 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
 
         await InsertTransaction((NpgsqlConnection)connection, transactId, (NpgsqlTransaction)transaction, ct);
 
-        await using var relationsWriter = await ((NpgsqlConnection)connection).BeginBinaryImportAsync(
-            _c.CopyRelations,
-            ct);
+        await WriteRelationsAsync(
+            (NpgsqlConnection)connection, (NpgsqlTransaction)transaction, relations, transactId, ct);
+        await WriteAttributesAsync(
+            (NpgsqlConnection)connection, (NpgsqlTransaction)transaction, attributes, transactId, ct);
+
+        var snapToken = new SnapToken(transactId.ToString());
+        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;
+    }
+
+    /// <summary>
+    /// Persists the relation tuples for <paramref name="transactId"/>. Default uses a binary COPY for bulk
+    /// throughput; a PostgreSQL-wire engine that does not support binary COPY overrides this.
+    /// </summary>
+    protected virtual async Task WriteRelationsAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<RelationTuple> relations,
+        Ulid transactId,
+        CancellationToken ct)
+    {
+        await using var relationsWriter = await connection.BeginBinaryImportAsync(_c.CopyRelations, ct);
         foreach (var record in relations)
         {
             await relationsWriter.StartRowAsync(ct);
@@ -120,12 +139,24 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
 
         await relationsWriter.CompleteAsync(ct);
         await relationsWriter.CloseAsync(ct);
+    }
 
+    /// <summary>
+    /// Upserts the attribute tuples for <paramref name="transactId"/> (latest-value-wins). Default stages into
+    /// a temp table via binary COPY and applies a MERGE; an engine without binary COPY / MERGE overrides this.
+    /// </summary>
+    protected virtual async Task WriteAttributesAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction transaction,
+        IEnumerable<AttributeTuple> attributes,
+        Ulid transactId,
+        CancellationToken ct)
+    {
         await connection.ExecuteAsync(new CommandDefinition(
             "CREATE TEMPORARY TABLE temp_attributes (entity_type VARCHAR(256), entity_id VARCHAR(64), attribute VARCHAR(64), value JSONB, created_tx_id CHAR(26))",
             transaction, cancellationToken: ct));
 
-        await using var attributesWriter = await ((NpgsqlConnection)connection).BeginBinaryImportAsync(
+        await using var attributesWriter = await connection.BeginBinaryImportAsync(
             "copy temp_attributes (entity_type, entity_id, attribute, value, created_tx_id) from STDIN (FORMAT BINARY)",
             ct);
 
@@ -144,10 +175,6 @@ internal sealed class PostgresDataWriterProvider : IDbDataWriterProvider
 
         await connection.ExecuteAsync(new CommandDefinition(
             _c.MergeAttributes, transaction, cancellationToken: ct));
-
-        var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
     }
 
     private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
