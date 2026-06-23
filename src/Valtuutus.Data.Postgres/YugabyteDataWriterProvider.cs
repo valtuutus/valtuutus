@@ -77,14 +77,21 @@ internal sealed class YugabyteDataWriterProvider : PostgresDataWriterProvider
         CancellationToken ct)
     {
         var createdTxId = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true };
-        var rows = attributes.Select(record => new
-        {
-            record.EntityType,
-            record.EntityId,
-            record.Attribute,
-            Value = record.Value.ToJsonString(),
-            CreatedTxId = createdTxId,
-        }).ToList();
+        // Collapse a same-batch duplicate key to last-wins. The two-phase soft-delete-then-insert below would
+        // otherwise insert two live rows for one (entity_type, entity_id, attribute) and trip the
+        // `unique_attributes` partial index. (The Postgres MERGE this overrides instead errors on a duplicate
+        // source row; last-wins is the natural upsert semantics — the latest value for a key wins.)
+        var rows = attributes
+            .GroupBy(a => (a.EntityType, a.EntityId, a.Attribute))
+            .Select(g => g.Last())
+            .Select(record => new
+            {
+                record.EntityType,
+                record.EntityId,
+                record.Attribute,
+                Value = record.Value.ToJsonString(),
+                CreatedTxId = createdTxId,
+            }).ToList();
         if (rows.Count == 0)
             return;
 
