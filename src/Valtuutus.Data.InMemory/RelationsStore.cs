@@ -5,7 +5,7 @@ using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Data.InMemory;
 
-internal sealed class RelationsStore : IDisposable
+public sealed class RelationsStore : IDisposable
 {
     private sealed class Entry(RelationTuple relation, Ulid createdTxId)
     {
