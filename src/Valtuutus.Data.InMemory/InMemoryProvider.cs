@@ -7,7 +7,7 @@ using Valtuutus.Data;
 
 namespace Valtuutus.Data.InMemory;
 
-internal sealed class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
+public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataWriterProvider
 {
     private readonly RelationsStore _relations;
     private readonly AttributesStore _attributes;

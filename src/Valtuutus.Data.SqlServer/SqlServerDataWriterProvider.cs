@@ -10,7 +10,7 @@ using System.Data;
 
 namespace Valtuutus.Data.SqlServer;
 
-internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
+public class SqlServerDataWriterProvider : IDbDataWriterProvider
 {
     private readonly DbConnectionFactory _factory;
     private readonly ValtuutusDataOptions _options;
@@ -100,11 +100,20 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         var transactionId = Ulid.NewUlid();
         await InsertTransaction((SqlConnection)connection, transactionId, (SqlTransaction)transaction, ct);
 
-        using var relationsBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
+        await WriteRelationsAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, relations, ct);
+        await WriteAttributesAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, attributes, ct);
+
+        var snapToken = new SnapToken(transactionId.ToString());
+        await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        return snapToken;
+    }
+
+    protected virtual async Task WriteRelationsAsync(SqlConnection connection, SqlTransaction transaction, Ulid transactId, IEnumerable<RelationTuple> relations, CancellationToken ct)
+    {
+        using var relationsBulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = _c.RelationsDestinationTableName;
 
-        await
-        using var relationsReader = ObjectReader.Create(relations.Select(x => new
+        await using var relationsReader = ObjectReader.Create(relations.Select(x => new
         {
             x.EntityType,
             x.EntityId,
@@ -112,7 +121,7 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
             x.SubjectId,
             x.Relation,
             x.SubjectRelation,
-            TransactionId = transactionId.ToString()
+            TransactionId = transactId.ToString()
         }));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
@@ -123,23 +132,24 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
 
         await relationsBulkCopy.WriteToServerAsync(relationsReader, ct);
+    }
 
+    protected virtual async Task WriteAttributesAsync(SqlConnection connection, SqlTransaction transaction, Ulid transactId, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
+    {
         await connection.ExecuteAsync(new CommandDefinition(
             "CREATE TABLE #temp_attributes (entity_type NVARCHAR(256), entity_id NVARCHAR(64), attribute NVARCHAR(64), value NVARCHAR(256), created_tx_id CHAR(26))",
             transaction: transaction, cancellationToken: ct));
 
-        using var attributesBulkCopy = new SqlBulkCopy((SqlConnection)connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction);
+        using var attributesBulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "#temp_attributes";
 
-        await
-
-        using var attributesReader = ObjectReader.Create(attributes.Select(t => new
+        await using var attributesReader = ObjectReader.Create(attributes.Select(t => new
         {
             t.EntityType,
             t.EntityId,
             t.Attribute,
             Value = t.Value.ToJsonString(),
-            TransactionId = transactionId.ToString()
+            TransactionId = transactId.ToString()
         }));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
@@ -147,14 +157,9 @@ internal sealed class SqlServerDataWriterProvider : IDbDataWriterProvider
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Value", "value"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
 
-
         await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
         await connection.ExecuteAsync(new CommandDefinition(
             _c.MergeAttributes, transaction: transaction, cancellationToken: ct));
-
-        var snapToken = new SnapToken(transactionId.ToString());
-        await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
     }
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)

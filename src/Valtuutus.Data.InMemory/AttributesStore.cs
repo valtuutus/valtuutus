@@ -4,7 +4,7 @@ using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Data.InMemory;
 
-internal sealed class AttributesStore : IDisposable
+public sealed class AttributesStore : IDisposable
 {
     private sealed class Entry(AttributeTuple attribute, Ulid createdTxId)
     {

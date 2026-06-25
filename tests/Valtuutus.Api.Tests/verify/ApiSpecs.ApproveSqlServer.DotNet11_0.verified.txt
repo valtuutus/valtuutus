@@ -6,6 +6,45 @@ namespace Valtuutus.Data.SqlServer
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddSqlServer(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.SqlServer.ValtuutusSqlServerOptions? options = null) { }
     }
+    public class SqlServerDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider
+    {
+        public SqlServerDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Db.IValtuutusDbOptions dbOptions) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.AttributeTuple>> GetAttributesSingleEntity(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken) { }
+        [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
+                "AttributeName",
+                "EntityId"})]
+        public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetEntityIdsExcluding(string entityType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetIndirectRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoined(Valtuutus.Core.Data.EntityRelationFilter mainFilter, string subEntityType, string subRelation, string subjectType, string subjectId, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public class SqlServerDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider, Valtuutus.Data.Db.IDbDataWriterProvider
+    {
+        public SqlServerDataWriterProvider(Valtuutus.Data.Db.DbConnectionFactory factory, Valtuutus.Data.ValtuutusDataOptions options, System.IServiceProvider provider, Valtuutus.Data.Db.IValtuutusDbOptions dbOptions) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
+        protected virtual System.Threading.Tasks.Task WriteAttributesAsync(Microsoft.Data.SqlClient.SqlConnection connection, Microsoft.Data.SqlClient.SqlTransaction transaction, System.Ulid transactId, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
+        protected virtual System.Threading.Tasks.Task WriteRelationsAsync(Microsoft.Data.SqlClient.SqlConnection connection, Microsoft.Data.SqlClient.SqlTransaction transaction, System.Ulid transactId, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Threading.CancellationToken ct) { }
+    }
     public class ValtuutusSqlServerOptions : System.IEquatable<Valtuutus.Data.SqlServer.ValtuutusSqlServerOptions>, Valtuutus.Data.Db.IValtuutusDbOptions
     {
         public ValtuutusSqlServerOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
