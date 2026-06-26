@@ -14,7 +14,7 @@ using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-internal sealed class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private const string UnformattedSelectAttributes = @"SELECT
                     entity_type,

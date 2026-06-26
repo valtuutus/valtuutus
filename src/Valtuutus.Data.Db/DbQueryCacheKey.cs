@@ -1,6 +1,6 @@
 namespace Valtuutus.Data.Db;
 
-internal readonly record struct DbQueryCacheKey(
+public readonly record struct DbQueryCacheKey(
     string Schema,
     string TransactionsTable,
     string RelationsTable,

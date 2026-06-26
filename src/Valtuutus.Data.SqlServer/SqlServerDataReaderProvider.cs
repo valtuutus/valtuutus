@@ -13,7 +13,7 @@ using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
 
-internal sealed class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
 {
     private const string UnformattedSelectAttributes = @"SELECT
                     entity_type,
