@@ -3,6 +3,7 @@ using Valtuutus.Core.Data;
 using Dapper;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Data.Db;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
@@ -47,6 +48,40 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         exists.Should().BeTrue();
     }
     
+    [Fact]
+    public async Task WritingData_TwiceOnSameConnection_ShouldNotThrow()
+    {
+        // arrange
+        var provider = Provider.GetRequiredService<IDbDataWriterProvider>();
+        await using var db = (Microsoft.Data.SqlClient.SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
+
+        // act
+        await provider.Write(db, [], [new AttributeTuple("project", "1", "name", System.Text.Json.Nodes.JsonValue.Create("foo")!)], default);
+        var act = () => provider.Write(db, [], [new AttributeTuple("project", "2", "name", System.Text.Json.Nodes.JsonValue.Create("bar")!)], default);
+
+        // assert
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task WritingData_TwiceInSameTransaction_ShouldNotThrow()
+    {
+        // arrange
+        var provider = Provider.GetRequiredService<IDbDataWriterProvider>();
+        await using var db = (Microsoft.Data.SqlClient.SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
+        var transaction = (Microsoft.Data.SqlClient.SqlTransaction)await db.BeginTransactionAsync();
+
+        // act
+        await provider.Write(db, transaction, [], [new AttributeTuple("project", "1", "name", System.Text.Json.Nodes.JsonValue.Create("foo")!)], default);
+        var act = () => provider.Write(db, transaction, [], [new AttributeTuple("project", "2", "name", System.Text.Json.Nodes.JsonValue.Create("bar")!)], default);
+
+        // assert
+        await act.Should().NotThrowAsync();
+        await transaction.CommitAsync();
+    }
+
     [Fact]
     public async Task DeletingData_ShouldReturnTransactionId()
     {

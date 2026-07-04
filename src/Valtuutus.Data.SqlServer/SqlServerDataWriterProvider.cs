@@ -49,6 +49,8 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
                                INSERT INTO [{key.Schema}].[{key.AttributesTable}] (entity_type, entity_id, attribute, value, created_tx_id)
                                SELECT source.entity_type, source.entity_id, source.attribute, source.value, source.created_tx_id
                                FROM #temp_attributes AS source;
+
+                               DROP TABLE #temp_attributes;
                                """,
             DeleteRelations =
                 $"UPDATE [{key.Schema}].[{key.RelationsTable}] set deleted_tx_id = @SnapToken /**where**/",
