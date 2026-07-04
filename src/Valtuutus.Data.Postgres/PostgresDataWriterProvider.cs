@@ -61,6 +61,8 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
                            INSERT INTO {key.Schema}.{key.AttributesTable} (entity_type, entity_id, attribute, value, created_tx_id)
                            SELECT entity_type, entity_id, attribute, value, created_tx_id
                            FROM temp_attributes;
+
+                           DROP TABLE temp_attributes;
                            """"
     };
 
