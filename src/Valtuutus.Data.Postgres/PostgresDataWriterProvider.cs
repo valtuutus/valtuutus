@@ -1,12 +1,12 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.Postgres.Utils;
 using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using Valtuutus.Data.Db;
 using System.Data;
 using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace Valtuutus.Data.Postgres;
 
@@ -28,6 +28,11 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
 
+    private static readonly JsonSerializerOptions DeleteFilterJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
         ValtuutusDataOptions options,
@@ -45,10 +50,29 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
             $"copy {key.Schema}.{key.RelationsTable} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
         InsertTransaction =
             $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at)",
-        DeleteRelations =
-            $@"UPDATE {key.Schema}.{key.RelationsTable} set deleted_tx_id = @SnapToken /**where**/",
-        DeleteAttributes =
-            $@"UPDATE {key.Schema}.{key.AttributesTable} set deleted_tx_id = @SnapToken /**where**/",
+        DeleteRelations = $"""
+            UPDATE {key.Schema}.{key.RelationsTable} r
+            SET deleted_tx_id = @SnapToken
+            FROM jsonb_to_recordset(@Filters::jsonb) AS f(
+                entity_type text, entity_id text, subject_type text,
+                subject_id text, relation text, subject_relation text)
+            WHERE r.deleted_tx_id IS NULL
+              AND (f.entity_type IS NULL OR r.entity_type = f.entity_type)
+              AND (f.entity_id IS NULL OR r.entity_id = f.entity_id)
+              AND (f.subject_type IS NULL OR r.subject_type = f.subject_type)
+              AND (f.subject_id IS NULL OR r.subject_id = f.subject_id)
+              AND (f.relation IS NULL OR r.relation = f.relation)
+              AND (f.subject_relation IS NULL OR r.subject_relation = f.subject_relation)
+            """,
+        DeleteAttributes = $"""
+            UPDATE {key.Schema}.{key.AttributesTable} a
+            SET deleted_tx_id = @SnapToken
+            FROM jsonb_to_recordset(@Filters::jsonb) AS f(entity_type text, entity_id text, attribute text)
+            WHERE a.deleted_tx_id IS NULL
+              AND a.entity_type = f.entity_type
+              AND a.entity_id = f.entity_id
+              AND (f.attribute IS NULL OR a.attribute = f.attribute)
+            """,
         MergeAttributes = $""""
                            MERGE INTO {key.Schema}.{key.AttributesTable} AS target
                            USING temp_attributes AS source
@@ -200,32 +224,21 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var transactId = Ulid.NewUlid();
+        var snapTokenDb = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true };
 
-        var snapTokenParam = new
-        {
-            SnapToken = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true }
-        };
         if (filter.Relations.Length > 0)
         {
-            var relationsBuilder = new SqlBuilder();
-            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate =
-                relationsBuilder.AddTemplate(
-                    _c.DeleteRelations, snapTokenParam);
-
-            await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonOptions);
+            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteRelations,
+                new { SnapToken = snapTokenDb, Filters = filtersJson },
                 cancellationToken: ct, transaction: transaction));
         }
 
         if (filter.Attributes.Length > 0)
         {
-            var attributesBuilder = new SqlBuilder();
-            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate =
-                attributesBuilder.AddTemplate(_c.DeleteAttributes,
-                    snapTokenParam);
-
-            await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+            var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonOptions);
+            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteAttributes,
+                new { SnapToken = snapTokenDb, Filters = filtersJson },
                 cancellationToken: ct, transaction: transaction));
         }
 
