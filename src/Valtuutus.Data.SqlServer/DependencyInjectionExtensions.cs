@@ -1,4 +1,3 @@
-using Dapper;
 using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Data.Db;
@@ -20,17 +19,9 @@ public static class DependencyInjectionExtensions
     {
         var builder = services.AddValtuutusData();
         builder.Services.AddDbSetup(factory, options ?? new ValtuutusSqlServerOptions());
-        AddSqlServerDapperTypeHandlers();
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();
         return builder;
-    }
-
-    private static void AddSqlServerDapperTypeHandlers()
-    {
-        DefaultTypeMap.MatchNamesWithUnderscores = true;
-        SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        SqlMapper.AddTypeHandler(new UlidTypeHandler());
     }
 }

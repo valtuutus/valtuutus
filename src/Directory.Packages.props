@@ -16,8 +16,6 @@
     <PackageVersion Include="ZiggyCreatures.FusionCache" Version="2.1.0" />
     <PackageVersion Include="Npgsql" Version="[9.0.3,)" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="[6.0.1,)" />
-    <PackageVersion Include="Dapper" Version="[2.1.66,)" />
-    <PackageVersion Include="Dapper.SqlBuilder" Version="[2.1.66,)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="[8.0.0,)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[8.0.0,)" />
   </ItemGroup>
