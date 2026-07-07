@@ -25,7 +25,7 @@ public class ApiSpecs
     [Fact]
     public Task ApproveDataDb()
     {
-        return ApiSpecExtensions.VerifyAssembly<JsonTypeHandler>();
+        return ApiSpecExtensions.VerifyAssembly<IDbDataWriterProvider>();
     }
 
 

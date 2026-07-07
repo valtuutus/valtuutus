@@ -9,11 +9,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Dapper" />
-      <PackageReference Include="Dapper.SqlBuilder" />
-    </ItemGroup>
-
-    <ItemGroup>
       <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
     </ItemGroup>
 

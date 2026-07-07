@@ -7,6 +7,7 @@ using FastMember;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Data.Db;
 using System.Data;
+using System.Text.Json;
 
 namespace Valtuutus.Data.SqlServer;
 
@@ -18,6 +19,11 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
+
+    private static readonly JsonSerializerOptions DeleteFilterJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
 
     public SqlServerDataWriterProvider(DbConnectionFactory factory,
         ValtuutusDataOptions options,
@@ -52,10 +58,40 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
                                DROP TABLE #temp_attributes;
                                """,
-            DeleteRelations =
-                $"UPDATE [{key.Schema}].[{key.RelationsTable}] set deleted_tx_id = @SnapToken /**where**/",
-            DeleteAttributes =
-                $"UPDATE [{key.Schema}].[{key.AttributesTable}] set deleted_tx_id = @SnapToken /**where**/",
+            DeleteRelations = $"""
+                UPDATE r
+                SET deleted_tx_id = @SnapToken
+                FROM [{key.Schema}].[{key.RelationsTable}] r
+                CROSS APPLY OPENJSON(@Filters) WITH (
+                    entity_type NVARCHAR(256) '$.entity_type',
+                    entity_id NVARCHAR(64) '$.entity_id',
+                    subject_type NVARCHAR(256) '$.subject_type',
+                    subject_id NVARCHAR(64) '$.subject_id',
+                    relation NVARCHAR(64) '$.relation',
+                    subject_relation NVARCHAR(64) '$.subject_relation'
+                ) AS f
+                WHERE r.deleted_tx_id IS NULL
+                  AND (f.entity_type IS NULL OR r.entity_type = f.entity_type)
+                  AND (f.entity_id IS NULL OR r.entity_id = f.entity_id)
+                  AND (f.subject_type IS NULL OR r.subject_type = f.subject_type)
+                  AND (f.subject_id IS NULL OR r.subject_id = f.subject_id)
+                  AND (f.relation IS NULL OR r.relation = f.relation)
+                  AND (f.subject_relation IS NULL OR r.subject_relation = f.subject_relation)
+                """,
+            DeleteAttributes = $"""
+                UPDATE a
+                SET deleted_tx_id = @SnapToken
+                FROM [{key.Schema}].[{key.AttributesTable}] a
+                CROSS APPLY OPENJSON(@Filters) WITH (
+                    entity_type NVARCHAR(256) '$.entity_type',
+                    entity_id NVARCHAR(64) '$.entity_id',
+                    attribute NVARCHAR(64) '$.attribute'
+                ) AS f
+                WHERE a.deleted_tx_id IS NULL
+                  AND a.entity_type = f.entity_type
+                  AND a.entity_id = f.entity_id
+                  AND (f.attribute IS NULL OR a.attribute = f.attribute)
+                """,
         };
     }
 
@@ -193,25 +229,25 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
         if (filter.Relations.Length > 0)
         {
-            var relationsBuilder = new SqlBuilder();
-            relationsBuilder = relationsBuilder.FilterDeleteRelations(filter.Relations);
-            var queryTemplate =
-                relationsBuilder.AddTemplate(_c.DeleteRelations,
-                    snapTokenParam);
-
-            await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonOptions);
+            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteRelations,
+                new
+                {
+                    SnapToken = snapTokenParam.SnapToken,
+                    Filters = new DbString { Value = filtersJson, Length = -1 }
+                },
                 cancellationToken: ct, transaction: transaction));
         }
 
         if (filter.Attributes.Length > 0)
         {
-            var attributesBuilder = new SqlBuilder();
-            attributesBuilder = attributesBuilder.FilterDeleteAttributes(filter.Attributes);
-            var queryTemplate =
-                attributesBuilder.AddTemplate(_c.DeleteAttributes,
-                    snapTokenParam);
-
-            await connection.ExecuteAsync(new CommandDefinition(queryTemplate.RawSql, queryTemplate.Parameters,
+            var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonOptions);
+            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteAttributes,
+                new
+                {
+                    SnapToken = snapTokenParam.SnapToken,
+                    Filters = new DbString { Value = filtersJson, Length = -1 }
+                },
                 cancellationToken: ct, transaction: transaction));
         }
 
