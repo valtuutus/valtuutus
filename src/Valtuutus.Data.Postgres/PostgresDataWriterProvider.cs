@@ -1,6 +1,5 @@
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using Valtuutus.Data.Db;
@@ -157,9 +156,13 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 
     protected virtual async Task WriteAttributesAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Ulid transactId, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        await connection.ExecuteAsync(new CommandDefinition(
-            "CREATE TEMPORARY TABLE temp_attributes (entity_type VARCHAR(256), entity_id VARCHAR(64), attribute VARCHAR(64), value JSONB, created_tx_id CHAR(26))",
-            transaction, cancellationToken: ct));
+        await using (var createTempTableCommand = connection.CreateCommand())
+        {
+            createTempTableCommand.Transaction = transaction;
+            createTempTableCommand.CommandText =
+                "CREATE TEMPORARY TABLE temp_attributes (entity_type VARCHAR(256), entity_id VARCHAR(64), attribute VARCHAR(64), value JSONB, created_tx_id CHAR(26))";
+            await createTempTableCommand.ExecuteNonQueryAsync(ct);
+        }
 
         await using var attributesWriter = await connection.BeginBinaryImportAsync(
             "copy temp_attributes (entity_type, entity_id, attribute, value, created_tx_id) from STDIN (FORMAT BINARY)",
@@ -178,17 +181,21 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         await attributesWriter.CompleteAsync(ct);
         await attributesWriter.CloseAsync(ct);
 
-        await connection.ExecuteAsync(new CommandDefinition(
-            _c.MergeAttributes, transaction, cancellationToken: ct));
+        await using var mergeCommand = connection.CreateCommand();
+        mergeCommand.Transaction = transaction;
+        mergeCommand.CommandText = _c.MergeAttributes;
+        await mergeCommand.ExecuteNonQueryAsync(ct);
     }
 
     private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
-        await db.ExecuteAsync(new CommandDefinition(
-            _c.InsertTransaction,
-            new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
-            cancellationToken: ct));
+        await using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = _c.InsertTransaction;
+        command.Parameters.Add(new NpgsqlParameter<string>("id", NpgsqlDbType.Char) { Size = 26, TypedValue = transactId.ToString() });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset>("created_at", NpgsqlDbType.TimestampTz) { TypedValue = DateTimeOffset.UtcNow });
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<SnapToken> Delete(
@@ -224,27 +231,36 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var transactId = Ulid.NewUlid();
-        var snapTokenDb = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true };
+        var npgsqlConnection = (NpgsqlConnection)connection;
+        var npgsqlTransaction = (NpgsqlTransaction)transaction;
+        var snapTokenValue = transactId.ToString();
 
         if (filter.Relations.Length > 0)
         {
             var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonOptions);
-            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteRelations,
-                new { SnapToken = snapTokenDb, Filters = filtersJson },
-                cancellationToken: ct, transaction: transaction));
+            await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteRelations, snapTokenValue, filtersJson, ct);
         }
 
         if (filter.Attributes.Length > 0)
         {
             var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonOptions);
-            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteAttributes,
-                new { SnapToken = snapTokenDb, Filters = filtersJson },
-                cancellationToken: ct, transaction: transaction));
+            await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
-        await InsertTransaction((NpgsqlConnection)connection, transactId, (NpgsqlTransaction)transaction, ct);
-        var snapToken = new SnapToken(transactId.ToString());
+        await InsertTransaction(npgsqlConnection, transactId, npgsqlTransaction, ct);
+        var snapToken = new SnapToken(snapTokenValue);
         await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
+    }
+
+    private static async Task ExecuteDeleteBatch(NpgsqlConnection connection, NpgsqlTransaction transaction,
+        string sql, string snapToken, string filtersJson, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.Add(new NpgsqlParameter<string>("SnapToken", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken });
+        command.Parameters.Add(new NpgsqlParameter<string>("Filters", NpgsqlDbType.Text) { TypedValue = filtersJson });
+        await command.ExecuteNonQueryAsync(ct);
     }
 }
