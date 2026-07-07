@@ -1,5 +1,4 @@
-﻿using Dapper;
-using Npgsql;
+﻿using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
 using Valtuutus.Data.Db;
@@ -33,7 +32,12 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         await _dbContainer.StartAsync();
         DbFactory = () => new NpgsqlConnection(_dbContainer.GetConnectionString());
         _dbConnection = (NpgsqlConnection)DbFactory();
-        await _dbConnection.ExecuteAsync(DbMigration);
+        await _dbConnection.OpenAsync();
+        await using (var migrationCommand = _dbConnection.CreateCommand())
+        {
+            migrationCommand.CommandText = DbMigration;
+            await migrationCommand.ExecuteNonQueryAsync();
+        }
         await SetupRespawnerAsync();
 
     }
@@ -44,7 +48,6 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
     
     private async Task SetupRespawnerAsync()
     {
-        await _dbConnection.OpenAsync();
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
