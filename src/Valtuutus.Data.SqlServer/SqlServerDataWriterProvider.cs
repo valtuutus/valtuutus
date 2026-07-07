@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Valtuutus.Data.SqlServer.Utils;
-using Dapper;
 using FastMember;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Data.Db;
@@ -174,9 +172,13 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     protected virtual async Task WriteAttributesAsync(SqlConnection connection, SqlTransaction transaction, Ulid transactId, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        await connection.ExecuteAsync(new CommandDefinition(
-            "CREATE TABLE #temp_attributes (entity_type NVARCHAR(256), entity_id NVARCHAR(64), attribute NVARCHAR(64), value NVARCHAR(256), created_tx_id CHAR(26))",
-            transaction: transaction, cancellationToken: ct));
+        await using (var createTempTableCommand = connection.CreateCommand())
+        {
+            createTempTableCommand.Transaction = transaction;
+            createTempTableCommand.CommandText =
+                "CREATE TABLE #temp_attributes (entity_type NVARCHAR(256), entity_id NVARCHAR(64), attribute NVARCHAR(64), value NVARCHAR(256), created_tx_id CHAR(26))";
+            await createTempTableCommand.ExecuteNonQueryAsync(ct);
+        }
 
         using var attributesBulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "#temp_attributes";
@@ -196,8 +198,11 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("TransactionId", "created_tx_id"));
 
         await attributesBulkCopy.WriteToServerAsync(attributesReader, ct);
-        await connection.ExecuteAsync(new CommandDefinition(
-            _c.MergeAttributes, transaction: transaction, cancellationToken: ct));
+
+        await using var mergeCommand = connection.CreateCommand();
+        mergeCommand.Transaction = transaction;
+        mergeCommand.CommandText = _c.MergeAttributes;
+        await mergeCommand.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
@@ -220,48 +225,48 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     public async Task<SnapToken> Delete(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
     {
         var transactId = Ulid.NewUlid();
-        await InsertTransaction((SqlConnection)connection, transactId, (SqlTransaction)transaction, ct);
+        var sqlConnection = (SqlConnection)connection;
+        var sqlTransaction = (SqlTransaction)transaction;
+        await InsertTransaction(sqlConnection, transactId, sqlTransaction, ct);
 
-        var snapTokenParam = new
-        {
-            SnapToken = new DbString { Length = 26, Value = transactId.ToString(), IsFixedLength = true }
-        };
+        var snapTokenValue = transactId.ToString();
 
         if (filter.Relations.Length > 0)
         {
             var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonOptions);
-            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteRelations,
-                new
-                {
-                    SnapToken = snapTokenParam.SnapToken,
-                    Filters = new DbString { Value = filtersJson, Length = -1 }
-                },
-                cancellationToken: ct, transaction: transaction));
+            await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteRelations, snapTokenValue, filtersJson, ct);
         }
 
         if (filter.Attributes.Length > 0)
         {
             var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonOptions);
-            await connection.ExecuteAsync(new CommandDefinition(_c.DeleteAttributes,
-                new
-                {
-                    SnapToken = snapTokenParam.SnapToken,
-                    Filters = new DbString { Value = filtersJson, Length = -1 }
-                },
-                cancellationToken: ct, transaction: transaction));
+            await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
-        var snapToken = new SnapToken(transactId.ToString());
+        var snapToken = new SnapToken(snapTokenValue);
         await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
         return snapToken;
+    }
+
+    private static async Task ExecuteDeleteBatch(SqlConnection connection, SqlTransaction transaction,
+        string sql, string snapToken, string filtersJson, CancellationToken ct)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = sql;
+        command.Parameters.Add(new SqlParameter("@SnapToken", SqlDbType.NChar, 26) { Value = snapToken });
+        command.Parameters.Add(new SqlParameter("@Filters", SqlDbType.NVarChar, -1) { Value = filtersJson });
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction,
         CancellationToken ct)
     {
-        await db.ExecuteAsync(new CommandDefinition(
-            _c.InsertTransaction,
-            new { id = transactId, created_at = DateTimeOffset.UtcNow }, transaction: transaction,
-            cancellationToken: ct));
+        await using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = _c.InsertTransaction;
+        command.Parameters.Add(new SqlParameter("@id", SqlDbType.NChar, 26) { Value = transactId.ToString() });
+        command.Parameters.Add(new SqlParameter("@created_at", SqlDbType.DateTimeOffset) { Value = DateTimeOffset.UtcNow });
+        await command.ExecuteNonQueryAsync(ct);
     }
 }

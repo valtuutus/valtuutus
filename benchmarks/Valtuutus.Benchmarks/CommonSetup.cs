@@ -1,4 +1,4 @@
-using Dapper;
+using System.Data;
 using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -31,9 +31,10 @@ public static class CommonSetup
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
-        using var connection = serviceProvider.GetRequiredService<DbConnectionFactory>()();
-        
-        
+        using var connection = (System.Data.Common.DbConnection)serviceProvider.GetRequiredService<DbConnectionFactory>()();
+        if (connection.State != ConnectionState.Open)
+            await connection.OpenAsync();
+
         var migrations = migrationAssembly
             .GetManifestResourceNames()
             .Where(x => x.EndsWith(".sql"))
@@ -45,7 +46,9 @@ public static class CommonSetup
             await using var stream = migrationAssembly.GetManifestResourceStream(migrationFile);
             using var reader = new StreamReader(stream!);
             var migrationSql = await reader.ReadToEndAsync();
-            await connection.ExecuteAsync(migrationSql);
+            await using var command = connection.CreateCommand();
+            command.CommandText = migrationSql;
+            await command.ExecuteNonQueryAsync();
         }
 
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();

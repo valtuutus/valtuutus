@@ -1,5 +1,4 @@
-﻿using Dapper;
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using Respawn;
 using Testcontainers.MsSql;
 using Valtuutus.Data.Db;
@@ -31,7 +30,10 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
 	    await CreateDatabase("Valtuutus");
         DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
 	    await using var dbConnection = (SqlConnection)DbFactory();
-        await dbConnection.ExecuteAsync(DbMigration);
+        await dbConnection.OpenAsync();
+        await using var migrationCommand = dbConnection.CreateCommand();
+        migrationCommand.CommandText = DbMigration;
+        await migrationCommand.ExecuteNonQueryAsync();
         await SetupRespawnerAsync();
 
     }

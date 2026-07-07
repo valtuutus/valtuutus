@@ -1,7 +1,8 @@
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using Dapper;
 using FluentAssertions;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Data.Db;
 using Valtuutus.Tests.Shared;
@@ -30,21 +31,28 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         var transactionId = Ulid.Parse(snapToken.Value);
 
         // assert
-        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
-        var relationCount = await db.ExecuteScalarAsync<bool>("SELECT (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id)", 
-            new { id = transactionId });
-        var exists = await db.ExecuteScalarAsync<bool>("""
-                                                          SELECT
-                                                          CASE
-                                                              WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
-                                                                   THEN 1
-                                                              ELSE 0
-                                                          END
-                                                       """, 
-            new { id = transactionId });
-        
+        await using var db = (SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
+
+        await using var relationCountCommand = db.CreateCommand();
+        relationCountCommand.CommandText = "SELECT CASE WHEN (SELECT COUNT(*) FROM relation_tuples WHERE created_tx_id = @id) = 1 THEN 1 ELSE 0 END";
+        relationCountCommand.Parameters.AddWithValue("id", transactionId.ToString());
+        var relationCount = (int)(await relationCountCommand.ExecuteScalarAsync())! == 1;
+
+        await using var existsCommand = db.CreateCommand();
+        existsCommand.CommandText = """
+                                     SELECT
+                                     CASE
+                                         WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
+                                              THEN 1
+                                         ELSE 0
+                                     END
+                                     """;
+        existsCommand.Parameters.AddWithValue("id", transactionId.ToString());
+        var exists = (int)(await existsCommand.ExecuteScalarAsync())! == 1;
+
         relationCount.Should().BeTrue();
-        
+
         exists.Should().BeTrue();
     }
     
@@ -104,20 +112,23 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         
         
         // assert
-        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
+        await using var db = (SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
 
         var newTransactionId = Ulid.Parse(newSnapToken.Value);
         // new transaction should exist
-        var newTransaction = await db.ExecuteScalarAsync<bool>("""
-                                                               SELECT
-                                                               CASE
-                                                                   WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
-                                                                        THEN 1
-                                                                   ELSE 0
-                                                               END 
-                                                               """,
-            new { id = newTransactionId });
-        
+        await using var command = db.CreateCommand();
+        command.CommandText = """
+                              SELECT
+                              CASE
+                                  WHEN EXISTS(SELECT 1 FROM transactions WHERE id = @id)
+                                       THEN 1
+                                  ELSE 0
+                              END
+                              """;
+        command.Parameters.AddWithValue("id", newTransactionId.ToString());
+        var newTransaction = (int)(await command.ExecuteScalarAsync())! == 1;
+
         newTransaction.Should().BeTrue();
     }
 
@@ -155,19 +166,38 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
-        var relations = (await db.QueryAsync<RelationTuple>("""
-            SELECT  entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id, 
-                    subject_relation from relation_tuples where deleted_tx_id is null
-            """)).ToArray();
-        var attributes =
-            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from attributes where deleted_tx_id is null")).ToArray();
-        
-        return (relations, attributes);
+        await using var db = (SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
 
+        var relations = new List<RelationTuple>();
+        await using (var command = db.CreateCommand())
+        {
+            command.CommandText = """
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM relation_tuples WHERE deleted_tx_id IS NULL
+                """;
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                relations.Add(new RelationTuple(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+            }
+        }
+
+        var attributes = new List<AttributeTuple>();
+        await using (var command = db.CreateCommand())
+        {
+            command.CommandText = "SELECT entity_type, entity_id, attribute, value FROM attributes WHERE deleted_tx_id IS NULL";
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                attributes.Add(new AttributeTuple(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    JsonNode.Parse(reader.GetString(3))!.AsValue()));
+            }
+        }
+
+        return (relations.ToArray(), attributes.ToArray());
     }
 }
