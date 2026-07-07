@@ -1,10 +1,10 @@
-﻿using System.Data;
+using System.Data;
 using System.Text.Json.Nodes;
 using Dapper;
 
-namespace Valtuutus.Data.Db;
+namespace Valtuutus.Data.SqlServer;
 
-public class JsonTypeHandler : SqlMapper.TypeHandler<JsonValue>
+internal class JsonTypeHandler : SqlMapper.TypeHandler<JsonValue>
 {
     public override void SetValue(IDbDataParameter parameter, JsonValue? value)
     {
@@ -21,4 +21,3 @@ public class JsonTypeHandler : SqlMapper.TypeHandler<JsonValue>
         return default;
     }
 }
-

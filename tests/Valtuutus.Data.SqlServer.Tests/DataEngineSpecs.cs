@@ -120,7 +120,39 @@ public sealed class DataEngineSpecs : BaseDataEngineSpecs
         
         newTransaction.Should().BeTrue();
     }
-    
+
+    [Fact]
+    public async Task DeletingData_BatchWithMixedAttributeFilters_ShouldScopeAttributeFilterPerRow()
+    {
+        // arrange: filter[0] wildcard-deletes every attribute of project/1, filter[1] deletes only
+        // "name" for project/2. A per-row Attribute constraint must not leak onto other rows in the
+        // same batch delete (regression for a bug in the old SqlBuilder-based OrWhere/Where mixing).
+        var writer = Provider.GetRequiredService<IDataWriterProvider>();
+        await writer.Write([], [
+            new AttributeTuple("project", "1", "name", System.Text.Json.Nodes.JsonValue.Create("a")!),
+            new AttributeTuple("project", "1", "public", System.Text.Json.Nodes.JsonValue.Create(true)!),
+            new AttributeTuple("project", "2", "name", System.Text.Json.Nodes.JsonValue.Create("b")!),
+            new AttributeTuple("project", "2", "public", System.Text.Json.Nodes.JsonValue.Create(true)!)
+        ], default);
+
+        // act
+        await writer.Delete(new DeleteFilter
+        {
+            Attributes = new[]
+            {
+                new DeleteAttributesFilter { EntityType = "project", EntityId = "1" },
+                new DeleteAttributesFilter { EntityType = "project", EntityId = "2", Attribute = "name" }
+            }
+        }, default);
+
+        // assert
+        var (_, attributes) = await GetCurrentTuples();
+        attributes.Select(a => (a.EntityId, a.Attribute)).Should().BeEquivalentTo(new[]
+        {
+            ("2", "public")
+        });
+    }
+
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
         using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();

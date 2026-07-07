@@ -1,9 +1,9 @@
 using System.Data;
 using Dapper;
 
-namespace Valtuutus.Data.Db;
+namespace Valtuutus.Data.SqlServer;
 
-public class UlidTypeHandler : SqlMapper.TypeHandler<Ulid>
+internal class UlidTypeHandler : SqlMapper.TypeHandler<Ulid>
 {
     public override Ulid Parse(object value)
     {
