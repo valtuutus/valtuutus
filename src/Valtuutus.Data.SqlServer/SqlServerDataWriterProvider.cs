@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using FastMember;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Data.Db;
 using System.Data;
@@ -149,16 +148,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var relationsBulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction);
         relationsBulkCopy.DestinationTableName = _c.RelationsDestinationTableName;
 
-        await using var relationsReader = ObjectReader.Create(relations.Select(x => new
-        {
-            x.EntityType,
-            x.EntityId,
-            x.SubjectType,
-            x.SubjectId,
-            x.Relation,
-            x.SubjectRelation,
-            TransactionId = transactId.ToString()
-        }));
+        await using var relationsReader = new RelationTupleDataReader(relations, transactId.ToString());
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
         relationsBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Relation", "relation"));
@@ -183,14 +173,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var attributesBulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, transaction);
         attributesBulkCopy.DestinationTableName = "#temp_attributes";
 
-        await using var attributesReader = ObjectReader.Create(attributes.Select(t => new
-        {
-            t.EntityType,
-            t.EntityId,
-            t.Attribute,
-            Value = t.Value.ToJsonString(),
-            TransactionId = transactId.ToString()
-        }));
+        await using var attributesReader = new AttributeTupleDataReader(attributes, transactId.ToString());
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityType", "entity_type"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("EntityId", "entity_id"));
         attributesBulkCopy.ColumnMappings.Add(new SqlBulkCopyColumnMapping("Attribute", "attribute"));
