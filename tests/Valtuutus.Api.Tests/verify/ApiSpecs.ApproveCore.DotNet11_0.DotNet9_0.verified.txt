@@ -27,8 +27,8 @@ namespace Valtuutus.Core.Configuration
 {
     public static class ConfigureSchema
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream) { }
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
     }
 }
 namespace Valtuutus.Core.Data
@@ -88,6 +88,7 @@ namespace Valtuutus.Core.Data
                 "AttributeName",
                 "EntityId"})]
         System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributesFilter filter, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.AttributeTuple>> GetAttributesSingleEntity(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributesWithEntityIds(Valtuutus.Core.Data.AttributeFilter filter, System.Collections.Generic.IEnumerable<string> entitiesIds, System.Threading.CancellationToken cancellationToken);
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
                 "AttributeName",

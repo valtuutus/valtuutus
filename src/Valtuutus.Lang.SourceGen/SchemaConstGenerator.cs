@@ -35,28 +35,32 @@ public class SchemaConstGenerator : IIncrementalGenerator
         
         context.RegisterSourceOutput(vttFiles, (sourceProductionContext, file) =>
         {
-            if (!string.IsNullOrEmpty(file?.Content))
+            if (string.IsNullOrEmpty(file?.Content))
             {
-                var generatedSource = ProcessVttFile(file!.Content!);
-                sourceProductionContext.AddSource($"SchemaConsts.g.cs", SourceText.From(generatedSource, Encoding.UTF8));
+                return;
             }
-        });
 
+            var str = new AntlrInputStream(file!.Content!);
+            var lexer = new ValtuutusLexer(str);
+            var tokens = new CommonTokenStream(lexer);
+            var parser = new ValtuutusParser(tokens);
+            var tree = parser.schema();
+
+            var constsSource = ProcessVttFile(tree);
+            sourceProductionContext.AddSource("SchemaConsts.g.cs", SourceText.From(constsSource, Encoding.UTF8));
+
+            var functionsSource = SchemaFunctionsEmitter.Emit(tree, sourceProductionContext.ReportDiagnostic);
+            sourceProductionContext.AddSource("SchemaFunctions.g.cs", SourceText.From(functionsSource, Encoding.UTF8));
+        });
     }
-    
-    private static string ProcessVttFile(string vttContent)
+
+    private static string ProcessVttFile(ValtuutusParser.SchemaContext tree)
     {
         // Custom logic to process the .vtt content
         StringBuilder sb = new StringBuilder();
-        var str = new AntlrInputStream(vttContent);
-        var lexer = new ValtuutusLexer(str);
-        var tokens = new CommonTokenStream(lexer);
-        var parser = new ValtuutusParser(tokens);
-        
-        var tree = parser.schema();
 
         var cultureInfo = CultureInfo.InvariantCulture;
-        
+
         sb.AppendLine("""
                       namespace Valtuutus.Lang;
 
