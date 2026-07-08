@@ -27,11 +27,6 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
 
-    private static readonly JsonSerializerOptions DeleteFilterJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-    };
-
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
         ValtuutusDataOptions options,
@@ -237,13 +232,13 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 
         if (filter.Relations.Length > 0)
         {
-            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonOptions);
+            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
             await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteRelations, snapTokenValue, filtersJson, ct);
         }
 
         if (filter.Attributes.Length > 0)
         {
-            var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonOptions);
+            var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonContext.Default.DeleteAttributesFilterArray);
             await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
