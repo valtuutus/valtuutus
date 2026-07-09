@@ -1,0 +1,9 @@
+entity user {}
+entity document {
+    relation owner @user;
+    relation viewer @user;
+    attribute archived bool;
+    permission view := owner or viewer;
+    permission edit := owner and notArchived(archived);
+}
+fn notArchived(archived bool) => not(archived);
