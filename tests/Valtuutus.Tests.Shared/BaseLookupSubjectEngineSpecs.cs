@@ -634,6 +634,10 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             SnapToken snapToken, CancellationToken cancellationToken)
             => inner.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken, cancellationToken);
 
+        public Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+            string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+            => inner.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken, cancellationToken);
+
         public Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation,
             string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken,
             CancellationToken cancellationToken)

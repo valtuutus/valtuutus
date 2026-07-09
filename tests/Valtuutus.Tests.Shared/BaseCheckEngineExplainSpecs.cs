@@ -114,6 +114,42 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Explain_UnionExpression_BatchedSiblingRelations_ShowBatchedDetail()
+    {
+        // view := public or owner or admin or member — owner/admin/member are all direct
+        // relations on workspace, batchable together via HasAnyOfDirectRelations. No tuples
+        // and public=false means the whole union is false, so nothing short-circuits and every
+        // sibling's Detail is deterministic (unlike the short-circuit test above).
+        var engine = await CreateEngine(
+            [],
+            [new AttributeTuple("workspace", "expl-batch-1", "public", System.Text.Json.Nodes.JsonValue.Create(false))]);
+
+        var result = await engine.Explain(new CheckRequest
+        {
+            EntityType = "workspace", EntityId = "expl-batch-1",
+            Permission = "view",
+            SubjectType = "user", SubjectId = "alice"
+        }, CancellationToken.None);
+
+        result.Result.Should().BeFalse();
+
+        var ownerNode = FindNode(result.Root, n => n.Name == "owner");
+        var adminNode = FindNode(result.Root, n => n.Name == "admin");
+        var memberNode = FindNode(result.Root, n => n.Name == "member");
+
+        ownerNode.Should().NotBeNull();
+        adminNode.Should().NotBeNull();
+        memberNode.Should().NotBeNull();
+
+        ownerNode!.Detail.Should().Be("batched: no matching tuple");
+        adminNode!.Detail.Should().Be("batched: no matching tuple");
+        memberNode!.Detail.Should().Be("batched: no matching tuple");
+        ownerNode.Result.Should().BeFalse();
+        adminNode.Result.Should().BeFalse();
+        memberNode.Result.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Explain_IntersectExpression_ReturnsFalseWhenFirstChildFalse()
     {
         // comment := member and public (binary intersect — exactly 2 children)

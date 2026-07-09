@@ -42,6 +42,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string ExistsRelation { get; init; }
         public required string HasDirectRelation { get; init; }
         public required string HasAnyDirectRelation { get; init; }
+        public required string HasAnyOfDirectRelations { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
@@ -162,6 +163,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
             HasAnyDirectRelation =
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
+            HasAnyOfDirectRelations =
+                $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY(@relations) AND subject_id = @subject_id AND subject_relation = ''",
             GetIndirectRelations =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
             GetRelationsWithSingleSubjectSnap =
@@ -480,6 +483,32 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyOfDirectRelations);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            AddStringParameter(command, "entity_id", entityId, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+            AddStringParameter(command, "subject_id", subjectId, 64);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+            var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
         }
         finally
         {

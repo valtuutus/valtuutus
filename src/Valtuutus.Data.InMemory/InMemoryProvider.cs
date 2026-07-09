@@ -86,6 +86,21 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

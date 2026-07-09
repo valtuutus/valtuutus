@@ -168,6 +168,12 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                       AND subject_id = @SubjectId AND subject_relation = ''
                 ) THEN 1 ELSE 0 END
                 """,
+            HasAnyOfDirectRelations = $"""
+                SELECT DISTINCT relation FROM {relationsTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN (SELECT id FROM @Relations)
+                  AND subject_id = @SubjectId AND subject_relation = ''
+                """,
             SelectRelationsWithEntityIds = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
@@ -327,6 +333,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string HasDirectRelation { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string HasAnyDirectRelation { get; init; }
+        public required string HasAnyOfDirectRelations { get; init; }
         public required string SelectRelationsWithEntityIds { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
@@ -673,6 +680,35 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
 
             return (int)(await command.ExecuteScalarAsync(cancellationToken))! == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var command = CreateCommand(connection, _q.HasAnyOfDirectRelations);
+            AddStringParameter(command, "@EntityType", entityType, 256);
+            AddStringParameter(command, "@EntityId", entityId, 64);
+            AddTvpParameter(command, "@Relations", relationNames);
+            AddStringParameter(command, "@SubjectId", subjectId, 64);
+            AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+
+            var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
         }
         finally
         {

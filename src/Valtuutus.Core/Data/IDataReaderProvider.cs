@@ -35,6 +35,21 @@ public interface IDataReaderProvider
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Batch variant of <see cref="HasDirectRelation"/> across sibling relation NAMES (not entity
+    /// IDs): returns the subset of <paramref name="relationNames"/> that have a direct tuple from
+    /// (<paramref name="entityType"/>, <paramref name="entityId"/>) to <paramref name="subjectId"/>.
+    /// Collapses N individual HasDirectRelation queries — for sibling Union/Intersect children on
+    /// the same entity — into a single DB round-trip.
+    /// The <see cref="HashSet{T}"/> return type is deliberate: relation tuples carry no uniqueness
+    /// constraint, so a duplicate tuple for the same relation must not be able to inflate a
+    /// caller's Intersect-superset check. Deduplication is a property of the return type, not of
+    /// the SQL — implementations may add <c>DISTINCT</c> as a wire-efficiency nicety, but callers
+    /// must not rely on that; only the set semantics of the return value are guaranteed.
+    /// </summary>
+    Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Checks whether the subject has access through a tuple-to-user-set relation:
     /// returns true if there exists an intermediate entity X such that
     /// (entityType, entityId) has [tupleSetRelation] to X, and X has [computedRelation] to (subjectType, subjectId).
