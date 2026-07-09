@@ -540,25 +540,37 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
-        using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+        // Attribute order/completeness from the reader isn't guaranteed across providers
+        // (a WHERE attribute IN (...) filter can return fewer rows than requested, in any
+        // order), so index-matching against attributeArguments isn't safe. Build a lookup
+        // once instead of rescanning `attributes` per function parameter.
+        var attributesByName = DictionaryPool<string, AttributeTuple>.Rent();
+        try
+        {
+            foreach (var a in attributes)
+                attributesByName[a.Attribute] = a;
 
-        using var fnArgs = paramToArg.ToLambdaArgs(
-            static (arg, state) =>
-            {
-                var (attrs, entityType, sch) = state;
-                foreach (var a in attrs)
+            using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+
+            using var fnArgs = paramToArg.ToLambdaArgs(
+                static (arg, state) =>
                 {
-                    if (a.Attribute == arg.AttributeName)
-                        return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
-                }
-                return null;
-            },
-            (attributes, req.EntityType, schema),
-            req.Context);
+                    var (byName, entityType, sch) = state;
+                    return byName.TryGetValue(arg.AttributeName, out var a)
+                        ? a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type)
+                        : null;
+                },
+                (attributesByName, req.EntityType, schema),
+                req.Context);
 
-        var result = fn.Lambda(fnArgs.Dictionary);
-        if (node is not null) node.Detail = $"fn result={result}";
-        return result;
+            var result = fn.Lambda(fnArgs.Dictionary);
+            if (node is not null) node.Detail = $"fn result={result}";
+            return result;
+        }
+        finally
+        {
+            DictionaryPool<string, AttributeTuple>.Return(attributesByName);
+        }
     }
 
     private Task<bool> CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission leafPerm, CheckMemo memo, CheckNode? node, CancellationToken ct)
