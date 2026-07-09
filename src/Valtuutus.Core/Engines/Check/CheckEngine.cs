@@ -566,6 +566,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -624,6 +625,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
@@ -707,6 +709,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -745,6 +748,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
