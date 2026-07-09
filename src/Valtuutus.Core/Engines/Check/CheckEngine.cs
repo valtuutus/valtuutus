@@ -340,6 +340,64 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.SubjectType!);
     }
 
+    // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
+    // no sub-relation paths, can be resolved via HasAnyOfDirectRelations instead of its own
+    // per-child HasDirectRelation round trip. Leaves with sub-relation paths still need the
+    // GetIndirectRelations fan-out CheckRelation does, so they're excluded here.
+    private bool IsBatchableDirectRelation(CheckRequest req, PermissionNode child, out string relationName)
+    {
+        relationName = "";
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        if (schema.GetRelationType(req.EntityType, permLeaf.Permission) != RelationType.DirectRelation) return false;
+        if (schema.GetRelation(req.EntityType, permLeaf.Permission).HasSubRelationPaths) return false;
+        relationName = permLeaf.Permission;
+        return true;
+    }
+
+    // Resolves a single Union/Intersect child, short-circuiting through CheckMemo or a shared
+    // sibling-relation batch when possible instead of the normal CheckExpression/CheckLeaf
+    // dispatch chain.
+    private Task<bool> ResolveChild(CheckRequest req, CheckMemo memo, Task<HashSet<string>>? batchTask,
+        PermissionNode child, CheckNode? childNode, CancellationToken ct)
+    {
+        if (IsBatchableDirectRelation(req, child, out var relationName))
+        {
+            var key = new CheckMemoKey(req.EntityType, req.EntityId, relationName, req.SubjectType, req.SubjectId);
+            if (memo.TryGet(key, out var cached))
+            {
+                if (childNode is not null) childNode.Detail = "memoized";
+                return cached;
+            }
+            if (batchTask is not null)
+                return ResolveBatchedRelation(memo, key, batchTask, relationName, childNode);
+        }
+
+        return child.Type == PermissionNodeType.Expression
+            ? CheckExpression(req, child, memo, childNode, ct)
+            : CheckLeaf(req, child, memo, childNode, ct);
+    }
+
+    private static async Task<bool> ResolveBatchedRelation(CheckMemo memo, CheckMemoKey key,
+        Task<HashSet<string>> batchTask, string relationName, CheckNode? childNode)
+    {
+        var matched = await batchTask.ConfigureAwait(false);
+        var result = matched.Contains(relationName);
+        var ourTask = Task.FromResult(result);
+        // GetOrAdd, not a blind write: a concurrent sibling branch elsewhere in the tree can
+        // independently resolve the same relation while this batch is in flight — whichever
+        // wins the race is authoritative, and everyone awaits that same Task.
+        var finalTask = memo.GetOrAdd(key, ourTask);
+        if (childNode is not null)
+            childNode.Detail = ReferenceEquals(finalTask, ourTask)
+                ? (result ? "batched: direct tuple" : "batched: no matching tuple")
+                : "memoized";
+        return await finalTask.ConfigureAwait(false);
+    }
+
     private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CheckNode? node, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
@@ -431,6 +489,26 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             return result;
         }
 
+        // Batch sibling direct-relation leaves on req.EntityType into a single provider call
+        // instead of N separate HasDirectRelation round trips. "Check-then-batch": relations
+        // already resolved or in-flight in the memo are excluded from the batch and reused
+        // directly in the dispatch loop below, so this only fires for genuinely new work.
+        Task<HashSet<string>>? batchTask = null;
+        if (subjectTypeKnown)
+        {
+            List<string>? toFetch = null;
+            for (var i = 0; i < count; i++)
+            {
+                if (!IsBatchableDirectRelation(req, live[i], out var relationName)) continue;
+                var key = new CheckMemoKey(req.EntityType, req.EntityId, relationName, req.SubjectType, req.SubjectId);
+                if (memo.TryGet(key, out _)) continue;
+                (toFetch ??= new List<string>()).Add(relationName);
+            }
+            if (toFetch is { Count: >= 2 })
+                batchTask = reader.HasAnyOfDirectRelations(req.EntityType, req.EntityId, toFetch.ToArray(),
+                    req.SubjectId!, req.SnapToken ?? SnapToken.MinValue, ct);
+        }
+
         CheckNode[]? childNodes = null;
         if (node is not null)
         {
@@ -454,9 +532,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             {
                 var child = live[i];
                 var childNode = childNodes?[i];
-                rawTasks[i] = child.Type == PermissionNodeType.Expression
-                    ? CheckExpression(req, child, memo, childNode, ct)
-                    : CheckLeaf(req, child, memo, childNode, ct);
+                rawTasks[i] = ResolveChild(req, memo, batchTask, child, childNode, ct);
                 tasks[i] = isUnion
                     ? rawTasks[i].ContinueWith(
                         static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },

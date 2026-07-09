@@ -97,6 +97,25 @@ public sealed class RelationsStore : IDisposable
         return false;
     }
 
+    public HashSet<string> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, SnapToken snapToken)
+    {
+        using var _ = Read();
+        var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+        foreach (var relationName in relationNames)
+        {
+            if (!_byEntityRelation.TryGetValue((entityType, entityId, relationName), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (e.Relation.SubjectId != subjectId) continue;
+                if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+                result.Add(relationName);
+                break;
+            }
+        }
+        return result;
+    }
+
     public bool HasTupleToUserSetRelation(
         string entityType, string entityId, string tupleSetRelation,
         string subEntityType, string computedRelation,
