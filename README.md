@@ -87,7 +87,8 @@ do
 | [Schema Reference](Schema%20Reference.md) | Complete reference for every keyword, operator, and type in the DSL |
 | [Authorization Patterns](Authorization%20Patterns.md) | Ready-made patterns: RBAC, hierarchical RBAC, ABAC, multi-tenancy |
 | [Using the Engines](Using%20the%20Engines.md) | Code examples for Check, Explain, SubjectPermission, LookupSubject, LookupEntity, depth |
-| [Storing Data](Storing%20Data.md) | Writing, deleting, snap tokens, source generator |
+| [Storing Data](Storing%20Data.md) | Writing, deleting, snap tokens |
+| [Source Generator](Source%20Generator.md) | Build-time schema constants and compiled `fn` functions |
 | [Testing](Testing.md) | Unit-testing your authorization model with the InMemory provider |
 | [Caching](Caching.md) | Reducing database load with FusionCache |
 | [Telemetry](Telemetry.md) | OpenTelemetry activity sources, emitted spans, and what to monitor |
