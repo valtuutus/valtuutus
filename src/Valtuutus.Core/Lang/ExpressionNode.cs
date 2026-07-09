@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using System.Reflection;
 using Valtuutus.Lang;
 
 namespace Valtuutus.Core.Lang;
@@ -156,12 +157,21 @@ internal record BooleanLiteralFnNode : LeafFunctionNode
 
 internal record ParameterIdFnNode : LeafFunctionNode
 {
+    // IDictionary<string, object?>.get_Item, resolved once via a typeof() on the exact interface
+    // (a linker-recognized pattern that doesn't require DynamicallyAccessedMembers/produce a
+    // warning) rather than Expression.Property(instance, "Item", args), whose *overload* is
+    // unconditionally [RequiresUnreferencedCode] and throws under trimming/NativeAOT. Calling the
+    // indexer's own get_Item directly (not a wrapper method) keeps the compiled/interpreted tree
+    // identical in shape to the original code -- no extra call frame on this hot path.
+    private static readonly MethodInfo DictionaryIndexerGetMethod =
+        typeof(IDictionary<string, object?>).GetProperty("Item")!.GetGetMethod()!;
+
     internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var key = Expression.Constant(ParameterName);
 
-        var indexExpression = Expression.Property(args, "Item", key);
+        var indexExpression = Expression.Call(args, DictionaryIndexerGetMethod, key);
 
         var newLiteralValueUnionExpression = ParameterType switch
         {
