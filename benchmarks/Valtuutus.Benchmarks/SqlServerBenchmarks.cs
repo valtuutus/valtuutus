@@ -30,7 +30,7 @@ public class SqlServerBenchmarks : BenchmarkBase
         await _msSqlContainer.StartAsync();
         IDbConnection DbFactory() => new SqlConnection(_msSqlContainer.GetConnectionString());
         var mssqlAssembly = typeof(ValtuutusSqlServerOptions).Assembly;
-        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.MigrateAndSeed(
+        (_serviceProvider, _checkEngine, _lookupEntityEngine, _lookupSubjectEngine) = await CommonSetup.MigrateAndSeed(
             sc => sc.AddSqlServer(_ => DbFactory),
             Seeder.Seeder.GenerateData(),
             mssqlAssembly);

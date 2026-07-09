@@ -606,6 +606,65 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         captures.Should().Contain(ids => ids.Count == 1 && ids[0] == "t1");
     }
 
+    [Fact]
+    public async Task LookupSubject_UnionWithHeterogeneousSubjectType_PrunesDeadBranchCorrectly()
+    {
+        const string schema = """
+            entity user {}
+            entity service_account {}
+            entity organization {
+                relation admin @user;
+                relation bot @service_account;
+                permission access := admin or bot;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("organization", "org1", "admin", "user", "alice"),
+                new RelationTuple("organization", "org1", "bot", "service_account", "svc1"),
+            ], [], schema);
+
+        // subjectType=user: the "bot" branch (service_account-only) is statically unreachable
+        // and gets pruned before any task is spawned for it. svc1 must never appear in a
+        // user-typed lookup, and alice (via admin) must still be found correctly despite the
+        // sibling being pruned out of the Union.
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("organization", "access", "user", "org1"),
+            CancellationToken.None);
+
+        result.Should().BeEquivalentTo("alice");
+    }
+
+    [Fact]
+    public async Task LookupSubject_IntersectWithHeterogeneousSubjectType_PrunesToEmpty()
+    {
+        const string schema = """
+            entity user {}
+            entity service_account {}
+            entity organization {
+                relation admin @user;
+                relation bot @service_account;
+                permission strict_access := admin and bot;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("organization", "org1", "admin", "user", "alice"),
+                new RelationTuple("organization", "org1", "bot", "service_account", "svc1"),
+            ], [], schema);
+
+        // subjectType=user: "bot" is statically unreachable for a user subject, so the whole
+        // Intersect is provably empty regardless of what tuples exist — even though org1 has
+        // both an admin=alice AND a bot=svc1 tuple, a user can never satisfy "bot".
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("organization", "strict_access", "user", "org1"),
+            CancellationToken.None);
+
+        result.Should().BeEmpty();
+    }
+
     /// <summary>
     /// Thin decorator that delegates every call to the real provider and records the entity-id
     /// lists passed into <see cref="GetRelationsWithEntityIds"/>.

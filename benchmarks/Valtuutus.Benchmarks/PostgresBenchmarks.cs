@@ -31,7 +31,7 @@ public class PostgresBenchmarks : BenchmarkBase
         await _pgContainer.StartAsync();
         IDbConnection DbFactory() => new NpgsqlConnection(_pgContainer.GetConnectionString());
         var pgAssembly = typeof(ValtuutusPostgresOptions).Assembly;
-        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.MigrateAndSeed(
+        (_serviceProvider, _checkEngine, _lookupEntityEngine, _lookupSubjectEngine) = await CommonSetup.MigrateAndSeed(
             sc => sc.AddPostgres(_ => DbFactory),
             Seeder.Seeder.GenerateData(),
             pgAssembly);

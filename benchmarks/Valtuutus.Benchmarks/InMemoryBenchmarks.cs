@@ -18,7 +18,7 @@ public class InMemoryBenchmarks : BenchmarkBase
     [GlobalSetup]
     public async Task Setup()
     {
-        (_serviceProvider, _checkEngine, _lookupEntityEngine) = await CommonSetup.Seed(
+        (_serviceProvider, _checkEngine, _lookupEntityEngine, _lookupSubjectEngine) = await CommonSetup.Seed(
             sc => sc.AddInMemory(),
             Seeder.Seeder.GenerateData());
     }

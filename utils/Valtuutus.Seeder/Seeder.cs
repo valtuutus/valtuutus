@@ -143,6 +143,19 @@ public static class Seeder
             relations.Add(new RelationTuple("folder", folderId, "editor", "group", diamondGroupId, "member"));
         }
 
+        // Fan-out benchmark data. project.reviewers has two indirect variants (team#member,
+        // group#member) — neither is the "user" subject type directly, so both require a
+        // dependent query, giving LookupRelationCore's inner loop two genuinely concurrent
+        // branches to fire instead of one.
+        const string fanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
+        const string fanoutTeamId    = "dddddddd-dddd-dddd-dddd-dddddddddd02";
+        const string fanoutGroupId   = "dddddddd-dddd-dddd-dddd-dddddddddd03";
+
+        relations.Add(new RelationTuple("project", fanoutProjectId, "reviewers", "team", fanoutTeamId, "member"));
+        relations.Add(new RelationTuple("project", fanoutProjectId, "reviewers", "group", fanoutGroupId, "member"));
+        relations.Add(new RelationTuple("team", fanoutTeamId, "member", "user", benchmarkUserId));
+        relations.Add(new RelationTuple("group", fanoutGroupId, "member", "user", benchmarkUserId));
+
         return (relations, attributes);
     }
 }
