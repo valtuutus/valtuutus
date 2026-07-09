@@ -84,8 +84,10 @@ public abstract class BenchmarkBase
 
     /// <summary>
     /// TTU diamond: folder.view := owner or editor, both @group#member pointing to the
-    /// same group. Both branches issue (group, member, [userId]) — second branch is a
-    /// pure memo hit with the optimization, two full traversals without.
+    /// same group. LookupEntityEngine has no general-purpose memo (only AttributeCache, which
+    /// is attribute-fetch-only) — the speedup here instead comes from GetRelationsJoined/
+    /// JoinedLookup (LookupEntityEngine.cs), which collapses each branch's two-hop
+    /// dependent-then-main traversal into a single joined query.
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_Diamond")]
     public async Task<LookupEntityPage> LookupEntity_Diamond()
