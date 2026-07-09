@@ -1,8 +1,19 @@
 # Valtuutus
 
-## A Google Zanzibar inspired authorization library in .NET
+Valtuutus is a high-performance **Relationship-Based Access Control (ReBAC)** authorization library for **.NET**, inspired by **Google Zanzibar**.
 
-The implementation is inspired on [permify](https://github.com/Permify/permify) and other ReBac open source projects.
+It enables **fine-grained authorization** for **ASP.NET Core** and .NET applications — modeling permissions and access control through relationships instead of relying only on roles.
+
+Features:
+- Google Zanzibar-inspired permission model
+- High-performance authorization engine
+- ASP.NET Core / .NET integration
+- Strongly typed schema support (source generator)
+- Multiple evaluation engines (Check, LookupEntity, LookupSubject, SubjectPermission, Explain)
+- Low-allocation execution
+- Native AOT compatible
+
+The implementation is inspired on [permify](https://github.com/Permify/permify) and other ReBAC open source projects.
 
 
 [![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)](https://www.nuget.org/packages?q=Valtuutus&includeComputedFrameworks=true&prerel=true&sortby=relevance)
