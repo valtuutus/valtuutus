@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Data.Common;
+using System.Diagnostics.CodeAnalysis;
 using Valtuutus.Core;
 
 namespace Valtuutus.Data.SqlServer;
@@ -44,6 +45,7 @@ internal sealed class AttributeTupleDataReader : DbDataReader
         throw new IndexOutOfRangeException(name);
     }
 
+    [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)]
     public override Type GetFieldType(int ordinal) => typeof(string);
 
     public override string GetDataTypeName(int ordinal) => throw new NotSupportedException();
