@@ -7,3 +7,13 @@ entity document {
     permission edit := owner and notArchived(archived);
 }
 fn notArchived(archived bool) => not(archived);
+
+entity group {
+    relation member @user;
+}
+entity folder {
+    relation owner @group#member;
+    relation editor @group#member;
+    permission view := owner or editor;
+    permission admin := owner and editor;
+}
