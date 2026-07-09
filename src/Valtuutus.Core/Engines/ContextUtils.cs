@@ -9,12 +9,12 @@ internal static class ContextUtils
     // Like if the context prop is null or not found
     internal static bool IsContextValid(this PermissionNodeLeafExp node, IDictionary<string, object> context)
     {
-        return node.Args.All(a =>
-            a.Type != PermissionNodeExpArgumentType.ContextAccess
-            || (
-                context.ContainsKey(((PermissionNodeExpArgumentContextAccess)a).ContextPropertyName)
-                    && context[((PermissionNodeExpArgumentContextAccess)a).ContextPropertyName] is not null
-            )
-        );
+        foreach (var a in node.Args)
+        {
+            if (a.Type != PermissionNodeExpArgumentType.ContextAccess) continue;
+            var propertyName = ((PermissionNodeExpArgumentContextAccess)a).ContextPropertyName;
+            if (!context.TryGetValue(propertyName, out var value) || value is null) return false;
+        }
+        return true;
     }
 }

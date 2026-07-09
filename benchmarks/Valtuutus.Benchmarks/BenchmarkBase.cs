@@ -34,6 +34,20 @@ public abstract class BenchmarkBase
             SubjectType = "user", SubjectId = UserId
         }, CancellationToken.None);
 
+    /// <summary>
+    /// Dead-branch scenario: "access := admin or bot", where "bot" is a relation only
+    /// reachable by a "service_account" subject. Checking with SubjectType="user" makes the
+    /// "bot" branch statically unreachable — with subject-type pruning it's skipped entirely
+    /// (no task spawned, no DB round-trip); without it, both branches are evaluated.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("Check_Prune")]
+    public async Task<bool> Check_Prune()
+        => await _checkEngine.Check(new()
+        {
+            Permission = "access", EntityType = "organization", EntityId = OrgId,
+            SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
     [Benchmark(Baseline = true), BenchmarkCategory("SubjectPermission")]
     public async Task<Dictionary<string, bool>> SubjectPermission()
         => await _checkEngine.SubjectPermission(new()

@@ -326,16 +326,94 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return !inner;
     }
 
+    // Direct (non-indirect) leaf-permission children whose target entity type can never
+    // reach req.SubjectType (per schema-precomputed reachability) are guaranteed to evaluate
+    // to false. Filtering them out here — before a Task/CheckNode/pool-slot gets spent on
+    // them — is equivalent to what CheckInternal's guard would eventually do, just earlier.
+    private bool IsStaticallyDeadForSubject(CheckRequest req, PermissionNode child)
+    {
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.SubjectType!);
+    }
+
     private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CheckNode? node, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var count = children.Count;
+        var totalCount = children.Count;
+        if (totalCount == 0) return !isUnion;
+
+        var subjectTypeKnown = !string.IsNullOrEmpty(req.SubjectType);
+
+        if (subjectTypeKnown && !isUnion)
+        {
+            // Intersect: a single statically-unreachable child makes the whole node false —
+            // short-circuit without spawning a task for it or any sibling.
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i])) continue;
+                if (node is not null)
+                {
+                    for (var j = 0; j < totalCount; j++)
+                    {
+                        var (type, name) = GetNodeInfo(children[j]);
+                        node._children.Add(new CheckNode
+                        {
+                            Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId,
+                            SubjectType = req.SubjectType, SubjectId = req.SubjectId, Result = false,
+                            Detail = "subject type cannot reach permission"
+                        });
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Union: drop statically-dead children before spawning anything for them — they can
+        // only contribute `false`. Pruned nodes are recorded in explain mode up front, so in
+        // that mode they appear before the live children below rather than in schema order.
+        var live = children;
+        if (subjectTypeKnown && isUnion)
+        {
+            List<PermissionNode>? filtered = null;
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i]))
+                {
+                    filtered?.Add(children[i]);
+                    continue;
+                }
+
+                if (filtered is null)
+                {
+                    filtered = new List<PermissionNode>(totalCount);
+                    for (var j = 0; j < i; j++) filtered.Add(children[j]);
+                }
+
+                if (node is not null)
+                {
+                    var (type, name) = GetNodeInfo(children[i]);
+                    node._children.Add(new CheckNode
+                    {
+                        Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId,
+                        SubjectType = req.SubjectType, SubjectId = req.SubjectId, Result = false,
+                        Detail = "subject type cannot reach permission"
+                    });
+                }
+            }
+            if (filtered is not null) live = filtered;
+        }
+
+        var count = live.Count;
         if (count == 0) return !isUnion;
 
         if (count == 1)
         {
-            var only = children[0];
+            var only = live[0];
             CheckNode? childNode = null;
             if (node is not null)
             {
@@ -359,7 +437,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             childNodes = new CheckNode[count];
             for (var i = 0; i < count; i++)
             {
-                var (type, name) = GetNodeInfo(children[i]);
+                var (type, name) = GetNodeInfo(live[i]);
                 childNodes[i] = new CheckNode { Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
         }
@@ -374,7 +452,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             for (var i = 0; i < count; i++)
             {
-                var child = children[i];
+                var child = live[i];
                 var childNode = childNodes?[i];
                 rawTasks[i] = child.Type == PermissionNodeType.Expression
                     ? CheckExpression(req, child, memo, childNode, ct)
@@ -462,25 +540,37 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
-        using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+        // Attribute order/completeness from the reader isn't guaranteed across providers
+        // (a WHERE attribute IN (...) filter can return fewer rows than requested, in any
+        // order), so index-matching against attributeArguments isn't safe. Build a lookup
+        // once instead of rescanning `attributes` per function parameter.
+        var attributesByName = DictionaryPool<string, AttributeTuple>.Rent();
+        try
+        {
+            foreach (var a in attributes)
+                attributesByName[a.Attribute] = a;
 
-        using var fnArgs = paramToArg.ToLambdaArgs(
-            static (arg, state) =>
-            {
-                var (attrs, entityType, sch) = state;
-                foreach (var a in attrs)
+            using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+
+            using var fnArgs = paramToArg.ToLambdaArgs(
+                static (arg, state) =>
                 {
-                    if (a.Attribute == arg.AttributeName)
-                        return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
-                }
-                return null;
-            },
-            (attributes, req.EntityType, schema),
-            req.Context);
+                    var (byName, entityType, sch) = state;
+                    return byName.TryGetValue(arg.AttributeName, out var a)
+                        ? a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type)
+                        : null;
+                },
+                (attributesByName, req.EntityType, schema),
+                req.Context);
 
-        var result = fn.Lambda(fnArgs.Dictionary);
-        if (node is not null) node.Detail = $"fn result={result}";
-        return result;
+            var result = fn.Lambda(fnArgs.Dictionary);
+            if (node is not null) node.Detail = $"fn result={result}";
+            return result;
+        }
+        finally
+        {
+            DictionaryPool<string, AttributeTuple>.Return(attributesByName);
+        }
     }
 
     private Task<bool> CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission leafPerm, CheckMemo memo, CheckNode? node, CancellationToken ct)
@@ -566,6 +656,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -624,6 +715,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
@@ -707,6 +799,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -745,6 +838,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
