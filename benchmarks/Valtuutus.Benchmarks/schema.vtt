@@ -1,7 +1,10 @@
 entity user {}
+entity service_account {}
 entity organization {
     relation admin @user;
     relation member @user;
+    relation bot @service_account;
+    permission access := admin or bot;
 }
 entity team {
     relation owner @user;
