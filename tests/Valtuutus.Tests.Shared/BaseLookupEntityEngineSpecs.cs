@@ -809,4 +809,141 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         // doc3 and doc4: alice has neither relation → included
         result.EntityIds.Should().BeEquivalentTo(["doc3", "doc4"]);
     }
+
+    [Fact]
+    public async Task ScopedLookup_TopLevelNegate_ExcludesOutOfScopeEntities()
+    {
+        const string schema = """
+            entity user {}
+            entity org {}
+            entity document {
+                relation org @org;
+                relation owner @user;
+                permission non_owner := not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "org", "org", "org1"),
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc2", "org", "org", "org1"),
+                new RelationTuple("document", "doc2", "owner", "user", "bob"),
+                new RelationTuple("document", "doc3", "org", "org", "org2"),
+                new RelationTuple("document", "doc3", "owner", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "non_owner", "user", "alice")
+            {
+                Scope = new EntityScope("org", "org", "org1")
+            },
+            CancellationToken.None);
+
+        // doc1: alice owns it → fails not(owner)
+        // doc2: in scope (org1), alice doesn't own it → passes
+        // doc3: alice doesn't own it either, but it's out of scope (org2) — must still be
+        // excluded. Without the fix, GetEntityIdsExcluding ignores Scope entirely and doc3
+        // would incorrectly leak into the result.
+        result.EntityIds.Should().BeEquivalentTo(["doc2"]);
+    }
+
+    [Fact]
+    public async Task ScopedLookup_UnionNestedNegate_ExcludesOutOfScopeEntities()
+    {
+        const string schema = """
+            entity user {}
+            entity org {}
+            entity document {
+                relation org @org;
+                relation owner @user;
+                relation viewer @user;
+                permission special := viewer or not(owner);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("document", "doc1", "org", "org", "org1"),
+                new RelationTuple("document", "doc1", "owner", "user", "alice"),
+                new RelationTuple("document", "doc2", "org", "org", "org1"),
+                new RelationTuple("document", "doc2", "owner", "user", "bob"),
+                new RelationTuple("document", "doc3", "org", "org", "org2"),
+                new RelationTuple("document", "doc3", "owner", "user", "bob"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("document", "special", "user", "alice")
+            {
+                Scope = new EntityScope("org", "org", "org1")
+            },
+            CancellationToken.None);
+
+        // Same fix, exercised via a Negate node reached as a Union child (LookupExpressionChildren's
+        // Union branch dispatches it through LookupExpression -> LookupNegate, same function as the
+        // top-level case above) rather than as the whole permission tree.
+        // doc1: alice owns → not(owner) fails, alice isn't viewer either → excluded
+        // doc2: in scope, alice doesn't own → passes
+        // doc3: alice doesn't own either, but out of scope → must still be excluded
+        result.EntityIds.Should().BeEquivalentTo(["doc2"]);
+    }
+
+    [Fact]
+    public async Task LookupEntity_UnionWithHeterogeneousSubjectType_PrunesDeadBranchCorrectly()
+    {
+        const string schema = """
+            entity user {}
+            entity service_account {}
+            entity organization {
+                relation admin @user;
+                relation bot @service_account;
+                permission access := admin or bot;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("organization", "org1", "admin", "user", "alice"),
+                new RelationTuple("organization", "org2", "bot", "service_account", "svc1"),
+            ], [], schema);
+
+        // subjectType=user: the "bot" branch (service_account-only) is statically unreachable and
+        // gets pruned before any task is spawned for it. org2 (only reachable via bot) must not
+        // appear, and org1 (via admin) must still be found correctly despite its sibling being
+        // pruned out of the Union.
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("organization", "access", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEquivalentTo(["org1"]);
+    }
+
+    [Fact]
+    public async Task LookupEntity_IntersectWithHeterogeneousSubjectType_PrunesToEmpty()
+    {
+        const string schema = """
+            entity user {}
+            entity service_account {}
+            entity organization {
+                relation admin @user;
+                relation bot @service_account;
+                permission strict_access := admin and bot;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("organization", "org1", "admin", "user", "alice"),
+                new RelationTuple("organization", "org1", "bot", "service_account", "svc1"),
+            ], [], schema);
+
+        // subjectType=user: "bot" is statically unreachable for a user subject, so the whole
+        // Intersect is provably empty regardless of what tuples exist — even though org1 has
+        // both an admin=alice AND a bot=svc1 tuple, a user can never satisfy "bot".
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("organization", "strict_access", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEmpty();
+    }
 }

@@ -53,6 +53,10 @@ public sealed class LookupEntityEngine(
         }
 
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
+
+        if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
+            return new LookupEntityPage([], null);
+
         var internalReq = new LookupEntityRequestInternal
         {
             Permission = req.Permission,
@@ -158,32 +162,86 @@ public sealed class LookupEntityEngine(
         };
     }
 
+    // A leaf that is a direct, non-indirect permission reference and is statically unreachable
+    // for req.FinalSubjectType (per schema-precomputed reachability) can only ever contribute an
+    // empty result. FinalSubjectType — not SubjectType — is the right field to prune against:
+    // SubjectType gets reassigned per recursion hop (e.g. to an intermediate group type while
+    // walking a group#member chain, see LookupRelationCore), while FinalSubjectType stays fixed
+    // as the true ultimate subject for the whole LookupEntity call, same as LookupRelation's
+    // existing (weaker, single-hop) guard already compares against.
+    private bool IsStaticallyDeadForSubject(LookupEntityRequestInternal req, PermissionNode child)
+    {
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.FinalSubjectType);
+    }
+
     private async Task<List<LookupEntityResult>> LookupExpressionChildren(LookupEntityRequestInternal req,
         List<PermissionNode> children, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        if (!isUnion && HasMixedAttributeAndRelationChildren(children))
-            return await LookupIntersectionConstrained(req, children, ct);
+        var totalCount = children.Count;
 
-        if (!isUnion && HasNegateAndPositiveChildren(children))
-            return await LookupIntersectionWithNegate(req, children, ct);
+        if (!isUnion)
+        {
+            // Intersect: a single statically-unreachable child makes the whole node empty —
+            // short-circuit without spawning a task for it or any sibling.
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (IsStaticallyDeadForSubject(req, children[i]))
+                    return ListPool<LookupEntityResult>.Rent();
+            }
+        }
+
+        // Union: drop statically-dead children before spawning anything for them — they can
+        // only contribute an empty result.
+        var live = children;
+        if (isUnion)
+        {
+            List<PermissionNode>? filtered = null;
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i]))
+                {
+                    filtered?.Add(children[i]);
+                    continue;
+                }
+
+                if (filtered is null)
+                {
+                    filtered = new List<PermissionNode>(totalCount);
+                    for (var j = 0; j < i; j++) filtered.Add(children[j]);
+                }
+            }
+            if (filtered is not null) live = filtered;
+            if (live.Count == 0) return ListPool<LookupEntityResult>.Rent();
+        }
+
+        if (!isUnion && HasMixedAttributeAndRelationChildren(live))
+            return await LookupIntersectionConstrained(req, live, ct);
+
+        if (!isUnion && HasNegateAndPositiveChildren(live))
+            return await LookupIntersectionWithNegate(req, live, ct);
 
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
-        var buffer = pool.Rent(children.Count);
+        var buffer = pool.Rent(live.Count);
         try
         {
-            for (var i = 0; i < children.Count; i++)
+            for (var i = 0; i < live.Count; i++)
             {
-                var child = children[i];
+                var child = live[i];
                 buffer[i] = child.Type == PermissionNodeType.Expression
                     ? LookupExpression(req, child.ExpressionNode!, ct)
                     : LookupLeaf(req, child.LeafNode!, ct);
             }
 
             return isUnion
-                ? await UnionEntities(buffer, children.Count)
-                : await IntersectEntities(buffer, children.Count);
+                ? await UnionEntities(buffer, live.Count)
+                : await IntersectEntities(buffer, live.Count);
         }
         finally
         {
@@ -664,6 +722,30 @@ public sealed class LookupEntityEngine(
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
+        // GetEntityIdsExcluding is a global complement over the whole entity type — it has no
+        // Scope concept, unlike every other leaf path here. Resolve scope the same way
+        // LookupAttribute does and filter the complement down to it, so a scoped Negate/not(...)
+        // can't leak entities from outside the requested scope.
+        HashSet<string>? scopedEntityIds = null;
+        if (req.Scope is { } scope)
+        {
+            using var scopeRelations = await reader.GetRelationsWithSubjectsIds(
+                new EntityRelationFilter
+                {
+                    EntityType = req.EntityType,
+                    Relation = scope.Relation,
+                    SnapToken = req.SnapToken ?? SnapToken.MinValue
+                },
+                [scope.SubjectId],
+                scope.SubjectType,
+                null,
+                ct);
+            if (scopeRelations.Count == 0)
+                return ListPool<LookupEntityResult>.Rent();
+            scopedEntityIds = new HashSet<string>(scopeRelations.Count);
+            foreach (var r in scopeRelations) scopedEntityIds.Add(r.EntityId);
+        }
+
         var matching = await (child.Type == PermissionNodeType.Expression
             ? LookupExpression(req, child.ExpressionNode!, ct)
             : LookupLeaf(req, child.LeafNode!, ct));
@@ -684,7 +766,10 @@ public sealed class LookupEntityEngine(
 
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var id in complementIds)
+        {
+            if (scopedEntityIds is not null && !scopedEntityIds.Contains(id)) continue;
             result.Add(new LookupEntityResult(req.EntityType, id));
+        }
         return result;
     }
 
