@@ -27,8 +27,8 @@ namespace Valtuutus.Core.Configuration
 {
     public static class ConfigureSchema
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream) { }
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
     }
 }
 namespace Valtuutus.Core.Data
