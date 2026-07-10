@@ -35,6 +35,20 @@ public class PostgresBenchmarks : BenchmarkBase
             sc => sc.AddPostgres(_ => DbFactory),
             Seeder.Seeder.GenerateData(),
             pgAssembly);
+
+        // The bulk seed write leaves relation_tuples/attributes with zero planner statistics
+        // (autovacuum's autoanalyze hasn't run yet). Without stats, Postgres defaults to ~1-row
+        // cost estimates everywhere and picks nested-loop plans over the wrong index for the
+        // GetRelationsJoined(ByEntityIds) two-hop-collapse queries — 1000x+ slower than the
+        // steady-state plan it picks once stats exist. Mirrors what autovacuum would do in
+        // production shortly after a bulk load, so benchmarks measure realistic query plans.
+        await using (var conn = new NpgsqlConnection(_pgContainer.GetConnectionString()))
+        {
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "ANALYZE";
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 
     [GlobalCleanup]

@@ -34,6 +34,18 @@ public class SqlServerBenchmarks : BenchmarkBase
             sc => sc.AddSqlServer(_ => DbFactory),
             Seeder.Seeder.GenerateData(),
             mssqlAssembly);
+
+        // Mirrors the Postgres ANALYZE call: AUTO_CREATE_STATISTICS/AUTO_UPDATE_STATISTICS are
+        // on by default and normally self-heal synchronously on first compile, but pin it
+        // explicitly so benchmark numbers reflect steady-state plans rather than whatever the
+        // very first query's auto-created (possibly low-sample) stats produced.
+        await using (var connection = new SqlConnection(_msSqlContainer.GetConnectionString()))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "UPDATE STATISTICS relation_tuples WITH FULLSCAN; UPDATE STATISTICS attributes WITH FULLSCAN;";
+            await command.ExecuteNonQueryAsync();
+        }
     }
 
     [GlobalCleanup]
