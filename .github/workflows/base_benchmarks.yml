@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   benchmark_base_branch:
-    name: Continuous Benchmarking with Bencher
+    name: Continuous Benchmarking with Bencher (${{ matrix.provider }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [InMemoryBenchmarks, PostgresBenchmarks, SqlServerBenchmarks]
     steps:
       - uses: actions/checkout@v7
       - name: Setup dotnet
@@ -30,11 +34,11 @@ jobs:
           include-prerelease: true
       - name: Run Benchmarks
         run: |
-          dotnet run -f net10.0 -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
-      - name: Strip failed benchmarks from results
+          dotnet run -f net10.0 -c Release --filter "*${{ matrix.provider }}*" --project benchmarks/Valtuutus.Benchmarks/
+      - name: Strip failed benchmarks and disambiguate namespace by provider
         run: |
           for f in BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json; do
-            jq '.Benchmarks |= map(select(.Statistics != null))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+            jq '.Benchmarks |= (map(select(.Statistics != null)) | map(.Namespace = .Namespace + ".${{ matrix.provider }}"))' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
           done
       - uses: bencherdev/bencher@main
       - name: Track base branch benchmarks with Bencher
