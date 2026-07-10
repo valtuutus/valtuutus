@@ -156,6 +156,16 @@ public static class Seeder
         relations.Add(new RelationTuple("team", fanoutTeamId, "member", "user", benchmarkUserId));
         relations.Add(new RelationTuple("group", fanoutGroupId, "member", "user", benchmarkUserId));
 
+        // Constrained/Negate sibling-batch benchmark data (#243). Extends #237's sibling-relation
+        // batching to LookupIntersectionConstrained (mixed attribute + relation children) and
+        // LookupIntersectionWithNegate (mixed positive + Negate children). benchmarkUser is both
+        // owner and member of this team — the batchable sibling pair — with "active" true and no
+        // "banned" tuple, so both new permissions resolve true for it.
+        const string siblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01";
+        relations.Add(new RelationTuple("team", siblingBatchTeamId, "owner", "user", benchmarkUserId));
+        relations.Add(new RelationTuple("team", siblingBatchTeamId, "member", "user", benchmarkUserId));
+        attributes.Add(new AttributeTuple("team", siblingBatchTeamId, "active", JsonValue.Create(true)));
+
         return (relations, attributes);
     }
 }

@@ -9,11 +9,15 @@ entity organization {
 entity team {
     relation owner @user;
     relation member @user;
+    relation banned @user;
     relation org @organization;
+    attribute active bool;
     permission edit := org.admin or owner;
     permission delete := org.admin or owner;
     permission invite := org.admin and (owner or member);
     permission remove_user := owner;
+    permission constrained_sibling_batch := isActive(active) and owner and member;
+    permission negate_sibling_batch := owner and member and not(banned);
 }
 entity group {
     relation member @user;
@@ -39,3 +43,4 @@ entity folder {
 }
 
 fn isActiveStatus(status int) => status == 1;
+fn isActive(active bool) => active == true;
