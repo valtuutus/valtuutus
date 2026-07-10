@@ -11,9 +11,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark_base_branch:
-    name: Run Benchmarks
+  upload_pr_event:
+    name: Upload PR Event
     runs-on: ubuntu-latest
+    steps:
+      - name: Upload GitHub Pull Request Event
+        uses: actions/upload-artifact@v7
+        with:
+          name: event.json
+          path: ${{ github.event_path }}
+
+  benchmark_base_branch:
+    name: Run Benchmarks (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [InMemoryBenchmarks, PostgresBenchmarks, SqlServerBenchmarks]
     steps:
       - uses: actions/checkout@v7
       - name: Setup dotnet
@@ -27,14 +41,14 @@ jobs:
           include-prerelease: true
       - name: Run Benchmarks
         run: |
-          dotnet run -f net10.0 -c Release --filter '*' --project benchmarks/Valtuutus.Benchmarks/
+          dotnet run -f net10.0 -c Release --filter "*${{ matrix.provider }}*" --project benchmarks/Valtuutus.Benchmarks/
+      - name: Disambiguate benchmark namespace by provider
+        run: |
+          for f in BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json; do
+            jq '.Benchmarks[] |= (.Namespace = .Namespace + ".${{ matrix.provider }}")' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
       - name: Upload Benchmark Results
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark_results
+          name: benchmark_results_${{ matrix.provider }}
           path: BenchmarkDotNet.Artifacts/results/*-report-full-compressed.json
-      - name: Upload GitHub Pull Request Event
-        uses: actions/upload-artifact@v7
-        with:
-          name: event.json
-          path: ${{ github.event_path }}
