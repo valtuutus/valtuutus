@@ -196,6 +196,17 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND subject_type = @SubjectType
                   AND subject_id IN (SELECT id FROM @SubjectIds)
                 """,
+            GetRelationsWithSingleSubjectMultiRelationSnap =
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation IN (SELECT id FROM @Relations) AND subject_type = @SubjectType AND subject_id = @SubjectId",
+            GetRelationsWithMultiSubjectMultiRelationSnap = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType
+                  AND relation IN (SELECT id FROM @Relations)
+                  AND subject_type = @SubjectType
+                  AND subject_id IN (SELECT id FROM @SubjectIds)
+                """,
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -276,6 +287,38 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND r_main.subject_type = @SubjectType
                   AND r_main.subject_id IN (SELECT id FROM @SubjectIds)
                 """,
+            GetRelationsWithSingleSubjectMultiRelationScoped = $"""
+                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                FROM {relationsTable} r_main
+                INNER JOIN {relationsTable} r_scope
+                    ON r_scope.entity_type = r_main.entity_type
+                    AND r_scope.entity_id = r_main.entity_id
+                    AND r_scope.relation = @ScopeRelation
+                    AND r_scope.subject_type = @ScopeSubjectType
+                    AND r_scope.subject_id = @ScopeSubjectId
+                    AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                  AND r_main.entity_type = @EntityType
+                  AND r_main.relation IN (SELECT id FROM @Relations)
+                  AND r_main.subject_type = @SubjectType
+                  AND r_main.subject_id = @SubjectId
+                """,
+            GetRelationsWithMultiSubjectMultiRelationScoped = $"""
+                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                FROM {relationsTable} r_main
+                INNER JOIN {relationsTable} r_scope
+                    ON r_scope.entity_type = r_main.entity_type
+                    AND r_scope.entity_id = r_main.entity_id
+                    AND r_scope.relation = @ScopeRelation
+                    AND r_scope.subject_type = @ScopeSubjectType
+                    AND r_scope.subject_id = @ScopeSubjectId
+                    AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
+                WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                  AND r_main.entity_type = @EntityType
+                  AND r_main.relation IN (SELECT id FROM @Relations)
+                  AND r_main.subject_type = @SubjectType
+                  AND r_main.subject_id IN (SELECT id FROM @SubjectIds)
+                """,
             GetRelationsJoinedScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -353,11 +396,15 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string SelectRelationsWithEntityIds { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
+        public required string GetRelationsWithSingleSubjectMultiRelationSnap { get; init; }
+        public required string GetRelationsWithMultiSubjectMultiRelationSnap { get; init; }
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
         public required string GetRelationsWithSingleSubjectScoped { get; init; }
         public required string GetRelationsWithMultiSubjectScoped { get; init; }
+        public required string GetRelationsWithSingleSubjectMultiRelationScoped { get; init; }
+        public required string GetRelationsWithMultiSubjectMultiRelationScoped { get; init; }
         public required string GetRelationsJoinedScoped { get; init; }
         public required string GetAttributesDictScoped { get; init; }
         public required string GetEntityIdsExcluding { get; init; }
@@ -849,6 +896,106 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AddStringParameter(command, "@SubjectType", subjectType, 256);
                     AddTvpParameter(command, "@SubjectIds", subjectsIds);
                     AddFixedCharParameter(command, "@SnapToken", entityFilter.SnapToken.Value, 26);
+
+                    await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        multi.Add(ReadRelationTuple(reader));
+                }
+                return multi;
+            }
+            catch
+            {
+                multi.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(
+        string entityType, string[] relationNames, string[] subjectsIds, string subjectType,
+        SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            if (subjectsIds.Length == 1)
+            {
+                var pooled = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    if (scope is { } s)
+                    {
+                        await using var command = CreateCommand(connection, _q.GetRelationsWithSingleSubjectMultiRelationScoped);
+                        AddStringParameter(command, "@EntityType", entityType, 256);
+                        AddTvpParameter(command, "@Relations", relationNames);
+                        AddStringParameter(command, "@SubjectType", subjectType, 256);
+                        AddStringParameter(command, "@SubjectId", subjectsIds[0], 64);
+                        AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+                        AddStringParameter(command, "@ScopeRelation", s.Relation, 64);
+                        AddStringParameter(command, "@ScopeSubjectType", s.SubjectType, 256);
+                        AddStringParameter(command, "@ScopeSubjectId", s.SubjectId, 64);
+
+                        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                        while (await reader.ReadAsync(cancellationToken))
+                            pooled.Add(ReadRelationTuple(reader));
+                    }
+                    else
+                    {
+                        await using var command = CreateCommand(connection, _q.GetRelationsWithSingleSubjectMultiRelationSnap);
+                        AddStringParameter(command, "@EntityType", entityType, 256);
+                        AddTvpParameter(command, "@Relations", relationNames);
+                        AddStringParameter(command, "@SubjectType", subjectType, 256);
+                        AddStringParameter(command, "@SubjectId", subjectsIds[0], 64);
+                        AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+
+                        await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                        while (await reader.ReadAsync(cancellationToken))
+                            pooled.Add(ReadRelationTuple(reader));
+                    }
+                    return pooled;
+                }
+                catch
+                {
+                    pooled.Dispose();
+                    throw;
+                }
+            }
+
+            var multi = PooledList<RelationTuple>.Rent();
+            try
+            {
+                if (scope is { } ms)
+                {
+                    await using var command = CreateCommand(connection, _q.GetRelationsWithMultiSubjectMultiRelationScoped);
+                    AddStringParameter(command, "@EntityType", entityType, 256);
+                    AddTvpParameter(command, "@Relations", relationNames);
+                    AddStringParameter(command, "@SubjectType", subjectType, 256);
+                    AddTvpParameter(command, "@SubjectIds", subjectsIds);
+                    AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+                    AddStringParameter(command, "@ScopeRelation", ms.Relation, 64);
+                    AddStringParameter(command, "@ScopeSubjectType", ms.SubjectType, 256);
+                    AddStringParameter(command, "@ScopeSubjectId", ms.SubjectId, 64);
+
+                    await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        multi.Add(ReadRelationTuple(reader));
+                }
+                else
+                {
+                    await using var command = CreateCommand(connection, _q.GetRelationsWithMultiSubjectMultiRelationSnap);
+                    AddStringParameter(command, "@EntityType", entityType, 256);
+                    AddTvpParameter(command, "@Relations", relationNames);
+                    AddStringParameter(command, "@SubjectType", subjectType, 256);
+                    AddTvpParameter(command, "@SubjectIds", subjectsIds);
+                    AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
 
                     await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
                     while (await reader.ReadAsync(cancellationToken))

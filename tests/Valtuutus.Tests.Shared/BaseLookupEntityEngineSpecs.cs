@@ -587,6 +587,109 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     }
 
     /// <summary>
+    /// workspace.view := public or owner or admin or member — owner/admin/member are 3 plain
+    /// direct-@user-relation siblings with no sub-relation paths, all reachable by "user": exactly
+    /// the batchable-sibling shape LookupExpressionChildren now folds into one provider call.
+    /// Verifies the batched result matches what per-child dispatch would produce: union across
+    /// all matching entities, regardless of which specific relation(s) matched.
+    /// </summary>
+    [Fact]
+    public async Task LookupEntity_UnionOfThreeSiblingDirectRelations_BatchesCorrectly()
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("workspace", "ws1", "owner", "user", "alice"),
+                new RelationTuple("workspace", "ws2", "admin", "user", "alice"),
+                new RelationTuple("workspace", "ws3", "member", "user", "alice"),
+                new RelationTuple("workspace", "ws4", "owner", "user", "bob"),
+                new RelationTuple("workspace", "ws5", "member", "user", "charlie"),
+            ],
+            [
+                new AttributeTuple("workspace", "ws1", "public", JsonValue.Create(false)),
+                new AttributeTuple("workspace", "ws2", "public", JsonValue.Create(false)),
+                new AttributeTuple("workspace", "ws3", "public", JsonValue.Create(false)),
+                new AttributeTuple("workspace", "ws4", "public", JsonValue.Create(false)),
+                new AttributeTuple("workspace", "ws5", "public", JsonValue.Create(false)),
+            ]);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("workspace", "view", "user", "alice"),
+            CancellationToken.None);
+
+        // alice: owner of ws1, admin of ws2, member of ws3 — all 3 via different batched relations.
+        result.EntityIds.Should().BeEquivalentTo(["ws1", "ws2", "ws3"]);
+    }
+
+    /// <summary>
+    /// Same batchable-sibling shape as above, but the DB has zero tuples for one of the 3
+    /// batched relations ("admin") — proves the batch-result dictionary still produces a valid
+    /// (empty) list for that relation rather than corrupting the union, and that the other two
+    /// relations' results are unaffected by one sibling coming back empty.
+    /// </summary>
+    [Fact]
+    public async Task LookupEntity_UnionOfThreeSiblingDirectRelations_OneRelationHasNoTuples()
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("workspace", "ws1", "owner", "user", "alice"),
+                new RelationTuple("workspace", "ws2", "member", "user", "alice"),
+                // no "admin" tuples for alice anywhere — that relation bucket will be empty.
+            ],
+            [
+                new AttributeTuple("workspace", "ws1", "public", JsonValue.Create(false)),
+                new AttributeTuple("workspace", "ws2", "public", JsonValue.Create(false)),
+            ]);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("workspace", "view", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEquivalentTo(["ws1", "ws2"]);
+    }
+
+    /// <summary>
+    /// Scoped variant of the sibling-batching test: doc.access := owner or editor or viewer,
+    /// 3 batchable direct-@user-relation siblings, scoped to a single org via the JOIN-based
+    /// scoped query variant. Only docs whose "org" relation points to the scope subject should
+    /// be returned, even though alice matches the unscoped union in a doc outside that org too.
+    /// </summary>
+    [Fact]
+    public async Task ScopedLookup_UnionOfSiblingDirectRelations_FiltersToScope()
+    {
+        const string schema = """
+            entity user {}
+            entity org {}
+            entity doc {
+                relation owner @user;
+                relation editor @user;
+                relation viewer @user;
+                relation org @org;
+                permission access := owner or editor or viewer;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("doc", "d1", "org", "org", "org1"),
+                new RelationTuple("doc", "d2", "org", "org", "org1"),
+                new RelationTuple("doc", "d3", "org", "org", "org2"),
+                new RelationTuple("doc", "d1", "owner", "user", "alice"),
+                new RelationTuple("doc", "d2", "editor", "user", "alice"),
+                new RelationTuple("doc", "d3", "viewer", "user", "alice"),
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("doc", "access", "user", "alice")
+            {
+                Scope = new EntityScope("org", "org", "org1")
+            },
+            CancellationToken.None);
+
+        // d1, d2 are in org1 (in scope); d3 is in org2 — excluded even though alice can view it.
+        result.EntityIds.Should().BeEquivalentTo(["d1", "d2"]);
+    }
+
+    /// <summary>
     /// Exercises paginated lookup without scope: verifies ContinuationToken is null when the total
     /// result count exactly equals PageSize.
     /// </summary>

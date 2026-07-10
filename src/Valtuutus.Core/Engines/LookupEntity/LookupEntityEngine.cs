@@ -179,6 +179,41 @@ public sealed class LookupEntityEngine(
         return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.FinalSubjectType);
     }
 
+    // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
+    // no sub-relation paths and reachable by req.FinalSubjectType, can be resolved via
+    // GetRelationsWithSubjectsIdsMultiRelation alongside its siblings instead of its own
+    // per-child LookupRelationLeaf round trip. Mirrors CheckEngine.IsBatchableDirectRelation.
+    private bool IsBatchableDirectRelation(LookupEntityRequestInternal req, PermissionNode child, out string relationName)
+    {
+        relationName = "";
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        if (schema.GetRelationType(req.EntityType, permLeaf.Permission) != RelationType.DirectRelation) return false;
+        var relation = schema.GetRelation(req.EntityType, permLeaf.Permission);
+        if (relation.HasSubRelationPaths) return false;
+        if (!relation.EntityTypes.Contains(req.FinalSubjectType)) return false;
+        relationName = permLeaf.Permission;
+        return true;
+    }
+
+    // Resolves a single Union/Intersect child, short-circuiting through a shared sibling-relation
+    // batch when possible instead of the normal LookupExpression/LookupLeaf dispatch chain.
+    private Task<List<LookupEntityResult>> ResolveChild(LookupEntityRequestInternal req,
+        Dictionary<string, List<LookupEntityResult>>? batchResults, PermissionNode child, CancellationToken ct)
+    {
+        if (batchResults is not null
+            && IsBatchableDirectRelation(req, child, out var relationName)
+            && batchResults.Remove(relationName, out var cached))
+            return Task.FromResult(cached);
+
+        return child.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, child.ExpressionNode!, ct)
+            : LookupLeaf(req, child.LeafNode!, ct);
+    }
+
     private async Task<List<LookupEntityResult>> LookupExpressionChildren(LookupEntityRequestInternal req,
         List<PermissionNode> children, bool isUnion, CancellationToken ct)
     {
@@ -227,17 +262,37 @@ public sealed class LookupEntityEngine(
         if (!isUnion && HasNegateAndPositiveChildren(live))
             return await LookupIntersectionWithNegate(req, live, ct);
 
+        // Batch sibling direct-relation leaves on req.EntityType into a single provider call
+        // instead of N separate LookupRelationLeaf round trips. Only fires for the plain
+        // Union/Intersect fallthrough here — LookupIntersectionConstrained and
+        // LookupIntersectionWithNegate don't get this yet (tracked separately, #243).
+        Dictionary<string, List<LookupEntityResult>>? batchResults = null;
+        List<string>? toFetch = null;
+        for (var i = 0; i < live.Count; i++)
+        {
+            if (!IsBatchableDirectRelation(req, live[i], out var relationName)) continue;
+            if (toFetch is not null && toFetch.Contains(relationName)) continue;
+            (toFetch ??= new List<string>()).Add(relationName);
+        }
+        if (toFetch is { Count: >= 2 })
+        {
+            using var rows = await reader.GetRelationsWithSubjectsIdsMultiRelation(
+                req.EntityType, toFetch.ToArray(), req.SubjectsIds, req.SubjectType,
+                req.SnapToken ?? SnapToken.MinValue, req.Scope, ct);
+
+            batchResults = new Dictionary<string, List<LookupEntityResult>>(toFetch.Count);
+            foreach (var name in toFetch)
+                batchResults[name] = ListPool<LookupEntityResult>.Rent();
+            foreach (var row in rows)
+                batchResults[row.Relation].Add(new LookupEntityResult(row.EntityType, row.EntityId, row.SubjectType, row.SubjectId));
+        }
+
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
         var buffer = pool.Rent(live.Count);
         try
         {
             for (var i = 0; i < live.Count; i++)
-            {
-                var child = live[i];
-                buffer[i] = child.Type == PermissionNodeType.Expression
-                    ? LookupExpression(req, child.ExpressionNode!, ct)
-                    : LookupLeaf(req, child.LeafNode!, ct);
-            }
+                buffer[i] = ResolveChild(req, batchResults, live[i], ct);
 
             return isUnion
                 ? await UnionEntities(buffer, live.Count)
@@ -883,7 +938,13 @@ public sealed class LookupEntityEngine(
             hashSet.IntersectWith(results[i]);
             ListPool<LookupEntityResult>.Return(results[i]);
             if (hashSet.Count == 0)
+            {
+                // Early exit on empty intersection — return the not-yet-processed lists too,
+                // otherwise they leak (never handed back to ListPool).
+                for (var j = i + 1; j < results.Length; j++)
+                    ListPool<LookupEntityResult>.Return(results[j]);
                 return ListPool<LookupEntityResult>.Rent();
+            }
         }
 
         var result = ListPool<LookupEntityResult>.Rent();
