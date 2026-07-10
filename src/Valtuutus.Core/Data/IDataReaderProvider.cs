@@ -109,6 +109,20 @@ public interface IDataReaderProvider
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Batch variant of <see cref="GetRelationsWithEntityIds"/> across sibling relation NAMES (not
+    /// entity IDs): widens the single <c>relation = @relation</c> filter to
+    /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
+    /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
+    /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
+    /// direct-relation Union/Intersect children in LookupSubjectEngine into one DB round trip, the
+    /// LookupSubject analogue of <see cref="GetRelationsWithSubjectsIdsMultiRelation"/>. Unlike that
+    /// method, there is no <c>EntityScope</c> variant — LookupSubjectEngine has no scope concept.
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
+        string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
+        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
     /// dependent relation. When <paramref name="scope"/> is provided, only main entities
     /// that also have the scope relation to the scope subject are returned.

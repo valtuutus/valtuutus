@@ -762,6 +762,16 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             CancellationToken cancellationToken)
             => inner.GetRelationsWithSubjectsIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope, cancellationToken);
 
+        public Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType,
+            string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
+            SnapToken snapToken, CancellationToken cancellationToken)
+        {
+            var materialized = entityIds.ToList();
+            captures.Add(materialized);
+            return inner.GetRelationsWithEntityIdsMultiRelation(entityType, relationNames, subjectType, materialized,
+                subjectRelation, snapToken, cancellationToken);
+        }
+
         public Task<PooledList<RelationTuple>> GetRelationsJoined(EntityRelationFilter mainFilter, string subEntityType,
             string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
             => inner.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, cancellationToken);

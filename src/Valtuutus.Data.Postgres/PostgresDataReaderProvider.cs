@@ -48,6 +48,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
         public required string GetRelationsWithSingleSubjectMultiRelationSnap { get; init; }
         public required string GetRelationsWithMultiSubjectMultiRelationSnap { get; init; }
+        public required string GetRelationsWithEntityIdsMultiRelationSnap { get; init; }
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
@@ -180,6 +181,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = @subject_id",
             GetRelationsWithMultiSubjectMultiRelationSnap =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
+            GetRelationsWithEntityIdsMultiRelationSnap = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND relation = ANY(@relations)
+                  AND subject_type = @subject_type
+                  AND entity_id = ANY(@entity_ids)
+                  AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
+                """,
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -798,6 +809,45 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     multi.Dispose();
                     throw;
                 }
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
+        string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
+        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithEntityIdsMultiRelationSnap);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+            AddStringParameter(command, "subject_type", subjectType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entityIds as string[] ?? entityIds.ToArray()
+            });
+            AddNullableStringParameter(command, "subject_relation", subjectRelation, 64);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadRelationTuple(reader));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
             }
         }
         finally
