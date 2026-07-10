@@ -207,6 +207,17 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND subject_type = @SubjectType
                   AND subject_id IN (SELECT id FROM @SubjectIds)
                 """,
+            GetRelationsWithEntityIdsMultiRelationSnap = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType
+                  AND relation IN (SELECT id FROM @Relations)
+                  AND subject_type = @SubjectType
+                  AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
+                OPTION (RECOMPILE)
+                """,
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -398,6 +409,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
         public required string GetRelationsWithSingleSubjectMultiRelationSnap { get; init; }
         public required string GetRelationsWithMultiSubjectMultiRelationSnap { get; init; }
+        public required string GetRelationsWithEntityIdsMultiRelationSnap { get; init; }
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
@@ -1006,6 +1018,45 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             catch
             {
                 multi.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
+        string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
+        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var command = CreateCommand(connection, _q.GetRelationsWithEntityIdsMultiRelationSnap);
+            AddStringParameter(command, "@EntityType", entityType, 256);
+            AddTvpParameter(command, "@Relations", relationNames);
+            AddStringParameter(command, "@SubjectType", subjectType, 256);
+            AddTvpParameter(command, "@EntityIds", entityIds);
+            AddNullableStringParameter(command, "@SubjectRelation", subjectRelation, 64);
+            AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadRelationTuple(reader));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
                 throw;
             }
         }

@@ -200,6 +200,27 @@ public sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsWithEntityIdsMultiRelation(string entityType,
+        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, SnapToken snapToken)
+    {
+        var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
+        using var _ = Read();
+
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var relationName in relationNames)
+        {
+            if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (!idSet.Contains(e.Relation.EntityId)) continue;
+                if (!string.IsNullOrEmpty(subjectRelation) && e.Relation.SubjectRelation != subjectRelation) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
     public PooledList<RelationTuple> GetRelationsWithSubjectIdsMultiRelation(string entityType,
         string[] relationNames, string[] subjectIds, string subjectType, SnapToken snapToken, EntityScope? scope = null)
     {

@@ -171,6 +171,41 @@ public sealed class LookupSubjectEngine(
         return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.FinalSubjectType);
     }
 
+    // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
+    // no sub-relation paths and reachable by req.FinalSubjectType, can be resolved via
+    // GetRelationsWithEntityIdsMultiRelation alongside its siblings instead of its own
+    // per-child LookupRelationLeaf round trip. Mirrors LookupEntityEngine.IsBatchableDirectRelation.
+    private bool IsBatchableDirectRelation(LookupSubjectRequestInternal req, PermissionNode child, out string relationName)
+    {
+        relationName = "";
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        if (schema.GetRelationType(req.EntityType, permLeaf.Permission) != RelationType.DirectRelation) return false;
+        var relation = schema.GetRelation(req.EntityType, permLeaf.Permission);
+        if (relation.HasSubRelationPaths) return false;
+        if (!relation.EntityTypes.Contains(req.FinalSubjectType)) return false;
+        relationName = permLeaf.Permission;
+        return true;
+    }
+
+    // Resolves a single Union/Intersect child, short-circuiting through a shared sibling-relation
+    // batch when possible instead of the normal LookupExpression/LookupLeaf dispatch chain.
+    private Task<RelationOrAttributeTuples> ResolveChild(LookupSubjectRequestInternal req,
+        Dictionary<string, RelationOrAttributeTuples>? batchResults, PermissionNode child, CancellationToken ct)
+    {
+        if (batchResults is not null
+            && IsBatchableDirectRelation(req, child, out var relationName)
+            && batchResults.Remove(relationName, out var cached))
+            return Task.FromResult(cached);
+
+        return child.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, child.ExpressionNode!, ct)
+            : LookupLeaf(req, child.LeafNode!, ct);
+    }
+
     private async Task<RelationOrAttributeTuples> LookupExpressionChildren(LookupSubjectRequestInternal req,
         List<PermissionNode> children, CancellationToken ct, bool isUnion)
     {
@@ -213,17 +248,37 @@ public sealed class LookupSubjectEngine(
             if (live.Count == 0) return _emptyTuples;
         }
 
+        // Batch sibling direct-relation leaves on req.EntityType into a single provider call
+        // instead of N separate LookupRelationLeaf round trips.
+        Dictionary<string, RelationOrAttributeTuples>? batchResults = null;
+        List<string>? toFetch = null;
+        for (var i = 0; i < live.Count; i++)
+        {
+            if (!IsBatchableDirectRelation(req, live[i], out var relationName)) continue;
+            if (toFetch is not null && toFetch.Contains(relationName)) continue;
+            (toFetch ??= new List<string>()).Add(relationName);
+        }
+        if (toFetch is { Count: >= 2 })
+        {
+            using var rows = await reader.GetRelationsWithEntityIdsMultiRelation(
+                req.EntityType, toFetch.ToArray(), req.FinalSubjectType, req.EntitiesIds, req.SubjectRelation,
+                req.SnapToken!.Value, ct);
+
+            var buckets = new Dictionary<string, List<RelationTuple>>(toFetch.Count);
+            foreach (var name in toFetch) buckets[name] = new List<RelationTuple>();
+            foreach (var row in rows) buckets[row.Relation].Add(row);
+
+            batchResults = new Dictionary<string, RelationOrAttributeTuples>(toFetch.Count);
+            foreach (var (name, list) in buckets)
+                batchResults[name] = new RelationOrAttributeTuples(list);
+        }
+
         var pool = ArrayPool<Task<RelationOrAttributeTuples>>.Shared;
         var buffer = pool.Rent(live.Count);
         try
         {
             for (var i = 0; i < live.Count; i++)
-            {
-                var child = live[i];
-                buffer[i] = child.Type == PermissionNodeType.Expression
-                    ? LookupExpression(req, child.ExpressionNode!, ct)
-                    : LookupLeaf(req, child.LeafNode!, ct);
-            }
+                buffer[i] = ResolveChild(req, batchResults, live[i], ct);
 
             return isUnion
                 ? await UnionEntities(buffer, live.Count)

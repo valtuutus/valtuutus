@@ -166,6 +166,30 @@ public static class Seeder
         relations.Add(new RelationTuple("team", siblingBatchTeamId, "member", "user", benchmarkUserId));
         attributes.Add(new AttributeTuple("team", siblingBatchTeamId, "active", JsonValue.Create(true)));
 
+        // LookupSubject sibling-batch benchmark data (LookupSubject counterpart to
+        // LookupEntity_SiblingBatch). team.invite := org.admin and (owner or member) —
+        // LookupSubject needs one fixed team EntityId to query "who can invite here", so this
+        // adds a deterministic org/team (same convention as the diamond/fanout data above), sized
+        // similarly to the Faker-driven org/team scale (20 org admins, team owner + 15 members)
+        // so LookupSubjectEngine's Union(owner, member) sibling-batch path (added for #238) is
+        // exercised against a realistic fan-in instead of a token 1-2 row case.
+        const string lookupSubjectSiblingBatchOrgId  = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03";
+        const string lookupSubjectSiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
+
+        var lookupSubjectSiblingBatchAdmins = Enumerable.Range(0, 20)
+            .Select(i => $"eeeeeeee-1111-1111-1111-{i:D12}")
+            .ToArray();
+        var lookupSubjectSiblingBatchMembers = Enumerable.Range(0, 15)
+            .Select(i => $"eeeeeeee-2222-2222-2222-{i:D12}")
+            .ToArray();
+
+        relations.AddRange(lookupSubjectSiblingBatchAdmins.Select(u =>
+            new RelationTuple("organization", lookupSubjectSiblingBatchOrgId, "admin", "user", u)));
+        relations.Add(new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "org", "organization", lookupSubjectSiblingBatchOrgId));
+        relations.Add(new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "owner", "user", lookupSubjectSiblingBatchAdmins[0]));
+        relations.AddRange(lookupSubjectSiblingBatchMembers.Select(u =>
+            new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "member", "user", u)));
+
         return (relations, attributes);
     }
 }

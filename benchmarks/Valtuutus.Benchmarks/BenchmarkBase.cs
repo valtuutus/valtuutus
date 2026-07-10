@@ -14,6 +14,7 @@ public abstract class BenchmarkBase
     private const string UserId          = "3fca4119-3bda-4370-13cd-a3d317459c73";
     private const string DiamondFolderId = "cccccccc-cccc-cccc-cccc-cccccccccc01";
     private const string FanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
+    private const string SiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
 
     protected ICheckEngine _checkEngine = null!;
     protected ILookupEntityEngine _lookupEntityEngine = null!;
@@ -135,6 +136,23 @@ public abstract class BenchmarkBase
         => await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "reviewers", EntityType = "project", EntityId = FanoutProjectId,
+            SubjectType = "user"
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// team.invite := org.admin and (owner or member) — LookupSubject counterpart to
+    /// LookupEntity_SiblingBatch. The inner Union(owner, member) is 2 live batchable
+    /// direct-@user-relation siblings; deterministic seed data (SiblingBatchTeamId) gives
+    /// LookupSubject a fixed EntityId to query "who can invite here". Exercises the
+    /// sibling-batching path added for LookupSubjectEngine (#238): one
+    /// GetRelationsWithEntityIdsMultiRelation call instead of 2 separate LookupRelationLeaf
+    /// round trips for the owner/member branch.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_SiblingBatch")]
+    public async Task<HashSet<string>> LookupSubject_SiblingBatch()
+        => await _lookupSubjectEngine.Lookup(new()
+        {
+            Permission = "invite", EntityType = "team", EntityId = SiblingBatchTeamId,
             SubjectType = "user"
         }, CancellationToken.None);
 
