@@ -602,7 +602,53 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             ids => ids.Distinct().Count() == ids.Count,
             "duplicate ids bloat the TVP / id array without changing results");
 
-        // Specifically, the team -> member leaf query is fed the deduplicated [t1], not [t1, t1].
+        // Specifically, the group -> team -> member leg (a terminal sub-relation, so it's
+        // collapsed into one joined query) is fed the two distinct starting ids [g1, g2] — the
+        // t1 convergence they both map to is deduplicated inside the join itself and never
+        // materializes as a separate forwarded id list.
+        captures.Should().Contain(ids => ids.Count == 2 && ids.Contains("g1") && ids.Contains("g2"));
+    }
+
+    [Fact]
+    public async Task LookupSubject_TerminalSubRelation_UsesJoinedQuery_NotEntityIdForwarding()
+    {
+        // project.lead: @team#lead — team.lead is a terminal direct relation (@user only, no
+        // further sub-relation paths), so this leg qualifies for the joined fast path and must
+        // never forward an intermediate entity-id list into a separate recursive query.
+        var (engine, captures) = await CreateEngineWithCapture(
+            [
+                new RelationTuple("project", "p1", "lead", "team", "t1", "lead"),
+                new RelationTuple("team", "t1", "lead", "user", "alice"),
+            ], []);
+
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("project", "lead", "user", "p1"),
+            CancellationToken.None);
+
+        result.Should().BeEquivalentTo("alice");
+        // A single capture for the joined query itself (fed the starting id [p1]) — and no
+        // second capture for an intermediate id like "t1", which is what the old two-query
+        // dependent-then-recurse fallback would have produced.
+        captures.Should().ContainSingle().Which.Should().BeEquivalentTo("p1");
+    }
+
+    [Fact]
+    public async Task LookupSubject_NonTerminalSubRelation_FallsBackToEntityIdForwarding()
+    {
+        // project.member: @user @team#member — team.member is NOT terminal here, since it also
+        // has a @group#member sub-path (per DefaultSchema), so this leg must keep using the
+        // dependent-query-then-recurse fallback rather than the joined fast path.
+        var (engine, captures) = await CreateEngineWithCapture(
+            [
+                new RelationTuple("project", "p1", "member", "team", "t1", "member"),
+                new RelationTuple("team", "t1", "member", "user", "alice"),
+            ], []);
+
+        var result = await engine.Lookup(
+            new LookupSubjectRequest("project", "member", "user", "p1"),
+            CancellationToken.None);
+
+        result.Should().BeEquivalentTo("alice");
         captures.Should().Contain(ids => ids.Count == 1 && ids[0] == "t1");
     }
 
@@ -667,7 +713,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
     /// <summary>
     /// Thin decorator that delegates every call to the real provider and records the entity-id
-    /// lists passed into <see cref="GetRelationsWithEntityIds"/>.
+    /// lists passed into <see cref="GetRelationsWithEntityIds"/> and <see cref="GetRelationsJoinedByEntityIds"/> —
+    /// the two entry points through which a recursion level forwards ids into the next query.
     /// </summary>
     private sealed class CapturingReader(IDataReaderProvider inner, List<List<string>> captures) : IDataReaderProvider
     {
@@ -713,6 +760,14 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         public Task<PooledList<RelationTuple>> GetRelationsJoined(EntityRelationFilter mainFilter, string subEntityType,
             string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
             => inner.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, cancellationToken);
+
+        public Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(EntityRelationFilter mainFilter,
+            IEnumerable<string> entityIds, string subEntityType, string subRelation, CancellationToken cancellationToken)
+        {
+            var materialized = entityIds.ToList();
+            captures.Add(materialized);
+            return inner.GetRelationsJoinedByEntityIds(mainFilter, materialized, subEntityType, subRelation, cancellationToken);
+        }
 
         public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
             => inner.GetAttribute(filter, cancellationToken);
