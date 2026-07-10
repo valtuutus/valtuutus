@@ -198,14 +198,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
-                  AND r_main.subject_id IN (
+                  AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
                       WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
                         AND subject_id = @subject_id
-                  )
+                  ))
                 """,
             GetRelationsJoinedByEntityIds = $"""
                 SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
@@ -213,14 +213,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 WHERE r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
                   AND r_dep.entity_type = @sub_entity_type
                   AND r_dep.relation = @sub_relation
-                  AND r_dep.entity_id IN (
+                  AND r_dep.entity_id = ANY(ARRAY(
                       SELECT subject_id FROM {relationsTable}
                       WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
                         AND entity_type = @entity_type
                         AND entity_id = ANY(@entity_ids)
                         AND relation = @relation
                         AND subject_type = @sub_entity_type
-                  )
+                  ))
                 """,
             HasTupleToUserSetRelation = $"""
                 SELECT EXISTS(
@@ -321,14 +321,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
-                  AND r_main.subject_id IN (
+                  AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
                       WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
                         AND subject_id = @subject_id
-                  )
+                  ))
                 """,
             GetAttributesDictScoped = $"""
                 SELECT a.entity_type, a.entity_id, a.attribute, a.value
