@@ -84,6 +84,21 @@ public abstract class BenchmarkBase
         }, CancellationToken.None);
 
     /// <summary>
+    /// team.invite := org.admin and (owner or member) — the inner Union(owner, member) is 2 live
+    /// batchable direct-@user-relation siblings, no schema/seed changes needed (existing team seed
+    /// data already has owner/member tuples at 1000-team scale). Exercises the sibling-batching
+    /// path added in #237: one GetRelationsWithSubjectsIdsMultiRelation call instead of 2 separate
+    /// LookupRelationLeaf round trips for the owner/member branch.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_SiblingBatch")]
+    public async Task<LookupEntityPage> LookupEntity_SiblingBatch()
+        => await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "invite", EntityType = "team",
+            SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
+    /// <summary>
     /// project.reviewers has two indirect variants (team#member, group#member) — neither is
     /// the "user" subject type directly, so both require a dependent query and can fire
     /// concurrently instead of serializing.

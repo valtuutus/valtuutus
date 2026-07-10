@@ -200,6 +200,44 @@ public sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsWithSubjectIdsMultiRelation(string entityType,
+        string[] relationNames, string[] subjectIds, string subjectType, SnapToken snapToken, EntityScope? scope = null)
+    {
+        using var _ = Read();
+
+        HashSet<string>? scopedEntityIds = null;
+        if (scope.HasValue)
+        {
+            var s = scope.Value;
+            if (_byRelationSubjectType.TryGetValue((entityType, s.Relation, s.SubjectType), out var scopeBucket))
+            {
+                scopedEntityIds = new HashSet<string>();
+                foreach (var e in scopeBucket)
+                {
+                    if (!IsVisible(e, snapToken)) continue;
+                    if (e.Relation.SubjectId != s.SubjectId) continue;
+                    scopedEntityIds.Add(e.Relation.EntityId);
+                }
+            }
+            if (scopedEntityIds is null || scopedEntityIds.Count == 0)
+                return PooledList<RelationTuple>.Rent();
+        }
+
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var relationName in relationNames)
+        {
+            if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (!subjectIds.Contains(e.Relation.SubjectId)) continue;
+                if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
     public PooledList<RelationTuple> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
         string subjectType, string subjectId, EntityScope? scope = null)

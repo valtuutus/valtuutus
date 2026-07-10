@@ -145,6 +145,22 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType,
+        string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
+        CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsWithSubjectIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<bool> HasTupleToUserSetRelation(
         string entityType, string entityId, string tupleSetRelation,
         string subEntityType, string computedRelation,
