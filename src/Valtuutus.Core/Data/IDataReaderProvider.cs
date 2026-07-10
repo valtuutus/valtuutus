@@ -108,6 +108,21 @@ public interface IDataReaderProvider
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Inverse of <see cref="GetRelationsJoined"/>: instead of filtering the main side down to
+    /// rows whose subject is confirmed via a subquery against one fixed final subject, this
+    /// filters the dependent (second-hop) side down to rows whose entity is confirmed via a
+    /// subquery against a list of starting entity IDs. Used by LookupSubject, which starts from
+    /// N entity IDs and has no single final subject to filter to — it's looking for all subjects
+    /// reachable from those entities in one query instead of a dependent-query-then-recurse pair.
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter,
+        IEnumerable<string> entityIds,
+        string subEntityType,
+        string subRelation,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves a single AttributeTuple based on the provided filter.
     /// </summary>
     /// <param name="filter">The filter criteria for retrieving the AttributeTuple.</param>

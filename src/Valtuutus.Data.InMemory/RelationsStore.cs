@@ -255,6 +255,42 @@ public sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation)
+    {
+        using var _ = Read();
+        var snap = mainFilter.SnapToken;
+
+        // Step 1: collect intermediate IDs — subEntityType-typed subjects reachable from entityIds.
+        if (!_byRelationSubjectType.TryGetValue((mainFilter.EntityType, mainFilter.Relation, subEntityType), out var depBucket))
+            return PooledList<RelationTuple>.Rent();
+
+        var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
+        HashSet<string>? intermediateIds = null;
+        foreach (var e in depBucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (!idSet.Contains(e.Relation.EntityId)) continue;
+            (intermediateIds ??= new HashSet<string>()).Add(e.Relation.SubjectId);
+        }
+
+        if (intermediateIds is null || intermediateIds.Count == 0)
+            return PooledList<RelationTuple>.Rent();
+
+        // Step 2: find dependent tuples for each intermediate entity.
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var id in intermediateIds)
+        {
+            if (!_byEntityRelation.TryGetValue((subEntityType, id, subRelation), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snap)) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
     public HashSet<string> GetAllEntityIds(string entityType, SnapToken snap)
     {
         using var _ = Read();

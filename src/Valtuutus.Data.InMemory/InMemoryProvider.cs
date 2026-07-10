@@ -179,6 +179,22 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
+        CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();

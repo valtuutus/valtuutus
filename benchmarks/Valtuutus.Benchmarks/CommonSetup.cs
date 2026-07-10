@@ -8,13 +8,14 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Benchmarks;
 
 public static class CommonSetup
 {
-    public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine)> MigrateAndSeed(
+    public static async Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine, ILookupSubjectEngine lookupSubjectEngine)> MigrateAndSeed(
         Action<IServiceCollection> configureProvider,
         (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes, Assembly migrationAssembly)
     {
@@ -23,14 +24,15 @@ public static class CommonSetup
             .GetManifestResourceNames()
             .First(c => c.EndsWith("schema.vtt"));
         var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
-        
+
         var serviceCollection = new ServiceCollection()
             .AddValtuutusCore(schema);
-        
+
         configureProvider(serviceCollection);
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
+        var lookupSubjectEngine = serviceProvider.GetRequiredService<ILookupSubjectEngine>();
         using var connection = (System.Data.Common.DbConnection)serviceProvider.GetRequiredService<DbConnectionFactory>()();
         if (connection.State != ConnectionState.Open)
             await connection.OpenAsync();
@@ -53,12 +55,12 @@ public static class CommonSetup
 
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
         await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, CancellationToken.None);
-        
-        return (serviceProvider, checkEngine, lookupEntityEngine);
+
+        return (serviceProvider, checkEngine, lookupEntityEngine, lookupSubjectEngine);
     }
 
     public static async
-        Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine)> Seed(
+        Task<(ServiceProvider serviceProvider, ICheckEngine checkEngine, ILookupEntityEngine lookupEntityEngine, ILookupSubjectEngine lookupSubjectEngine)> Seed(
             Action<IServiceCollection> configureProvider,
             (List<RelationTuple> Relations, List<AttributeTuple> Attributes) relAndAttributes)
     {
@@ -66,17 +68,18 @@ public static class CommonSetup
             .GetManifestResourceNames()
             .First(c => c.EndsWith("schema.vtt"));
         var schema = Assembly.GetExecutingAssembly().GetManifestResourceStream(schemaFilePath)!;
-        
+
         var serviceCollection = new ServiceCollection()
             .AddValtuutusCore(schema);
-        
+
         configureProvider(serviceCollection);
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
+        var lookupSubjectEngine = serviceProvider.GetRequiredService<ILookupSubjectEngine>();
         var writerProvider = serviceProvider.GetRequiredService<IDataWriterProvider>();
         await writerProvider.Write(relAndAttributes.Relations, relAndAttributes.Attributes, CancellationToken.None);
-        
-        return (serviceProvider, checkEngine, lookupEntityEngine);
-    } 
+
+        return (serviceProvider, checkEngine, lookupEntityEngine, lookupSubjectEngine);
+    }
 }

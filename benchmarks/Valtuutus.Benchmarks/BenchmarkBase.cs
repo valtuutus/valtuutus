@@ -3,6 +3,7 @@ using BenchmarkDotNet.Configs;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupSubject;
 
 namespace Valtuutus.Benchmarks;
 
@@ -12,9 +13,11 @@ public abstract class BenchmarkBase
     private const string ProjectId       = "e4010d7b-cea1-94c6-2232-e1f9ae557272";
     private const string UserId          = "3fca4119-3bda-4370-13cd-a3d317459c73";
     private const string DiamondFolderId = "cccccccc-cccc-cccc-cccc-cccccccccc01";
+    private const string FanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
 
     protected ICheckEngine _checkEngine = null!;
     protected ILookupEntityEngine _lookupEntityEngine = null!;
+    protected ILookupSubjectEngine _lookupSubjectEngine = null!;
 
     // ── existing scenarios ──────────────────────────────────────────────────
 
@@ -80,6 +83,19 @@ public abstract class BenchmarkBase
             Scope = new EntityScope("org", "organization", OrgId)
         }, CancellationToken.None);
 
+    /// <summary>
+    /// project.reviewers has two indirect variants (team#member, group#member) — neither is
+    /// the "user" subject type directly, so both require a dependent query and can fire
+    /// concurrently instead of serializing.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject")]
+    public async Task<HashSet<string>> LookupSubject()
+        => await _lookupSubjectEngine.Lookup(new()
+        {
+            Permission = "reviewers", EntityType = "project", EntityId = FanoutProjectId,
+            SubjectType = "user"
+        }, CancellationToken.None);
+
     // ── diamond scenarios ───────────────────────────────────────────────────
 
     /// <summary>
@@ -95,6 +111,20 @@ public abstract class BenchmarkBase
         {
             Permission = "view", EntityType = "folder",
             SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// Same TTU diamond as LookupEntity_Diamond, reverse direction: "who can view folder X"
+    /// instead of "which folders can user Y view". LookupSubjectEngine has no two-hop JOIN
+    /// collapse yet (tracked as a follow-up) — this establishes the baseline that fix will
+    /// improve on.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_Diamond")]
+    public async Task<HashSet<string>> LookupSubject_Diamond()
+        => await _lookupSubjectEngine.Lookup(new()
+        {
+            Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
+            SubjectType = "user"
         }, CancellationToken.None);
 
     /// <summary>

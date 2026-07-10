@@ -15,20 +15,21 @@ entity team {
     permission invite := org.admin and (owner or member);
     permission remove_user := owner;
 }
+entity group {
+    relation member @user;
+    permission access := member;
+}
 entity project {
     relation org @organization;
     relation team @team;
     relation member @team#member @user;
+    relation reviewers @team#member @group#member;
     attribute public bool;
     attribute status int;
     permission view := org.admin or member or (public and org.member);
     permission edit := (org.admin or team.member) and isActiveStatus(status);
     permission delete := org.admin or team.owner;
     permission cache_test := (org.admin or team.owner) and (org.admin or member);
-}
-entity group {
-    relation member @user;
-    permission access := member;
 }
 entity folder {
     relation owner @group#member;

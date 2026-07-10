@@ -47,6 +47,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
         public required string GetRelationsJoined { get; init; }
+        public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
@@ -185,6 +186,21 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
                         AND subject_id = @subject_id
+                  )
+                """,
+            GetRelationsJoinedByEntityIds = $"""
+                SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
+                FROM {relationsTable} AS r_dep
+                WHERE r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                  AND r_dep.entity_type = @sub_entity_type
+                  AND r_dep.relation = @sub_relation
+                  AND r_dep.entity_id IN (
+                      SELECT subject_id FROM {relationsTable}
+                      WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                        AND entity_type = @entity_type
+                        AND entity_id = ANY(@entity_ids)
+                        AND relation = @relation
+                        AND subject_type = @sub_entity_type
                   )
                 """,
             HasTupleToUserSetRelation = $"""
@@ -683,6 +699,49 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
                 AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
             }
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    pooled.Add(new RelationTuple(
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                }
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
+        CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsJoinedByEntityIds);
+            AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
+            AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
+            AddStringParameter(command, "relation", mainFilter.Relation, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entityIds as string[] ?? entityIds.ToArray()
+            });
+            AddStringParameter(command, "sub_entity_type", subEntityType, 256);
+            AddStringParameter(command, "sub_relation", subRelation, 64);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
