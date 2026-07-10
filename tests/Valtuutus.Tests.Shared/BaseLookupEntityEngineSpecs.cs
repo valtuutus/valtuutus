@@ -690,6 +690,88 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
     }
 
     /// <summary>
+    /// team.constrained_test := isActive(active) and owner and member — an Intersect mixing one
+    /// attribute-expression leaf with two plain direct-@user-relation siblings (owner, member),
+    /// the shape LookupIntersectionConstrained's non-attribute-child loop batches (#243). Proves
+    /// the batched dispatch still requires ALL three children to match: both relations plus the
+    /// attribute.
+    /// </summary>
+    [Fact]
+    public async Task LookupEntity_ConstrainedIntersectionWithSiblingDirectRelations_BatchesCorrectly()
+    {
+        const string schema = """
+            entity user {}
+            entity team {
+                relation owner @user;
+                relation member @user;
+                attribute active bool;
+                permission constrained_test := isActive(active) and owner and member;
+            }
+            fn isActive(active bool) => active == true;
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("team", "t1", "owner", "user", "alice"),
+                new RelationTuple("team", "t1", "member", "user", "alice"),
+                new RelationTuple("team", "t2", "owner", "user", "alice"),
+                // t2: alice is owner but not member — relation-intersection fails.
+                new RelationTuple("team", "t3", "owner", "user", "alice"),
+                new RelationTuple("team", "t3", "member", "user", "alice"),
+                // t3: alice is both owner and member, but "active" is false — attribute fails.
+            ],
+            [
+                new AttributeTuple("team", "t1", "active", JsonValue.Create(true)),
+                new AttributeTuple("team", "t2", "active", JsonValue.Create(true)),
+                new AttributeTuple("team", "t3", "active", JsonValue.Create(false)),
+            ], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("team", "constrained_test", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEquivalentTo(["t1"]);
+    }
+
+    /// <summary>
+    /// team.negate_test := owner and member and not(banned) — an Intersect mixing two plain
+    /// direct-@user-relation siblings (owner, member) with a Negate child, the shape
+    /// LookupIntersectionWithNegate's positive-child loop batches (#243). Proves the batched
+    /// dispatch still requires both positive relations to match AND the negate to exclude.
+    /// </summary>
+    [Fact]
+    public async Task LookupEntity_NegateIntersectionWithSiblingDirectRelations_BatchesCorrectly()
+    {
+        const string schema = """
+            entity user {}
+            entity team {
+                relation owner @user;
+                relation member @user;
+                relation banned @user;
+                permission negate_test := owner and member and not(banned);
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("team", "t1", "owner", "user", "alice"),
+                new RelationTuple("team", "t1", "member", "user", "alice"),
+                new RelationTuple("team", "t2", "owner", "user", "alice"),
+                new RelationTuple("team", "t2", "member", "user", "alice"),
+                new RelationTuple("team", "t2", "banned", "user", "alice"),
+                // t2: alice is owner and member, but also banned — negate excludes it.
+                new RelationTuple("team", "t3", "owner", "user", "alice"),
+                // t3: alice is owner but not member — relation-intersection fails.
+            ], [], schema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("team", "negate_test", "user", "alice"),
+            CancellationToken.None);
+
+        result.EntityIds.Should().BeEquivalentTo(["t1"]);
+    }
+
+    /// <summary>
     /// Exercises paginated lookup without scope: verifies ContinuationToken is null when the total
     /// result count exactly equals PageSize.
     /// </summary>

@@ -99,6 +99,33 @@ public abstract class BenchmarkBase
         }, CancellationToken.None);
 
     /// <summary>
+    /// team.constrained_sibling_batch := isActive(active) and owner and member — an Intersect
+    /// mixing one attribute-expression leaf with 2 batchable direct-@user-relation siblings
+    /// (owner, member). Exercises LookupIntersectionConstrained's non-attribute-child loop
+    /// batching added in #243 (deferred out of #237's generic-path-only scope).
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_ConstrainedSiblingBatch")]
+    public async Task<LookupEntityPage> LookupEntity_ConstrainedSiblingBatch()
+        => await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "constrained_sibling_batch", EntityType = "team",
+            SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// team.negate_sibling_batch := owner and member and not(banned) — an Intersect mixing 2
+    /// batchable direct-@user-relation siblings (owner, member) with a Negate child. Exercises
+    /// LookupIntersectionWithNegate's positive-child loop batching added in #243.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_NegateSiblingBatch")]
+    public async Task<LookupEntityPage> LookupEntity_NegateSiblingBatch()
+        => await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "negate_sibling_batch", EntityType = "team",
+            SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
+    /// <summary>
     /// project.reviewers has two indirect variants (team#member, group#member) — neither is
     /// the "user" subject type directly, so both require a dependent query and can fire
     /// concurrently instead of serializing.

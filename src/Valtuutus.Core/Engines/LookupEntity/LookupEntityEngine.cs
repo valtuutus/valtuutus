@@ -256,16 +256,11 @@ public sealed class LookupEntityEngine(
             if (live.Count == 0) return ListPool<LookupEntityResult>.Rent();
         }
 
-        if (!isUnion && HasMixedAttributeAndRelationChildren(live))
-            return await LookupIntersectionConstrained(req, live, ct);
-
-        if (!isUnion && HasNegateAndPositiveChildren(live))
-            return await LookupIntersectionWithNegate(req, live, ct);
-
         // Batch sibling direct-relation leaves on req.EntityType into a single provider call
-        // instead of N separate LookupRelationLeaf round trips. Only fires for the plain
-        // Union/Intersect fallthrough here — LookupIntersectionConstrained and
-        // LookupIntersectionWithNegate don't get this yet (tracked separately, #243).
+        // instead of N separate LookupRelationLeaf round trips. Computed once off the full live
+        // list, before routing to a specialized dispatch below — IsBatchableDirectRelation only
+        // matches plain top-level relation leaves, so attribute-expression and Negate children in
+        // live are naturally skipped here regardless of which path ends up consuming batchResults.
         Dictionary<string, List<LookupEntityResult>>? batchResults = null;
         List<string>? toFetch = null;
         for (var i = 0; i < live.Count; i++)
@@ -286,6 +281,12 @@ public sealed class LookupEntityEngine(
             foreach (var row in rows)
                 batchResults[row.Relation].Add(new LookupEntityResult(row.EntityType, row.EntityId, row.SubjectType, row.SubjectId));
         }
+
+        if (!isUnion && HasMixedAttributeAndRelationChildren(live))
+            return await LookupIntersectionConstrained(req, live, batchResults, ct);
+
+        if (!isUnion && HasNegateAndPositiveChildren(live))
+            return await LookupIntersectionWithNegate(req, live, batchResults, ct);
 
         var pool = ArrayPool<Task<List<LookupEntityResult>>>.Shared;
         var buffer = pool.Rent(live.Count);
@@ -319,7 +320,8 @@ public sealed class LookupEntityEngine(
     }
 
     private async Task<List<LookupEntityResult>> LookupIntersectionConstrained(
-        LookupEntityRequestInternal req, List<PermissionNode> children, CancellationToken ct)
+        LookupEntityRequestInternal req, List<PermissionNode> children,
+        Dictionary<string, List<LookupEntityResult>>? batchResults, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
@@ -337,9 +339,7 @@ public sealed class LookupEntityEngine(
                     child.LeafNode!.Type == PermissionNodeLeafType.Expression)
                     attrLeaves.Add(child.LeafNode.ExpressionNode!);
                 else
-                    nonAttrBuffer[nonAttrCount++] = child.Type == PermissionNodeType.Expression
-                        ? LookupExpression(req, child.ExpressionNode!, ct)
-                        : LookupLeaf(req, child.LeafNode!, ct);
+                    nonAttrBuffer[nonAttrCount++] = ResolveChild(req, batchResults, child, ct);
             }
             nonAttrResults = await Task.WhenAll(new ArraySegment<Task<List<LookupEntityResult>>>(nonAttrBuffer, 0, nonAttrCount));
         }
@@ -832,7 +832,8 @@ public sealed class LookupEntityEngine(
     // Evaluates positive children first, then subtracts the Negate children's matches
     // in-memory — avoids the full-table-scan GetEntityIdsExcluding DB call.
     private async Task<List<LookupEntityResult>> LookupIntersectionWithNegate(
-        LookupEntityRequestInternal req, List<PermissionNode> children, CancellationToken ct)
+        LookupEntityRequestInternal req, List<PermissionNode> children,
+        Dictionary<string, List<LookupEntityResult>>? batchResults, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
@@ -857,9 +858,7 @@ public sealed class LookupEntityEngine(
                 }
                 else
                 {
-                    positiveBuffer[positiveCount++] = child.Type == PermissionNodeType.Expression
-                        ? LookupExpression(req, child.ExpressionNode!, ct)
-                        : LookupLeaf(req, child.LeafNode!, ct);
+                    positiveBuffer[positiveCount++] = ResolveChild(req, batchResults, child, ct);
                 }
             }
 
