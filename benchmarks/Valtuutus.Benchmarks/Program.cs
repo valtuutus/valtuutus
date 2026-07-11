@@ -16,5 +16,5 @@ var config = ManualConfig.CreateEmpty()
     .WithSummaryStyle(BenchmarkDotNet.Reports.SummaryStyle.Default)
     .AddColumnProvider(DefaultColumnProviders.Instance)
     .AddLogger(ConsoleLogger.Default)
-    .AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
+    .AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
 switcher.Run(args, config);
