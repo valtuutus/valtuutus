@@ -16,6 +16,8 @@ public sealed class RelationsStore : IDisposable
 
     private readonly Dictionary<(string, string, string), List<Entry>> _byEntityRelation = new();
     private readonly Dictionary<(string, string, string), List<Entry>> _byRelationSubjectType = new();
+    private readonly Dictionary<string, List<Entry>> _byEntityType = new();
+    private readonly Dictionary<string, List<Entry>> _bySubjectType = new();
     private readonly List<Entry> _all = new();
     private readonly ReaderWriterLockSlim _rwls = new(LockRecursionPolicy.NoRecursion);
 
@@ -354,9 +356,10 @@ public sealed class RelationsStore : IDisposable
     {
         using var _ = Read();
         var result = new HashSet<string>();
-        foreach (var e in _all)
+        if (!_byEntityType.TryGetValue(entityType, out var bucket))
+            return result;
+        foreach (var e in bucket)
         {
-            if (e.Relation.EntityType != entityType) continue;
             if (!IsVisible(e, snap)) continue;
             result.Add(e.Relation.EntityId);
         }
@@ -367,9 +370,10 @@ public sealed class RelationsStore : IDisposable
     {
         using var _ = Read();
         var result = new HashSet<string>();
-        foreach (var e in _all)
+        if (!_bySubjectType.TryGetValue(subjectType, out var bucket))
+            return result;
+        foreach (var e in bucket)
         {
-            if (e.Relation.SubjectType != subjectType) continue;
             if (!e.Relation.IsDirectSubject()) continue;
             if (!IsVisible(e, snap)) continue;
             result.Add(e.Relation.SubjectId);
@@ -393,6 +397,14 @@ public sealed class RelationsStore : IDisposable
             if (!_byRelationSubjectType.TryGetValue(sk, out var b2))
                 _byRelationSubjectType[sk] = b2 = new List<Entry>();
             b2.Add(entry);
+
+            if (!_byEntityType.TryGetValue(r.EntityType, out var b3))
+                _byEntityType[r.EntityType] = b3 = new List<Entry>();
+            b3.Add(entry);
+
+            if (!_bySubjectType.TryGetValue(r.SubjectType, out var b4))
+                _bySubjectType[r.SubjectType] = b4 = new List<Entry>();
+            b4.Add(entry);
 
             _all.Add(entry);
         }

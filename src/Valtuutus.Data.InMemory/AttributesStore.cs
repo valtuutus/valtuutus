@@ -14,6 +14,7 @@ public sealed class AttributesStore : IDisposable
     }
 
     private readonly Dictionary<(string, string), List<Entry>> _byEntityTypeAttr = new();
+    private readonly Dictionary<string, List<Entry>> _byEntityType = new();
     private readonly List<Entry> _all = new();
     private readonly ReaderWriterLockSlim _rwls = new(LockRecursionPolicy.NoRecursion);
 
@@ -140,9 +141,9 @@ public sealed class AttributesStore : IDisposable
     public void GetAllEntityIds(string entityType, SnapToken snap, HashSet<string> target)
     {
         using var _ = Read();
-        foreach (var e in _all)
+        if (!_byEntityType.TryGetValue(entityType, out var bucket)) return;
+        foreach (var e in bucket)
         {
-            if (e.Attribute.EntityType != entityType) continue;
             if (!IsVisible(e, snap)) continue;
             target.Add(e.Attribute.EntityId);
         }
@@ -152,14 +153,29 @@ public sealed class AttributesStore : IDisposable
     {
         var list = attributes as IList<AttributeTuple> ?? attributes.ToList();
         using var _ = Write();
-        foreach (var existing in _all)
+
+        // Group incoming attributes by (EntityType, Attribute) so tombstoning only walks the
+        // buckets this batch actually touches, instead of scanning every attribute ever written.
+        var incomingByKey = new Dictionary<(string EntityType, string Attribute), HashSet<string>>();
+        foreach (var a in list)
         {
-            if (existing.DeletedTxId is not null) continue;
-            if (list.Any(a => a.EntityId == existing.Attribute.EntityId &&
-                              a.EntityType == existing.Attribute.EntityType &&
-                              a.Attribute == existing.Attribute.Attribute))
-                existing.DeletedTxId = transactId;
+            var key = (a.EntityType, a.Attribute);
+            if (!incomingByKey.TryGetValue(key, out var entityIds))
+                incomingByKey[key] = entityIds = new HashSet<string>();
+            entityIds.Add(a.EntityId);
         }
+
+        foreach (var (key, entityIds) in incomingByKey)
+        {
+            if (!_byEntityTypeAttr.TryGetValue(key, out var existingBucket)) continue;
+            foreach (var existing in existingBucket)
+            {
+                if (existing.DeletedTxId is not null) continue;
+                if (entityIds.Contains(existing.Attribute.EntityId))
+                    existing.DeletedTxId = transactId;
+            }
+        }
+
         foreach (var a in list)
         {
             var entry = new Entry(a, transactId);
@@ -167,6 +183,11 @@ public sealed class AttributesStore : IDisposable
             if (!_byEntityTypeAttr.TryGetValue(key, out var bucket))
                 _byEntityTypeAttr[key] = bucket = new List<Entry>();
             bucket.Add(entry);
+
+            if (!_byEntityType.TryGetValue(a.EntityType, out var typeBucket))
+                _byEntityType[a.EntityType] = typeBucket = new List<Entry>();
+            typeBucket.Add(entry);
+
             _all.Add(entry);
         }
     }
