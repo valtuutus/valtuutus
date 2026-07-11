@@ -3,8 +3,6 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
-using Valtuutus.Data.Postgres.Utils;
-using Dapper;
 using Npgsql;
 using NpgsqlTypes;
 using System.Data;
@@ -44,19 +42,32 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string ExistsRelation { get; init; }
         public required string HasDirectRelation { get; init; }
         public required string HasAnyDirectRelation { get; init; }
+        public required string HasAnyOfDirectRelations { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
+        public required string GetRelationsWithSingleSubjectMultiRelationSnap { get; init; }
+        public required string GetRelationsWithMultiSubjectMultiRelationSnap { get; init; }
+        public required string GetRelationsWithEntityIdsMultiRelationSnap { get; init; }
         public required string GetRelationsJoined { get; init; }
+        public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
         public required string GetRelationsWithSingleSubjectScoped { get; init; }
         public required string GetRelationsWithMultiSubjectScoped { get; init; }
+        public required string GetRelationsWithSingleSubjectMultiRelationScoped { get; init; }
+        public required string GetRelationsWithMultiSubjectMultiRelationScoped { get; init; }
         public required string GetRelationsJoinedScoped { get; init; }
         public required string GetAttributesDictScoped { get; init; }
         public required string GetEntityIdsExcluding { get; init; }
         public required string GetSubjectIdsExcluding { get; init; }
+        public required string SelectRelationsByTupleFilter { get; init; }
+        public required string SelectRelationsWithEntityIds { get; init; }
+        public required string SelectAttributesByEntityAttributeFilter { get; init; }
+        public required string SelectAttributesByEntityAttributesFilter { get; init; }
+        public required string SelectAttributesWithEntityIdsByAttributeFilter { get; init; }
+        public required string SelectAttributesWithEntityIdsByEntityAttributesFilter { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> QueryCache = new();
@@ -66,39 +77,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     private readonly NpgsqlDataSource _hotPathDataSource;
     private static readonly ConcurrentDictionary<DataSourceCacheKey, NpgsqlDataSource> DataSourceCache = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
-
-    private static List<T> MaterializeList<T>(IEnumerable<T> rows)
-    {
-        if (rows is List<T> list)
-            return list;
-
-        if (rows is ICollection<T> collection)
-        {
-            var materialized = new List<T>(collection.Count);
-            foreach (var row in collection)
-                materialized.Add(row);
-            return materialized;
-        }
-
-        return rows.ToList();
-    }
-
-    private static Dictionary<(string AttributeName, string EntityId), AttributeTuple> MaterializeAttributeDictionary(
-        IEnumerable<AttributeTuple> rows)
-    {
-        if (rows is ICollection<AttributeTuple> collection)
-        {
-            var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>(collection.Count);
-            foreach (var row in collection)
-                dict[(row.Attribute, row.EntityId)] = row;
-            return dict;
-        }
-
-        var result = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
-        foreach (var row in rows)
-            result[(row.Attribute, row.EntityId)] = row;
-        return result;
-    }
 
     private static void AddStringParameter(NpgsqlCommand command, string name, string value, int size)
     {
@@ -117,6 +95,19 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             TypedValue = value
         });
     }
+
+    private static void AddNullableStringParameter(NpgsqlCommand command, string name, string? value, int size)
+    {
+        command.Parameters.Add(new NpgsqlParameter<string?>(name, NpgsqlDbType.Varchar)
+        {
+            Size = size,
+            TypedValue = string.IsNullOrWhiteSpace(value) ? null : value
+        });
+    }
+
+    private static RelationTuple ReadRelationTuple(NpgsqlDataReader reader) =>
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+            reader.GetString(3), reader.GetString(4), reader.GetString(5));
 
     private static JsonValue ParseJsonValue(string rawJson)
     {
@@ -178,12 +169,28 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
             HasAnyDirectRelation =
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
+            HasAnyOfDirectRelations =
+                $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY(@relations) AND subject_id = @subject_id AND subject_relation = ''",
             GetIndirectRelations =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
             GetRelationsWithSingleSubjectSnap =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id",
             GetRelationsWithMultiSubjectSnap =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
+            GetRelationsWithSingleSubjectMultiRelationSnap =
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = @subject_id",
+            GetRelationsWithMultiSubjectMultiRelationSnap =
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
+            GetRelationsWithEntityIdsMultiRelationSnap = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND relation = ANY(@relations)
+                  AND subject_type = @subject_type
+                  AND entity_id = ANY(@entity_ids)
+                  AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
+                """,
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -191,14 +198,29 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
-                  AND r_main.subject_id IN (
+                  AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
                       WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
                         AND subject_id = @subject_id
-                  )
+                  ))
+                """,
+            GetRelationsJoinedByEntityIds = $"""
+                SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
+                FROM {relationsTable} AS r_dep
+                WHERE r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                  AND r_dep.entity_type = @sub_entity_type
+                  AND r_dep.relation = @sub_relation
+                  AND r_dep.entity_id = ANY(ARRAY(
+                      SELECT subject_id FROM {relationsTable}
+                      WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                        AND entity_type = @entity_type
+                        AND entity_id = ANY(@entity_ids)
+                        AND relation = @relation
+                        AND subject_type = @sub_entity_type
+                  ))
                 """,
             HasTupleToUserSetRelation = $"""
                 SELECT EXISTS(
@@ -253,6 +275,38 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.subject_type = @subject_type
                   AND r_main.subject_id = ANY(@subject_ids)
                 """,
+            GetRelationsWithSingleSubjectMultiRelationScoped = $"""
+                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                FROM {relationsTable} r_main
+                INNER JOIN {relationsTable} r_scope
+                    ON r_scope.entity_type = r_main.entity_type
+                    AND r_scope.entity_id = r_main.entity_id
+                    AND r_scope.relation = @scope_relation
+                    AND r_scope.subject_type = @scope_subject_type
+                    AND r_scope.subject_id = @scope_subject_id
+                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                  AND r_main.entity_type = @entity_type
+                  AND r_main.relation = ANY(@relations)
+                  AND r_main.subject_type = @subject_type
+                  AND r_main.subject_id = @subject_id
+                """,
+            GetRelationsWithMultiSubjectMultiRelationScoped = $"""
+                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                FROM {relationsTable} r_main
+                INNER JOIN {relationsTable} r_scope
+                    ON r_scope.entity_type = r_main.entity_type
+                    AND r_scope.entity_id = r_main.entity_id
+                    AND r_scope.relation = @scope_relation
+                    AND r_scope.subject_type = @scope_subject_type
+                    AND r_scope.subject_id = @scope_subject_id
+                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
+                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                  AND r_main.entity_type = @entity_type
+                  AND r_main.relation = ANY(@relations)
+                  AND r_main.subject_type = @subject_type
+                  AND r_main.subject_id = ANY(@subject_ids)
+                """,
             GetRelationsJoinedScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
@@ -267,14 +321,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
-                  AND r_main.subject_id IN (
+                  AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
                       WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
                         AND subject_id = @subject_id
-                  )
+                  ))
                 """,
             GetAttributesDictScoped = $"""
                 SELECT a.entity_type, a.entity_id, a.attribute, a.value
@@ -308,6 +362,59 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND subject_type = @subject_type
                   AND subject_relation = ''
                   AND subject_id <> ALL(@exclude_ids)
+                """,
+            SelectRelationsByTupleFilter = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND entity_id = @entity_id
+                  AND relation = @relation
+                  AND (@subject_id IS NULL OR subject_id = @subject_id)
+                  AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
+                  AND (@subject_type IS NULL OR subject_type = @subject_type)
+                """,
+            SelectRelationsWithEntityIds = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {SnapTokenPredicate}
+                  AND (@subject_type IS NULL OR subject_type = @subject_type)
+                  AND (@entity_type IS NULL OR entity_type = @entity_type)
+                  AND (@relation IS NULL OR relation = @relation)
+                  AND entity_id = ANY(@entity_ids)
+                  AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
+                """,
+            SelectAttributesByEntityAttributeFilter = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND attribute = @attribute
+                  AND (@entity_id IS NULL OR entity_id = @entity_id)
+                """,
+            SelectAttributesByEntityAttributesFilter = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {SnapTokenPredicate}
+                  AND (@entity_id IS NULL OR entity_id = @entity_id)
+                  AND entity_type = @entity_type
+                  AND attribute = ANY(@attributes)
+                """,
+            SelectAttributesWithEntityIdsByAttributeFilter = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND attribute = @attribute
+                  AND entity_id = ANY(@entity_ids)
+                """,
+            SelectAttributesWithEntityIdsByEntityAttributesFilter = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND attribute = ANY(@attributes)
+                  AND entity_id = ANY(@entity_ids)
                 """
         };
     }
@@ -335,16 +442,21 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterRelations(tupleFilter)
-                .AddTemplate(_q.SelectRelations);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectRelationsByTupleFilter);
+            AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
+            AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
+            AddStringParameter(command, "relation", tupleFilter.Relation, 64);
+            AddNullableStringParameter(command, "subject_id", tupleFilter.SubjectId, 64);
+            AddNullableStringParameter(command, "subject_relation", tupleFilter.SubjectRelation, 64);
+            AddNullableStringParameter(command, "subject_type", tupleFilter.SubjectType, 256);
+            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
             {
-                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -445,22 +557,55 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyOfDirectRelations);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            AddStringParameter(command, "entity_id", entityId, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+            AddStringParameter(command, "subject_id", subjectId, 64);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+            var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterRelations(entityRelationFilter, subjectType, entityIds, subjectRelation)
-                .AddTemplate(_q.SelectRelations);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectRelationsWithEntityIds);
+            AddNullableStringParameter(command, "subject_type", subjectType, 256);
+            AddNullableStringParameter(command, "entity_type", entityRelationFilter.EntityType, 256);
+            AddNullableStringParameter(command, "relation", entityRelationFilter.Relation, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entityIds as string[] ?? entityIds.ToArray()
+            });
+            AddNullableStringParameter(command, "subject_relation", subjectRelation, 64);
+            AddFixedCharParameter(command, "snap_token", entityRelationFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
             {
-                pooled.AddRange(await connection.QueryAsync<RelationTuple>(new CommandDefinition(queryTemplate.RawSql,
-                        queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -582,6 +727,135 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(
+        string entityType, string[] relationNames, string[] subjectsIds, string subjectType,
+        SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            if (scope is { } s)
+            {
+                var sql = subjectsIds.Length == 1
+                    ? _q.GetRelationsWithSingleSubjectMultiRelationScoped
+                    : _q.GetRelationsWithMultiSubjectMultiRelationScoped;
+                await using var command = _hotPathDataSource.CreateCommand(sql);
+                AddStringParameter(command, "entity_type", entityType, 256);
+                command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+                AddStringParameter(command, "subject_type", subjectType, 256);
+                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+                AddStringParameter(command, "scope_relation", s.Relation, 64);
+                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                if (subjectsIds.Length == 1)
+                    AddStringParameter(command, "subject_id", subjectsIds[0], 64);
+                else
+                    command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
+
+                var scoped = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        scoped.Add(new RelationTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    return scoped;
+                }
+                catch { scoped.Dispose(); throw; }
+            }
+
+            if (subjectsIds.Length == 1)
+            {
+                await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithSingleSubjectMultiRelationSnap);
+                AddStringParameter(command, "entity_type", entityType, 256);
+                command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+                AddStringParameter(command, "subject_type", subjectType, 256);
+                AddStringParameter(command, "subject_id", subjectsIds[0], 64);
+                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+                var pooled = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        pooled.Add(new RelationTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    return pooled;
+                }
+                catch
+                {
+                    pooled.Dispose();
+                    throw;
+                }
+            }
+
+            {
+                await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithMultiSubjectMultiRelationSnap);
+                AddStringParameter(command, "entity_type", entityType, 256);
+                command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+                AddStringParameter(command, "subject_type", subjectType, 256);
+                command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
+                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+                var multi = PooledList<RelationTuple>.Rent();
+                try
+                {
+                    await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                    while (await reader.ReadAsync(cancellationToken))
+                        multi.Add(new RelationTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    return multi;
+                }
+                catch
+                {
+                    multi.Dispose();
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
+        string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
+        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithEntityIdsMultiRelationSnap);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+            AddStringParameter(command, "subject_type", subjectType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entityIds as string[] ?? entityIds.ToArray()
+            });
+            AddNullableStringParameter(command, "subject_relation", subjectRelation, 64);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadRelationTuple(reader));
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
@@ -605,6 +879,49 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
                 AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
             }
+
+            var pooled = PooledList<RelationTuple>.Rent();
+            try
+            {
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    pooled.Add(new RelationTuple(
+                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                }
+                return pooled;
+            }
+            catch
+            {
+                pooled.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
+        CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsJoinedByEntityIds);
+            AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
+            AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
+            AddStringParameter(command, "relation", mainFilter.Relation, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entityIds as string[] ?? entityIds.ToArray()
+            });
+            AddStringParameter(command, "sub_entity_type", subEntityType, 256);
+            AddStringParameter(command, "sub_relation", subRelation, 64);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -690,14 +1007,17 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter)
-                .AddTemplate(_q.SelectAttributes);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributeFilter);
+            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command, "attribute", filter.Attribute, 64);
+            AddNullableStringParameter(command, "entity_id", filter.EntityId, 64);
+            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
 
-            var rows = await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: cancellationToken));
-            return MaterializeList(rows);
+            var rows = new List<AttributeTuple>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                rows.Add(ReadAttributeTuple(reader));
+            return rows;
         }
         finally
         {
@@ -731,14 +1051,20 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 return dict;
             }
 
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter)
-                .AddTemplate(_q.SelectAttributes);
+            await using var unscopedCommand = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter);
+            AddNullableStringParameter(unscopedCommand, "entity_id", filter.EntityId, 64);
+            AddStringParameter(unscopedCommand, "entity_type", filter.EntityType, 256);
+            unscopedCommand.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
+            AddFixedCharParameter(unscopedCommand, "snap_token", filter.SnapToken.Value, 26);
 
-            var rows = await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: cancellationToken));
-            return MaterializeAttributeDictionary(rows);
+            var unscopedResult = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
+            await using var unscopedReader = await unscopedCommand.ExecuteReaderAsync(cancellationToken);
+            while (await unscopedReader.ReadAsync(cancellationToken))
+            {
+                var tuple = ReadAttributeTuple(unscopedReader);
+                unscopedResult[(tuple.Attribute, tuple.EntityId)] = tuple;
+            }
+            return unscopedResult;
         }
         finally
         {
@@ -752,16 +1078,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter)
-                .AddTemplate(_q.SelectAttributes);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter);
+            AddNullableStringParameter(command, "entity_id", filter.EntityId, 64);
+            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
+            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
 
             var pooled = PooledList<AttributeTuple>.Rent();
             try
             {
-                pooled.AddRange(await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                    queryTemplate.Parameters, cancellationToken: cancellationToken)));
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                    pooled.Add(ReadAttributeTuple(reader));
                 return pooled;
             }
             catch
@@ -782,14 +1110,20 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(_q.SelectAttributes);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByAttributeFilter);
+            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command, "attribute", filter.Attribute, 64);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entitiesIds as string[] ?? entitiesIds.ToArray()
+            });
+            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
 
-            var rows = await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: cancellationToken));
-            return MaterializeList(rows);
+            var rows = new List<AttributeTuple>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                rows.Add(ReadAttributeTuple(reader));
+            return rows;
         }
         finally
         {
@@ -804,14 +1138,23 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await Semaphore.WaitAsync(cancellationToken);
         try
         {
-            using var connection = _connectionFactory();
-            var queryTemplate = new SqlBuilder()
-                .FilterAttributes(filter, entitiesIds)
-                .AddTemplate(_q.SelectAttributes);
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByEntityAttributesFilter);
+            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
+            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+            {
+                TypedValue = entitiesIds as string[] ?? entitiesIds.ToArray()
+            });
+            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
 
-            var rows = await connection.QueryAsync<AttributeTuple>(new CommandDefinition(queryTemplate.RawSql,
-                queryTemplate.Parameters, cancellationToken: cancellationToken));
-            return MaterializeAttributeDictionary(rows);
+            var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var tuple = ReadAttributeTuple(reader);
+                dict[(tuple.Attribute, tuple.EntityId)] = tuple;
+            }
+            return dict;
         }
         finally
         {

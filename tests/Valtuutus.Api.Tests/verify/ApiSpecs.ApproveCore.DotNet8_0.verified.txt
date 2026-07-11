@@ -1,4 +1,5 @@
-﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v8.0", FrameworkDisplayName=".NET 8.0")]
 namespace Valtuutus.Core
 {
@@ -27,8 +28,8 @@ namespace Valtuutus.Core.Configuration
 {
     public static class ConfigureSchema
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream) { }
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
     }
 }
 namespace Valtuutus.Core.Data
@@ -99,10 +100,14 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoined(Valtuutus.Core.Data.EntityRelationFilter mainFilter, string subEntityType, string subRelation, string subjectType, string subjectId, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoinedByEntityIds(Valtuutus.Core.Data.EntityRelationFilter mainFilter, System.Collections.Generic.IEnumerable<string> entityIds, string subEntityType, string subRelation, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType, string[] relationNames, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
     }

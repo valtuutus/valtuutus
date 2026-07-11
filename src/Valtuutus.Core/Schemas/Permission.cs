@@ -173,6 +173,46 @@ internal record PermissionNode(PermissionNodeType Type)
             { ExpressionNode = new PermissionNodeOperation(PermissionOperation.Negate, [child]) };
     }
 
+    /// <summary>
+    /// Collapses nested same-operator Union/Intersect chains (e.g. the binary tree the DSL
+    /// parser produces for "a or b or c") into a single n-ary node, bottom-up. Each flattened
+    /// level splices an already-flattened same-operator child's children directly into the
+    /// parent, so arbitrarily deep chains collapse in one pass.
+    /// </summary>
+    internal static PermissionNode Flatten(PermissionNode node)
+    {
+        if (node.Type != PermissionNodeType.Expression) return node;
+        var expr = node.ExpressionNode!;
+
+        if (expr.Operation == PermissionOperation.Negate)
+        {
+            var flatChild = Flatten(expr.Children[0]);
+            return ReferenceEquals(flatChild, expr.Children[0]) ? node : Negate(flatChild);
+        }
+
+        var op = expr.Operation;
+        var flattenedChildren = new List<PermissionNode>(expr.Children.Count);
+        var changed = false;
+        foreach (var child in expr.Children)
+        {
+            var flatChild = Flatten(child);
+            if (flatChild.Type == PermissionNodeType.Expression && flatChild.ExpressionNode!.Operation == op)
+            {
+                flattenedChildren.AddRange(flatChild.ExpressionNode.Children);
+                changed = true;
+            }
+            else
+            {
+                flattenedChildren.Add(flatChild);
+                if (!ReferenceEquals(flatChild, child)) changed = true;
+            }
+        }
+
+        if (!changed) return node;
+        return new PermissionNode(PermissionNodeType.Expression)
+            { ExpressionNode = new PermissionNodeOperation(op, flattenedChildren) };
+    }
+
     public static PermissionNode Expression(string functionName, PermissionNodeExpArgument[] args)
     {
         return new PermissionNode(PermissionNodeType.Leaf)

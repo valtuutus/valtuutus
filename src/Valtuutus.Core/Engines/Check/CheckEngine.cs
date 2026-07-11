@@ -326,16 +326,152 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         return !inner;
     }
 
+    // Direct (non-indirect) leaf-permission children whose target entity type can never
+    // reach req.SubjectType (per schema-precomputed reachability) are guaranteed to evaluate
+    // to false. Filtering them out here — before a Task/CheckNode/pool-slot gets spent on
+    // them — is equivalent to what CheckInternal's guard would eventually do, just earlier.
+    private bool IsStaticallyDeadForSubject(CheckRequest req, PermissionNode child)
+    {
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.SubjectType!);
+    }
+
+    // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
+    // no sub-relation paths, can be resolved via HasAnyOfDirectRelations instead of its own
+    // per-child HasDirectRelation round trip. Leaves with sub-relation paths still need the
+    // GetIndirectRelations fan-out CheckRelation does, so they're excluded here.
+    private bool IsBatchableDirectRelation(CheckRequest req, PermissionNode child, out string relationName)
+    {
+        relationName = "";
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        if (schema.GetRelationType(req.EntityType, permLeaf.Permission) != RelationType.DirectRelation) return false;
+        if (schema.GetRelation(req.EntityType, permLeaf.Permission).HasSubRelationPaths) return false;
+        relationName = permLeaf.Permission;
+        return true;
+    }
+
+    // Resolves a single Union/Intersect child, short-circuiting through CheckMemo or a shared
+    // sibling-relation batch when possible instead of the normal CheckExpression/CheckLeaf
+    // dispatch chain.
+    private Task<bool> ResolveChild(CheckRequest req, CheckMemo memo, Task<HashSet<string>>? batchTask,
+        PermissionNode child, CheckNode? childNode, CancellationToken ct)
+    {
+        if (IsBatchableDirectRelation(req, child, out var relationName))
+        {
+            var key = new CheckMemoKey(req.EntityType, req.EntityId, relationName, req.SubjectType, req.SubjectId);
+            if (memo.TryGet(key, out var cached))
+            {
+                if (childNode is not null) childNode.Detail = "memoized";
+                return cached;
+            }
+            if (batchTask is not null)
+                return ResolveBatchedRelation(memo, key, batchTask, relationName, childNode);
+        }
+
+        return child.Type == PermissionNodeType.Expression
+            ? CheckExpression(req, child, memo, childNode, ct)
+            : CheckLeaf(req, child, memo, childNode, ct);
+    }
+
+    private static async Task<bool> ResolveBatchedRelation(CheckMemo memo, CheckMemoKey key,
+        Task<HashSet<string>> batchTask, string relationName, CheckNode? childNode)
+    {
+        var matched = await batchTask.ConfigureAwait(false);
+        var result = matched.Contains(relationName);
+        var ourTask = Task.FromResult(result);
+        // GetOrAdd, not a blind write: a concurrent sibling branch elsewhere in the tree can
+        // independently resolve the same relation while this batch is in flight — whichever
+        // wins the race is authoritative, and everyone awaits that same Task.
+        var finalTask = memo.GetOrAdd(key, ourTask);
+        if (childNode is not null)
+            childNode.Detail = ReferenceEquals(finalTask, ourTask)
+                ? (result ? "batched: direct tuple" : "batched: no matching tuple")
+                : "memoized";
+        return await finalTask.ConfigureAwait(false);
+    }
+
     private async Task<bool> CheckExpressionChild(CheckRequest req, List<PermissionNode> children, CheckMemo memo, CheckNode? node, bool isUnion, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
-        var count = children.Count;
+        var totalCount = children.Count;
+        if (totalCount == 0) return !isUnion;
+
+        var subjectTypeKnown = !string.IsNullOrEmpty(req.SubjectType);
+
+        if (subjectTypeKnown && !isUnion)
+        {
+            // Intersect: a single statically-unreachable child makes the whole node false —
+            // short-circuit without spawning a task for it or any sibling.
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i])) continue;
+                if (node is not null)
+                {
+                    for (var j = 0; j < totalCount; j++)
+                    {
+                        var (type, name) = GetNodeInfo(children[j]);
+                        node._children.Add(new CheckNode
+                        {
+                            Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId,
+                            SubjectType = req.SubjectType, SubjectId = req.SubjectId, Result = false,
+                            Detail = "subject type cannot reach permission"
+                        });
+                    }
+                }
+                return false;
+            }
+        }
+
+        // Union: drop statically-dead children before spawning anything for them — they can
+        // only contribute `false`. Pruned nodes are recorded in explain mode up front, so in
+        // that mode they appear before the live children below rather than in schema order.
+        var live = children;
+        if (subjectTypeKnown && isUnion)
+        {
+            List<PermissionNode>? filtered = null;
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i]))
+                {
+                    filtered?.Add(children[i]);
+                    continue;
+                }
+
+                if (filtered is null)
+                {
+                    filtered = new List<PermissionNode>(totalCount);
+                    for (var j = 0; j < i; j++) filtered.Add(children[j]);
+                }
+
+                if (node is not null)
+                {
+                    var (type, name) = GetNodeInfo(children[i]);
+                    node._children.Add(new CheckNode
+                    {
+                        Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId,
+                        SubjectType = req.SubjectType, SubjectId = req.SubjectId, Result = false,
+                        Detail = "subject type cannot reach permission"
+                    });
+                }
+            }
+            if (filtered is not null) live = filtered;
+        }
+
+        var count = live.Count;
         if (count == 0) return !isUnion;
 
         if (count == 1)
         {
-            var only = children[0];
+            var only = live[0];
             CheckNode? childNode = null;
             if (node is not null)
             {
@@ -353,13 +489,33 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             return result;
         }
 
+        // Batch sibling direct-relation leaves on req.EntityType into a single provider call
+        // instead of N separate HasDirectRelation round trips. "Check-then-batch": relations
+        // already resolved or in-flight in the memo are excluded from the batch and reused
+        // directly in the dispatch loop below, so this only fires for genuinely new work.
+        Task<HashSet<string>>? batchTask = null;
+        if (subjectTypeKnown)
+        {
+            List<string>? toFetch = null;
+            for (var i = 0; i < count; i++)
+            {
+                if (!IsBatchableDirectRelation(req, live[i], out var relationName)) continue;
+                var key = new CheckMemoKey(req.EntityType, req.EntityId, relationName, req.SubjectType, req.SubjectId);
+                if (memo.TryGet(key, out _)) continue;
+                (toFetch ??= new List<string>()).Add(relationName);
+            }
+            if (toFetch is { Count: >= 2 })
+                batchTask = reader.HasAnyOfDirectRelations(req.EntityType, req.EntityId, toFetch.ToArray(),
+                    req.SubjectId!, req.SnapToken ?? SnapToken.MinValue, ct);
+        }
+
         CheckNode[]? childNodes = null;
         if (node is not null)
         {
             childNodes = new CheckNode[count];
             for (var i = 0; i < count; i++)
             {
-                var (type, name) = GetNodeInfo(children[i]);
+                var (type, name) = GetNodeInfo(live[i]);
                 childNodes[i] = new CheckNode { Type = type, Name = name, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
             }
         }
@@ -374,11 +530,9 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         {
             for (var i = 0; i < count; i++)
             {
-                var child = children[i];
+                var child = live[i];
                 var childNode = childNodes?[i];
-                rawTasks[i] = child.Type == PermissionNodeType.Expression
-                    ? CheckExpression(req, child, memo, childNode, ct)
-                    : CheckLeaf(req, child, memo, childNode, ct);
+                rawTasks[i] = ResolveChild(req, memo, batchTask, child, childNode, ct);
                 tasks[i] = isUnion
                     ? rawTasks[i].ContinueWith(
                         static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
@@ -462,25 +616,37 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 SnapToken = req.SnapToken ?? SnapToken.MinValue
             }, ct);
 
-        using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+        // Attribute order/completeness from the reader isn't guaranteed across providers
+        // (a WHERE attribute IN (...) filter can return fewer rows than requested, in any
+        // order), so index-matching against attributeArguments isn't safe. Build a lookup
+        // once instead of rescanning `attributes` per function parameter.
+        var attributesByName = DictionaryPool<string, AttributeTuple>.Rent();
+        try
+        {
+            foreach (var a in attributes)
+                attributesByName[a.Attribute] = a;
 
-        using var fnArgs = paramToArg.ToLambdaArgs(
-            static (arg, state) =>
-            {
-                var (attrs, entityType, sch) = state;
-                foreach (var a in attrs)
+            using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
+
+            using var fnArgs = paramToArg.ToLambdaArgs(
+                static (arg, state) =>
                 {
-                    if (a.Attribute == arg.AttributeName)
-                        return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
-                }
-                return null;
-            },
-            (attributes, req.EntityType, schema),
-            req.Context);
+                    var (byName, entityType, sch) = state;
+                    return byName.TryGetValue(arg.AttributeName, out var a)
+                        ? a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type)
+                        : null;
+                },
+                (attributesByName, req.EntityType, schema),
+                req.Context);
 
-        var result = fn.Lambda(fnArgs.Dictionary);
-        if (node is not null) node.Detail = $"fn result={result}";
-        return result;
+            var result = fn.Lambda(fnArgs.Dictionary);
+            if (node is not null) node.Detail = $"fn result={result}";
+            return result;
+        }
+        finally
+        {
+            DictionaryPool<string, AttributeTuple>.Return(attributesByName);
+        }
     }
 
     private Task<bool> CheckLeafPermission(CheckRequest req, PermissionNodeLeafPermission leafPerm, CheckMemo memo, CheckNode? node, CancellationToken ct)
@@ -566,6 +732,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -624,6 +791,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
@@ -707,6 +875,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 EntityType = only.SubjectType,
                 EntityId = only.SubjectId,
                 Permission = only.SubjectRelation,
+                SubjectType = req.SubjectType,
                 SubjectId = req.SubjectId,
                 SnapToken = req.SnapToken,
                 Depth = req.Depth
@@ -745,6 +914,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     EntityType = relation.SubjectType,
                     EntityId = relation.SubjectId,
                     Permission = relation.SubjectRelation,
+                    SubjectType = req.SubjectType,
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth

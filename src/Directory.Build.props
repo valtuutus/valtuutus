@@ -4,13 +4,20 @@
     <PackageProjectUrl>https://github.com/valtuutus/valtuutus</PackageProjectUrl>
     <NoWarn>$(NoWarn);CS1591;xUnit1013</NoWarn>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Valtuutus provides a developer-focused, modern library for creating ReBAC without complexity.</Description>
-    <PackageTags>Valtuutus;rebac;zanzibar;authorization</PackageTags>
+    <Description>Valtuutus is a high-performance Relationship-Based Access Control (ReBAC) authorization library for .NET inspired by Google Zanzibar, for fine-grained permissions in ASP.NET Core and .NET applications.</Description>
+    <PackageTags>Valtuutus;rebac;zanzibar;authorization;access-control;permissions;dotnet;aspnetcore;fine-grained-authorization</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
   <PropertyGroup>
     <LangVersion>latest</LangVersion>
     <NetLibVersion>net8.0;net9.0;net10.0;net11.0</NetLibVersion>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Surfaces IL2xxx/IL3xxx trim/AOT analyzer warnings at build time (not just publish time),
+         so a regression on the guarantees from #218 shows up in normal CI, not only a manual
+         `dotnet publish -p:PublishAot=true`. Ignored by the SDK for projects with no qualifying
+         (net7.0+) TargetFramework, e.g. Valtuutus.Lang/Valtuutus.Lang.SourceGen (netstandard2.0). -->
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net11.0'">
     <Features>runtime-async=on</Features>

@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.Data.SqlClient;
 using Respawn;
 using Testcontainers.MsSql;
@@ -41,9 +40,18 @@ public class NonDefaultSchemaSqlServerFixture : IAsyncLifetime, IDatabaseFixture
         await CreateDatabase("Valtuutus");
         DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
         await using var dbConnection = (SqlConnection)DbFactory();
+        await dbConnection.OpenAsync();
         // CREATE SCHEMA must be the only statement in its batch, so run it separately.
-        await dbConnection.ExecuteAsync($"CREATE SCHEMA [{Schema}];");
-        await dbConnection.ExecuteAsync(DbMigration);
+        await using (var createSchemaCommand = dbConnection.CreateCommand())
+        {
+            createSchemaCommand.CommandText = $"CREATE SCHEMA [{Schema}];";
+            await createSchemaCommand.ExecuteNonQueryAsync();
+        }
+        await using (var migrationCommand = dbConnection.CreateCommand())
+        {
+            migrationCommand.CommandText = DbMigration;
+            await migrationCommand.ExecuteNonQueryAsync();
+        }
         await SetupRespawnerAsync();
     }
 

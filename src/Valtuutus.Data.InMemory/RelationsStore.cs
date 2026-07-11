@@ -16,6 +16,8 @@ public sealed class RelationsStore : IDisposable
 
     private readonly Dictionary<(string, string, string), List<Entry>> _byEntityRelation = new();
     private readonly Dictionary<(string, string, string), List<Entry>> _byRelationSubjectType = new();
+    private readonly Dictionary<string, List<Entry>> _byEntityType = new();
+    private readonly Dictionary<string, List<Entry>> _bySubjectType = new();
     private readonly List<Entry> _all = new();
     private readonly ReaderWriterLockSlim _rwls = new(LockRecursionPolicy.NoRecursion);
 
@@ -95,6 +97,25 @@ public sealed class RelationsStore : IDisposable
             }
         }
         return false;
+    }
+
+    public HashSet<string> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, SnapToken snapToken)
+    {
+        using var _ = Read();
+        var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+        foreach (var relationName in relationNames)
+        {
+            if (!_byEntityRelation.TryGetValue((entityType, entityId, relationName), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (e.Relation.SubjectId != subjectId) continue;
+                if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
+                result.Add(relationName);
+                break;
+            }
+        }
+        return result;
     }
 
     public bool HasTupleToUserSetRelation(
@@ -181,6 +202,65 @@ public sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsWithEntityIdsMultiRelation(string entityType,
+        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, SnapToken snapToken)
+    {
+        var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
+        using var _ = Read();
+
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var relationName in relationNames)
+        {
+            if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (!idSet.Contains(e.Relation.EntityId)) continue;
+                if (!string.IsNullOrEmpty(subjectRelation) && e.Relation.SubjectRelation != subjectRelation) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
+    public PooledList<RelationTuple> GetRelationsWithSubjectIdsMultiRelation(string entityType,
+        string[] relationNames, string[] subjectIds, string subjectType, SnapToken snapToken, EntityScope? scope = null)
+    {
+        using var _ = Read();
+
+        HashSet<string>? scopedEntityIds = null;
+        if (scope.HasValue)
+        {
+            var s = scope.Value;
+            if (_byRelationSubjectType.TryGetValue((entityType, s.Relation, s.SubjectType), out var scopeBucket))
+            {
+                scopedEntityIds = new HashSet<string>();
+                foreach (var e in scopeBucket)
+                {
+                    if (!IsVisible(e, snapToken)) continue;
+                    if (e.Relation.SubjectId != s.SubjectId) continue;
+                    scopedEntityIds.Add(e.Relation.EntityId);
+                }
+            }
+            if (scopedEntityIds is null || scopedEntityIds.Count == 0)
+                return PooledList<RelationTuple>.Rent();
+        }
+
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var relationName in relationNames)
+        {
+            if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapToken)) continue;
+                if (!subjectIds.Contains(e.Relation.SubjectId)) continue;
+                if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
     public PooledList<RelationTuple> GetRelationsJoined(
         EntityRelationFilter mainFilter, string subEntityType, string subRelation,
         string subjectType, string subjectId, EntityScope? scope = null)
@@ -236,13 +316,50 @@ public sealed class RelationsStore : IDisposable
         return result;
     }
 
+    public PooledList<RelationTuple> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation)
+    {
+        using var _ = Read();
+        var snap = mainFilter.SnapToken;
+
+        // Step 1: collect intermediate IDs — subEntityType-typed subjects reachable from entityIds.
+        if (!_byRelationSubjectType.TryGetValue((mainFilter.EntityType, mainFilter.Relation, subEntityType), out var depBucket))
+            return PooledList<RelationTuple>.Rent();
+
+        var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
+        HashSet<string>? intermediateIds = null;
+        foreach (var e in depBucket)
+        {
+            if (!IsVisible(e, snap)) continue;
+            if (!idSet.Contains(e.Relation.EntityId)) continue;
+            (intermediateIds ??= new HashSet<string>()).Add(e.Relation.SubjectId);
+        }
+
+        if (intermediateIds is null || intermediateIds.Count == 0)
+            return PooledList<RelationTuple>.Rent();
+
+        // Step 2: find dependent tuples for each intermediate entity.
+        var result = PooledList<RelationTuple>.Rent();
+        foreach (var id in intermediateIds)
+        {
+            if (!_byEntityRelation.TryGetValue((subEntityType, id, subRelation), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snap)) continue;
+                result.Add(e.Relation);
+            }
+        }
+        return result;
+    }
+
     public HashSet<string> GetAllEntityIds(string entityType, SnapToken snap)
     {
         using var _ = Read();
         var result = new HashSet<string>();
-        foreach (var e in _all)
+        if (!_byEntityType.TryGetValue(entityType, out var bucket))
+            return result;
+        foreach (var e in bucket)
         {
-            if (e.Relation.EntityType != entityType) continue;
             if (!IsVisible(e, snap)) continue;
             result.Add(e.Relation.EntityId);
         }
@@ -253,9 +370,10 @@ public sealed class RelationsStore : IDisposable
     {
         using var _ = Read();
         var result = new HashSet<string>();
-        foreach (var e in _all)
+        if (!_bySubjectType.TryGetValue(subjectType, out var bucket))
+            return result;
+        foreach (var e in bucket)
         {
-            if (e.Relation.SubjectType != subjectType) continue;
             if (!e.Relation.IsDirectSubject()) continue;
             if (!IsVisible(e, snap)) continue;
             result.Add(e.Relation.SubjectId);
@@ -279,6 +397,14 @@ public sealed class RelationsStore : IDisposable
             if (!_byRelationSubjectType.TryGetValue(sk, out var b2))
                 _byRelationSubjectType[sk] = b2 = new List<Entry>();
             b2.Add(entry);
+
+            if (!_byEntityType.TryGetValue(r.EntityType, out var b3))
+                _byEntityType[r.EntityType] = b3 = new List<Entry>();
+            b3.Add(entry);
+
+            if (!_bySubjectType.TryGetValue(r.SubjectType, out var b4))
+                _bySubjectType[r.SubjectType] = b4 = new List<Entry>();
+            b4.Add(entry);
 
             _all.Add(entry);
         }

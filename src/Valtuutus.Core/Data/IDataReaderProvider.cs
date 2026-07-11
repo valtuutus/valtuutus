@@ -35,6 +35,21 @@ public interface IDataReaderProvider
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Batch variant of <see cref="HasDirectRelation"/> across sibling relation NAMES (not entity
+    /// IDs): returns the subset of <paramref name="relationNames"/> that have a direct tuple from
+    /// (<paramref name="entityType"/>, <paramref name="entityId"/>) to <paramref name="subjectId"/>.
+    /// Collapses N individual HasDirectRelation queries — for sibling Union/Intersect children on
+    /// the same entity — into a single DB round-trip.
+    /// The <see cref="HashSet{T}"/> return type is deliberate: relation tuples carry no uniqueness
+    /// constraint, so a duplicate tuple for the same relation must not be able to inflate a
+    /// caller's Intersect-superset check. Deduplication is a property of the return type, not of
+    /// the SQL — implementations may add <c>DISTINCT</c> as a wire-efficiency nicety, but callers
+    /// must not rely on that; only the set semantics of the return value are guaranteed.
+    /// </summary>
+    Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Checks whether the subject has access through a tuple-to-user-set relation:
     /// returns true if there exists an intermediate entity X such that
     /// (entityType, entityId) has [tupleSetRelation] to X, and X has [computedRelation] to (subjectType, subjectId).
@@ -79,6 +94,35 @@ public interface IDataReaderProvider
     Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES
+    /// (not entity/subject IDs): widens the single <c>relation = @relation</c> filter to
+    /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
+    /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
+    /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
+    /// direct-relation Union/Intersect children in LookupEntityEngine into one DB round trip,
+    /// the LookupEntity analogue of <see cref="HasAnyOfDirectRelations"/> for CheckEngine.
+    /// When <paramref name="scope"/> is provided, only entities that also have the scope relation
+    /// to the scope subject are returned (same semantics as <see cref="GetRelationsWithSubjectsIds"/>).
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(
+        string entityType, string[] relationNames, string[] subjectsIds, string subjectType,
+        SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Batch variant of <see cref="GetRelationsWithEntityIds"/> across sibling relation NAMES (not
+    /// entity IDs): widens the single <c>relation = @relation</c> filter to
+    /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
+    /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
+    /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
+    /// direct-relation Union/Intersect children in LookupSubjectEngine into one DB round trip, the
+    /// LookupSubject analogue of <see cref="GetRelationsWithSubjectsIdsMultiRelation"/>. Unlike that
+    /// method, there is no <c>EntityScope</c> variant — LookupSubjectEngine has no scope concept.
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
+        string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
+        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
     /// dependent relation. When <paramref name="scope"/> is provided, only main entities
     /// that also have the scope relation to the scope subject are returned.
@@ -90,6 +134,21 @@ public interface IDataReaderProvider
         string subjectType,
         string subjectId,
         EntityScope? scope,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Inverse of <see cref="GetRelationsJoined"/>: instead of filtering the main side down to
+    /// rows whose subject is confirmed via a subquery against one fixed final subject, this
+    /// filters the dependent (second-hop) side down to rows whose entity is confirmed via a
+    /// subquery against a list of starting entity IDs. Used by LookupSubject, which starts from
+    /// N entity IDs and has no single final subject to filter to — it's looking for all subjects
+    /// reachable from those entities in one query instead of a dependent-query-then-recurse pair.
+    /// </summary>
+    Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter,
+        IEnumerable<string> entityIds,
+        string subEntityType,
+        string subRelation,
         CancellationToken cancellationToken);
 
     /// <summary>

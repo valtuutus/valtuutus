@@ -5,7 +5,9 @@ using Valtuutus.Lang;
 
 namespace Valtuutus.Core.Lang.SchemaReaders;
 
-internal class SchemaFunctionReader(SchemaReader schemaReader)
+internal class SchemaFunctionReader(
+    SchemaReader schemaReader,
+    IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>>? compiledFunctions = null)
 {
     public Function Parse(ValtuutusParser.FunctionDefinitionContext funcCtx)
     {
@@ -30,6 +32,12 @@ internal class SchemaFunctionReader(SchemaReader schemaReader)
             var paramName = param.GetText();
             var paramType = funcCtx.parameterList().type()[i].ToLangType();
             parameters.Add(new FunctionParameter() { ParamName = paramName, ParamOrder = i, ParamType = paramType });
+        }
+
+        if (compiledFunctions is not null && compiledFunctions.TryGetValue(functionName, out var compiledLambda))
+        {
+            schemaReader.AddSymbol(new FunctionSymbol(functionName, funcCtx.Start.Line, funcCtx.Start.Column, parameters));
+            return new Function(functionName, parameters, compiledLambda);
         }
 
         var tree = ParseFunctionExpression(

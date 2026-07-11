@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Valtuutus.Data.Db;
@@ -17,9 +16,6 @@ public static class DependencyInjectionExtensions
         IValtuutusDbOptions options)
     {
         services.AddScoped(factory);
-        DefaultTypeMap.MatchNamesWithUnderscores = true;
-        SqlMapper.AddTypeHandler(new JsonTypeHandler());
-        SqlMapper.AddTypeHandler(new UlidTypeHandler());
         services.AddSingleton(options);
         return services;
     }

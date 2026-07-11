@@ -1,31 +1,39 @@
 entity user {}
+entity service_account {}
 entity organization {
     relation admin @user;
     relation member @user;
+    relation bot @service_account;
+    permission access := admin or bot;
 }
 entity team {
     relation owner @user;
     relation member @user;
+    relation banned @user;
     relation org @organization;
+    attribute active bool;
     permission edit := org.admin or owner;
     permission delete := org.admin or owner;
     permission invite := org.admin and (owner or member);
     permission remove_user := owner;
+    permission constrained_sibling_batch := isActive(active) and owner and member;
+    permission negate_sibling_batch := owner and member and not(banned);
+}
+entity group {
+    relation member @user;
+    permission access := member;
 }
 entity project {
     relation org @organization;
     relation team @team;
     relation member @team#member @user;
+    relation reviewers @team#member @group#member;
     attribute public bool;
     attribute status int;
     permission view := org.admin or member or (public and org.member);
     permission edit := (org.admin or team.member) and isActiveStatus(status);
     permission delete := org.admin or team.owner;
     permission cache_test := (org.admin or team.owner) and (org.admin or member);
-}
-entity group {
-    relation member @user;
-    permission access := member;
 }
 entity folder {
     relation owner @group#member;
@@ -35,3 +43,4 @@ entity folder {
 }
 
 fn isActiveStatus(status int) => status == 1;
+fn isActive(active bool) => active == true;

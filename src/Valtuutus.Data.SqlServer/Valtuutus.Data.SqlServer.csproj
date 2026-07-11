@@ -9,13 +9,15 @@
     </PropertyGroup>
     
     <ItemGroup>
-      <PackageReference Include="FastMember" />
       <PackageReference Include="Microsoft.Data.SqlClient" />
     </ItemGroup>
 
     <ItemGroup>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Valtuutus.Api.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.SqlServer.Tests</_Parameter1>
         </AssemblyAttribute>
     </ItemGroup>
     

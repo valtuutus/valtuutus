@@ -143,6 +143,53 @@ public static class Seeder
             relations.Add(new RelationTuple("folder", folderId, "editor", "group", diamondGroupId, "member"));
         }
 
+        // Fan-out benchmark data. project.reviewers has two indirect variants (team#member,
+        // group#member) — neither is the "user" subject type directly, so both require a
+        // dependent query, giving LookupRelationCore's inner loop two genuinely concurrent
+        // branches to fire instead of one.
+        const string fanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
+        const string fanoutTeamId    = "dddddddd-dddd-dddd-dddd-dddddddddd02";
+        const string fanoutGroupId   = "dddddddd-dddd-dddd-dddd-dddddddddd03";
+
+        relations.Add(new RelationTuple("project", fanoutProjectId, "reviewers", "team", fanoutTeamId, "member"));
+        relations.Add(new RelationTuple("project", fanoutProjectId, "reviewers", "group", fanoutGroupId, "member"));
+        relations.Add(new RelationTuple("team", fanoutTeamId, "member", "user", benchmarkUserId));
+        relations.Add(new RelationTuple("group", fanoutGroupId, "member", "user", benchmarkUserId));
+
+        // Constrained/Negate sibling-batch benchmark data (#243). Extends #237's sibling-relation
+        // batching to LookupIntersectionConstrained (mixed attribute + relation children) and
+        // LookupIntersectionWithNegate (mixed positive + Negate children). benchmarkUser is both
+        // owner and member of this team — the batchable sibling pair — with "active" true and no
+        // "banned" tuple, so both new permissions resolve true for it.
+        const string siblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01";
+        relations.Add(new RelationTuple("team", siblingBatchTeamId, "owner", "user", benchmarkUserId));
+        relations.Add(new RelationTuple("team", siblingBatchTeamId, "member", "user", benchmarkUserId));
+        attributes.Add(new AttributeTuple("team", siblingBatchTeamId, "active", JsonValue.Create(true)));
+
+        // LookupSubject sibling-batch benchmark data (LookupSubject counterpart to
+        // LookupEntity_SiblingBatch). team.invite := org.admin and (owner or member) —
+        // LookupSubject needs one fixed team EntityId to query "who can invite here", so this
+        // adds a deterministic org/team (same convention as the diamond/fanout data above), sized
+        // similarly to the Faker-driven org/team scale (20 org admins, team owner + 15 members)
+        // so LookupSubjectEngine's Union(owner, member) sibling-batch path (added for #238) is
+        // exercised against a realistic fan-in instead of a token 1-2 row case.
+        const string lookupSubjectSiblingBatchOrgId  = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03";
+        const string lookupSubjectSiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
+
+        var lookupSubjectSiblingBatchAdmins = Enumerable.Range(0, 20)
+            .Select(i => $"eeeeeeee-1111-1111-1111-{i:D12}")
+            .ToArray();
+        var lookupSubjectSiblingBatchMembers = Enumerable.Range(0, 15)
+            .Select(i => $"eeeeeeee-2222-2222-2222-{i:D12}")
+            .ToArray();
+
+        relations.AddRange(lookupSubjectSiblingBatchAdmins.Select(u =>
+            new RelationTuple("organization", lookupSubjectSiblingBatchOrgId, "admin", "user", u)));
+        relations.Add(new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "org", "organization", lookupSubjectSiblingBatchOrgId));
+        relations.Add(new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "owner", "user", lookupSubjectSiblingBatchAdmins[0]));
+        relations.AddRange(lookupSubjectSiblingBatchMembers.Select(u =>
+            new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "member", "user", u)));
+
         return (relations, attributes);
     }
 }

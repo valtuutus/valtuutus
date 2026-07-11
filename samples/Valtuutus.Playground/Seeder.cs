@@ -1,4 +1,3 @@
-using Dapper;
 using Microsoft.Data.SqlClient;
 using Npgsql;
 using Valtuutus.Core.Data;
@@ -16,9 +15,13 @@ public static class Seeder {
         await using var connection = (NpgsqlConnection)factory();
         await connection.OpenAsync();
 
-        var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from public.relation_tuples");
+        await using var relationTuplesCommand = connection.CreateCommand();
+        relationTuplesCommand.CommandText = "select count(*) from public.relation_tuples";
+        var relationTuples = (long)(await relationTuplesCommand.ExecuteScalarAsync())!;
 
-        var attrs = await connection.ExecuteScalarAsync<int>("select count(*) from public.attributes");
+        await using var attrsCommand = connection.CreateCommand();
+        attrsCommand.CommandText = "select count(*) from public.attributes";
+        var attrs = (long)(await attrsCommand.ExecuteScalarAsync())!;
 
         if (relationTuples > 0 && attrs > 0)
         {
@@ -44,9 +47,13 @@ public static class Seeder {
         await using var connection = (SqlConnection)factory();
         await connection.OpenAsync();
 
-        var relationTuples = await connection.ExecuteScalarAsync<int>("select count(*) from dbo.relation_tuples");
+        await using var relationTuplesCommand = connection.CreateCommand();
+        relationTuplesCommand.CommandText = "select count(*) from dbo.relation_tuples";
+        var relationTuples = (int)(await relationTuplesCommand.ExecuteScalarAsync())!;
 
-        var attrs = await connection.ExecuteScalarAsync<int>("select count(*) from dbo.attributes");
+        await using var attrsCommand = connection.CreateCommand();
+        attrsCommand.CommandText = "select count(*) from dbo.attributes";
+        var attrs = (int)(await attrsCommand.ExecuteScalarAsync())!;
 
         if (relationTuples > 0 && attrs > 0)
         {

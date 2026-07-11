@@ -86,6 +86,21 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
+        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
@@ -130,6 +145,38 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType,
+        string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
+        CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsWithSubjectIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType,
+        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsWithEntityIdsMultiRelation(entityType, relationNames, subjectType, entityIds, subjectRelation, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<bool> HasTupleToUserSetRelation(
         string entityType, string entityId, string tupleSetRelation,
         string subEntityType, string computedRelation,
@@ -157,6 +204,22 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         try
         {
             return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
+        CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await Semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            return _relations.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation);
         }
         finally
         {

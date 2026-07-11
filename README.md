@@ -1,13 +1,24 @@
 # Valtuutus
 
-## A Google Zanzibar inspired authorization library in .NET
+Valtuutus is a high-performance **Relationship-Based Access Control (ReBAC)** authorization library for **.NET**, inspired by **Google Zanzibar**.
 
-The implementation is inspired on [permify](https://github.com/Permify/permify) and other ReBac open source projects.
+It enables **fine-grained authorization** for **ASP.NET Core** and .NET applications — modeling permissions and access control through relationships instead of relying only on roles.
+
+Features:
+- Google Zanzibar-inspired permission model
+- High-performance authorization engine
+- ASP.NET Core / .NET integration
+- Strongly typed schema support (source generator)
+- Multiple evaluation engines (Check, LookupEntity, LookupSubject, SubjectPermission, Explain)
+- Low-allocation execution
+- Native AOT compatible
+
+The implementation is inspired on [permify](https://github.com/Permify/permify) and other ReBAC open source projects.
 
 
 [![NuGet Version](https://img.shields.io/nuget/vpre/Valtuutus.Core?logo=nuget)](https://www.nuget.org/packages?q=Valtuutus&includeComputedFrameworks=true&prerel=true&sortby=relevance)
 
-<a href="https://bencher.dev/perf/valtuutus?key=true&reports_per_page=4&branches_per_page=8&testbeds_per_page=8&benchmarks_per_page=8&plots_per_page=8&reports_page=1&branches_page=1&testbeds_page=1&benchmarks_page=1&plots_page=1&report=f7c35e30-f513-402c-af44-56d8c876fff3&branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&lower_boundary=false&upper_boundary=false&clear=true&lower_value=false&upper_value=false&x_axis=date_time&end_time=1796083200000&utm_medium=share&utm_source=bencher&utm_content=img&utm_campaign=perf%2Bimg&utm_term=valtuutus"><img src="https://api.bencher.dev/v0/projects/valtuutus/perf/img?branches=9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks=22f44ad6-7979-4757-aa00-3286de603788%2Cd0d39808-ab7a-42f9-95fb-9193853640f3%2Cd3f76a50-964b-4526-9c33-89a38c18f474%2Cb0c2d4d2-2cae-4dfd-89d2-35b49a00b23e&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1714521600000&end_time=1797083200000" title="valtuutus" alt="valtuutus - Bencher" /></a>
+<a href="https://bencher.dev/perf/valtuutus?clear=true&key=true&reports_per_page=4&branches_per_page=8&testbeds_per_page=8&benchmarks_per_page=8&plots_per_page=8&reports_page=1&branches_page=1&testbeds_page=1&benchmarks_page=1&plots_page=1&tab=branches&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&branches_search=main&branches=1bffa1be-8399-4560-814d-30231501957f%2C9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=deb5918c-87b4-4bdb-9b46-25e563bdba14%2C5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&benchmarks_search=check_complex&benchmarks=86537617-e761-40b8-bd7a-8ad4b6559b47%2C177b6be7-d449-45cb-928a-04f792c80c43%2C8dc1fb40-6499-45e0-be05-23bbf539cd7e%2Cfa90791e-1700-480d-a973-a5df9b695431&start_time=1782864000000&utm_medium=share&utm_source=bencher&utm_content=img&utm_campaign=perf%2Bimg&utm_term=valtuutus"><img src="https://api.bencher.dev/v0/projects/valtuutus/perf/img?branches=1bffa1be-8399-4560-814d-30231501957f%2C9e4cbdcf-9fee-4cd3-ada1-62aefe433145&heads=deb5918c-87b4-4bdb-9b46-25e563bdba14%2C5bdd1841-0a0f-4532-84b7-87ef3d065302&testbeds=072da3db-e609-4676-99a6-5b9262df6086&specs=&benchmarks=86537617-e761-40b8-bd7a-8ad4b6559b47%2C177b6be7-d449-45cb-928a-04f792c80c43%2C8dc1fb40-6499-45e0-be05-23bbf539cd7e%2Cfa90791e-1700-480d-a973-a5df9b695431&measures=b549a9dd-6ff0-4525-b90a-c9e3af815580&start_time=1782864000000" title="valtuutus" alt="valtuutus - Bencher" /></a>
 
 ## Functionality
 The library is designed to be simple and easy to use. Each subset of functionality is divided in engines. The engines are:
@@ -87,7 +98,8 @@ do
 | [Schema Reference](Schema%20Reference.md) | Complete reference for every keyword, operator, and type in the DSL |
 | [Authorization Patterns](Authorization%20Patterns.md) | Ready-made patterns: RBAC, hierarchical RBAC, ABAC, multi-tenancy |
 | [Using the Engines](Using%20the%20Engines.md) | Code examples for Check, Explain, SubjectPermission, LookupSubject, LookupEntity, depth |
-| [Storing Data](Storing%20Data.md) | Writing, deleting, snap tokens, source generator |
+| [Storing Data](Storing%20Data.md) | Writing, deleting, snap tokens |
+| [Source Generator](Source%20Generator.md) | Build-time schema constants and compiled `fn` functions |
 | [Testing](Testing.md) | Unit-testing your authorization model with the InMemory provider |
 | [Caching](Caching.md) | Reducing database load with FusionCache |
 | [Telemetry](Telemetry.md) | OpenTelemetry activity sources, emitted spans, and what to monitor |

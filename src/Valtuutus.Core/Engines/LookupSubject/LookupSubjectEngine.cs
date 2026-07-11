@@ -41,6 +41,10 @@ public sealed class LookupSubjectEngine(
             DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
                 tags: CreateLookupSubjectSpanAttributes(req));
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
+
+        if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
+            return [];
+
         var internalReq = new LookupSubjectRequestInternal
         {
             Permission = req.Permission,
@@ -151,26 +155,134 @@ public sealed class LookupSubjectEngine(
         return new RelationOrAttributeTuples(syntheticTuples);
     }
 
+    // A leaf that is a direct, non-indirect permission reference and is statically unreachable
+    // for req.FinalSubjectType (per schema-precomputed reachability) can only ever contribute an
+    // empty result. FinalSubjectType — not SubjectType — is the right field to prune against:
+    // SubjectType gets reassigned per recursion hop, while FinalSubjectType stays fixed as the
+    // true ultimate subject for the whole Lookup call, same convention LookupRelation's existing
+    // (weaker, single-hop) guard already uses.
+    private bool IsStaticallyDeadForSubject(LookupSubjectRequestInternal req, PermissionNode child)
+    {
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        return !schema.CanSubjectTypeReach(req.EntityType, permLeaf.Permission, req.FinalSubjectType);
+    }
+
+    // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
+    // no sub-relation paths and reachable by req.FinalSubjectType, can be resolved via
+    // GetRelationsWithEntityIdsMultiRelation alongside its siblings instead of its own
+    // per-child LookupRelationLeaf round trip. Mirrors LookupEntityEngine.IsBatchableDirectRelation.
+    private bool IsBatchableDirectRelation(LookupSubjectRequestInternal req, PermissionNode child, out string relationName)
+    {
+        relationName = "";
+        if (child.Type != PermissionNodeType.Leaf) return false;
+        var leaf = child.LeafNode!;
+        if (leaf.Type != PermissionNodeLeafType.Permission) return false;
+        var permLeaf = leaf.PermissionNode!;
+        if (permLeaf.IsIndirect) return false;
+        if (schema.GetRelationType(req.EntityType, permLeaf.Permission) != RelationType.DirectRelation) return false;
+        var relation = schema.GetRelation(req.EntityType, permLeaf.Permission);
+        if (relation.HasSubRelationPaths) return false;
+        if (!relation.EntityTypes.Contains(req.FinalSubjectType)) return false;
+        relationName = permLeaf.Permission;
+        return true;
+    }
+
+    // Resolves a single Union/Intersect child, short-circuiting through a shared sibling-relation
+    // batch when possible instead of the normal LookupExpression/LookupLeaf dispatch chain.
+    private Task<RelationOrAttributeTuples> ResolveChild(LookupSubjectRequestInternal req,
+        Dictionary<string, RelationOrAttributeTuples>? batchResults, PermissionNode child, CancellationToken ct)
+    {
+        if (batchResults is not null
+            && IsBatchableDirectRelation(req, child, out var relationName)
+            && batchResults.Remove(relationName, out var cached))
+            return Task.FromResult(cached);
+
+        return child.Type == PermissionNodeType.Expression
+            ? LookupExpression(req, child.ExpressionNode!, ct)
+            : LookupLeaf(req, child.LeafNode!, ct);
+    }
+
     private async Task<RelationOrAttributeTuples> LookupExpressionChildren(LookupSubjectRequestInternal req,
         List<PermissionNode> children, CancellationToken ct, bool isUnion)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
 
+        var totalCount = children.Count;
+
+        if (!isUnion)
+        {
+            // Intersect: a single statically-unreachable child makes the whole node empty —
+            // short-circuit without spawning a task for it or any sibling.
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (IsStaticallyDeadForSubject(req, children[i]))
+                    return _emptyTuples;
+            }
+        }
+
+        // Union: drop statically-dead children before spawning anything for them — they can
+        // only contribute an empty result.
+        var live = children;
+        if (isUnion)
+        {
+            List<PermissionNode>? filtered = null;
+            for (var i = 0; i < totalCount; i++)
+            {
+                if (!IsStaticallyDeadForSubject(req, children[i]))
+                {
+                    filtered?.Add(children[i]);
+                    continue;
+                }
+
+                if (filtered is null)
+                {
+                    filtered = new List<PermissionNode>(totalCount);
+                    for (var j = 0; j < i; j++) filtered.Add(children[j]);
+                }
+            }
+            if (filtered is not null) live = filtered;
+            if (live.Count == 0) return _emptyTuples;
+        }
+
+        // Batch sibling direct-relation leaves on req.EntityType into a single provider call
+        // instead of N separate LookupRelationLeaf round trips.
+        Dictionary<string, RelationOrAttributeTuples>? batchResults = null;
+        List<string>? toFetch = null;
+        for (var i = 0; i < live.Count; i++)
+        {
+            if (!IsBatchableDirectRelation(req, live[i], out var relationName)) continue;
+            if (toFetch is not null && toFetch.Contains(relationName)) continue;
+            (toFetch ??= new List<string>()).Add(relationName);
+        }
+        if (toFetch is { Count: >= 2 })
+        {
+            using var rows = await reader.GetRelationsWithEntityIdsMultiRelation(
+                req.EntityType, toFetch.ToArray(), req.FinalSubjectType, req.EntitiesIds, req.SubjectRelation,
+                req.SnapToken!.Value, ct);
+
+            var buckets = new Dictionary<string, List<RelationTuple>>(toFetch.Count);
+            foreach (var name in toFetch) buckets[name] = new List<RelationTuple>();
+            foreach (var row in rows) buckets[row.Relation].Add(row);
+
+            batchResults = new Dictionary<string, RelationOrAttributeTuples>(toFetch.Count);
+            foreach (var (name, list) in buckets)
+                batchResults[name] = new RelationOrAttributeTuples(list);
+        }
+
         var pool = ArrayPool<Task<RelationOrAttributeTuples>>.Shared;
-        var buffer = pool.Rent(children.Count);
+        var buffer = pool.Rent(live.Count);
         try
         {
-            for (var i = 0; i < children.Count; i++)
-            {
-                var child = children[i];
-                buffer[i] = child.Type == PermissionNodeType.Expression
-                    ? LookupExpression(req, child.ExpressionNode!, ct)
-                    : LookupLeaf(req, child.LeafNode!, ct);
-            }
+            for (var i = 0; i < live.Count; i++)
+                buffer[i] = ResolveChild(req, batchResults, live[i], ct);
 
             return isUnion
-                ? await UnionEntities(buffer, children.Count)
-                : await IntersectEntities(buffer, children.Count);
+                ? await UnionEntities(buffer, live.Count)
+                : await IntersectEntities(buffer, live.Count);
         }
         finally
         {
@@ -265,7 +377,29 @@ public sealed class LookupSubjectEngine(
         {
             foreach (var entity in relation.Entities)
             {
-                var pooled0 = await reader.GetRelationsWithEntityIds(
+                // Fast path: when the computed relation is a terminal direct relation that
+                // directly accepts the final subject type, collapse the two-hop traversal
+                // (dependent lookup + recursive resolve) into a single joined DB query.
+                // Depth guard mirrors the depth check LookupInternal would apply to the
+                // dependent leg — if depth is already 0, the dependent returns empty.
+                if (entity.Relation is null
+                    && req.Depth > 0
+                    && schema.GetRelationType(entity.Type, computedUserSetRelation) == RelationType.DirectRelation)
+                {
+                    var computedRel = schema.GetRelation(entity.Type, computedUserSetRelation);
+                    if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(req.FinalSubjectType))
+                    {
+                        buffer[count++] = JoinedLookup(
+                            new EntityRelationFilter
+                            {
+                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                            },
+                            req.EntitiesIds, entity.Type, computedUserSetRelation, ct);
+                        continue;
+                    }
+                }
+
+                var dependentTask = reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
                         Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
@@ -276,12 +410,15 @@ public sealed class LookupSubjectEngine(
                     ct
                 );
 
-                buffer[count++] = LookupInternal(req with
-                {
-                    EntityType = entity.Type,
-                    Permission = computedUserSetRelation,
-                    EntitiesIds = ToSubjectIdList(pooled0.Transfer())
-                }, ct);
+                buffer[count++] = JoinEntities(
+                    static (subjectIds, state) => state.engine.LookupInternal(state.req with
+                    {
+                        EntityType = state.entity.Type,
+                        Permission = state.computedUserSetRelation,
+                        EntitiesIds = subjectIds
+                    }, state.ct),
+                    (engine: this, req, entity, computedUserSetRelation, ct),
+                    dependentTask);
             }
 
             return await UnionEntities(buffer, count);
@@ -345,7 +482,20 @@ public sealed class LookupSubjectEngine(
 
                 if (subRelation is not null)
                 {
-                    var pooled1 = await reader.GetRelationsWithEntityIds(
+                    // Fast path: terminal sub-relation that directly accepts the final subject
+                    // type — collapse two GetRelationsWithEntityIds calls into one joined query.
+                    if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
+                    {
+                        buffer[count++] = JoinedLookup(
+                            new EntityRelationFilter
+                            {
+                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                            },
+                            req.EntitiesIds, relationEntity.Type, relationEntity.Relation!, ct);
+                        continue;
+                    }
+
+                    var dependentTask = reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
                             Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
@@ -356,13 +506,16 @@ public sealed class LookupSubjectEngine(
                         ct
                     );
 
-                    buffer[count++] = LookupRelation(
-                        req with
-                        {
-                            EntityType = relationEntity.Type,
-                            Permission = relationEntity.Relation!,
-                            EntitiesIds = ToSubjectIdList(pooled1.Transfer())
-                        }, subRelation, ct);
+                    buffer[count++] = JoinEntities(
+                        static (subjectIds, state) => state.engine.LookupRelation(
+                            state.req with
+                            {
+                                EntityType = state.relationEntity.Type,
+                                Permission = state.relationEntity.Relation!,
+                                EntitiesIds = subjectIds
+                            }, state.subRelation, state.ct),
+                        (engine: this, req, relationEntity, subRelation, ct),
+                        dependentTask);
                 }
             }
 
@@ -439,6 +592,34 @@ public sealed class LookupSubjectEngine(
 
         if (hashSet is null) return _emptyTuples;
         return new RelationOrAttributeTuples([.. hashSet]);
+    }
+
+    private async Task<RelationOrAttributeTuples> JoinedLookup(
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
+        CancellationToken ct)
+    {
+        var relations = await reader.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation, ct);
+        return new RelationOrAttributeTuples(relations.Transfer());
+    }
+
+    // Defers the dependent-relation query so sibling branches in the caller's loop can fire
+    // their own dependent queries concurrently instead of waiting for this one to complete
+    // before even starting. Mirrors LookupEntityEngine's JoinEntities, minus the join-back
+    // filter — that engine needs it because it queries "backward" toward one known final
+    // subject, whereas this recursion just narrows EntitiesIds to whatever the dependent query
+    // found, so there's nothing to filter after the fact.
+    private static async Task<RelationOrAttributeTuples> JoinEntities<TState>(
+        Func<string[], TState, Task<RelationOrAttributeTuples>> main,
+        TState state,
+        Task<PooledList<RelationTuple>> dependent)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+
+        var dependentResult = await dependent;
+        if (dependentResult.Count == 0)
+            return _emptyTuples;
+
+        return await main(ToSubjectIdList(dependentResult.Transfer()), state);
     }
 
     private static string[] ToSubjectIdList(List<RelationTuple> tuples)

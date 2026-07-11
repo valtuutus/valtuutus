@@ -1,4 +1,5 @@
-using Dapper;
+using System.Text.Json.Nodes;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
@@ -21,18 +22,38 @@ public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()
     {
-        using var db = ((IWithDbConnectionFactory)Fixture).DbFactory();
-        var relations = (await db.QueryAsync<RelationTuple>("""
-            SELECT  entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id,
-                    subject_relation from [authz].[relation_tuples] where deleted_tx_id is null
-            """)).ToArray();
-        var attributes =
-            (await db.QueryAsync<AttributeTuple>("select entity_type, entity_id, attribute,value from [authz].[attributes] where deleted_tx_id is null")).ToArray();
+        await using var db = (SqlConnection)((IWithDbConnectionFactory)Fixture).DbFactory();
+        await db.OpenAsync();
 
-        return (relations, attributes);
+        var relations = new List<RelationTuple>();
+        await using (var command = db.CreateCommand())
+        {
+            command.CommandText = """
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM [authz].[relation_tuples] WHERE deleted_tx_id IS NULL
+                """;
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                relations.Add(new RelationTuple(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+            }
+        }
+
+        var attributes = new List<AttributeTuple>();
+        await using (var command = db.CreateCommand())
+        {
+            command.CommandText = "SELECT entity_type, entity_id, attribute, value FROM [authz].[attributes] WHERE deleted_tx_id IS NULL";
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                attributes.Add(new AttributeTuple(
+                    reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                    JsonNode.Parse(reader.GetString(3))!.AsValue()));
+            }
+        }
+
+        return (relations.ToArray(), attributes.ToArray());
     }
 }

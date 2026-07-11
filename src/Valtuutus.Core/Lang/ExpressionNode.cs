@@ -1,4 +1,5 @@
 ﻿using System.Linq.Expressions;
+using System.Reflection;
 using Valtuutus.Lang;
 
 namespace Valtuutus.Core.Lang;
@@ -92,6 +93,19 @@ internal record struct LiteralValueUnion : IComparable<LiteralValueUnion>
     public static bool operator <=(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) <= 0;
 
     public static bool operator >=(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) >= 0;
+
+    // Named wrappers around the operators above, so ExpressionNode.cs's comparison nodes can pass an
+    // explicit MethodInfo into Expression.Equal/NotEqual/LessThan/etc. instead of relying on those
+    // factories' by-name operator-method search (GetUserDefinedBinaryOperator), which throws under
+    // NativeAOT once trimming removes an operator that's otherwise only reachable via reflection.
+    // Calling the operators here directly (a == b, a < b, ...) also keeps them reachable for the
+    // trimmer, since this is now a normal static call site rather than a reflection-only one.
+    internal static bool AreEqual(LiteralValueUnion left, LiteralValueUnion right) => left == right;
+    internal static bool AreNotEqual(LiteralValueUnion left, LiteralValueUnion right) => left != right;
+    internal static bool IsLessThan(LiteralValueUnion left, LiteralValueUnion right) => left < right;
+    internal static bool IsGreaterThan(LiteralValueUnion left, LiteralValueUnion right) => left > right;
+    internal static bool IsLessThanOrEqual(LiteralValueUnion left, LiteralValueUnion right) => left <= right;
+    internal static bool IsGreaterThanOrEqual(LiteralValueUnion left, LiteralValueUnion right) => left >= right;
 }
 
 internal abstract record LeafFunctionNode : FunctionNode<LiteralValueUnion>
@@ -156,12 +170,21 @@ internal record BooleanLiteralFnNode : LeafFunctionNode
 
 internal record ParameterIdFnNode : LeafFunctionNode
 {
+    // IDictionary<string, object?>.get_Item, resolved once via a typeof() on the exact interface
+    // (a linker-recognized pattern that doesn't require DynamicallyAccessedMembers/produce a
+    // warning) rather than Expression.Property(instance, "Item", args), whose *overload* is
+    // unconditionally [RequiresUnreferencedCode] and throws under trimming/NativeAOT. Calling the
+    // indexer's own get_Item directly (not a wrapper method) keeps the compiled/interpreted tree
+    // identical in shape to the original code -- no extra call frame on this hot path.
+    private static readonly MethodInfo DictionaryIndexerGetMethod =
+        typeof(IDictionary<string, object?>).GetProperty("Item")!.GetGetMethod()!;
+
     internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var key = Expression.Constant(ParameterName);
 
-        var indexExpression = Expression.Property(args, "Item", key);
+        var indexExpression = Expression.Call(args, DictionaryIndexerGetMethod, key);
 
         var newLiteralValueUnionExpression = ParameterType switch
         {
@@ -227,12 +250,15 @@ internal abstract record BinaryFunctionNode<TOut, TIn> : FunctionNode<TOut>
 
 internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsLessThanOrEqual).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.LessThanOrEqual(leftExpression, rightExpression);
+        var comparison = Expression.LessThanOrEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
@@ -242,12 +268,15 @@ internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralVa
 
 internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsLessThan).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.LessThan(leftExpression, rightExpression);
+        var comparison = Expression.LessThan(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
@@ -257,12 +286,15 @@ internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnio
 
 internal record GreaterOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsGreaterThanOrEqual).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.GreaterThanOrEqual(leftExpression, rightExpression);
+        var comparison = Expression.GreaterThanOrEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
@@ -272,12 +304,15 @@ internal record GreaterOrEqualExpressionFnNode : BinaryFunctionNode<bool, Litera
 
 internal record GreaterExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsGreaterThan).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.GreaterThan(leftExpression, rightExpression);
+        var comparison = Expression.GreaterThan(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
@@ -287,12 +322,15 @@ internal record GreaterExpressionFnNode : BinaryFunctionNode<bool, LiteralValueU
 
 internal record NotEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.AreNotEqual).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.NotEqual(leftExpression, rightExpression);
+        var comparison = Expression.NotEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }
@@ -302,12 +340,15 @@ internal record NotEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValue
 
 internal record EqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnion>
 {
+    private static readonly MethodInfo Method =
+        ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.AreEqual).Method;
+
     internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
-        var comparison = Expression.Equal(leftExpression, rightExpression);
+        var comparison = Expression.Equal(leftExpression, rightExpression, liftToNull: false, method: Method);
 
         return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
     }

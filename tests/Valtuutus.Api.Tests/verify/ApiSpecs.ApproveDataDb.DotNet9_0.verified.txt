@@ -1,11 +1,8 @@
-﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v9.0", FrameworkDisplayName=".NET 9.0")]
 namespace Valtuutus.Data.Db
 {
-    public static class CommonSqlBuilderExtensions
-    {
-        public static Dapper.SqlBuilder ApplySnapTokenFilter(Dapper.SqlBuilder builder, Valtuutus.Core.Data.SnapToken snapToken) { }
-    }
     public delegate System.Data.IDbConnection DbConnectionFactory();
     public readonly struct DbQueryCacheKey : System.IEquatable<Valtuutus.Data.Db.DbQueryCacheKey>
     {
@@ -15,6 +12,22 @@ namespace Valtuutus.Data.Db
         public string Schema { get; init; }
         public string TransactionsTable { get; init; }
         public static Valtuutus.Data.Db.DbQueryCacheKey From(Valtuutus.Data.Db.IValtuutusDbOptions options) { }
+    }
+    [System.Text.Json.Serialization.JsonSerializable(typeof(Valtuutus.Core.Data.DeleteAttributesFilter[]))]
+    [System.Text.Json.Serialization.JsonSerializable(typeof(Valtuutus.Core.Data.DeleteRelationsFilter[]))]
+    [System.Text.Json.Serialization.JsonSourceGenerationOptions(PropertyNamingPolicy=System.Text.Json.Serialization.JsonKnownNamingPolicy.SnakeCaseLower)]
+    public class DeleteFilterJsonContext : System.Text.Json.Serialization.JsonSerializerContext, System.Text.Json.Serialization.Metadata.IJsonTypeInfoResolver
+    {
+        public DeleteFilterJsonContext() { }
+        public DeleteFilterJsonContext(System.Text.Json.JsonSerializerOptions options) { }
+        public System.Text.Json.Serialization.Metadata.JsonTypeInfo<Valtuutus.Core.Data.DeleteAttributesFilter> DeleteAttributesFilter { get; }
+        public System.Text.Json.Serialization.Metadata.JsonTypeInfo<Valtuutus.Core.Data.DeleteAttributesFilter[]> DeleteAttributesFilterArray { get; }
+        public System.Text.Json.Serialization.Metadata.JsonTypeInfo<Valtuutus.Core.Data.DeleteRelationsFilter> DeleteRelationsFilter { get; }
+        public System.Text.Json.Serialization.Metadata.JsonTypeInfo<Valtuutus.Core.Data.DeleteRelationsFilter[]> DeleteRelationsFilterArray { get; }
+        protected override System.Text.Json.JsonSerializerOptions? GeneratedSerializerOptions { get; }
+        public System.Text.Json.Serialization.Metadata.JsonTypeInfo<string> String { get; }
+        public static Valtuutus.Data.Db.DeleteFilterJsonContext Default { get; }
+        public override System.Text.Json.Serialization.Metadata.JsonTypeInfo? GetTypeInfo(System.Type type) { }
     }
     public static class DependencyInjectionExtensions
     {
@@ -33,17 +46,5 @@ namespace Valtuutus.Data.Db
         string RelationsTableName { get; }
         string Schema { get; }
         string TransactionsTableName { get; }
-    }
-    public class JsonTypeHandler : Dapper.SqlMapper.TypeHandler<System.Text.Json.Nodes.JsonValue>
-    {
-        public JsonTypeHandler() { }
-        public override System.Text.Json.Nodes.JsonValue? Parse(object value) { }
-        public override void SetValue(System.Data.IDbDataParameter parameter, System.Text.Json.Nodes.JsonValue? value) { }
-    }
-    public class UlidTypeHandler : Dapper.SqlMapper.TypeHandler<System.Ulid>
-    {
-        public UlidTypeHandler() { }
-        public override System.Ulid Parse(object value) { }
-        public override void SetValue(System.Data.IDbDataParameter parameter, System.Ulid value) { }
     }
 }

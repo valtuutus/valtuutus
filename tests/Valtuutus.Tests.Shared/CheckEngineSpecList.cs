@@ -115,10 +115,22 @@ public static class CheckEngineSpecList
             new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
+        {
+            // Sibling-relation batching (member+admin are both direct relations on project):
+            // a duplicate tuple for one relation shouldn't change the union result.
+            [
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "member", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
+            new CheckRequest("project", "1", "view",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            true
+        },
 
-        
+
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> IntersectionRelationsData => new()
     {
         {
@@ -163,10 +175,36 @@ public static class CheckEngineSpecList
             new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
             false
         },
+        {
+            // Sibling-relation batching correctness: relation_tuples has no uniqueness
+            // constraint, so a duplicated "owner" tuple must not be able to stand in for the
+            // still-missing "whatever" relation and produce a false-positive Intersect match.
+            [
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            false
+        },
+        {
+            // Same duplicate-tuple shape, but with both relations genuinely satisfied — the
+            // duplicate shouldn't cause the batch to miss the true case either.
+            [
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+                new("project", "1", "whatever", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)
+            ],
+            [
+            ],
+            new CheckRequest("project", "1", "delete",  TestsConsts.Users.Identifier, TestsConsts.Users.Alice),
+            true
+        },
 
-        
+
     };
-    
+
     public static TheoryData<RelationTuple[], AttributeTuple[], CheckRequest, bool> UnionRelationsAttributesData => new()
     {
 

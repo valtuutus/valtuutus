@@ -101,5 +101,6 @@ public class DocumentController(ICheckEngine checkEngine) : ControllerBase
 - [Modeling Authorization](Modeling%20Authorization.md) — learn how to express complex RBAC, ABAC, and relationship-based policies in the schema DSL
 - [Authorization Patterns](Authorization%20Patterns.md) — ready-made patterns for common use cases
 - [Using the Engines](Using%20the%20Engines.md) — full reference for Check, SubjectPermission, LookupSubject, and LookupEntity
-- [Storing Data](Storing%20Data.md) — writing, deleting, snap tokens, and the source generator
+- [Storing Data](Storing%20Data.md) — writing, deleting, snap tokens
+- [Source Generator](Source%20Generator.md) — build-time schema constants and compiled `fn` functions
 - [Caching](Caching.md) — reduce database load with FusionCache

@@ -48,7 +48,7 @@ internal class EntitySchemaBuilder(string name, SchemaBuilder schemaBuilder)
 
     public EntitySchemaBuilder WithPermission(string permissionName, PermissionNode permissionTree)
     {
-        _permissions.Add(permissionName, new Permission(permissionName, permissionTree));
+        _permissions.Add(permissionName, new Permission(permissionName, PermissionNode.Flatten(permissionTree)));
         return this;
     }
 
