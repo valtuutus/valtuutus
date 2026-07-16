@@ -79,4 +79,25 @@ public sealed class RelationsStoreSpecs
 
         Assert.Equal(new HashSet<string> { "u1", "u2" }, result);
     }
+
+    [Fact]
+    public void GetRelationsWithSubjectIds_only_returns_requested_subject_ids()
+    {
+        using var store = new RelationsStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[]
+        {
+            new RelationTuple("group", "g1", "member", "user", "u1"),
+            new RelationTuple("group", "g1", "member", "user", "u2"),
+            new RelationTuple("group", "g2", "member", "user", "u3"),
+        });
+
+        using var result = store.GetRelationsWithSubjectIds(
+            new EntityRelationFilter { EntityType = "group", Relation = "member", SnapToken = SnapAt(tx) },
+            new[] { "u1", "u3" }, "user");
+
+        Assert.Equal(
+            new HashSet<(string, string)> { ("g1", "u1"), ("g2", "u3") },
+            result.Select(r => (r.EntityId, r.SubjectId)).ToHashSet());
+    }
 }

@@ -50,6 +50,20 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         TvpHelper.AsTvpParameter(values, _q.TvpListIdsTypeName).AddParameter(command, name);
     }
 
+    // Attribute-name lists come from the schema, so counts are small and bounded: inlined
+    // @Attr0..@AttrN parameters keep plan-cache entries bounded by the schema.
+    private static readonly ConcurrentDictionary<(string Prefix, int Count), string> AttributeInQueryCache = new();
+
+    private static string GetAttributeInQuery(string prefix, int count) =>
+        AttributeInQueryCache.GetOrAdd((prefix, count), static key =>
+            $"{key.Prefix}({string.Join(", ", Enumerable.Range(0, key.Count).Select(i => $"@Attr{i}"))})");
+
+    private static void AddAttributeInParameters(SqlCommand command, string[] attributes)
+    {
+        for (var i = 0; i < attributes.Length; i++)
+            AddStringParameter(command, $"@Attr{i}", attributes[i], 64);
+    }
+
     private static RelationTuple ReadRelationTuple(SqlDataReader reader) =>
         new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
             reader.GetString(3), reader.GetString(4), reader.GetString(5));
@@ -110,21 +124,39 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                       AND attribute = @Attribute AND value = 'true'
                 ) THEN 1 ELSE 0 END
                 """,
+            // Split instead of "(@EntityId IS NULL OR entity_id = @EntityId)": the catch-all
+            // predicate blocks an index seek on entity_id.
             SelectAttributesByEntityAttributeFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
                   AND attribute = @Attribute
-                  AND (@EntityId IS NULL OR entity_id = @EntityId)
                 """,
-            SelectAttributesByEntityAttributesFilter = $"""
+            SelectAttributesByEntityAttributeFilterWithEntityId = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
                 WHERE {snapPredicate}
-                  AND (@EntityId IS NULL OR entity_id = @EntityId)
                   AND entity_type = @EntityType
-                  AND attribute IN (SELECT id FROM @Attributes)
+                  AND attribute = @Attribute
+                  AND entity_id = @EntityId
+                """,
+            // Prefix queries: completed by GetAttributeInQuery, which appends an inlined
+            // (@Attr0..@AttrN) list.
+            SelectAttributesByEntityAttributesPrefix = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType
+                  AND attribute IN
+                """,
+            SelectAttributesByEntityAttributesWithEntityIdPrefix = $"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {attributesTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType
+                  AND entity_id = @EntityId
+                  AND attribute IN
                 """,
             SelectAttributesWithEntityIdsByAttributeFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
@@ -134,13 +166,13 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND attribute = @Attribute
                   AND entity_id IN (SELECT id FROM @EntityIds)
                 """,
-            SelectAttributesWithEntityIdsByEntityAttributesFilter = $"""
+            SelectAttributesWithEntityIdsByEntityAttributesPrefix = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
-                  AND attribute IN (SELECT id FROM @Attributes)
                   AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND attribute IN
                 """,
             SelectRelationsByTupleFilter = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
@@ -369,7 +401,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                         AND subject_id = @SubjectId
                   )
                 """,
-            GetAttributesDictScoped = $"""
+            GetAttributesDictScopedPrefix = $"""
                 SELECT a.entity_type, a.entity_id, a.attribute, a.value
                 FROM {attributesTable} a
                 INNER JOIN {relationsTable} r_scope
@@ -381,7 +413,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
                 WHERE a.created_tx_id <= @SnapToken AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > @SnapToken)
                   AND a.entity_type = @EntityType
-                  AND a.attribute IN (SELECT id FROM @Attributes)
+                  AND a.attribute IN
                 """,
             GetEntityIdsExcluding = $"""
                 SELECT DISTINCT entity_id
@@ -413,9 +445,11 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
-        public required string SelectAttributesByEntityAttributesFilter { get; init; }
+        public required string SelectAttributesByEntityAttributeFilterWithEntityId { get; init; }
+        public required string SelectAttributesByEntityAttributesPrefix { get; init; }
+        public required string SelectAttributesByEntityAttributesWithEntityIdPrefix { get; init; }
         public required string SelectAttributesWithEntityIdsByAttributeFilter { get; init; }
-        public required string SelectAttributesWithEntityIdsByEntityAttributesFilter { get; init; }
+        public required string SelectAttributesWithEntityIdsByEntityAttributesPrefix { get; init; }
         public required string SelectRelationsByTupleFilter { get; init; }
         public required string SelectRelationsByTupleFilterNoSubject { get; init; }
         public required string HasDirectRelation { get; init; }
@@ -436,7 +470,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetRelationsWithSingleSubjectMultiRelationScoped { get; init; }
         public required string GetRelationsWithMultiSubjectMultiRelationScoped { get; init; }
         public required string GetRelationsJoinedScoped { get; init; }
-        public required string GetAttributesDictScoped { get; init; }
+        public required string GetAttributesDictScopedPrefix { get; init; }
         public required string GetEntityIdsExcluding { get; init; }
         public required string GetSubjectIdsExcluding { get; init; }
     }
@@ -501,10 +535,13 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var connection = (SqlConnection)_connectionFactory();
             await connection.OpenAsync(cancellationToken);
 
-            await using var command = CreateCommand(connection, _q.SelectAttributesByEntityAttributeFilter);
+            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
+            await using var command = CreateCommand(connection,
+                hasEntityId ? _q.SelectAttributesByEntityAttributeFilterWithEntityId : _q.SelectAttributesByEntityAttributeFilter);
             AddStringParameter(command, "@EntityType", filter.EntityType, 256);
             AddStringParameter(command, "@Attribute", filter.Attribute, 64);
-            AddNullableStringParameter(command, "@EntityId", filter.EntityId, 64);
+            if (hasEntityId)
+                AddStringParameter(command, "@EntityId", filter.EntityId!, 64);
             AddFixedCharParameter(command, "@SnapToken", filter.SnapToken.Value, 26);
 
             var rows = new List<AttributeTuple>();
@@ -530,9 +567,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             if (scope is { } s)
             {
-                await using var command = CreateCommand(connection, _q.GetAttributesDictScoped);
+                await using var command = CreateCommand(connection,
+                    GetAttributeInQuery(_q.GetAttributesDictScopedPrefix, filter.Attributes.Length));
                 AddStringParameter(command, "@EntityType", filter.EntityType, 256);
-                AddTvpParameter(command, "@Attributes", filter.Attributes);
+                AddAttributeInParameters(command, filter.Attributes);
                 AddFixedCharParameter(command, "@SnapToken", filter.SnapToken.Value, 26);
                 AddStringParameter(command, "@ScopeRelation", s.Relation, 64);
                 AddStringParameter(command, "@ScopeSubjectType", s.SubjectType, 256);
@@ -548,10 +586,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 return dict;
             }
 
-            await using var unscopedCommand = CreateCommand(connection, _q.SelectAttributesByEntityAttributesFilter);
-            AddNullableStringParameter(unscopedCommand, "@EntityId", filter.EntityId, 64);
+            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
+            await using var unscopedCommand = CreateCommand(connection, GetAttributeInQuery(
+                hasEntityId ? _q.SelectAttributesByEntityAttributesWithEntityIdPrefix : _q.SelectAttributesByEntityAttributesPrefix,
+                filter.Attributes.Length));
+            if (hasEntityId)
+                AddStringParameter(unscopedCommand, "@EntityId", filter.EntityId!, 64);
             AddStringParameter(unscopedCommand, "@EntityType", filter.EntityType, 256);
-            AddTvpParameter(unscopedCommand, "@Attributes", filter.Attributes);
+            AddAttributeInParameters(unscopedCommand, filter.Attributes);
             AddFixedCharParameter(unscopedCommand, "@SnapToken", filter.SnapToken.Value, 26);
 
             var unscopedResult = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
@@ -578,10 +620,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var connection = (SqlConnection)_connectionFactory();
             await connection.OpenAsync(cancellationToken);
 
-            await using var command = CreateCommand(connection, _q.SelectAttributesByEntityAttributesFilter);
-            AddNullableStringParameter(command, "@EntityId", filter.EntityId, 64);
+            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
+            await using var command = CreateCommand(connection, GetAttributeInQuery(
+                hasEntityId ? _q.SelectAttributesByEntityAttributesWithEntityIdPrefix : _q.SelectAttributesByEntityAttributesPrefix,
+                filter.Attributes.Length));
+            if (hasEntityId)
+                AddStringParameter(command, "@EntityId", filter.EntityId!, 64);
             AddStringParameter(command, "@EntityType", filter.EntityType, 256);
-            AddTvpParameter(command, "@Attributes", filter.Attributes);
+            AddAttributeInParameters(command, filter.Attributes);
             AddFixedCharParameter(command, "@SnapToken", filter.SnapToken.Value, 26);
 
             var pooled = PooledList<AttributeTuple>.Rent();
@@ -641,9 +687,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var connection = (SqlConnection)_connectionFactory();
             await connection.OpenAsync(cancellationToken);
 
-            await using var command = CreateCommand(connection, _q.SelectAttributesWithEntityIdsByEntityAttributesFilter);
+            await using var command = CreateCommand(connection,
+                GetAttributeInQuery(_q.SelectAttributesWithEntityIdsByEntityAttributesPrefix, filter.Attributes.Length));
             AddStringParameter(command, "@EntityType", filter.EntityType, 256);
-            AddTvpParameter(command, "@Attributes", filter.Attributes);
+            AddAttributeInParameters(command, filter.Attributes);
             AddTvpParameter(command, "@EntityIds", entitiesIds);
             AddFixedCharParameter(command, "@SnapToken", filter.SnapToken.Value, 26);
 

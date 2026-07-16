@@ -827,6 +827,39 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetAttributes_With_EntityId_Should_Only_Return_That_Entity()
+    {
+        var providers = CreateProviders();
+
+        var snapToken = await providers.writer.Write([], [
+            new AttributeTuple("workspace", "maneirinho", "public", JsonValue.Create(false)),
+            new AttributeTuple("workspace", "daora", "public", JsonValue.Create(true)),
+        ], default);
+
+        var attrs = await providers.reader.GetAttributes(new EntityAttributeFilter
+            {
+                EntityType = "workspace",
+                EntityId = "daora",
+                Attribute = "public",
+                SnapToken = snapToken,
+            },
+            default
+        );
+
+        attrs
+            .Select(a => new { a.EntityId, a.Attribute, a.EntityType, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    Attribute = "public",
+                    EntityId = "daora",
+                    Value = JsonValue.Create(true).ToJsonString()
+                }
+            ]);
+    }
+
+    [Fact]
     public async Task GetAttributesWithEntityIds_Should_Respect_SnapToken()
     {
         var providers = CreateProviders();
