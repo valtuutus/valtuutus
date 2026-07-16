@@ -185,6 +185,30 @@ public sealed class AttributesStoreSpecs
     }
 
     [Fact]
+    public void GetByNamesWithEntityIds_only_returns_requested_entity_ids()
+    {
+        using var store = new AttributesStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[]
+        {
+            BoolAttr("project", "p1", "public", true),
+            BoolAttr("project", "p2", "public", true),
+            BoolAttr("project", "p3", "public", true),
+        });
+
+        var result = store.GetByNamesWithEntityIds(
+            new EntityAttributesFilter
+            {
+                EntityType = "project", Attributes = new[] { "public" }, SnapToken = SnapAt(tx)
+            },
+            new[] { "p1", "p3" });
+
+        Assert.Equal(
+            new HashSet<(string, string)> { ("public", "p1"), ("public", "p3") },
+            result.Keys.ToHashSet());
+    }
+
+    [Fact]
     public void HasTrueBoolAttribute_respects_snap_visibility()
     {
         using var store = new AttributesStore();
