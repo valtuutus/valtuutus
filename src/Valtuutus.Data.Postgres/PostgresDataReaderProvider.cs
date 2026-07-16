@@ -54,6 +54,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string HasTupleToUserSetRelation { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
+        public required string HasTrueBoolAttribute { get; init; }
         public required string GetRelationsWithSingleSubjectScoped { get; init; }
         public required string GetRelationsWithMultiSubjectScoped { get; init; }
         public required string GetRelationsWithSingleSubjectMultiRelationScoped { get; init; }
@@ -63,6 +64,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetEntityIdsExcluding { get; init; }
         public required string GetSubjectIdsExcluding { get; init; }
         public required string SelectRelationsByTupleFilter { get; init; }
+        public required string SelectRelationsByTupleFilterNoSubject { get; init; }
         public required string SelectRelationsWithEntityIds { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
         public required string SelectAttributesByEntityAttributesFilter { get; init; }
@@ -243,6 +245,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1",
             GetAttributeWithEntityId =
                 $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1",
+            HasTrueBoolAttribute =
+                $"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)",
             GetRelationsWithSingleSubjectScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} r_main
@@ -374,6 +378,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
                   AND (@subject_type IS NULL OR subject_type = @subject_type)
                 """,
+            SelectRelationsByTupleFilterNoSubject = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {SnapTokenPredicate}
+                  AND entity_type = @entity_type
+                  AND entity_id = @entity_id
+                  AND relation = @relation
+                """,
             SelectRelationsWithEntityIds = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
@@ -422,11 +434,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetLatestSnapToken);
-            command.CommandText = _q.GetLatestSnapToken;
             var res = await command.ExecuteScalarAsync(cancellationToken) as string;
             return res is not null ? new SnapToken(res) : (SnapToken?)null;
         }
@@ -439,16 +450,24 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.SelectRelationsByTupleFilter);
+            var noSubjectFilters = string.IsNullOrWhiteSpace(tupleFilter.SubjectId)
+                && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
+                && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
+
+            await using var command = _hotPathDataSource.CreateCommand(
+                noSubjectFilters ? _q.SelectRelationsByTupleFilterNoSubject : _q.SelectRelationsByTupleFilter);
             AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
             AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
             AddStringParameter(command, "relation", tupleFilter.Relation, 64);
-            AddNullableStringParameter(command, "subject_id", tupleFilter.SubjectId, 64);
-            AddNullableStringParameter(command, "subject_relation", tupleFilter.SubjectRelation, 64);
-            AddNullableStringParameter(command, "subject_type", tupleFilter.SubjectType, 256);
+            if (!noSubjectFilters)
+            {
+                AddNullableStringParameter(command, "subject_id", tupleFilter.SubjectId, 64);
+                AddNullableStringParameter(command, "subject_relation", tupleFilter.SubjectRelation, 64);
+                AddNullableStringParameter(command, "subject_type", tupleFilter.SubjectType, 256);
+            }
             AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
@@ -474,7 +493,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.HasDirectRelation);
@@ -495,7 +514,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetIndirectRelations);
@@ -536,7 +555,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyDirectRelation);
@@ -561,7 +580,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyOfDirectRelations);
@@ -586,7 +605,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectRelationsWithEntityIds);
@@ -623,7 +642,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             if (scope is { } s)
@@ -732,7 +751,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             if (scope is { } s)
@@ -822,7 +841,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithEntityIdsMultiRelationSnap);
@@ -861,7 +880,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             var sql = scope.HasValue ? _q.GetRelationsJoinedScoped : _q.GetRelationsJoined;
@@ -909,7 +928,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsJoinedByEntityIds);
@@ -953,7 +972,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.HasTupleToUserSetRelation);
@@ -976,12 +995,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
             await using var command = _hotPathDataSource.CreateCommand(hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute);
-            command.CommandText = hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute;
 
             AddStringParameter(command, "entity_type", filter.EntityType, 256);
             AddStringParameter(command, "attribute", filter.Attribute, 64);
@@ -1001,10 +1019,30 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.HasTrueBoolAttribute);
+            AddStringParameter(command, "entity_type", entityType, 256);
+            AddStringParameter(command, "entity_id", entityId, 64);
+            AddStringParameter(command, "attribute", attribute, 64);
+            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributeFilter);
@@ -1028,7 +1066,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             if (scope is { } s)
@@ -1075,7 +1113,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter);
@@ -1107,7 +1145,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByAttributeFilter);
@@ -1135,7 +1173,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByEntityAttributesFilter);
@@ -1165,7 +1203,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var conn = await _hotPathDataSource.OpenConnectionAsync(cancellationToken);
@@ -1189,7 +1227,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var conn = await _hotPathDataSource.OpenConnectionAsync(cancellationToken);

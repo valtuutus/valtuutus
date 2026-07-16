@@ -21,11 +21,10 @@ public sealed class AttributesStore : IDisposable
     private ReadScope Read() { _rwls.EnterReadLock(); return new ReadScope(_rwls); }
     private WriteScope Write() { _rwls.EnterWriteLock(); return new WriteScope(_rwls); }
 
-    private static bool IsVisible(Entry e, SnapToken snap)
+    private static bool IsVisible(Entry e, in Ulid snapId)
     {
-        var id = Ulid.Parse(snap.Value);
-        return e.CreatedTxId.CompareTo(id) <= 0 &&
-               (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(id) > 0);
+        return e.CreatedTxId.CompareTo(snapId) <= 0 &&
+               (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(snapId) > 0);
     }
 
     public AttributeTuple? GetAttribute(EntityAttributeFilter filter)
@@ -34,14 +33,29 @@ public sealed class AttributesStore : IDisposable
         if (!_byEntityTypeAttr.TryGetValue((filter.EntityType, filter.Attribute), out var bucket))
             return null;
 
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!string.IsNullOrWhiteSpace(filter.EntityId) && e.Attribute.EntityId != filter.EntityId) continue;
             return e.Attribute;
         }
         return null;
+    }
+
+    public bool HasTrueBoolAttribute(string entityType, string entityId, string attribute, SnapToken snap)
+    {
+        using var _ = Read();
+        if (!_byEntityTypeAttr.TryGetValue((entityType, attribute), out var bucket))
+            return false;
+        var snapId = Ulid.Parse(snap.Value);
+        foreach (var e in bucket)
+        {
+            if (!IsVisible(e, snapId)) continue;
+            if (e.Attribute.EntityId != entityId) continue;
+            return e.Attribute.Value.TryGetValue(out bool b) && b;
+        }
+        return false;
     }
 
     public List<AttributeTuple> GetAttributes(EntityAttributeFilter filter)
@@ -51,10 +65,10 @@ public sealed class AttributesStore : IDisposable
             return [];
 
         var result = new List<AttributeTuple>(bucket.Count);
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!string.IsNullOrWhiteSpace(filter.EntityId) && e.Attribute.EntityId != filter.EntityId) continue;
             result.Add(e.Attribute);
         }
@@ -69,10 +83,10 @@ public sealed class AttributesStore : IDisposable
             return [];
 
         var result = new List<AttributeTuple>(idSet.Count);
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!idSet.Contains(e.Attribute.EntityId)) continue;
             result.Add(e.Attribute);
         }
@@ -83,13 +97,13 @@ public sealed class AttributesStore : IDisposable
     {
         using var _ = Read();
         var result = new Dictionary<(string, string), AttributeTuple>(filter.Attributes.Length);
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var attrName in filter.Attributes)
         {
             if (!_byEntityTypeAttr.TryGetValue((filter.EntityType, attrName), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snap)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (filter.EntityId is not null && e.Attribute.EntityId != filter.EntityId) continue;
                 if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Attribute.EntityId)) continue;
                 var k = (e.Attribute.Attribute, e.Attribute.EntityId);
@@ -103,13 +117,13 @@ public sealed class AttributesStore : IDisposable
     {
         using var _ = Read();
         var result = PooledList<AttributeTuple>.Rent();
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var attrName in filter.Attributes)
         {
             if (!_byEntityTypeAttr.TryGetValue((filter.EntityType, attrName), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snap)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (filter.EntityId is not null && e.Attribute.EntityId != filter.EntityId) continue;
                 result.Add(e.Attribute);
                 break;
@@ -123,13 +137,13 @@ public sealed class AttributesStore : IDisposable
         var idSet = entityIds as ICollection<string> ?? entityIds.ToList();
         using var _ = Read();
         var result = new Dictionary<(string, string), AttributeTuple>(filter.Attributes.Length);
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var attrName in filter.Attributes)
         {
             if (!_byEntityTypeAttr.TryGetValue((filter.EntityType, attrName), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snap)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (!idSet.Contains(e.Attribute.EntityId)) continue;
                 var k = (e.Attribute.Attribute, e.Attribute.EntityId);
                 if (!result.ContainsKey(k)) result[k] = e.Attribute;
@@ -142,9 +156,10 @@ public sealed class AttributesStore : IDisposable
     {
         using var _ = Read();
         if (!_byEntityType.TryGetValue(entityType, out var bucket)) return;
+        var snapId = Ulid.Parse(snap.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             target.Add(e.Attribute.EntityId);
         }
     }

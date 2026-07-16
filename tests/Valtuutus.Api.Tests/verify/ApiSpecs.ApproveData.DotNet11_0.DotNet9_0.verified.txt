@@ -1,4 +1,6 @@
-﻿[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
+[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
 [assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v11.0", FrameworkDisplayName=".NET 11.0")]
 namespace Valtuutus.Data
 {
@@ -17,6 +19,7 @@ namespace Valtuutus.Data
         protected readonly System.Threading.SemaphoreSlim Semaphore;
         protected RateLimiterExecuter(Valtuutus.Data.ValtuutusDataOptions options) { }
         public void Dispose() { }
+        protected System.Threading.Tasks.Task EnterQuery(System.Threading.CancellationToken cancellationToken) { }
     }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
     {

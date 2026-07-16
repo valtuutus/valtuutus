@@ -36,6 +36,7 @@ namespace Valtuutus.Data.SqlServer
         public System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
     }
     public class SqlServerDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider, Valtuutus.Data.Db.IDbDataWriterProvider

@@ -37,9 +37,11 @@ public sealed class LookupSubjectEngine(
     //<inheritdoc/>
     public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
-        using var activity =
-            DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
-                tags: CreateLookupSubjectSpanAttributes(req));
+        // Skip the tags iterator allocation entirely when nothing is listening.
+        using var activity = DefaultActivitySource.Instance.HasListeners()
+            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
+                tags: CreateLookupSubjectSpanAttributes(req))
+            : null;
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
 
         if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
