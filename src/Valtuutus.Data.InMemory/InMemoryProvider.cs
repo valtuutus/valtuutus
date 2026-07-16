@@ -26,27 +26,18 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         _provider = provider;
     }
 
-    public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
+    public Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         Ulid? id;
         lock (_txLock) { id = _latestTransaction; }
-        SnapToken? token = id is null ? null : new SnapToken(id.Value.ToString());
-        await Semaphore.WaitAsync(cancellationToken);
-        try
-        {
-            return token;
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
+        return Task.FromResult<SnapToken?>(id is null ? null : new SnapToken(id.Value.ToString()));
     }
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelations(tupleFilter);
@@ -60,7 +51,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.HasDirectRelation(tupleFilter, subjectId);
@@ -75,7 +66,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken);
@@ -90,7 +81,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken);
@@ -104,7 +95,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetIndirectRelations(tupleFilter);
@@ -119,7 +110,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation);
@@ -134,7 +125,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType, scope);
@@ -150,7 +141,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsWithSubjectIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope);
@@ -166,7 +157,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsWithEntityIdsMultiRelation(entityType, relationNames, subjectType, entityIds, subjectRelation, snapToken);
@@ -183,7 +174,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.HasTupleToUserSetRelation(entityType, entityId, tupleSetRelation,
@@ -200,7 +191,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope);
@@ -216,7 +207,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _relations.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation);
@@ -230,7 +221,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _attributes.GetAttribute(filter);
@@ -241,10 +232,25 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
+    public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var _ = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            return _attributes.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _attributes.GetAttributes(filter);
@@ -258,7 +264,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _attributes.GetByNamesSingleEntity(filter);
@@ -273,7 +279,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             HashSet<string>? scopedEntityIds = null;
@@ -304,7 +310,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _attributes.GetAttributesWithEntityIds(filter, entitiesIds);
@@ -319,7 +325,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             return _attributes.GetByNamesWithEntityIds(filter, entitiesIds);
@@ -333,7 +339,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             var ids = _relations.GetAllEntityIds(entityType, snapToken);
@@ -353,7 +359,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             var ids = _relations.GetAllSubjectIds(subjectType, snapToken);

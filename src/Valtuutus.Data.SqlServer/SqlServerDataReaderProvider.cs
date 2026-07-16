@@ -102,6 +102,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND attribute = @Attribute
                   AND entity_id = @EntityId
                 """,
+            HasTrueBoolAttribute = $"""
+                SELECT CASE WHEN EXISTS(
+                    SELECT 1 FROM {attributesTable}
+                    WHERE {snapPredicate}
+                      AND entity_type = @EntityType AND entity_id = @EntityId
+                      AND attribute = @Attribute AND value = 'true'
+                ) THEN 1 ELSE 0 END
+                """,
             SelectAttributesByEntityAttributeFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
@@ -144,6 +152,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND (@SubjectId IS NULL OR subject_id = @SubjectId)
                   AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
                   AND (@SubjectType IS NULL OR subject_type = @SubjectType)
+                """,
+            SelectRelationsByTupleFilterNoSubject = $"""
+                SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
+                FROM {relationsTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType
+                  AND entity_id = @EntityId
+                  AND relation = @Relation
                 """,
             HasDirectRelation = $"""
                 SELECT CASE WHEN EXISTS(
@@ -395,11 +411,13 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetLatestSnapToken { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
+        public required string HasTrueBoolAttribute { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
         public required string SelectAttributesByEntityAttributesFilter { get; init; }
         public required string SelectAttributesWithEntityIdsByAttributeFilter { get; init; }
         public required string SelectAttributesWithEntityIdsByEntityAttributesFilter { get; init; }
         public required string SelectRelationsByTupleFilter { get; init; }
+        public required string SelectRelationsByTupleFilterNoSubject { get; init; }
         public required string HasDirectRelation { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string HasAnyDirectRelation { get; init; }
@@ -426,7 +444,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -452,10 +470,32 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         }
     }
 
+    public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+            await using var command = CreateCommand(connection, _q.HasTrueBoolAttribute);
+            AddStringParameter(command, "@EntityType", entityType, 256);
+            AddStringParameter(command, "@EntityId", entityId, 64);
+            AddStringParameter(command, "@Attribute", attribute, 64);
+            AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+            return (int)(await command.ExecuteScalarAsync(cancellationToken))! == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -482,7 +522,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -532,7 +572,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -567,7 +607,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -595,7 +635,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -625,7 +665,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -644,19 +684,27 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
             await connection.OpenAsync(cancellationToken);
 
-            await using var command = CreateCommand(connection, _q.SelectRelationsByTupleFilter);
+            var noSubjectFilters = string.IsNullOrWhiteSpace(tupleFilter.SubjectId)
+                && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
+                && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
+
+            await using var command = CreateCommand(connection,
+                noSubjectFilters ? _q.SelectRelationsByTupleFilterNoSubject : _q.SelectRelationsByTupleFilter);
             AddStringParameter(command, "@EntityType", tupleFilter.EntityType, 256);
             AddStringParameter(command, "@EntityId", tupleFilter.EntityId, 64);
             AddStringParameter(command, "@Relation", tupleFilter.Relation, 64);
-            AddNullableStringParameter(command, "@SubjectId", tupleFilter.SubjectId, 64);
-            AddNullableStringParameter(command, "@SubjectRelation", tupleFilter.SubjectRelation, 64);
-            AddNullableStringParameter(command, "@SubjectType", tupleFilter.SubjectType, 256);
+            if (!noSubjectFilters)
+            {
+                AddNullableStringParameter(command, "@SubjectId", tupleFilter.SubjectId, 64);
+                AddNullableStringParameter(command, "@SubjectRelation", tupleFilter.SubjectRelation, 64);
+                AddNullableStringParameter(command, "@SubjectType", tupleFilter.SubjectType, 256);
+            }
             AddFixedCharParameter(command, "@SnapToken", tupleFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
@@ -682,7 +730,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -706,7 +754,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -742,7 +790,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -767,7 +815,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -795,7 +843,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -832,7 +880,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -932,7 +980,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1032,7 +1080,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1071,7 +1119,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1132,7 +1180,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1172,7 +1220,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1199,7 +1247,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();
@@ -1225,7 +1273,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
-        await Semaphore.WaitAsync(cancellationToken);
+        await EnterQuery(cancellationToken);
         try
         {
             await using var connection = (SqlConnection)_connectionFactory();

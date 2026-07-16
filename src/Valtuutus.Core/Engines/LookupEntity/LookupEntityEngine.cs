@@ -40,9 +40,11 @@ public sealed class LookupEntityEngine(
     //<inheritdoc/>
     public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        using var activity =
-            DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
-                tags: CreateLookupEntitySpanAttributes(req));
+        // Skip the tags iterator allocation entirely when nothing is listening.
+        using var activity = DefaultActivitySource.Instance.HasListeners()
+            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
+                tags: CreateLookupEntitySpanAttributes(req))
+            : null;
 
         // Validate scope relation exists in schema
         if (req.Scope is { } scope)

@@ -787,6 +787,10 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
             => inner.GetAttribute(filter, cancellationToken);
 
+        public Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
+            SnapToken snapToken, CancellationToken cancellationToken)
+            => inner.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken, cancellationToken);
+
         public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
             => inner.GetAttributes(filter, cancellationToken);
 

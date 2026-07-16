@@ -24,11 +24,10 @@ public sealed class RelationsStore : IDisposable
     private ReadScope Read() { _rwls.EnterReadLock(); return new ReadScope(_rwls); }
     private WriteScope Write() { _rwls.EnterWriteLock(); return new WriteScope(_rwls); }
 
-    private static bool IsVisible(Entry e, SnapToken snap)
+    private static bool IsVisible(Entry e, in Ulid snapId)
     {
-        var id = Ulid.Parse(snap.Value);
-        return e.CreatedTxId.CompareTo(id) <= 0 &&
-               (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(id) > 0);
+        return e.CreatedTxId.CompareTo(snapId) <= 0 &&
+               (e.DeletedTxId is null || e.DeletedTxId.Value.CompareTo(snapId) > 0);
     }
 
     public PooledList<RelationTuple> GetRelations(RelationTupleFilter filter)
@@ -38,10 +37,10 @@ public sealed class RelationsStore : IDisposable
             return PooledList<RelationTuple>.Rent();
 
         var result = PooledList<RelationTuple>.Rent();
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!string.IsNullOrEmpty(filter.SubjectId) && e.Relation.SubjectId != filter.SubjectId) continue;
             if (!string.IsNullOrEmpty(filter.SubjectRelation) && e.Relation.SubjectRelation != filter.SubjectRelation) continue;
             if (!string.IsNullOrEmpty(filter.SubjectType) && e.Relation.SubjectType != filter.SubjectType) continue;
@@ -55,10 +54,10 @@ public sealed class RelationsStore : IDisposable
         using var _ = Read();
         if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
             return false;
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (e.Relation.SubjectId != subjectId) continue;
             if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
             return true;
@@ -72,10 +71,10 @@ public sealed class RelationsStore : IDisposable
         if (!_byEntityRelation.TryGetValue((filter.EntityType, filter.EntityId, filter.Relation), out var bucket))
             return PooledList<RelationTuple>.Rent();
         var result = PooledList<RelationTuple>.Rent();
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
             result.Add(e.Relation);
         }
@@ -85,12 +84,13 @@ public sealed class RelationsStore : IDisposable
     public bool HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, SnapToken snapToken)
     {
         using var _ = Read();
+        var snapId = Ulid.Parse(snapToken.Value);
         foreach (var entityId in entityIds)
         {
             if (!_byEntityRelation.TryGetValue((entityType, entityId, relation), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snapToken)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (e.Relation.SubjectId != subjectId) continue;
                 if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
                 return true;
@@ -103,12 +103,13 @@ public sealed class RelationsStore : IDisposable
     {
         using var _ = Read();
         var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+        var snapId = Ulid.Parse(snapToken.Value);
         foreach (var relationName in relationNames)
         {
             if (!_byEntityRelation.TryGetValue((entityType, entityId, relationName), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snapToken)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (e.Relation.SubjectId != subjectId) continue;
                 if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
                 result.Add(relationName);
@@ -124,18 +125,19 @@ public sealed class RelationsStore : IDisposable
         string subjectType, string subjectId, SnapToken snapToken)
     {
         using var _ = Read();
+        var snapId = Ulid.Parse(snapToken.Value);
         if (!_byEntityRelation.TryGetValue((entityType, entityId, tupleSetRelation), out var bucket))
             return false;
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snapToken)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!string.IsNullOrEmpty(e.Relation.SubjectRelation)) continue;
             if (e.Relation.SubjectType != subEntityType) continue;
             if (!_byEntityRelation.TryGetValue((subEntityType, e.Relation.SubjectId, computedRelation), out var depBucket))
                 continue;
             foreach (var dep in depBucket)
             {
-                if (!IsVisible(dep, snapToken)) continue;
+                if (!IsVisible(dep, snapId)) continue;
                 if (!string.IsNullOrEmpty(dep.Relation.SubjectRelation)) continue;
                 if (dep.Relation.SubjectType == subjectType && dep.Relation.SubjectId == subjectId)
                     return true;
@@ -153,10 +155,10 @@ public sealed class RelationsStore : IDisposable
             return PooledList<RelationTuple>.Rent();
 
         var result = PooledList<RelationTuple>.Rent();
-        var snap = filter.SnapToken;
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!idSet.Contains(e.Relation.EntityId)) continue;
             if (!string.IsNullOrEmpty(subjectRelation) && e.Relation.SubjectRelation != subjectRelation) continue;
             result.Add(e.Relation);
@@ -170,6 +172,8 @@ public sealed class RelationsStore : IDisposable
         if (!_byRelationSubjectType.TryGetValue((filter.EntityType, filter.Relation, subjectType), out var bucket))
             return PooledList<RelationTuple>.Rent();
 
+        var snapId = Ulid.Parse(filter.SnapToken.Value);
+
         // If scope is set, build a HashSet of entity IDs that satisfy the scope relation
         HashSet<string>? scopedEntityIds = null;
         if (scope.HasValue)
@@ -178,10 +182,9 @@ public sealed class RelationsStore : IDisposable
             if (_byRelationSubjectType.TryGetValue((filter.EntityType, s.Relation, s.SubjectType), out var scopeBucket))
             {
                 scopedEntityIds = new HashSet<string>();
-                var snap = filter.SnapToken;
                 foreach (var e in scopeBucket)
                 {
-                    if (!IsVisible(e, snap)) continue;
+                    if (!IsVisible(e, snapId)) continue;
                     if (e.Relation.SubjectId != s.SubjectId) continue;
                     scopedEntityIds.Add(e.Relation.EntityId);
                 }
@@ -191,10 +194,9 @@ public sealed class RelationsStore : IDisposable
         }
 
         var result = PooledList<RelationTuple>.Rent();
-        var snapToken = filter.SnapToken;
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snapToken)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!subjectIds.Contains(e.Relation.SubjectId)) continue;
             if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
             result.Add(e.Relation);
@@ -209,12 +211,13 @@ public sealed class RelationsStore : IDisposable
         using var _ = Read();
 
         var result = PooledList<RelationTuple>.Rent();
+        var snapId = Ulid.Parse(snapToken.Value);
         foreach (var relationName in relationNames)
         {
             if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snapToken)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (!idSet.Contains(e.Relation.EntityId)) continue;
                 if (!string.IsNullOrEmpty(subjectRelation) && e.Relation.SubjectRelation != subjectRelation) continue;
                 result.Add(e.Relation);
@@ -228,6 +231,8 @@ public sealed class RelationsStore : IDisposable
     {
         using var _ = Read();
 
+        var snapId = Ulid.Parse(snapToken.Value);
+
         HashSet<string>? scopedEntityIds = null;
         if (scope.HasValue)
         {
@@ -237,7 +242,7 @@ public sealed class RelationsStore : IDisposable
                 scopedEntityIds = new HashSet<string>();
                 foreach (var e in scopeBucket)
                 {
-                    if (!IsVisible(e, snapToken)) continue;
+                    if (!IsVisible(e, snapId)) continue;
                     if (e.Relation.SubjectId != s.SubjectId) continue;
                     scopedEntityIds.Add(e.Relation.EntityId);
                 }
@@ -252,7 +257,7 @@ public sealed class RelationsStore : IDisposable
             if (!_byRelationSubjectType.TryGetValue((entityType, relationName, subjectType), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snapToken)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 if (!subjectIds.Contains(e.Relation.SubjectId)) continue;
                 if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
                 result.Add(e.Relation);
@@ -266,7 +271,7 @@ public sealed class RelationsStore : IDisposable
         string subjectType, string subjectId, EntityScope? scope = null)
     {
         using var _ = Read();
-        var snap = mainFilter.SnapToken;
+        var snapId = Ulid.Parse(mainFilter.SnapToken.Value);
 
         // Step 1: collect intermediate IDs — sub-entities that have the subject.
         if (!_byRelationSubjectType.TryGetValue((subEntityType, subRelation, subjectType), out var depBucket))
@@ -275,7 +280,7 @@ public sealed class RelationsStore : IDisposable
         HashSet<string>? intermediateIds = null;
         foreach (var e in depBucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (e.Relation.SubjectId != subjectId) continue;
             (intermediateIds ??= new HashSet<string>()).Add(e.Relation.EntityId);
         }
@@ -292,7 +297,7 @@ public sealed class RelationsStore : IDisposable
                 scopedEntityIds = new HashSet<string>();
                 foreach (var e in scopeBucket)
                 {
-                    if (!IsVisible(e, snap)) continue;
+                    if (!IsVisible(e, snapId)) continue;
                     if (e.Relation.SubjectId != s.SubjectId) continue;
                     scopedEntityIds.Add(e.Relation.EntityId);
                 }
@@ -308,7 +313,7 @@ public sealed class RelationsStore : IDisposable
         var result = PooledList<RelationTuple>.Rent();
         foreach (var e in mainBucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!intermediateIds.Contains(e.Relation.SubjectId)) continue;
             if (scopedEntityIds is not null && !scopedEntityIds.Contains(e.Relation.EntityId)) continue;
             result.Add(e.Relation);
@@ -320,7 +325,7 @@ public sealed class RelationsStore : IDisposable
         EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation)
     {
         using var _ = Read();
-        var snap = mainFilter.SnapToken;
+        var snapId = Ulid.Parse(mainFilter.SnapToken.Value);
 
         // Step 1: collect intermediate IDs — subEntityType-typed subjects reachable from entityIds.
         if (!_byRelationSubjectType.TryGetValue((mainFilter.EntityType, mainFilter.Relation, subEntityType), out var depBucket))
@@ -330,7 +335,7 @@ public sealed class RelationsStore : IDisposable
         HashSet<string>? intermediateIds = null;
         foreach (var e in depBucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             if (!idSet.Contains(e.Relation.EntityId)) continue;
             (intermediateIds ??= new HashSet<string>()).Add(e.Relation.SubjectId);
         }
@@ -345,7 +350,7 @@ public sealed class RelationsStore : IDisposable
             if (!_byEntityRelation.TryGetValue((subEntityType, id, subRelation), out var bucket)) continue;
             foreach (var e in bucket)
             {
-                if (!IsVisible(e, snap)) continue;
+                if (!IsVisible(e, snapId)) continue;
                 result.Add(e.Relation);
             }
         }
@@ -358,9 +363,10 @@ public sealed class RelationsStore : IDisposable
         var result = new HashSet<string>();
         if (!_byEntityType.TryGetValue(entityType, out var bucket))
             return result;
+        var snapId = Ulid.Parse(snap.Value);
         foreach (var e in bucket)
         {
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             result.Add(e.Relation.EntityId);
         }
         return result;
@@ -372,10 +378,11 @@ public sealed class RelationsStore : IDisposable
         var result = new HashSet<string>();
         if (!_bySubjectType.TryGetValue(subjectType, out var bucket))
             return result;
+        var snapId = Ulid.Parse(snap.Value);
         foreach (var e in bucket)
         {
             if (!e.Relation.IsDirectSubject()) continue;
-            if (!IsVisible(e, snap)) continue;
+            if (!IsVisible(e, snapId)) continue;
             result.Add(e.Relation.SubjectId);
         }
         return result;

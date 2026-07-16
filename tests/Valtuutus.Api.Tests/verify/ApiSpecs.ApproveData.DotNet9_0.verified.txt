@@ -18,6 +18,7 @@ namespace Valtuutus.Data
         protected readonly System.Threading.SemaphoreSlim Semaphore;
         protected RateLimiterExecuter(Valtuutus.Data.ValtuutusDataOptions options) { }
         public void Dispose() { }
+        protected System.Threading.Tasks.Task EnterQuery(System.Threading.CancellationToken cancellationToken) { }
     }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
     {

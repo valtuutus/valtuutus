@@ -48,20 +48,37 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
     private sealed class CheckMemo
     {
-        private readonly ConcurrentDictionary<CheckMemoKey, Task<bool>> _cache = new(concurrencyLevel: 1, capacity: 4);
+        private ConcurrentDictionary<CheckMemoKey, Task<bool>>? _cache;
+
+        // Double-checked lazy init: concurrent losers' `fresh` dictionaries are discarded harmlessly;
+        // CompareExchange's fence makes the winner's dictionary safely visible to every reader.
+        private ConcurrentDictionary<CheckMemoKey, Task<bool>> Cache
+        {
+            get
+            {
+                var existing = _cache;
+                if (existing is not null) return existing;
+                var fresh = new ConcurrentDictionary<CheckMemoKey, Task<bool>>(concurrencyLevel: 1, capacity: 4);
+                return Interlocked.CompareExchange(ref _cache, fresh, null) ?? fresh;
+            }
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool TryGet(CheckMemoKey key, [MaybeNullWhen(false)] out Task<bool> task)
-            => _cache.TryGetValue(key, out task);
+        {
+            var cache = _cache;
+            if (cache is null) { task = null; return false; }
+            return cache.TryGetValue(key, out task);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Task<bool> GetOrAdd(CheckMemoKey key, Task<bool> task)
-            => _cache.GetOrAdd(key, task);
+            => Cache.GetOrAdd(key, task);
 
         public Task<bool> GetOrAdd(CheckMemoKey key, Func<Task<bool>> factory, out bool added)
         {
             Task<bool>? factoryResult = null;
-            var task = _cache.GetOrAdd(key, _ => { factoryResult = factory(); return factoryResult; });
+            var task = Cache.GetOrAdd(key, _ => { factoryResult = factory(); return factoryResult; });
             added = factoryResult is not null && ReferenceEquals(task, factoryResult);
             return task;
         }
@@ -70,11 +87,14 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     //<inheritdoc/>
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
-        using var activity =
-            DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req));
+        // Skip the tags iterator allocation entirely when nothing is listening.
+        using var activity = DefaultActivitySource.Instance.HasListeners()
+            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateCheckSpanAttributes(req))
+            : null;
 
+        ValtuutusMetrics.CheckRequests.Add(1);
         req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
-        var val = await CheckInternal(req, new CheckMemo(), cancellationToken);
+        var val = await CheckInternal(req, new CheckMemo(), cancellationToken, memoize: false);
         activity?.AddEvent(new ActivityEvent("CheckFinished",
             tags: new ActivityTagsCollection(CreateCheckResultAttributes(val))));
         return val;
@@ -95,8 +115,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req,
         CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
-            tags: CreateSubjectPermissionSpanAttributes(req));
+        // Skip the tags iterator allocation entirely when nothing is listening.
+        using var activity = DefaultActivitySource.Instance.HasListeners()
+            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
+                tags: CreateSubjectPermissionSpanAttributes(req))
+            : null;
+        ValtuutusMetrics.CheckRequests.Add(1);
         var permissions = schema.GetPermissions(req.EntityType);
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
 
@@ -136,8 +160,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     //<inheritdoc/>
     public async Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
-            tags: CreateCheckSpanAttributes(req));
+        // Skip the tags iterator allocation entirely when nothing is listening.
+        using var activity = DefaultActivitySource.Instance.HasListeners()
+            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal,
+                tags: CreateCheckSpanAttributes(req))
+            : null;
 
         req = req with { SnapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken) };
         var root = new CheckNode { Type = CheckNodeType.Permission, Name = req.Permission, EntityType = req.EntityType, EntityId = req.EntityId, SubjectType = req.SubjectType, SubjectId = req.SubjectId };
@@ -162,10 +189,10 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         yield return new KeyValuePair<string, object?>("SubjectPermissionRequest", req);
     }
 
-    private Task<bool> CheckInternal(CheckRequest req, CheckMemo memo, CancellationToken ct)
-        => CheckInternal(req, memo, null, ct);
+    private Task<bool> CheckInternal(CheckRequest req, CheckMemo memo, CancellationToken ct, bool memoize = true)
+        => CheckInternal(req, memo, null, ct, memoize);
 
-    private Task<bool> CheckInternal(CheckRequest req, CheckMemo memo, CheckNode? node, CancellationToken ct)
+    private Task<bool> CheckInternal(CheckRequest req, CheckMemo memo, CheckNode? node, CancellationToken ct, bool memoize = true)
     {
         if (req.CheckDepthLimit())
         {
@@ -192,7 +219,11 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
 
         if (node is null)
         {
-            if (memo.TryGet(key, out var cached)) return cached!;
+            if (memo.TryGet(key, out var cached))
+            {
+                ValtuutusMetrics.MemoHits.Add(1);
+                return cached!;
+            }
             var task = schema.GetRelationType(req.EntityType, req.Permission) switch
             {
                 RelationType.DirectRelation => CheckRelation(req, memo, null, ct),
@@ -200,7 +231,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                 RelationType.Attribute => CheckAttribute(req, null, ct),
                 _ => Task.FromResult(false)
             };
-            return memo.GetOrAdd(key, task);
+            return memoize ? memo.GetOrAdd(key, task) : task;
         }
         else
         {
@@ -237,7 +268,12 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
     private async Task<bool> CheckAttribute(CheckRequest req, CheckNode? node, CancellationToken ct)
     {
         using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
-        if (node is not null) node.Type = CheckNodeType.Attribute;
+
+        if (node is null)
+            return await reader.HasTrueBoolAttribute(req.EntityType, req.EntityId, req.Permission,
+                req.SnapToken ?? SnapToken.MinValue, ct);
+
+        node.Type = CheckNodeType.Attribute;
 
         var attribute = await reader.GetAttribute(
             new EntityAttributeFilter
@@ -520,61 +556,38 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             }
         }
 
-        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
-        var cancellationToken = pooledCts.Token;
-        var innerCts = pooledCts.InnerSource;
+        ValtuutusMetrics.ExpressionNodes.Add(1);
 
         var rawTasks = ArrayPool<Task<bool>>.Shared.Rent(count);
-        var tasks = ArrayPool<Task<bool>>.Shared.Rent(count);
         try
         {
             for (var i = 0; i < count; i++)
-            {
-                var child = live[i];
-                var childNode = childNodes?[i];
-                rawTasks[i] = ResolveChild(req, memo, batchTask, child, childNode, ct);
-                tasks[i] = isUnion
-                    ? rawTasks[i].ContinueWith(
-                        static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                        innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current)
-                    : rawTasks[i].ContinueWith(
-                        static (t, s) => { if (!t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                        innerCts, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Current);
-            }
+                rawTasks[i] = ResolveChild(req, memo, batchTask, live[i], childNodes?[i], ct);
 
-            try
+            var decided = await BoolTaskCombinator.AnyOrAll(rawTasks, count, shortCircuitOn: isUnion)
+                .ConfigureAwait(false);
+
+            if (rawTasks[0].IsCompletedSuccessfully && rawTasks[0].Result == isUnion)
+                ValtuutusMetrics.FirstChildDecided.Add(1);
+
+            if (childNodes is not null)
             {
-                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, count)).ConfigureAwait(false);
-                if (childNodes is not null)
-                    for (var i = 0; i < count; i++)
-                    {
-                        childNodes[i].Result = results[i];
-                        node!._children.Add(childNodes[i]);
-                    }
-                return isUnion ? results.AsSpan().Contains(true) : !results.AsSpan().Contains(false);
-            }
-            catch (OperationCanceledException)
-            {
-                if (childNodes is not null)
+                for (var i = 0; i < count; i++)
                 {
-                    for (var i = 0; i < count; i++)
-                    {
-                        if (rawTasks[i].IsCompletedSuccessfully)
-                            childNodes[i].Result = rawTasks[i].Result;
-                        else
-                            childNodes[i].Detail = isUnion
-                                ? "skipped (evaluation stopped after a success)"
-                                : "skipped (evaluation stopped after a failure)";
-                        node!._children.Add(childNodes[i]);
-                    }
+                    if (rawTasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = rawTasks[i].Result;
+                    else
+                        childNodes[i].Detail = isUnion
+                            ? "skipped (evaluation stopped after a success)"
+                            : "skipped (evaluation stopped after a failure)";
+                    node!._children.Add(childNodes[i]);
                 }
-                return isUnion;
             }
+            return decided;
         }
         finally
         {
             ArrayPool<Task<bool>>.Shared.Return(rawTasks, clearArray: true);
-            ArrayPool<Task<bool>>.Shared.Return(tasks, clearArray: true);
         }
     }
 
@@ -769,10 +782,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             }
         }
 
-        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
-        var cancellationToken = pooledCts.Token;
-        var innerCts = pooledCts.InnerSource;
-
         CheckNode[]? childNodes = node is null ? null : new CheckNode[relations.Count];
         if (childNodes is not null)
             for (var i = 0; i < relations.Count; i++)
@@ -785,7 +794,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             for (var i = 0; i < taskCount; i++)
             {
                 var relation = relations[i];
-                var childNode = childNodes?[i];
                 tasks[i] = CheckComputedUserSet(new CheckRequest
                 {
                     EntityType = relation.SubjectType,
@@ -795,34 +803,20 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
-                }, computedUserSetRelation, memo, childNode, ct)
-                .ContinueWith(
-                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+                }, computedUserSetRelation, memo, childNodes?[i], ct);
             }
 
-            try
-            {
-                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, taskCount)).ConfigureAwait(false);
-                if (childNodes is not null)
-                    for (var i = 0; i < childNodes.Length; i++)
-                    {
-                        childNodes[i].Result = results[i];
-                        node!._children.Add(childNodes[i]);
-                    }
-                return results.AsSpan().Contains(true);
-            }
-            catch (OperationCanceledException)
-            {
-                if (childNodes is not null)
-                    for (var i = 0; i < childNodes.Length; i++)
-                    {
-                        if (tasks[i].IsCompletedSuccessfully)
-                            childNodes[i].Result = tasks[i].Result;
-                        node!._children.Add(childNodes[i]);
-                    }
-                return true;
-            }
+            var decided = await BoolTaskCombinator.AnyOrAll(tasks, taskCount, shortCircuitOn: true)
+                .ConfigureAwait(false);
+
+            if (childNodes is not null)
+                for (var i = 0; i < taskCount; i++)
+                {
+                    if (tasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = tasks[i].Result;
+                    node!._children.Add(childNodes[i]);
+                }
+            return decided;
         }
         finally
         {
@@ -889,10 +883,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             return singleResult;
         }
 
-        using var pooledCts = CancellationTokenSourcePool.Rent(ct);
-        var cancellationToken = pooledCts.Token;
-        var innerCts = pooledCts.InnerSource;
-
         CheckNode[]? childNodes = node is null ? null : new CheckNode[indirectRelations.Count];
         if (childNodes is not null)
             for (var i = 0; i < indirectRelations.Count; i++)
@@ -908,7 +898,6 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             var count = 0;
             foreach (ref readonly var relation in indirectRelations.AsSpan())
             {
-                var childNode = childNodes?[count];
                 tasks[count] = CheckInternal(new CheckRequest
                 {
                     EntityType = relation.SubjectType,
@@ -918,35 +907,21 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
                     SubjectId = req.SubjectId,
                     SnapToken = req.SnapToken,
                     Depth = req.Depth
-                }, memo, childNode, ct)
-                .ContinueWith(
-                    static (t, s) => { if (t.Result) ((CancellationTokenSource)s!).Cancel(); return t.Result; },
-                    innerCts, cancellationToken, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
+                }, memo, childNodes?[count], ct);
                 count++;
             }
 
-            try
-            {
-                var results = await Task.WhenAll(new ArraySegment<Task<bool>>(tasks, 0, taskCount)).ConfigureAwait(false);
-                if (childNodes is not null)
-                    for (var i = 0; i < childNodes.Length; i++)
-                    {
-                        childNodes[i].Result = results[i];
-                        node!._children.Add(childNodes[i]);
-                    }
-                return results.AsSpan().Contains(true);
-            }
-            catch (OperationCanceledException)
-            {
-                if (childNodes is not null)
-                    for (var i = 0; i < childNodes.Length; i++)
-                    {
-                        if (tasks[i].IsCompletedSuccessfully)
-                            childNodes[i].Result = tasks[i].Result;
-                        node!._children.Add(childNodes[i]);
-                    }
-                return true;
-            }
+            var decided = await BoolTaskCombinator.AnyOrAll(tasks, taskCount, shortCircuitOn: true)
+                .ConfigureAwait(false);
+
+            if (childNodes is not null)
+                for (var i = 0; i < taskCount; i++)
+                {
+                    if (tasks[i].IsCompletedSuccessfully)
+                        childNodes[i].Result = tasks[i].Result;
+                    node!._children.Add(childNodes[i]);
+                }
+            return decided;
         }
         finally
         {
