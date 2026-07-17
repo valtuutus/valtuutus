@@ -15,6 +15,10 @@ on:
 env:
   NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.package_version }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
