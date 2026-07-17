@@ -26,6 +26,10 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
+    public static class ConfigureCheckV2
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
@@ -109,6 +113,7 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
     }
     public interface IDataWriterProvider
@@ -320,6 +325,11 @@ namespace Valtuutus.Core.Observability
         public const string SourceNameInternal = "Valtuutus.Internal";
         public static System.Diagnostics.ActivitySource Instance { get; }
         public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
+    }
+    public static class ValtuutusMetrics
+    {
+        public static readonly System.Diagnostics.Metrics.Counter<long> DbQueries;
+        public static readonly System.Diagnostics.Metrics.Meter Meter;
     }
 }
 namespace Valtuutus.Core.Pools

@@ -160,6 +160,16 @@ public interface IDataReaderProvider
     Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Existence-only fast path for boolean attribute permission leaves: returns true when
+    /// the entity has the given attribute visible at the snap token with a JSON value of
+    /// exactly <c>true</c>. Missing attribute — or any non-<c>true</c> value, including
+    /// malformed non-boolean data — returns false (it does not throw, unlike materialising
+    /// the tuple and calling <c>GetValue&lt;bool&gt;()</c>).
+    /// </summary>
+    Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
+        SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Retrieves a list of AttributeTuples based on the provided filter.
     /// </summary>
     /// <param name="filter">The filter criteria for retrieving AttributeTuples.</param>

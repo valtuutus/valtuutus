@@ -1,0 +1,39 @@
+using System.Diagnostics.Metrics;
+
+namespace Valtuutus.Core.Observability;
+
+/// <summary>
+/// Opt-in workload-characterization metrics. Counters cost ~nothing unless a listener
+/// subscribes (e.g. `dotnet-counters monitor --counters Valtuutus -p PID`).
+/// All counters are process-wide totals; derive per-check averages by dividing by
+/// <c>valtuutus.check.requests</c>.
+/// </summary>
+public static class ValtuutusMetrics
+{
+    public static readonly Meter Meter = new("Valtuutus", "1.0");
+
+    /// <summary>Public Check/SubjectPermission entry calls.</summary>
+    internal static readonly Counter<long> CheckRequests =
+        Meter.CreateCounter<long>("valtuutus.check.requests");
+
+    /// <summary>Union/Intersect nodes evaluated with 2+ live children.</summary>
+    internal static readonly Counter<long> ExpressionNodes =
+        Meter.CreateCounter<long>("valtuutus.check.expression_nodes");
+
+    /// <summary>Expression nodes decided by the short-circuit value before all children finished.</summary>
+    internal static readonly Counter<long> ShortCircuits =
+        Meter.CreateCounter<long>("valtuutus.check.short_circuits");
+
+    /// <summary>Expression nodes where child index 0 alone would have decided the node
+    /// (sequential-first scheduling would have saved the sibling queries).</summary>
+    internal static readonly Counter<long> FirstChildDecided =
+        Meter.CreateCounter<long>("valtuutus.check.first_child_decided");
+
+    /// <summary>Request-scoped memo hits inside CheckEngine.</summary>
+    internal static readonly Counter<long> MemoHits =
+        Meter.CreateCounter<long>("valtuutus.check.memo_hits");
+
+    /// <summary>Provider-level DB/store queries issued (all read methods).</summary>
+    public static readonly Counter<long> DbQueries =
+        Meter.CreateCounter<long>("valtuutus.db.queries");
+}

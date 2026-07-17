@@ -20,6 +20,9 @@ public sealed class AttributesStoreSpecs
     private static AttributeTuple Attr(string entityType, string entityId, string attribute, int value = 1)
         => new(entityType, entityId, attribute, JsonValue.Create(value)!);
 
+    private static AttributeTuple BoolAttr(string entityType, string entityId, string attribute, bool value)
+        => new(entityType, entityId, attribute, JsonValue.Create(value)!);
+
     [Fact]
     public void GetAllEntityIds_returns_only_ids_for_the_requested_entity_type()
     {
@@ -148,5 +151,71 @@ public sealed class AttributesStoreSpecs
 
         Assert.Equal(2, p1!.Value.GetValue<int>());
         Assert.Equal(1, p2!.Value.GetValue<int>());
+    }
+
+    [Fact]
+    public void HasTrueBoolAttribute_true_value_returns_true()
+    {
+        using var store = new AttributesStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[] { BoolAttr("project", "p1", "public", true) });
+
+        Assert.True(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx)));
+    }
+
+    [Fact]
+    public void HasTrueBoolAttribute_false_value_returns_false()
+    {
+        using var store = new AttributesStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[] { BoolAttr("project", "p1", "public", false) });
+
+        Assert.False(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx)));
+    }
+
+    [Fact]
+    public void HasTrueBoolAttribute_missing_attribute_returns_false()
+    {
+        using var store = new AttributesStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[] { BoolAttr("project", "p1", "public", true) });
+
+        Assert.False(store.HasTrueBoolAttribute("project", "p2", "public", SnapAt(tx)));
+        Assert.False(store.HasTrueBoolAttribute("project", "p1", "archived", SnapAt(tx)));
+    }
+
+    [Fact]
+    public void GetByNamesWithEntityIds_only_returns_requested_entity_ids()
+    {
+        using var store = new AttributesStore();
+        var tx = Ulid.NewUlid();
+        store.Write(tx, new[]
+        {
+            BoolAttr("project", "p1", "public", true),
+            BoolAttr("project", "p2", "public", true),
+            BoolAttr("project", "p3", "public", true),
+        });
+
+        var result = store.GetByNamesWithEntityIds(
+            new EntityAttributesFilter
+            {
+                EntityType = "project", Attributes = new[] { "public" }, SnapToken = SnapAt(tx)
+            },
+            new[] { "p1", "p3" });
+
+        Assert.Equal(
+            new HashSet<(string, string)> { ("public", "p1"), ("public", "p3") },
+            result.Keys.ToHashSet());
+    }
+
+    [Fact]
+    public void HasTrueBoolAttribute_respects_snap_visibility()
+    {
+        using var store = new AttributesStore();
+        var (tx1, tx2) = OrderedPair();
+        store.Write(tx2, new[] { BoolAttr("project", "p1", "public", true) });
+
+        Assert.False(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx1)));
+        Assert.True(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx2)));
     }
 }
