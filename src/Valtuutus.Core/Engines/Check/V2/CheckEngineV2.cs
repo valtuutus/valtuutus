@@ -17,8 +17,8 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
             SnapToken = snapToken, Context = req.Context
         };
         var executor = executorPool.Rent(reader);
-        var results = await executor.ExecuteAsync(
-            [new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth)],
+        var results = await executor.ExecuteSingleAsync(
+            new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
             ctx, cancellationToken, memoizeRoots: false);
         // Reached only on success (an exception here leaves `executor` un-pooled — safe, just
         // sacrifices reuse of that one instance). Fire-and-forget: a short-circuited Union may

@@ -39,6 +39,11 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
     private bool[] _results = [];
     private int _rootsPending;
+    // Reused across calls on this pooled instance to avoid a heap allocation for the extremely
+    // common single-root case (see ExecuteSingleAsync). Safe because ExecuteAsync only reads
+    // `roots` synchronously in its prologue, before any await — nothing else can be writing to
+    // this same pooled instance's buffer concurrently (see pool ownership sequencing above).
+    private readonly CheckRootRequest[] _singleRootBuffer = new CheckRootRequest[1];
     // Total dispatched-but-not-yet-completed ops, independent of _rootsPending. A short-circuited
     // Union/Intersect can make _rootsPending hit 0 while sibling ops are still in flight — this
     // instance is NOT safe to return to the pool until _pendingOps also reaches 0 (see
@@ -137,6 +142,17 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 _frames = [];
             }
         }
+    }
+
+    // Avoids a heap-allocated CheckRootRequest[1] at every call site that only ever has one
+    // root (CheckEngineV2.Check()) — ReadOnlySpan<T> can't be an async method parameter, so
+    // ExecuteAsync itself can't take a span; this reuses a buffer already owned by the pooled
+    // instance instead.
+    public Task<bool[]> ExecuteSingleAsync(CheckRootRequest root, CheckRequestContext ctx, CancellationToken ct,
+        bool memoizeRoots = true)
+    {
+        _singleRootBuffer[0] = root;
+        return ExecuteAsync(_singleRootBuffer, ctx, ct, memoizeRoots);
     }
 
     // Drains any ops still in flight after ExecuteAsync has already answered the caller (a

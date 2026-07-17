@@ -467,4 +467,41 @@ public class CheckPlanExecutorSpecs
         await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
         drainTask.IsCompletedSuccessfully.Should().BeTrue("releasing the last outstanding op must let the drain finish promptly");
     }
+
+    [Fact]
+    public async Task ExecuteSingleAsync_reuses_its_buffer_without_leaking_state_across_calls()
+    {
+        // ExecuteSingleAsync writes each call's root into a buffer owned by the pooled instance
+        // (see CheckPlanExecutor._singleRootBuffer) instead of allocating a fresh array — this
+        // proves that reuse doesn't leak the previous call's root into the next one.
+        const string s = """
+            entity user {}
+            entity doc {
+                relation owner @user;
+                relation editor @user;
+            }
+            """;
+        var (_, schema, reader) = await Arrange(s, [
+            new RelationTuple("doc", "1", "owner", "user", "alice"),
+            new RelationTuple("doc", "2", "editor", "user", "bob"),
+        ]);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema))
+            { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
+        var snap = (await reader.GetLatestSnapToken(default))!.Value;
+
+        var ctxAlice = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "alice", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var ctxBob = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "bob", SnapToken = snap, Context = new Dictionary<string, object>() };
+
+        for (var i = 0; i < 10; i++)
+        {
+            (await executor.ExecuteSingleAsync(new CheckRootRequest("doc", "1", "owner", null, 10), ctxAlice, default))[0]
+                .Should().BeTrue($"iteration {i}: alice owns doc/1");
+            (await executor.ExecuteSingleAsync(new CheckRootRequest("doc", "2", "owner", null, 10), ctxBob, default))[0]
+                .Should().BeFalse($"iteration {i}: bob is editor, not owner, of doc/2");
+            (await executor.ExecuteSingleAsync(new CheckRootRequest("doc", "2", "editor", null, 10), ctxBob, default))[0]
+                .Should().BeTrue($"iteration {i}: bob edits doc/2");
+        }
+    }
 }
