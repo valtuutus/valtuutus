@@ -27,6 +27,10 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
+    public static class ConfigureCheckV2
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
