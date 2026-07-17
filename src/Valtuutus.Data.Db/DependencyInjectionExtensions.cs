@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Valtuutus.Core.Engines.Check.V2;
 
 namespace Valtuutus.Data.Db;
 
@@ -17,6 +19,11 @@ public static class DependencyInjectionExtensions
     {
         services.AddScoped(factory);
         services.AddSingleton(options);
+        // V2 plan rewriter for relational providers. Harmless when V2 is not opted in (nothing
+        // resolves IPlanRewriter then); TryAddEnumerable keeps repeated AddDbSetup calls
+        // idempotent. Requires the registered IDataReaderProvider to implement
+        // IRelationalCheckOps — both in-repo relational providers do.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPlanRewriter, RelationalPlanRewriter>());
         return services;
     }
 }

@@ -20,6 +20,18 @@ internal sealed record AttributeExprNode(PermissionNodeLeafExp Expr) : PlanNode;
 internal sealed record TupleToUserSetNode(string TuplesetRelation, string ComputedRelation) : PlanNode;
 internal sealed record PlanRefNode(string Permission) : PlanNode; // same-entity ResolveDynamic re-entry
 
+// Fused sibling direct-relation batch (generic "sibling grouping" pass — design doc, Pipeline).
+// Replaces ≥2 batchable PlanRefNode siblings of one Union/Intersect: RequireAll=false under
+// Union (any relation matches), true under Intersect (every relation matches). Relations is
+// duplicate-free by construction — a repeated ref is hash-consed into a MemoNode and never
+// grouped. Array-typed record ⇒ reference equality; fine, this node is created after
+// hash-consing and never interned.
+internal sealed record MultiDirectNode(string[] Relations, bool RequireAll) : PlanNode;
+
+// Physical escape hatch: a rewriter-fused subtree carrying its own execution (design doc, IR).
+// Reference equality, never interned — created only after hash-consing, like MultiDirectNode.
+internal sealed record PhysicalCheckNode(ICheckOp Op) : PlanNode;
+
 internal sealed record UnionNode(ImmutableArray<PlanNode> Children) : PlanNode;
 internal sealed record IntersectNode(ImmutableArray<PlanNode> Children) : PlanNode;
 internal sealed record NegateNode(PlanNode Child) : PlanNode;

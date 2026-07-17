@@ -12,7 +12,7 @@ using Microsoft.Data.SqlClient;
 
 namespace Valtuutus.Data.SqlServer;
 
-public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
     private readonly DbConnectionFactory _connectionFactory;
 

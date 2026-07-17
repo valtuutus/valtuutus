@@ -12,7 +12,7 @@ using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
     private const string UnformattedSelectAttributes = @"SELECT
                     entity_type,

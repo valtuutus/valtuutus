@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using FluentAssertions;
+using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.Check.V2;
 using Valtuutus.Core.Lang.SchemaReaders;
 using Valtuutus.Core.Schemas;
@@ -74,11 +76,21 @@ public class PlanCompilerSpecs
     [Fact]
     public void Union_permission_compiles_to_UnionNode_of_PlanRefs()
     {
-        var plan = PlanCompiler.Compile(Parse(BasicSchema), "organization", "view", "user");
+        // Grouping fuses the two batchable refs; compile with an unknown subject type to see
+        // the ungrouped logical shape (grouping requires subjectTypeKnown, V1 parity).
+        var plan = PlanCompiler.Compile(Parse(BasicSchema), "organization", "view", null);
         var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
         union.Children.Should().HaveCount(2);
         union.Children[0].Should().Be(new PlanRefNode("admin"));
         union.Children[1].Should().Be(new PlanRefNode("member"));
+    }
+
+    [Fact]
+    public void Union_permission_groups_for_known_subjectType()
+    {
+        var plan = PlanCompiler.Compile(Parse(BasicSchema), "organization", "view", "user");
+        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
+        multi.Relations.Should().Equal("admin", "member");
     }
 
     [Fact]
@@ -183,5 +195,125 @@ public class PlanCompilerSpecs
         var inner = union.Children[1].Should().BeOfType<IntersectNode>().Subject;
         var second = inner.Children[1].Should().BeOfType<MemoNode>().Subject;
         second.SlotId.Should().Be(first.SlotId);
+    }
+
+    private const string HouseholdSchema = """
+        entity user {}
+        entity household {
+            relation owner @user;
+            relation admin @user;
+            relation member @user;
+            attribute open bool;
+            permission view := owner or admin or member;
+            permission manage := owner and admin;
+            permission browse := owner or admin or open;
+        }
+        """;
+
+    [Fact]
+    public void Union_of_batchable_refs_groups_to_MultiDirect()
+    {
+        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "view", "user");
+        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
+        multi.Relations.Should().Equal("owner", "admin", "member");
+        multi.RequireAll.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Intersect_of_batchable_refs_groups_with_RequireAll()
+    {
+        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "manage", "user");
+        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
+        multi.Relations.Should().Equal("owner", "admin");
+        multi.RequireAll.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Mixed_union_groups_only_the_batchable_refs()
+    {
+        // `open` is an attribute → PlanRefNode("open") is not a direct relation, stays a sibling.
+        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "browse", "user");
+        var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
+        union.Children.Should().HaveCount(2);
+        var multi = union.Children[0].Should().BeOfType<MultiDirectNode>().Subject;
+        multi.Relations.Should().Equal("owner", "admin");
+        union.Children[1].Should().Be(new PlanRefNode("open"));
+    }
+
+    [Fact]
+    public void Null_subjectType_skips_grouping()
+    {
+        // V1 parity: batching requires subjectTypeKnown (CheckEngine.cs:564).
+        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "view", null);
+        plan.Root.Should().BeOfType<UnionNode>().Which.Children.Should().AllBeOfType<PlanRefNode>();
+    }
+
+    [Fact]
+    public void Sub_relation_path_refs_are_not_grouped()
+    {
+        // V1 parity: IsBatchableDirectRelation excludes HasSubRelationPaths (CheckEngine.cs:420) —
+        // those leaves still need the GetIndirectRelations fan-out.
+        const string s = """
+            entity user {}
+            entity team { relation member @user; }
+            entity doc {
+                relation viewer @user @team#member;
+                relation editor @user @team#member;
+                permission read := viewer or editor;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "doc", "read", "user");
+        plan.Root.Should().BeOfType<UnionNode>().Which.Children.Should().AllBeOfType<PlanRefNode>();
+    }
+
+    [Fact]
+    public void Memo_wrapped_ref_stays_outside_the_batch()
+    {
+        // `owner` is referenced twice → hash-consing wraps it in a MemoNode. The MemoNode fails
+        // the PlanRefNode type test, so the union has only ONE plain batchable ref (`admin`) —
+        // below threshold, nothing groups. That non-match is the fusion barrier working.
+        const string s = """
+            entity user {}
+            entity vault {
+                relation owner @user;
+                relation admin @user;
+                permission locked := (owner or admin) and not(owner);
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "vault", "locked", "user");
+        var intersect = plan.Root.Should().BeOfType<IntersectNode>().Subject;
+        var union = intersect.Children[0].Should().BeOfType<UnionNode>().Subject;
+        union.Children.Should().HaveCount(2);
+        union.Children.OfType<MemoNode>().Should().ContainSingle();
+        union.Children.OfType<PlanRefNode>().Should().ContainSingle();
+    }
+
+    private sealed class ConstOp(bool value) : ICheckOp
+    {
+        public ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
+            string entityType, string entityId, CancellationToken ct) => new(value);
+        public string Describe() => $"Const({value})";
+    }
+
+    private sealed class AttributeHijackingRewriter : IPlanRewriter
+    {
+        public PlanNode Rewrite(PlanNode root, Schema schema)
+            => root is AttributeTruthNode ? new PhysicalCheckNode(new ConstOp(true)) : root;
+    }
+
+    [Fact]
+    public void Cache_applies_registered_rewriters_to_compiled_plans()
+    {
+        var cache = new CheckPlanCache(Parse(BasicSchema), [new AttributeHijackingRewriter()]);
+        var plan = cache.GetOrCompile("organization", "public", "user");
+        var physical = plan.Root.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("Const(True)");
+    }
+
+    [Fact]
+    public void Cache_with_no_rewriters_leaves_plans_untouched()
+    {
+        var cache = new CheckPlanCache(Parse(BasicSchema));
+        cache.GetOrCompile("organization", "public", "user").Root.Should().Be(new AttributeTruthNode("public"));
     }
 }

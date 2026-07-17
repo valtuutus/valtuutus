@@ -14,7 +14,89 @@ internal static class PlanCompiler
         var root = CompileRoot(schema, entityType, permission);
         root = PruneAndFold(root, schema, entityType, subjectType);
         var (consed, slotCount) = HashCons(root);
+        // V1 parity: batching only fires when the subject type is known (CheckEngine.cs:564);
+        // plans are keyed per subjectType, so that runtime condition is a compile-time one here.
+        if (!string.IsNullOrEmpty(subjectType))
+            consed = GroupSiblingDirectRelations(consed, schema, entityType);
         return new CheckPlan(consed, slotCount);
+    }
+
+    // Plan-time form of V1's runtime check-then-batch (CheckEngine.cs:559-577): ≥2 sibling
+    // Union/Intersect children that are plain same-entity direct-relation refs collapse into one
+    // MultiDirectNode, answered by a single HasAnyOfDirectRelations round trip. V1's memo
+    // exclusion has no plan-time equivalent — the fused batch may re-fetch a relation the
+    // dynamic memo already knows, which costs no extra round trip; deliberate divergence.
+    // Runs post-hash-consing: a shared ref is MemoNode-wrapped by then and fails the PlanRefNode
+    // type test below — that non-match IS the fusion barrier (design doc, "MemoNode barrier rule").
+    private static PlanNode GroupSiblingDirectRelations(PlanNode root, Schema schema, string entityType)
+    {
+        // Ref-equality memo so a MemoNode shared by several parents rewrites to ONE instance,
+        // preserving the DAG interchange form instead of silently duplicating shared subtrees.
+        var visited = new Dictionary<PlanNode, PlanNode>(ReferenceEqualityComparer.Instance);
+        return Walk(root);
+
+        PlanNode Walk(PlanNode node)
+        {
+            if (visited.TryGetValue(node, out var done)) return done;
+            PlanNode result;
+            switch (node)
+            {
+                case UnionNode u: result = GroupChildren(u.Children, isUnion: true); break;
+                case IntersectNode i: result = GroupChildren(i.Children, isUnion: false); break;
+                case NegateNode n:
+                {
+                    var child = Walk(n.Child);
+                    result = ReferenceEquals(child, n.Child) ? n : new NegateNode(child);
+                    break;
+                }
+                case MemoNode m:
+                {
+                    var child = Walk(m.Child);
+                    result = ReferenceEquals(child, m.Child) ? m : new MemoNode(m.SlotId, child);
+                    break;
+                }
+                default: result = node; break;
+            }
+            visited[node] = result;
+            return result;
+        }
+
+        PlanNode GroupChildren(ImmutableArray<PlanNode> children, bool isUnion)
+        {
+            List<string>? batchable = null;
+            foreach (var child in children)
+                if (IsBatchableDirectRef(child, out var relation))
+                    (batchable ??= []).Add(relation);
+
+            if (batchable is not { Count: >= 2 })
+            {
+                var rebuilt = ImmutableArray.CreateBuilder<PlanNode>(children.Length);
+                foreach (var child in children) rebuilt.Add(Walk(child));
+                var arr = rebuilt.MoveToImmutable();
+                return isUnion ? new UnionNode(arr) : new IntersectNode(arr);
+            }
+
+            var multi = new MultiDirectNode(batchable.ToArray(), RequireAll: !isUnion);
+            var kept = ImmutableArray.CreateBuilder<PlanNode>(children.Length - batchable.Count + 1);
+            kept.Add(multi);
+            foreach (var child in children)
+                if (!IsBatchableDirectRef(child, out _))
+                    kept.Add(Walk(child));
+            if (kept.Count == 1) return multi;
+            var keptArr = kept.MoveToImmutable();
+            return isUnion ? new UnionNode(keptArr) : new IntersectNode(keptArr);
+        }
+
+        // Mirror of V1 IsBatchableDirectRelation (CheckEngine.cs:411-423) over the compiled IR.
+        bool IsBatchableDirectRef(PlanNode node, out string relation)
+        {
+            relation = "";
+            if (node is not PlanRefNode p) return false;
+            if (schema.GetRelationType(entityType, p.Permission) != RelationType.DirectRelation) return false;
+            if (schema.GetRelation(entityType, p.Permission).HasSubRelationPaths) return false;
+            relation = p.Permission;
+            return true;
+        }
     }
 
     // Bottom-up interning: identical subtrees become one node; any node referenced more than
