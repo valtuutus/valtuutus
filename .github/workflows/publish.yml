@@ -89,10 +89,10 @@ jobs:
           } > ReleaseNotes.props
 
       - name: Restore
-        run: dotnet restore Valtuutus.sln
+        run: dotnet restore Valtuutus.slnx
 
       - name: Build
-        run: dotnet build Valtuutus.sln --no-restore -c Release
+        run: dotnet build Valtuutus.slnx --no-restore -c Release
 
       - name: Pack
         shell: bash
