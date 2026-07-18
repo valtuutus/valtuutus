@@ -12,4 +12,10 @@
       <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.Db.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
 </Project>

@@ -12,6 +12,8 @@ internal enum OpKind : byte
     HasAnyDirectRelation,   // EntityType = sub entity type, EntityIds, Relation = computed relation
     GetRelations,           // payload: PooledList<RelationTuple>; Relation = tupleset/relation name
     GetIndirectRelations,   // payload: PooledList<RelationTuple>
+    HasAnyOfDirectRelations, // payload: HashSet<string>; Relations = sibling relation names
+    CheckOp,                // Op = rewriter-installed ICheckOp; executor is opaque to its contents
 }
 
 internal readonly struct PendingOp
@@ -25,6 +27,8 @@ internal readonly struct PendingOp
     public string? SubEntityType { get; init; }
     public string? ComputedRelation { get; init; }
     public PermissionNodeLeafExp? Expr { get; init; }
+    public string[]? Relations { get; init; }
+    public ICheckOp? Op { get; init; }
 }
 
 internal interface IOpCompletionSink
@@ -88,6 +92,14 @@ internal sealed class DefaultPhysicalExecutor(Schema schema) : IPhysicalExecutor
                 case OpKind.GetIndirectRelations:
                     sink.CompleteWithPayload(op.Token, await Reader.GetIndirectRelations(
                         Filter(op, op.Relation!, ctx), ct).ConfigureAwait(false));
+                    break;
+                case OpKind.HasAnyOfDirectRelations:
+                    sink.CompleteWithPayload(op.Token, await Reader.HasAnyOfDirectRelations(
+                        op.EntityType, op.EntityId, op.Relations!, ctx.SubjectId!, ctx.SnapToken, ct).ConfigureAwait(false));
+                    break;
+                case OpKind.CheckOp:
+                    sink.Complete(op.Token, await op.Op!.Execute(Reader, ctx, op.EntityType, op.EntityId, ct)
+                        .ConfigureAwait(false));
                     break;
                 default:
                     sink.Fail(op.Token, new InvalidOperationException($"Unknown op kind {op.Kind}"));

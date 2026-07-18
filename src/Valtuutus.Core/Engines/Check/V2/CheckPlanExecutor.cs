@@ -412,6 +412,22 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 });
                 break;
 
+            case MultiDirectNode md:
+                SubmitOp(new PendingOp
+                {
+                    Token = idx, Kind = OpKind.HasAnyOfDirectRelations,
+                    EntityType = frame.EntityType, EntityId = frame.EntityId, Relations = md.Relations
+                });
+                break;
+
+            case PhysicalCheckNode p:
+                SubmitOp(new PendingOp
+                {
+                    Token = idx, Kind = OpKind.CheckOp,
+                    EntityType = frame.EntityType, EntityId = frame.EntityId, Op = p.Op
+                });
+                break;
+
             case MemoNode m:
             {
                 var slots = frame.Slots!;
@@ -613,6 +629,21 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 break;
 
             case AttributeExprNode:
+                CompleteFrame(idx, completion.Result);
+                break;
+
+            case MultiDirectNode md:
+            {
+                var matched = (HashSet<string>)completion.Payload!;
+                // Count checks are duplicate-safe: the return type is a set (dedup is a documented
+                // property of HasAnyOfDirectRelations), and Relations is duplicate-free by
+                // construction (a repeated ref is memo-wrapped and never grouped).
+                var result = md.RequireAll ? matched.Count == md.Relations.Length : matched.Count > 0;
+                CompleteFrame(idx, result);
+                break;
+            }
+
+            case PhysicalCheckNode:
                 CompleteFrame(idx, completion.Result);
                 break;
 

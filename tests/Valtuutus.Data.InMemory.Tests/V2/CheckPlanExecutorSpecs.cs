@@ -27,9 +27,23 @@ public class CheckPlanExecutorSpecs
     {
         public readonly List<(int Token, bool Result)> Completed = [];
         public readonly List<(int Token, Exception Error)> Failed = [];
+        public readonly List<(int Token, object Payload)> Payloads = [];
         public void Complete(int token, bool result) { lock (Completed) Completed.Add((token, result)); }
-        public void CompleteWithPayload(int token, object payload) => throw new NotSupportedException();
+        public void CompleteWithPayload(int token, object payload) { lock (Payloads) Payloads.Add((token, payload)); }
         public void Fail(int token, Exception error) { lock (Failed) Failed.Add((token, error)); }
+    }
+
+    // Records every submitted op, then forwards to the real executor — lets a test assert on
+    // query SHAPE (one batched op vs N singles) while the check still runs for real.
+    internal sealed class RecordingPhysicalExecutor(IPhysicalExecutor inner) : IPhysicalExecutor
+    {
+        public readonly List<PendingOp> Submitted = [];
+        public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
+        {
+            lock (Submitted)
+                foreach (var op in ops) Submitted.Add(op);
+            inner.Submit(ops, ctx, sink, ct);
+        }
     }
 
     // Test double letting a test deterministically simulate a genuinely still-in-flight op
@@ -435,11 +449,15 @@ public class CheckPlanExecutorSpecs
         // an unrelated request while r1's eventual completion is still pending — and when r1
         // finally lands, it would call sink.Complete against whatever _frames/_mailbox that
         // unrelated request has by then, using r1's now-stale token.
+        // r1 is an attribute, not a relation, so GroupSiblingDirectRelations (which only
+        // recognizes direct-relation refs) leaves it out and the union stays two independent
+        // ops — otherwise sibling-batching would fuse r0/r1 into one MultiDirectNode op,
+        // defeating this test's premise of one instant leg and one genuinely outstanding leg.
         const string s = """
             entity user {}
             entity doc {
                 relation r0 @user;
-                relation r1 @user;
+                attribute r1 bool;
                 permission view := r0 or r1;
             }
             """;
@@ -503,5 +521,108 @@ public class CheckPlanExecutorSpecs
             (await executor.ExecuteSingleAsync(new CheckRootRequest("doc", "2", "editor", null, 10), ctxBob, default))[0]
                 .Should().BeTrue($"iteration {i}: bob edits doc/2");
         }
+    }
+
+    private const string HouseholdSchema = """
+        entity user {}
+        entity household {
+            relation owner @user;
+            relation admin @user;
+            relation member @user;
+            permission view := owner or admin or member;
+            permission manage := owner and admin;
+        }
+        """;
+
+    [Fact]
+    public async Task MultiDirect_union_true_when_any_relation_matches()
+    {
+        (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "u1")], null,
+            "household", "1", "view")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MultiDirect_union_false_when_no_relation_matches()
+    {
+        (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "someone-else")], null,
+            "household", "1", "view")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MultiDirect_intersect_requires_every_relation()
+    {
+        RelationTuple[] onlyOwner = [new RelationTuple("household", "1", "owner", "user", "u1")];
+        (await RunCheck(HouseholdSchema, onlyOwner, null, "household", "1", "manage")).Should().BeFalse();
+
+        RelationTuple[] both =
+        [
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+            new RelationTuple("household", "1", "admin", "user", "u1"),
+        ];
+        (await RunCheck(HouseholdSchema, both, null, "household", "1", "manage")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MultiDirect_intersect_is_not_fooled_by_duplicate_tuples()
+    {
+        // Two identical owner tuples, no admin: a count over ROWS would see 2 == 2 relations and
+        // wrongly pass; the HashSet return type guarantees set semantics (see the
+        // HasAnyOfDirectRelations doc remarks).
+        RelationTuple[] dupOwner =
+        [
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+        ];
+        (await RunCheck(HouseholdSchema, dupOwner, null, "household", "1", "manage")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task MultiDirect_submits_one_batched_op_instead_of_three_singles()
+    {
+        var (_, schema, reader) = await Arrange(HouseholdSchema,
+            [new RelationTuple("household", "1", "member", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("household", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.Submitted.Should().ContainSingle();
+        recording.Submitted[0].Kind.Should().Be(OpKind.HasAnyOfDirectRelations);
+        recording.Submitted[0].Relations.Should().Equal("owner", "admin", "member");
+    }
+
+    private sealed class FixedResultOp(bool value) : ICheckOp
+    {
+        public ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
+            string entityType, string entityId, CancellationToken ct) => new(value);
+        public string Describe() => $"Fixed({value})";
+    }
+
+    private sealed class RootReplacingRewriter(ICheckOp op) : IPlanRewriter
+    {
+        public PlanNode Rewrite(PlanNode root, Schema schema) => new PhysicalCheckNode(op);
+    }
+
+    [Fact]
+    public async Task Executor_runs_a_PhysicalCheckNode_op_through_the_default_physical_executor()
+    {
+        // No tuples at all — a true result can only come from the injected op.
+        var (_, schema, reader) = await Arrange(DocSchema, []);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var cache = new CheckPlanCache(schema, [new RootReplacingRewriter(new FixedResultOp(true))]);
+        var executor = new CheckPlanExecutor(schema, cache)
+            { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
     }
 }
