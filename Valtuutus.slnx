@@ -1,0 +1,63 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Valtuutus.Benchmarks/Valtuutus.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Valtuutus.Playground/Valtuutus.Playground.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="build.cake" />
+    <File Path="docker-compose.yml" />
+    <File Path="src/Directory.Build.props" />
+    <File Path="src/Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/Solution Items/docs/">
+    <File Path="Caching.md" />
+    <File Path="Modeling Authorization.md" />
+    <File Path="README.md" />
+    <File Path="Storing Data.md" />
+  </Folder>
+  <Folder Name="/Solution Items/github/">
+    <File Path=".github/workflows/base_benchmarks.yml" />
+    <File Path=".github/workflows/build.yml" />
+    <File Path=".github/workflows/post_pr_benchmarks.yml" />
+    <File Path=".github/workflows/pr_benchmarks.yml" />
+    <File Path=".github/workflows/publish.yml" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Valtuutus.Core/Valtuutus.Core.csproj" />
+    <Project Path="src/Valtuutus.Data.Caching/Valtuutus.Data.Caching.csproj" />
+    <Project Path="src/Valtuutus.Data.Db/Valtuutus.Data.Db.csproj" />
+    <Project Path="src/Valtuutus.Data.InMemory/Valtuutus.Data.InMemory.csproj" />
+    <Project Path="src/Valtuutus.Data.Postgres/Valtuutus.Data.Postgres.csproj" />
+    <Project Path="src/Valtuutus.Data.SqlServer/Valtuutus.Data.SqlServer.csproj" />
+    <Project Path="src/Valtuutus.Data/Valtuutus.Data.csproj" />
+    <Project Path="src/Valtuutus.Lang.SourceGen/Valtuutus.Lang.SourceGen.csproj" />
+    <Project Path="src/Valtuutus.Lang/Valtuutus.Lang.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Valtuutus.Api.Tests/Valtuutus.Api.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.Caching.Tests/Valtuutus.Data.Caching.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.Db.Tests/Valtuutus.Data.Db.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.InMemory.Tests/Valtuutus.Data.InMemory.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.Postgres.Tests/Valtuutus.Data.Postgres.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.SqlServer.Tests/Valtuutus.Data.SqlServer.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Lang.SourceGen.IntegrationTests/Valtuutus.Lang.SourceGen.IntegrationTests.csproj" />
+    <Project Path="tests/Valtuutus.Lang.SourceGen.Tests/Valtuutus.Lang.SourceGen.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Lang.Tests/Valtuutus.Lang.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Tests.Shared/Valtuutus.Tests.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/Solution Items/">
+    <File Path="tests/Directory.Build.props" />
+    <File Path="tests/Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/utils/">
+    <Project Path="utils/Valtuutus.Seeder/Valtuutus.Seeder.csproj" />
+  </Folder>
+</Solution>
