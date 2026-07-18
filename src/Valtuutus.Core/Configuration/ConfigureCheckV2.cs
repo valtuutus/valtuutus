@@ -9,7 +9,8 @@ public static class ConfigureCheckV2
 {
     /// <summary>
     /// Opt-in: replaces the recursive check engine with the plan/executor engine (CheckEngineV2).
-    /// Call after <see cref="ConfigureSchema.AddValtuutusCore(IServiceCollection, string, IReadOnlyDictionary{string, Func{IDictionary{string, object?}, bool}}?)"/>.
+    /// Call after <see cref="ConfigureSchema.AddValtuutusCore(IServiceCollection, string, IReadOnlyDictionary{string, Func{IDictionary{string, object?}, bool}}?)"/>,
+    /// and before <c>AddCaching</c> (Valtuutus.Data.Caching) if you use it, since it replaces the registered <c>ICheckEngine</c> outright.
     /// Explain requests are still served by the V1 engine.
     /// </summary>
     public static IServiceCollection AddValtuutusCheckV2(this IServiceCollection services)

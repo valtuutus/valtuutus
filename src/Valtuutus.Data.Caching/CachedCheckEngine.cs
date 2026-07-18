@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
@@ -9,9 +10,12 @@ public sealed class CachedCheckEngine : ICheckEngine
 {
     private readonly IDataReaderProvider _reader;
     private readonly IFusionCache _cache;
-    private readonly CheckEngine _engine;
+    private readonly ICheckEngine _engine;
 
-    public CachedCheckEngine(IDataReaderProvider reader, IFusionCache cache, CheckEngine engine)
+    public CachedCheckEngine(
+        IDataReaderProvider reader,
+        IFusionCache cache,
+        [FromKeyedServices(Consts.InnerCheckEngineKey)] ICheckEngine engine)
     {
         _reader = reader;
         _cache = cache;

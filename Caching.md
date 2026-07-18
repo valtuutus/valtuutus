@@ -59,6 +59,20 @@ builder.Services.AddValtuutusCore("""
 ```
 That's it. Now all your queries to the engines will be cached to reduce the load in your database. (It is not required to use a database provider to use caching)
 
+## Composing with CheckEngineV2
+
+`AddCaching` decorates whichever `ICheckEngine` is registered at the point it runs, so if you opt into
+the V2 check engine (`AddValtuutusCheckV2`) call it **before** `.AddCaching()`:
+```csharp
+builder.Services.AddValtuutusCore("...");
+builder.Services.AddValtuutusCheckV2(); // opt-in, before AddCaching
+
+builder.Services.AddPostgres(...)
+    .AddConcurrentQueryLimit(3)
+    .AddCaching(); // <--- decorates CheckEngineV2
+```
+Calling `AddValtuutusCheckV2()` after `.AddCaching()` replaces the cached engine outright and you lose caching.
+
 ## Multi node scenario
 ⚠️ If you are writing/deleting data from a multi node scenario, it is highly recommended to use a backplane for Fusion Cache. 
 That way, any writes/deletes in the data will automatically invalidate the cache in all instances.

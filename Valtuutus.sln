@@ -87,6 +87,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Seeder", "utils\V
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Data.Db.Tests", "tests\Valtuutus.Data.Db.Tests\Valtuutus.Data.Db.Tests.csproj", "{2D0CA9BE-F34F-4627-AFBF-529C4C35AE7F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Valtuutus.Data.Caching.Tests", "tests\Valtuutus.Data.Caching.Tests\Valtuutus.Data.Caching.Tests.csproj", "{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -349,6 +351,18 @@ Global
 		{2D0CA9BE-F34F-4627-AFBF-529C4C35AE7F}.Release|x64.Build.0 = Release|Any CPU
 		{2D0CA9BE-F34F-4627-AFBF-529C4C35AE7F}.Release|x86.ActiveCfg = Release|Any CPU
 		{2D0CA9BE-F34F-4627-AFBF-529C4C35AE7F}.Release|x86.Build.0 = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|x64.Build.0 = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Debug|x86.Build.0 = Debug|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|x64.ActiveCfg = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|x64.Build.0 = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|x86.ActiveCfg = Release|Any CPU
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -378,5 +392,6 @@ Global
 		{55B5D5C8-1404-412A-916D-DFDDECA18A85} = {6346B56F-2846-48A9-8F2F-B2926AF3560C}
 		{D9D56C6E-33A3-4025-962E-28F49B5B7684} = {F05F0F65-6685-4DDE-B159-120B4901ACBF}
 		{2D0CA9BE-F34F-4627-AFBF-529C4C35AE7F} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
+		{14EF2D11-E0FA-4AAD-880D-0FA4CB6FF816} = {D383AD39-3BE1-43F8-BF40-E3F7A6D1CD1D}
 	EndGlobalSection
 EndGlobal
