@@ -1,6 +1,4 @@
 using System.Buffers;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
@@ -36,6 +34,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // Intrusive LIFO over Frame.NextReady — avoids a per-call Stack<int> + its backing-array
     // allocation by reusing storage already rented via ArrayPool<Frame>. -1 = empty.
     private int _readyHead = -1;
+
+    // Ops that became ready during the current DrainReady pass, accumulated here instead of
+    // being submitted one at a time — flushed as a single Physical.Submit call by FlushWave()
+    // once the pass reaches quiescence (M1: wave-shaped driver loop). Same ArrayPool lifecycle
+    // and lifetime rules as _frames (rent in ExecuteAsync's prologue, grow by doubling, return
+    // only once _pendingOps reaches 0 — see ExecuteAsync/DrainStragglersAsync).
+    private PendingOp[] _waveBuffer = [];
+    private int _waveCount;
 
     private bool[] _results = [];
     private int _rootsPending;
@@ -111,6 +117,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _frames = ArrayPool<Frame>.Shared.Rent(16);
         _frameCount = 0;
         _readyHead = -1;
+        _waveBuffer = ArrayPool<PendingOp>.Shared.Rent(8);
+        _waveCount = 0;
         _memoIndex?.Clear();
         _memoEntries.Clear();
         _results = new bool[roots.Length];
@@ -148,11 +156,16 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         {
             // If stragglers are still outstanding (short-circuited Union/Intersect), _frames
             // must stay alive — OnOpCompleted needs to read it to recognize each straggler as
-            // stale. DrainStragglersAsync returns it once they've all landed.
+            // stale. DrainStragglersAsync returns it (and the wave buffer) once they've all
+            // landed. The wave buffer follows the same rule even though nothing reads it during
+            // drain (FlushWave already reset it to empty) — DrainStragglersAsync's own DrainReady
+            // calls can still append new ops to it (e.g. a TTU fan-out discovered while draining).
             if (_pendingOps == 0)
             {
                 ArrayPool<Frame>.Shared.Return(_frames, clearArray: true);
                 _frames = [];
+                ArrayPool<PendingOp>.Shared.Return(_waveBuffer, clearArray: true);
+                _waveBuffer = [];
             }
         }
     }
@@ -186,6 +199,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         }
         ArrayPool<Frame>.Shared.Return(_frames, clearArray: true);
         _frames = [];
+        ArrayPool<PendingOp>.Shared.Return(_waveBuffer, clearArray: true);
+        _waveBuffer = [];
     }
 
     // ── IOpCompletionSink (called from provider threads) ────────────────────
@@ -205,6 +220,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             _readyHead = _frames[idx].NextReady;
             StepFrame(idx);
         }
+        // M1: every leaf op that became ready during this pass (including ones surfaced by
+        // frames spawned mid-pass, e.g. a PlanRef re-entry) flushes as a single wave here.
+        FlushWave();
     }
 
     private int SpawnFrame(PlanNode node, string entityType, string entityId, string? subjectRelation,
@@ -602,14 +620,63 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 slots: slots, childIndex: i);
     }
 
-    // Avoids a heap-allocated PendingOp[1] for the collection-expression `[op]` (PendingOp has
-    // reference-type fields, so the compiler can't stackalloc it). Safe because Submit is
-    // synchronous within this call — DefaultPhysicalExecutor copies each op by value into
-    // RunAsync's own parameter before any suspension, so nothing retains this span past return.
+    // Appends to the current wave instead of submitting immediately (M1) — FlushWave() (called
+    // once per DrainReady pass, see below) is the only place that actually calls Physical.Submit.
     private void SubmitOp(in PendingOp op)
     {
         _pendingOps++;
-        Physical.Submit(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in op), 1), _ctx, this, _ct);
+        if (_waveCount == _waveBuffer.Length)
+        {
+            var bigger = ArrayPool<PendingOp>.Shared.Rent(_waveBuffer.Length * 2);
+            Array.Copy(_waveBuffer, bigger, _waveCount);
+            ArrayPool<PendingOp>.Shared.Return(_waveBuffer, clearArray: true);
+            _waveBuffer = bigger;
+        }
+        _waveBuffer[_waveCount++] = op;
+    }
+
+    // Submits everything accumulated by SubmitOp since the last flush, then resets for the next
+    // wave. Called once per DrainReady pass — see DrainReady below. A no-op when nothing became
+    // ready as a leaf op this pass (e.g. a pass that only resolved memo hits or PlanRef re-entries).
+    private void FlushWave()
+    {
+        if (_waveCount == 0) return;
+
+        // Once every root already has its final answer (_rootsPending == 0 — true for the tail
+        // of the main loop once the last root decides, and always true throughout
+        // DrainStragglersAsync), anything still sitting in the wave buffer is work discovered
+        // after the caller already has _results back. Drop it instead of submitting it: nobody
+        // will ever read the answer, so the real provider round trip is pure waste. _pendingOps
+        // is repaid here exactly as OnOpCompleted would repay it on a real completion, so
+        // DrainStragglersAsync's `while (_pendingOps > 0)` still terminates correctly — usually
+        // faster, since a dropped op never needs an async round trip through the mailbox at all.
+        //
+        // Scope note: this only catches the case where EVERY root already decided. A multi-root
+        // SubjectPermission call where one root short-circuits while others are still pending
+        // does not get this benefit for that root's own stale descendants yet (_rootsPending
+        // isn't 0 until every root is done) — that needs per-branch ancestor tracking, a larger
+        // separate change. A cancelled or faulted request also never hits this path
+        // (cancellation/fault propagate via the mailbox, not via Notify, so they never force
+        // _rootsPending to 0) — CheckEngineV2 abandons those executors instead of pooling them
+        // regardless, so optimizing their drain has little value.
+        if (_rootsPending == 0)
+        {
+            _pendingOps -= _waveCount;
+            _waveCount = 0;
+            return;
+        }
+
+        ValtuutusMetrics.WaveOps.Record(_waveCount);
+
+        // M3: how many ops in this wave share an OpKind with at least one sibling — stackalloc,
+        // never heap-allocated, since this runs on every wave flush.
+        Span<int> kindCounts = stackalloc int[OpKindMeta.OpKindCount];
+        for (var i = 0; i < _waveCount; i++) kindCounts[(byte)_waveBuffer[i].Kind]++;
+        for (var i = 0; i < _waveCount; i++)
+            if (kindCounts[(byte)_waveBuffer[i].Kind] >= 2) ValtuutusMetrics.WaveSameKindOps.Add(1);
+
+        Physical.Submit(_waveBuffer.AsSpan(0, _waveCount), _ctx, this, _ct);
+        _waveCount = 0;
     }
 
     // ── op completion routing ───────────────────────────────────────────────

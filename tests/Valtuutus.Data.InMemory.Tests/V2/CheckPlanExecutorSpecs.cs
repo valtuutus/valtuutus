@@ -34,14 +34,20 @@ public class CheckPlanExecutorSpecs
     }
 
     // Records every submitted op, then forwards to the real executor — lets a test assert on
-    // query SHAPE (one batched op vs N singles) while the check still runs for real.
+    // query SHAPE (one batched op vs N singles) while the check still runs for real. Submitted
+    // is a flattened view across every Submit call; SubmitCalls preserves per-call boundaries so
+    // a test can additionally assert on wave SIZE (how many ops one Submit call carried).
     internal sealed class RecordingPhysicalExecutor(IPhysicalExecutor inner) : IPhysicalExecutor
     {
         public readonly List<PendingOp> Submitted = [];
+        public readonly List<PendingOp[]> SubmitCalls = [];
         public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
         {
             lock (Submitted)
+            {
                 foreach (var op in ops) Submitted.Add(op);
+                SubmitCalls.Add(ops.ToArray());
+            }
             inner.Submit(ops, ctx, sink, ct);
         }
     }
@@ -615,6 +621,86 @@ public class CheckPlanExecutorSpecs
         recording.Submitted[0].Relations.Should().Equal("owner", "admin", "member");
     }
 
+    private const string WaveSchema = """
+        entity user {}
+        entity doc {
+            relation owner @user;
+            attribute published bool;
+            permission view := owner or published;
+        }
+        """;
+
+    [Fact]
+    public async Task Different_kind_siblings_ready_in_the_same_pass_submit_in_one_wave()
+    {
+        // M1: DrainReady accumulates every leaf op that becomes ready in one synchronous pass
+        // and flushes them via a single Physical.Submit call, instead of one Submit per op.
+        // owner (HasDirectRelation) and published (HasTrueBoolAttribute) are different OpKinds,
+        // so GroupSiblingDirectRelations cannot fuse them at compile time — this schema isolates
+        // wave batching (a runtime driver-loop behavior) from sibling-relation batching (a
+        // compile-time pass), proving the two are independent mechanisms.
+        var (_, schema, reader) = await Arrange(WaveSchema,
+            [new RelationTuple("doc", "1", "owner", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue("owner is granted");
+        recording.SubmitCalls.Should().ContainSingle(
+            "both leaf ops become ready in the same DrainReady pass and must flush as one wave");
+        // Set membership, not positional order: DrainReady drains its intrusive LIFO ready-stack
+        // (see _readyHead), so union children surface in reverse-of-spawn order — a pre-existing,
+        // deliberate characteristic of the scheduler (Union is commutative; order was never
+        // observable before wave batching existed). BeEquivalentTo would enforce byte-for-byte
+        // positional equality here regardless of source order since OpKind is byte-backed and
+        // FluentAssertions special-cases byte-sized collections like raw byte arrays — Contain +
+        // HaveCount checks the same two distinct kinds are present without asserting an order the
+        // wave never promised.
+        var kinds = recording.SubmitCalls[0].Select(o => o.Kind).ToArray();
+        kinds.Should().HaveCount(2);
+        kinds.Should().Contain([OpKind.HasDirectRelation, OpKind.HasTrueBoolAttribute]);
+    }
+
+    [Fact]
+    public async Task Wave_buffer_growth_does_not_corrupt_submitted_ops()
+    {
+        // Regression test mirroring Wide_union_forces_frame_array_growth_without_corruption,
+        // but for the wave buffer: ArrayPool<T>.Shared.Rent(8) actually rounds up to a 16-element
+        // array (bucket rounding), so branchCount must exceed 16 -- not just 8 -- to force a real
+        // grow. GroupSiblingDirectRelations doesn't fuse attribute nodes (only direct relations),
+        // so all branches submit individually and must all land in one wave after at least one grow.
+        const int branchCount = 20;
+        var attrDecls = string.Join("\n", Enumerable.Range(0, branchCount).Select(i => $"    attribute a{i} bool;"));
+        var unionExpr = string.Join(" or ", Enumerable.Range(0, branchCount).Select(i => $"a{i}"));
+        var schemaText = $$"""
+            entity user {}
+            entity doc {
+            {{attrDecls}}
+                permission view := {{unionExpr}};
+            }
+            """;
+        var (_, schema, reader) = await Arrange(schemaText, [],
+            [new AttributeTuple("doc", "1", $"a{branchCount - 1}", System.Text.Json.Nodes.JsonValue.Create(true))]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.SubmitCalls[0].Should().HaveCount(branchCount);
+        recording.SubmitCalls[0].Select(o => o.Kind).Should().AllBeEquivalentTo(OpKind.HasTrueBoolAttribute);
+    }
+
     private const string StragglerSchema = """
         entity user {}
         entity doc {
@@ -720,6 +806,47 @@ public class CheckPlanExecutorSpecs
         var again = await executor.ExecuteAsync(
             [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
         again[0].Should().BeTrue("the drained straggler expansion must not leak into this call");
+    }
+
+    [Fact]
+    public async Task Drain_time_descendants_after_the_answer_are_dropped_not_submitted()
+    {
+        // Once every root already has its final answer (_rootsPending == 0 — true throughout
+        // DrainStragglersAsync), FlushWave drops the wave instead of submitting it: nobody will
+        // ever read an answer for work discovered after the caller already has _results back.
+        // r0 short-circuits the union immediately; shared's TTU op is held. Its late payload
+        // (delivered during drain) fans out to 2 member-relation checks against g1/g2 — those
+        // must never reach Physical.Submit.
+        const string s = """
+            entity user {}
+            entity group { relation member @user; }
+            entity doc {
+                relation r0 @user;
+                relation shared @group;
+                permission view := r0 or shared.member;
+            }
+            """;
+        var (_, schema, _) = await Arrange(s, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var controllable = new ControllablePhysicalExecutor { ImmediateResult = true };
+        controllable.HeldRelations.Add("shared");
+        var recording = new RecordingPhysicalExecutor(controllable);
+        executor.Physical = recording;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits the union");
+        var submittedBeforeDrain = recording.Submitted.Count;
+
+        var drainTask = executor.DrainStragglersAsync();
+        var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
+        controllable.ReleaseWithPayload("shared", payload);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        recording.Submitted.Count.Should().Be(submittedBeforeDrain,
+            "member-relation fan-out ops discovered after the answer must be dropped, not submitted");
     }
 
     [Fact]
