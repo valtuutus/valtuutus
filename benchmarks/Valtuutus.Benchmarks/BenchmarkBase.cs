@@ -15,6 +15,7 @@ public abstract class BenchmarkBase
     private const string DiamondFolderId = "cccccccc-cccc-cccc-cccc-cccccccccc01";
     private const string FanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
     private const string SiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
+    private const string MissUserId = "ffffffff-ffff-ffff-ffff-ffffffffff01"; // never seeded — deterministic miss
 
     protected ICheckEngine _checkEngine = null!;
     protected ILookupEntityEngine _lookupEntityEngine = null!;
@@ -209,5 +210,33 @@ public abstract class BenchmarkBase
         {
             EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user", SubjectId = UserId
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// Userset miss path: folder.view := owner or editor, both @group#member, and the subject
+    /// belongs to no group. Forces the full expansion per relation (HasDirectRelation +
+    /// GetIndirectRelations + fan-out group member checks). Baseline for the planned userset
+    /// 2-hop join rewrite (R2), which should collapse this to a single round trip.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("Check_UsersetMiss")]
+    public async Task<bool> Check_UsersetMiss()
+        => await _checkEngine.Check(new()
+        {
+            Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
+            SubjectType = "user", SubjectId = MissUserId
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// TTU + direct union miss path: team.edit := org.admin or owner, subject with no tuples
+    /// at all. Two round trips today (TTU fast-path join + direct EXISTS). Baseline for
+    /// boolean-combination fusion (R1), which should answer it with one fused
+    /// EXISTS-OR-EXISTS statement.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("Check_UnionTtuDirect")]
+    public async Task<bool> Check_UnionTtuDirect()
+        => await _checkEngine.Check(new()
+        {
+            Permission = "edit", EntityType = "team", EntityId = SiblingBatchTeamId,
+            SubjectType = "user", SubjectId = MissUserId
         }, CancellationToken.None);
 }

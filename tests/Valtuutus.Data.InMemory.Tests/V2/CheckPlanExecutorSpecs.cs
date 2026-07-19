@@ -49,10 +49,13 @@ public class CheckPlanExecutorSpecs
     // Test double letting a test deterministically simulate a genuinely still-in-flight op
     // (unlike InMemory's real provider, which resolves synchronously and can never produce one).
     // Ops whose relation name is in HeldRelations don't complete until the test explicitly
-    // calls Release — everything else completes immediately with the configured result.
+    // calls a Release* method; ops whose relation is in FailRelations fail synchronously inside
+    // Submit — everything else completes immediately with the configured result.
     internal sealed class ControllablePhysicalExecutor : IPhysicalExecutor
     {
         public readonly HashSet<string> HeldRelations = [];
+        public readonly HashSet<string> FailRelations = [];
+        public Exception FailureException = new InvalidOperationException("boom");
         public bool ImmediateResult = true;
         private readonly Dictionary<string, List<(int Token, IOpCompletionSink Sink)>> _held = new();
 
@@ -60,7 +63,11 @@ public class CheckPlanExecutorSpecs
         {
             foreach (var op in ops)
             {
-                if (op.Relation is not null && HeldRelations.Contains(op.Relation))
+                if (op.Relation is not null && FailRelations.Contains(op.Relation))
+                {
+                    sink.Fail(op.Token, FailureException);
+                }
+                else if (op.Relation is not null && HeldRelations.Contains(op.Relation))
                 {
                     lock (_held)
                     {
@@ -75,16 +82,28 @@ public class CheckPlanExecutorSpecs
             }
         }
 
-        // Releases every op held under `relation` with `result`, targeting whichever sink was
-        // current when Submit ran for it — this is exactly how a genuine straggler behaves: it
-        // completes against whatever IOpCompletionSink it captured at dispatch time, regardless
-        // of what that instance is doing by the time it actually finishes.
+        // Releases every op held under `relation`, targeting whichever sink was current when
+        // Submit ran for it — this is exactly how a genuine straggler behaves: it completes
+        // against whatever IOpCompletionSink it captured at dispatch time, regardless of what
+        // that instance is doing by the time it actually finishes.
         public void Release(string relation, bool result)
         {
-            List<(int Token, IOpCompletionSink Sink)> list;
-            lock (_held) { list = _held.TryGetValue(relation, out var l) ? l : []; }
-            foreach (var (token, sink) in list)
-                sink.Complete(token, result);
+            foreach (var (token, sink) in Drain(relation)) sink.Complete(token, result);
+        }
+
+        public void ReleaseWithPayload(string relation, object payload)
+        {
+            foreach (var (token, sink) in Drain(relation)) sink.CompleteWithPayload(token, payload);
+        }
+
+        public void ReleaseWithFailure(string relation, Exception error)
+        {
+            foreach (var (token, sink) in Drain(relation)) sink.Fail(token, error);
+        }
+
+        private List<(int Token, IOpCompletionSink Sink)> Drain(string relation)
+        {
+            lock (_held) return _held.TryGetValue(relation, out var l) ? l : [];
         }
     }
 
@@ -594,6 +613,138 @@ public class CheckPlanExecutorSpecs
         recording.Submitted.Should().ContainSingle();
         recording.Submitted[0].Kind.Should().Be(OpKind.HasAnyOfDirectRelations);
         recording.Submitted[0].Relations.Should().Equal("owner", "admin", "member");
+    }
+
+    private const string StragglerSchema = """
+        entity user {}
+        entity doc {
+            relation r0 @user;
+            attribute r1 bool;
+            permission view := r0 or r1;
+        }
+        """;
+
+    private static CheckRequestContext Ctx() => new()
+        { SubjectType = "user", SubjectId = "u1", SnapToken = default, Context = new Dictionary<string, object>() };
+
+    [Fact]
+    public async Task Fail_faults_the_request_with_the_original_exception_and_drain_still_waits_for_the_held_sibling()
+    {
+        // Hazard: "failure = per-token, terminal, fail-fast" + post-fault completion. r0 fails
+        // synchronously inside Submit; r1 is genuinely outstanding. ExecuteAsync must throw
+        // r0's exception (not swallow it because r1 might still return true — authorization
+        // must not guess around missing data), and the instance must still not report idle
+        // until r1 lands. (CheckEngineV2 abandons a faulted executor rather than pooling it;
+        // this spec pins the executor-level contract that makes even pooling it safe.)
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var boom = new InvalidOperationException("r0 exploded");
+        var physical = new ControllablePhysicalExecutor { FailureException = boom };
+        physical.FailRelations.Add("r0");
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        var act = async () => await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
+
+        var drainTask = executor.DrainStragglersAsync();
+        await Task.Delay(50);
+        drainTask.IsCompleted.Should().BeFalse("r1 is still outstanding after the fault");
+        physical.Release("r1", true);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Straggler_that_fails_after_the_answer_is_discarded_by_the_drain()
+    {
+        // Hazard: provider completing (with an error) after the request already answered.
+        // The caller has their result; a losing sibling's failure has nothing to propagate to.
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor { ImmediateResult = true };
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits the union");
+
+        var drainTask = executor.DrainStragglersAsync();
+        physical.ReleaseWithFailure("r1", new TimeoutException("late failure"));
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        drainTask.IsCompletedSuccessfully.Should().BeTrue("a straggler's failure must be discarded, not thrown");
+
+        // The instance must still be fully usable afterwards (this is what pooling relies on).
+        physical.HeldRelations.Clear();
+        var again = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        again[0].Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Straggler_payload_after_short_circuit_is_processed_without_corrupting_the_next_call()
+    {
+        // Hazard: a TTU's GetRelations payload lands AFTER the union already short-circuited
+        // true. The drain must process (or discard) that late expansion without corrupting a
+        // subsequent request on the same pooled instance.
+        const string s = """
+            entity user {}
+            entity group { relation member @user; }
+            entity doc {
+                relation r0 @user;
+                relation shared @group;
+                permission view := r0 or shared.member;
+            }
+            """;
+        var (_, schema, _) = await Arrange(s, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor { ImmediateResult = true };
+        physical.HeldRelations.Add("shared"); // holds the TTU's GetRelations op
+        executor.Physical = physical;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits before the TTU expansion arrives");
+
+        var drainTask = executor.DrainStragglersAsync();
+        // PooledList is a readonly struct rented from the shared pool; boxing it into the
+        // object-typed payload channel is exactly what DefaultPhysicalExecutor does for real.
+        var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
+        physical.ReleaseWithPayload("shared", payload);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        physical.HeldRelations.Clear();
+        var again = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        again[0].Should().BeTrue("the drained straggler expansion must not leak into this call");
+    }
+
+    [Fact]
+    public async Task Cancellation_with_an_outstanding_op_throws_and_the_drain_still_completes()
+    {
+        // Hazard: request-level cancellation. The provider must still complete every token
+        // (contract semantic 3); the executor surfaces OperationCanceledException to the
+        // caller and the instance drains to idle once the op lands.
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor();
+        physical.HeldRelations.Add("r0");
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        using var cts = new CancellationTokenSource(50);
+        var act = async () => await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), cts.Token, memoizeRoots: false);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        var drainTask = executor.DrainStragglersAsync();
+        physical.Release("r0", false);
+        physical.Release("r1", false);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        drainTask.IsCompletedSuccessfully.Should().BeTrue();
     }
 
     private sealed class FixedResultOp(bool value) : ICheckOp

@@ -61,7 +61,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     {
         public bool Done;
         public bool Value;
-        public List<(int Parent, int RootIndex)>? Waiters;
+        public List<(int Parent, int RootIndex, int ChildIndex)>? Waiters;
     }
 
     private struct Frame
@@ -69,6 +69,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         public PlanNode Node;
         public int Parent;              // NoParent = reports into _results[RootIndex]
         public int RootIndex;
+        public int ChildIndex;          // position among an expression parent's children; -1 elsewhere
         public byte State;              // node-type-specific step counter
         public int Pending;             // outstanding children (expression / fan-out frames)
         public bool Completed;
@@ -90,7 +91,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     {
         public byte State;   // 0 empty, 1 in-flight, 2 done
         public bool Value;
-        public List<(int Parent, int RootIndex)>? Waiters;
+        public List<(int Parent, int RootIndex, int ChildIndex)>? Waiters;
     }
 
     private readonly record struct CheckMemoKey(
@@ -125,7 +126,19 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             while (_rootsPending > 0)
             {
                 var completion = await _mailbox.DequeueAsync(ct).ConfigureAwait(false);
-                if (completion.Error is not null) throw completion.Error;
+                if (completion.Error is not null)
+                {
+                    // Still counts as this token's op landing — must decrement _pendingOps like
+                    // OnOpCompleted would, or a fault permanently over-counts outstanding ops and
+                    // DrainStragglersAsync can never observe zero again.
+                    // Deliberately does NOT call OnOpCompleted (or otherwise CompleteFrame/Notify
+                    // this frame and its ancestors): that cascade would resolve the frame as if
+                    // the op had legitimately returned false, letting a Union/Intersect ancestor
+                    // short-circuit or resolve around the fault — silently masking it with a wrong
+                    // answer instead of propagating the exception. Only the counter may move here.
+                    _pendingOps--;
+                    throw completion.Error;
+                }
                 OnOpCompleted(completion);
                 DrainReady();
             }
@@ -195,7 +208,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     }
 
     private int SpawnFrame(PlanNode node, string entityType, string entityId, string? subjectRelation,
-        int depth, int parent, int rootIndex, int memoEntry = -1, MemoSlotState[]? slots = null)
+        int depth, int parent, int rootIndex, int memoEntry = -1, MemoSlotState[]? slots = null,
+        int childIndex = -1)
     {
         if (_frameCount == _frames.Length)
         {
@@ -207,7 +221,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         var idx = _frameCount++;
         _frames[idx] = new Frame
         {
-            Node = node, Parent = parent, RootIndex = rootIndex, EntityType = entityType,
+            Node = node, Parent = parent, RootIndex = rootIndex, ChildIndex = childIndex, EntityType = entityType,
             EntityId = entityId, SubjectRelation = subjectRelation, Depth = depth, MemoEntry = memoEntry,
             Slots = slots, NextReady = _readyHead,
         };
@@ -242,7 +256,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         {
             var entry = _memoEntries[entryIdx];
             if (entry.Done) { ValtuutusMetrics.MemoHits.Add(1); Notify(parent, rootIndex, entry.Value); return; }
-            (entry.Waiters ??= []).Add((parent, rootIndex));
+            (entry.Waiters ??= []).Add((parent, rootIndex, -1));
             _memoEntries[entryIdx] = entry;
             return;
         }
@@ -262,7 +276,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _frames[newIdx].Slots = plan.SlotCount > 0 ? new MemoSlotState[plan.SlotCount] : null;
     }
 
-    private void Notify(int parent, int rootIndex, bool result)
+    private void Notify(int parent, int rootIndex, bool result, int childIndex = -1)
     {
         if (parent == NoParent)
         {
@@ -270,10 +284,10 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             _rootsPending--;
             return;
         }
-        ChildCompleted(parent, result);
+        ChildCompleted(parent, result, childIndex);
     }
 
-    private void ChildCompleted(int parentIdx, bool childResult)
+    private void ChildCompleted(int parentIdx, bool childResult, int childIndex = -1)
     {
         ref var parent = ref _frames[parentIdx];
         if (parent.Completed) return; // stale — parent already short-circuited
@@ -281,12 +295,27 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         switch (parent.Node)
         {
             case UnionNode:
-                if (childResult) { CompleteFrame(parentIdx, true); return; }
+                if (childResult)
+                {
+                    // V1 parity (BoolTaskCombinator.cs:81, CheckEngine.cs:602): short-circuit
+                    // counts only when a sibling was still unresolved; first-child counts when
+                    // the deciding value came from child index 0. Expression frames only —
+                    // deliberate divergence from V1, which also counted TTU fan-out
+                    // short-circuits (see design doc, M2).
+                    if (parent.Pending > 1) ValtuutusMetrics.ShortCircuits.Add(1);
+                    if (childIndex == 0) ValtuutusMetrics.FirstChildDecided.Add(1);
+                    CompleteFrame(parentIdx, true); return;
+                }
                 if (--parent.Pending == 0) CompleteFrame(parentIdx, false);
                 break;
 
             case IntersectNode:
-                if (!childResult) { CompleteFrame(parentIdx, false); return; }
+                if (!childResult)
+                {
+                    if (parent.Pending > 1) ValtuutusMetrics.ShortCircuits.Add(1);
+                    if (childIndex == 0) ValtuutusMetrics.FirstChildDecided.Add(1);
+                    CompleteFrame(parentIdx, false); return;
+                }
                 if (--parent.Pending == 0) CompleteFrame(parentIdx, true);
                 break;
 
@@ -314,8 +343,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 slot.Waiters = null;
                 CompleteFrame(parentIdx, childResult);
                 if (waiters is not null)
-                    foreach (var (p, r) in waiters)
-                        Notify(p, r, childResult);
+                    foreach (var (p, r, ci) in waiters)
+                        Notify(p, r, childResult, ci);
                 break;
             }
 
@@ -341,11 +370,11 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             entry.Waiters = null;
             _memoEntries[frame.MemoEntry] = entry;
             if (waiters is not null)
-                foreach (var (p, r) in waiters)
-                    Notify(p, r, result);
+                foreach (var (p, r, ci) in waiters)
+                    Notify(p, r, result, ci);
         }
 
-        Notify(frame.Parent, frame.RootIndex, result);
+        Notify(frame.Parent, frame.RootIndex, result, frame.ChildIndex);
     }
 
     // ── frame stepping ──────────────────────────────────────────────────────
@@ -436,7 +465,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 {
                     case 2: CompleteFrame(idx, slot.Value); break;
                     case 1:
-                        (slot.Waiters ??= []).Add((frame.Parent, frame.RootIndex));
+                        (slot.Waiters ??= []).Add((frame.Parent, frame.RootIndex, frame.ChildIndex));
                         // This frame dissolves into a waiter registration; mark completed so
                         // stale bookkeeping never routes to it again.
                         frame.Completed = true;
@@ -568,8 +597,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         ValtuutusMetrics.ExpressionNodes.Add(1);
         // All children spawn immediately — V1 parity (parallel siblings). SequentialFirst is a
         // later, metrics-gated policy applied here per plan annotation.
-        foreach (var child in children)
-            SpawnFrame(child, entityType, entityId, subjectRelation, depth, idx, rootIndex, slots: slots);
+        for (var i = 0; i < children.Length; i++)
+            SpawnFrame(children[i], entityType, entityId, subjectRelation, depth, idx, rootIndex,
+                slots: slots, childIndex: i);
     }
 
     // Avoids a heap-allocated PendingOp[1] for the collection-expression `[op]` (PendingOp has

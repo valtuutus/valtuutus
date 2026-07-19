@@ -20,12 +20,16 @@ public static class ValtuutusMetrics
     internal static readonly Counter<long> ExpressionNodes =
         Meter.CreateCounter<long>("valtuutus.check.expression_nodes");
 
-    /// <summary>Expression nodes decided by the short-circuit value before all children finished.</summary>
+    /// <summary>Expression nodes decided by the short-circuit value before all children finished.
+    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
+    /// only (V1 also counts TTU fan-out short-circuits).</summary>
     internal static readonly Counter<long> ShortCircuits =
         Meter.CreateCounter<long>("valtuutus.check.short_circuits");
 
     /// <summary>Expression nodes where child index 0 alone would have decided the node
-    /// (sequential-first scheduling would have saved the sibling queries).</summary>
+    /// (sequential-first scheduling would have saved the sibling queries).
+    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
+    /// only (V1 also counts TTU fan-out short-circuits).</summary>
     internal static readonly Counter<long> FirstChildDecided =
         Meter.CreateCounter<long>("valtuutus.check.first_child_decided");
 
