@@ -16,6 +16,14 @@ internal enum OpKind : byte
     CheckOp,                // Op = rewriter-installed ICheckOp; executor is opaque to its contents
 }
 
+internal static class OpKindMeta
+{
+    // Self-adjusting for the common case (appending a member after CheckOp) instead of a
+    // hand-maintained magic number — sizes a stackalloc same-kind tally in
+    // CheckPlanExecutor.FlushWave (M3 telemetry) so it never heap-allocates on the hot path.
+    internal const int OpKindCount = (int)OpKind.CheckOp + 1;
+}
+
 internal readonly struct PendingOp
 {
     public required int Token { get; init; }
