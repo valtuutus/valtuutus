@@ -10,12 +10,17 @@ namespace Valtuutus.Core.Engines.Check.V2;
 // ExecuteAsync itself resets every other piece of mutable state (frames, ready-list, memo,
 // mailbox) at the start of each call, so a pooled instance is always safe to reuse regardless
 // of whether its previous use succeeded, faulted, or was cancelled.
-internal sealed class CheckPlanExecutorPool(Schema schema, CheckPlanCache plans)
+internal sealed class CheckPlanExecutorPool(Schema schema, CheckPlanCache plans,
+    Func<Schema, IPhysicalExecutor> physicalExecutorFactory)
 {
     private readonly ObjectPool<CheckPlanExecutor> _executors =
         new DefaultObjectPool<CheckPlanExecutor>(new ExecutorPolicy(schema, plans));
-    private readonly ObjectPool<DefaultPhysicalExecutor> _physicals =
-        new DefaultObjectPool<DefaultPhysicalExecutor>(new PhysicalPolicy(schema));
+    // Factory-driven so a relational provider (Valtuutus.Data.Db) can swap in a batching
+    // IPhysicalExecutor without Core knowing anything about ADO.NET or DbBatch — Core only
+    // knows the IPhysicalExecutor contract, exactly like it already only knows IDataReaderProvider
+    // and never a concrete provider type.
+    private readonly ObjectPool<IPhysicalExecutor> _physicals =
+        new DefaultObjectPool<IPhysicalExecutor>(new PhysicalPolicy(schema, physicalExecutorFactory));
 
     public CheckPlanExecutor Rent(IDataReaderProvider reader)
     {
@@ -26,12 +31,9 @@ internal sealed class CheckPlanExecutorPool(Schema schema, CheckPlanCache plans)
         return executor;
     }
 
-    // Only ever called with an executor obtained from Rent (see above), which always sets
-    // Physical to a pooled DefaultPhysicalExecutor — the cast is safe in that path. Tests that
-    // construct CheckPlanExecutor directly (bypassing this pool) never call Return on it.
     public void Return(CheckPlanExecutor executor)
     {
-        _physicals.Return((DefaultPhysicalExecutor)executor.Physical);
+        _physicals.Return(executor.Physical);
         _executors.Return(executor);
     }
 
@@ -42,10 +44,11 @@ internal sealed class CheckPlanExecutorPool(Schema schema, CheckPlanCache plans)
         public override bool Return(CheckPlanExecutor executor) => true;
     }
 
-    private sealed class PhysicalPolicy(Schema schema) : PooledObjectPolicy<DefaultPhysicalExecutor>
+    private sealed class PhysicalPolicy(Schema schema, Func<Schema, IPhysicalExecutor> factory)
+        : PooledObjectPolicy<IPhysicalExecutor>
     {
-        public override DefaultPhysicalExecutor Create() => new(schema);
+        public override IPhysicalExecutor Create() => factory(schema);
 
-        public override bool Return(DefaultPhysicalExecutor physical) => true;
+        public override bool Return(IPhysicalExecutor physical) => true;
     }
 }

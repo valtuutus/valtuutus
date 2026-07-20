@@ -8,9 +8,19 @@ namespace Valtuutus.Data.Postgres
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddPostgres(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Postgres.ValtuutusPostgresOptions? options = null) { }
     }
-    public class PostgresDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider
+    public class PostgresDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalBatchOps, Valtuutus.Data.Db.IRelationalCheckOps
     {
         public PostgresDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
+        public void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
+        public void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
+        public void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId) { }
+        public void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public System.Data.Common.DbBatch CreateBatch() { }
+        public System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
@@ -35,6 +45,7 @@ namespace Valtuutus.Data.Postgres
         public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
+        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }

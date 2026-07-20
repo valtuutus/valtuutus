@@ -26,6 +26,13 @@
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
             <_Parameter1>Valtuutus.Data.Db.Tests</_Parameter1>
         </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- AddPostgres (Valtuutus.Data.Postgres) replaces the CheckV2 Func<Schema,
+                 IPhysicalExecutor> factory registration with a batching one — needs to name the
+                 internal IPhysicalExecutor/Schema-factory type, same reasoning as the
+                 Valtuutus.Data.Db grant above. -->
+            <_Parameter1>Valtuutus.Data.Postgres</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>

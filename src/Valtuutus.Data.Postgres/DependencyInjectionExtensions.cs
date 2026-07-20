@@ -1,5 +1,8 @@
 ﻿using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Valtuutus.Core.Engines.Check.V2;
+using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
@@ -13,13 +16,18 @@ public static class DependencyInjectionExtensions
     /// <param name="factory">This is a scoped connection factory. Can be used to set multitenant access to the database.</param>
     /// <param name="options">Options to configure schema and table names.</param>
     /// <returns></returns>
-    public static IValtuutusDataBuilder AddPostgres(this IServiceCollection services, 
+    public static IValtuutusDataBuilder AddPostgres(this IServiceCollection services,
         Func<IServiceProvider, DbConnectionFactory> factory,
         ValtuutusPostgresOptions? options = null)
     {
         var postgresOptions = options ?? new ValtuutusPostgresOptions();
         var builder = services.AddValtuutusData();
         builder.Services.AddDbSetup(factory, postgresOptions);
+        // Harmless when CheckV2 isn't opted in (nothing resolves CheckPlanExecutorPool then).
+        // Replace (not TryAdd) so this always wins regardless of whether AddValtuutusCheckV2()
+        // ran before or after this call.
+        builder.Services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
+            static _ => static schema => new BatchedPhysicalExecutor(schema)));
         builder.Services.AddSingleton(postgresOptions);
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();

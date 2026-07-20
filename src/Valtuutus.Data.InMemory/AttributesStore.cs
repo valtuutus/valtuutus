@@ -58,6 +58,25 @@ public sealed class AttributesStore : IDisposable
         return false;
     }
 
+    public HashSet<string> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, SnapToken snap)
+    {
+        using var _ = Read();
+        var result = new HashSet<string>(attributeNames.Length, StringComparer.Ordinal);
+        var snapId = Ulid.Parse(snap.Value);
+        foreach (var attributeName in attributeNames)
+        {
+            if (!_byEntityTypeAttr.TryGetValue((entityType, attributeName), out var bucket)) continue;
+            foreach (var e in bucket)
+            {
+                if (!IsVisible(e, snapId)) continue;
+                if (e.Attribute.EntityId != entityId) continue;
+                if (e.Attribute.Value.TryGetValue(out bool b) && b) result.Add(attributeName);
+                break;
+            }
+        }
+        return result;
+    }
+
     public List<AttributeTuple> GetAttributes(EntityAttributeFilter filter)
     {
         using var _ = Read();

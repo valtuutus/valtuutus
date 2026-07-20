@@ -41,6 +41,24 @@ namespace Valtuutus.Data.Db
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
     }
+    public interface IRelationalBatchOps
+    {
+        void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
+        void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
+        void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
+        void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken);
+        void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
+        void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId);
+        void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken);
+        void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
+        System.Data.Common.DbBatch CreateBatch();
+        System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken);
+    }
+    public interface IRelationalCheckOps
+    {
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+    }
     public interface IValtuutusDbOptions
     {
         string AttributesTableName { get; }

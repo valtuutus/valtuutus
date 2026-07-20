@@ -18,7 +18,89 @@ internal static class PlanCompiler
         // plans are keyed per subjectType, so that runtime condition is a compile-time one here.
         if (!string.IsNullOrEmpty(subjectType))
             consed = GroupSiblingDirectRelations(consed, schema, entityType);
+        // R4: unconditional, unlike GroupSiblingDirectRelations above — bool attributes have no
+        // subject dependency at all, so there's no subjectType-known gate to mirror here.
+        consed = GroupSiblingAttributeTruth(consed, schema, entityType);
         return new CheckPlan(consed, slotCount);
+    }
+
+    // R4 (design doc, "Rewriter rule candidates"): ≥2 sibling Union/Intersect children that
+    // reference plain bool attributes on the same entity collapse into one MultiAttributeNode,
+    // answered by a single HasAnyOfAttributes round trip. Symmetric to GroupSiblingDirectRelations,
+    // including the schema/entityType lookup: like a direct-relation reference, an attribute
+    // reference inside a permission expression tree compiles to a PlanRefNode indirection
+    // (Permission.Leaf wraps every bare name identically, regardless of whether the schema
+    // resolves it to a relation, attribute, or nested permission) — AttributeTruthNode itself is
+    // a plan ROOT form only (see its declaration), never a Union/Intersect child directly. No
+    // subjectType gate, unlike its counterpart: attributes don't depend on subject at all. Runs
+    // post-hash-consing, same MemoNode-barrier reasoning as its counterpart.
+    private static PlanNode GroupSiblingAttributeTruth(PlanNode root, Schema schema, string entityType)
+    {
+        var visited = new Dictionary<PlanNode, PlanNode>(ReferenceEqualityComparer.Instance);
+        return Walk(root);
+
+        PlanNode Walk(PlanNode node)
+        {
+            if (visited.TryGetValue(node, out var done)) return done;
+            PlanNode result;
+            switch (node)
+            {
+                case UnionNode u: result = GroupChildren(u.Children, isUnion: true); break;
+                case IntersectNode i: result = GroupChildren(i.Children, isUnion: false); break;
+                case NegateNode n:
+                {
+                    var child = Walk(n.Child);
+                    result = ReferenceEquals(child, n.Child) ? n : new NegateNode(child);
+                    break;
+                }
+                case MemoNode m:
+                {
+                    var child = Walk(m.Child);
+                    result = ReferenceEquals(child, m.Child) ? m : new MemoNode(m.SlotId, child);
+                    break;
+                }
+                default: result = node; break;
+            }
+            visited[node] = result;
+            return result;
+        }
+
+        PlanNode GroupChildren(ImmutableArray<PlanNode> children, bool isUnion)
+        {
+            List<string>? batchable = null;
+            foreach (var child in children)
+                if (IsBatchableAttributeRef(child, out var attribute))
+                    (batchable ??= []).Add(attribute);
+
+            if (batchable is not { Count: >= 2 })
+            {
+                var rebuilt = ImmutableArray.CreateBuilder<PlanNode>(children.Length);
+                foreach (var child in children) rebuilt.Add(Walk(child));
+                var arr = rebuilt.MoveToImmutable();
+                return isUnion ? new UnionNode(arr) : new IntersectNode(arr);
+            }
+
+            var multi = new MultiAttributeNode(batchable.ToArray(), RequireAll: !isUnion);
+            var kept = ImmutableArray.CreateBuilder<PlanNode>(children.Length - batchable.Count + 1);
+            kept.Add(multi);
+            foreach (var child in children)
+                if (!IsBatchableAttributeRef(child, out _))
+                    kept.Add(Walk(child));
+            if (kept.Count == 1) return multi;
+            var keptArr = kept.MoveToImmutable();
+            return isUnion ? new UnionNode(keptArr) : new IntersectNode(keptArr);
+        }
+
+        // Mirror of GroupSiblingDirectRelations' IsBatchableDirectRef, checking Attribute instead
+        // of DirectRelation.
+        bool IsBatchableAttributeRef(PlanNode node, out string attribute)
+        {
+            attribute = "";
+            if (node is not PlanRefNode p) return false;
+            if (schema.GetRelationType(entityType, p.Permission) != RelationType.Attribute) return false;
+            attribute = p.Permission;
+            return true;
+        }
     }
 
     // Plan-time form of V1's runtime check-then-batch (CheckEngine.cs:559-577): ≥2 sibling

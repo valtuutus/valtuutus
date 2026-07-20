@@ -39,6 +39,9 @@ public class CheckPlanExecutorSpecs
     // a test can additionally assert on wave SIZE (how many ops one Submit call carried).
     internal sealed class RecordingPhysicalExecutor(IPhysicalExecutor inner) : IPhysicalExecutor
     {
+        // Forwards to the wrapped real executor — this double never reads Reader itself, only
+        // the inner executor (constructed with Reader already set in these tests) does.
+        public IDataReaderProvider Reader { set => inner.Reader = value; }
         public readonly List<PendingOp> Submitted = [];
         public readonly List<PendingOp[]> SubmitCalls = [];
         public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
@@ -59,6 +62,9 @@ public class CheckPlanExecutorSpecs
     // Submit — everything else completes immediately with the configured result.
     internal sealed class ControllablePhysicalExecutor : IPhysicalExecutor
     {
+        // This double fabricates results without ever touching a real reader, so the setter is
+        // a no-op — it exists only to satisfy the IPhysicalExecutor contract.
+        public IDataReaderProvider Reader { set { } }
         public readonly HashSet<string> HeldRelations = [];
         public readonly HashSet<string> FailRelations = [];
         public Exception FailureException = new InvalidOperationException("boom");
@@ -672,15 +678,22 @@ public class CheckPlanExecutorSpecs
         // Regression test mirroring Wide_union_forces_frame_array_growth_without_corruption,
         // but for the wave buffer: ArrayPool<T>.Shared.Rent(8) actually rounds up to a 16-element
         // array (bucket rounding), so branchCount must exceed 16 -- not just 8 -- to force a real
-        // grow. GroupSiblingDirectRelations doesn't fuse attribute nodes (only direct relations),
-        // so all branches submit individually and must all land in one wave after at least one grow.
+        // grow. Each attribute sits behind its own one-line permission alias (p{i} := a{i}) instead
+        // of being a direct Union sibling of the others: GroupSiblingAttributeTruth (R4) fuses ≥2
+        // sibling same-entity attribute refs within ONE Union's direct children into a single
+        // HasAnyOfAttributes op, and view's Union children here are PlanRefNode(p{i}) — Permission
+        // type, not Attribute — so R4 leaves them alone. Each p{i} resolves through its own
+        // separate one-node plan straight to a{i}'s AttributeTruthNode, so all 20 still submit as
+        // individual HasTrueBoolAttribute ops and must all land in one wave after at least one grow.
         const int branchCount = 20;
         var attrDecls = string.Join("\n", Enumerable.Range(0, branchCount).Select(i => $"    attribute a{i} bool;"));
-        var unionExpr = string.Join(" or ", Enumerable.Range(0, branchCount).Select(i => $"a{i}"));
+        var permDecls = string.Join("\n", Enumerable.Range(0, branchCount).Select(i => $"    permission p{i} := a{i};"));
+        var unionExpr = string.Join(" or ", Enumerable.Range(0, branchCount).Select(i => $"p{i}"));
         var schemaText = $$"""
             entity user {}
             entity doc {
             {{attrDecls}}
+            {{permDecls}}
                 permission view := {{unionExpr}};
             }
             """;
@@ -884,6 +897,55 @@ public class CheckPlanExecutorSpecs
     private sealed class RootReplacingRewriter(ICheckOp op) : IPlanRewriter
     {
         public PlanNode Rewrite(PlanNode root, Schema schema) => new PhysicalCheckNode(op);
+    }
+
+    private const string MultiAttributeSchema = """
+        entity user {}
+        entity doc {
+            attribute a0 bool;
+            attribute a1 bool;
+            attribute a2 bool;
+            permission view := a0 or a1 or a2;
+        }
+        """;
+
+    [Fact]
+    public async Task MultiAttribute_submits_one_batched_op_instead_of_three_singles()
+    {
+        var (_, schema, reader) = await Arrange(MultiAttributeSchema, [],
+            [new AttributeTuple("doc", "1", "a2", System.Text.Json.Nodes.JsonValue.Create(true))]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.Submitted.Should().ContainSingle();
+        recording.Submitted[0].Kind.Should().Be(OpKind.HasAnyOfAttributes);
+        recording.Submitted[0].Relations.Should().Equal("a0", "a1", "a2");
+    }
+
+    [Fact]
+    public async Task MultiAttribute_intersect_requires_all_attributes()
+    {
+        const string s = """
+            entity user {}
+            entity doc {
+                attribute a0 bool;
+                attribute a1 bool;
+                permission edit := a0 and a1;
+            }
+            """;
+        (await RunCheck(s, [], [new AttributeTuple("doc", "1", "a0", System.Text.Json.Nodes.JsonValue.Create(true))],
+            "doc", "1", "edit")).Should().BeFalse();
+        (await RunCheck(s, [],
+            [new AttributeTuple("doc", "1", "a0", System.Text.Json.Nodes.JsonValue.Create(true)),
+             new AttributeTuple("doc", "1", "a1", System.Text.Json.Nodes.JsonValue.Create(true))],
+            "doc", "1", "edit")).Should().BeTrue();
     }
 
     [Fact]

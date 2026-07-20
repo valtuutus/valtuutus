@@ -38,6 +38,25 @@ public class RelationalPlanRewriterSpecs
     }
 
     [Fact]
+    public void MultiAttribute_rewrites_to_a_physical_HasAnyOfAttributes_op()
+    {
+        const string s = """
+            entity user {}
+            entity doc {
+                attribute a0 bool;
+                attribute a1 bool;
+                attribute a2 bool;
+                permission view := a0 or a1 or a2;
+            }
+            """;
+        var schema = Parse(s);
+        var plan = PlanCompiler.Compile(schema, "doc", "view", "user");
+        var rewritten = new RelationalPlanRewriter().Rewrite(plan.Root, schema);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("HasAnyOfAttributes([a0, a1, a2], any)");
+    }
+
+    [Fact]
     public void Unrecognized_nodes_pass_through_as_the_same_instance()
     {
         // escalate := owner or parent.admin — one batchable ref + a TTU: nothing groups, nothing

@@ -28,6 +28,9 @@ internal sealed record PlanRefNode(string Permission) : PlanNode; // same-entity
 // hash-consing and never interned.
 internal sealed record MultiDirectNode(string[] Relations, bool RequireAll) : PlanNode;
 
+// Symmetric to MultiDirectNode, for ≥2 sibling same-entity bool-attribute checks (R4).
+internal sealed record MultiAttributeNode(string[] Attributes, bool RequireAll) : PlanNode;
+
 // Physical escape hatch: a rewriter-fused subtree carrying its own execution (design doc, IR).
 // Reference equality, never interned — created only after hash-consing, like MultiDirectNode.
 internal sealed record PhysicalCheckNode(ICheckOp Op) : PlanNode;

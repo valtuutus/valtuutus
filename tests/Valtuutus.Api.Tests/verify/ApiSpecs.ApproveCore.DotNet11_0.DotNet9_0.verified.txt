@@ -27,6 +27,10 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
+    public static class ConfigureCheckV2
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
@@ -108,6 +112,7 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
