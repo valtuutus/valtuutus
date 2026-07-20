@@ -222,6 +222,12 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN (SELECT id FROM @Relations)
                   AND subject_id = @SubjectId AND subject_relation = ''
                 """,
+            HasAnyOfAttributes = $"""
+                SELECT DISTINCT attribute FROM {attributesTable}
+                WHERE {snapPredicate}
+                  AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN (SELECT id FROM @Attributes)
+                  AND value = 'true'
+                """,
             SelectRelationsWithEntityIds = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
@@ -444,6 +450,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
+        public required string HasAnyOfAttributes { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
         public required string SelectAttributesByEntityAttributeFilterWithEntityId { get; init; }
         public required string SelectAttributesByEntityAttributesPrefix { get; init; }
@@ -519,6 +526,34 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             AddStringParameter(command, "@Attribute", attribute, 64);
             AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
             return (int)(await command.ExecuteScalarAsync(cancellationToken))! == 1;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var command = CreateCommand(connection, _q.HasAnyOfAttributes);
+            AddStringParameter(command, "@EntityType", entityType, 256);
+            AddStringParameter(command, "@EntityId", entityId, 64);
+            AddTvpParameter(command, "@Attributes", attributeNames);
+            AddFixedCharParameter(command, "@SnapToken", snapToken.Value, 26);
+
+            var result = new HashSet<string>(attributeNames.Length, StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
         }
         finally
         {

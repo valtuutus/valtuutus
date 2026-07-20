@@ -58,15 +58,23 @@ public class V2WaveMetricsSpecs
         entity doc {
             attribute a0 bool;
             attribute a1 bool;
-            permission view := a0 or a1;
+            permission p0 := a0;
+            permission p1 := a1;
+            permission view := p0 or p1;
         }
         """;
 
     [Fact]
     public async Task Wave_of_same_kind_ops_credits_both_as_coalescable()
     {
-        // a0 and a1 are both HasTrueBoolAttribute ops ready in the same wave -> both count
-        // toward WaveSameKindOps (what a same-shape coalescer could merge).
+        // a0 and a1 each sit behind their own one-line permission alias (p0/p1) instead of being
+        // direct Union siblings: GroupSiblingAttributeTruth (R4) fuses ≥2 sibling same-entity
+        // attribute refs within one Union's direct children into a single HasAnyOfAttributes op,
+        // and view's Union children here are PlanRefNode(p0)/PlanRefNode(p1) — Permission type,
+        // not Attribute — so R4 leaves them alone. p0/p1 each resolve through their own separate
+        // one-node plan straight to a0/a1's AttributeTruthNode, so both still submit as individual
+        // HasTrueBoolAttribute ops ready in the same wave -> both count toward WaveSameKindOps
+        // (what a same-shape coalescer could merge).
         var (waveOps, sameKindOps, result) = await MeasureCheck(SameKindSchema,
             [], [new AttributeTuple("doc", "1", "a1", System.Text.Json.Nodes.JsonValue.Create(true))], "view");
 

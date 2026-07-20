@@ -467,6 +467,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 });
                 break;
 
+            case MultiAttributeNode ma:
+                SubmitOp(new PendingOp
+                {
+                    Token = idx, Kind = OpKind.HasAnyOfAttributes,
+                    EntityType = frame.EntityType, EntityId = frame.EntityId, Relations = ma.Attributes
+                });
+                break;
+
             case PhysicalCheckNode p:
                 SubmitOp(new PendingOp
                 {
@@ -736,6 +744,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 // property of HasAnyOfDirectRelations), and Relations is duplicate-free by
                 // construction (a repeated ref is memo-wrapped and never grouped).
                 var result = md.RequireAll ? matched.Count == md.Relations.Length : matched.Count > 0;
+                CompleteFrame(idx, result);
+                break;
+            }
+
+            case MultiAttributeNode ma:
+            {
+                var matched = (HashSet<string>)completion.Payload!;
+                var result = ma.RequireAll ? matched.Count == ma.Attributes.Length : matched.Count > 0;
                 CompleteFrame(idx, result);
                 break;
             }

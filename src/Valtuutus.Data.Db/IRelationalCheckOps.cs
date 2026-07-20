@@ -16,4 +16,8 @@ public interface IRelationalCheckOps
     /// <inheritdoc cref="IDataReaderProvider.HasAnyOfDirectRelations"/>
     Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <inheritdoc cref="IDataReaderProvider.HasAnyOfAttributes"/>
+    Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
+        SnapToken snapToken, CancellationToken cancellationToken);
 }

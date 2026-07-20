@@ -19,6 +19,8 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
         {
             case MultiDirectNode m:
                 return new PhysicalCheckNode(new HasAnyOfDirectRelationsOp(m.Relations, m.RequireAll));
+            case MultiAttributeNode m:
+                return new PhysicalCheckNode(new HasAnyOfAttributesOp(m.Attributes, m.RequireAll));
             case UnionNode u:
                 return RebuildIfChanged(u.Children, static c => new UnionNode(c), u);
             case IntersectNode i:

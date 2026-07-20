@@ -791,6 +791,10 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             SnapToken snapToken, CancellationToken cancellationToken)
             => inner.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken, cancellationToken);
 
+        public Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
+            SnapToken snapToken, CancellationToken cancellationToken)
+            => inner.HasAnyOfAttributes(entityType, entityId, attributeNames, snapToken, cancellationToken);
+
         public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
             => inner.GetAttributes(filter, cancellationToken);
 

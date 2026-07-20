@@ -13,6 +13,7 @@ internal enum OpKind : byte
     GetRelations,           // payload: PooledList<RelationTuple>; Relation = tupleset/relation name
     GetIndirectRelations,   // payload: PooledList<RelationTuple>
     HasAnyOfDirectRelations, // payload: HashSet<string>; Relations = sibling relation names
+    HasAnyOfAttributes,     // payload: HashSet<string>; Relations = sibling attribute names (R4)
     CheckOp,                // Op = rewriter-installed ICheckOp; executor is opaque to its contents
 }
 
@@ -48,6 +49,10 @@ internal interface IOpCompletionSink
 
 internal interface IPhysicalExecutor
 {
+    // Set fresh by CheckPlanExecutorPool on every Rent (the underlying reader is DI-scoped;
+    // the executor instance is pooled and outlives any one request) — never constructor-captured.
+    IDataReaderProvider Reader { set; }
+
     // Contract (design doc "Runtime execution contract"): exactly-once completion per token,
     // any order, any thread, synchronous completion inside Submit permitted, failures per-token.
     void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct);
@@ -58,55 +63,72 @@ internal interface IPhysicalExecutor
 // rent (see CheckPlanExecutor's identical Physical field for the same reasoning).
 internal sealed class DefaultPhysicalExecutor(Schema schema) : IPhysicalExecutor
 {
-    internal IDataReaderProvider Reader = null!;
+    // Property (not a field) so it satisfies IPhysicalExecutor.Reader's set-only interface
+    // member via implicit implementation — implicit implementations must be declared public in
+    // C# even when both the interface and this class are internal (effective accessibility is
+    // still capped at internal by the enclosing internal class); internal callers still get the
+    // getter they need.
+    public IDataReaderProvider Reader { get; set; } = null!;
 
     public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
     {
         foreach (var op in ops)
-            _ = RunAsync(op, ctx, sink, ct);
+            _ = PhysicalOpRunner.RunAsync(op, Reader, schema, ctx, sink, ct);
     }
+}
 
-    private async Task RunAsync(PendingOp op, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
+// Extracted so BatchedPhysicalExecutor (Valtuutus.Data.Db) can reuse the exact same per-op
+// execution logic for whatever a wave's batch can't batch (wrong provider, unbatchable op kind)
+// instead of duplicating the OpKind switch — internal is fine since Data.Db has
+// InternalsVisibleTo into this assembly.
+internal static class PhysicalOpRunner
+{
+    public static async Task RunAsync(PendingOp op, IDataReaderProvider reader, Schema schema,
+        CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
     {
         try
         {
             switch (op.Kind)
             {
                 case OpKind.HasDirectRelation:
-                    sink.Complete(op.Token, await Reader.HasDirectRelation(
+                    sink.Complete(op.Token, await reader.HasDirectRelation(
                         Filter(op, op.Relation!, ctx), ctx.SubjectId!, ct).ConfigureAwait(false));
                     break;
                 case OpKind.HasTrueBoolAttribute:
-                    sink.Complete(op.Token, await Reader.HasTrueBoolAttribute(
+                    sink.Complete(op.Token, await reader.HasTrueBoolAttribute(
                         op.EntityType, op.EntityId, op.Relation!, ctx.SnapToken, ct).ConfigureAwait(false));
                     break;
                 case OpKind.AttributeExpr:
                     sink.Complete(op.Token, await AttributeExpressionEvaluator.Evaluate(
-                        Reader, schema, ctx, op.EntityType, op.EntityId, op.Expr!, ct).ConfigureAwait(false));
+                        reader, schema, ctx, op.EntityType, op.EntityId, op.Expr!, ct).ConfigureAwait(false));
                     break;
                 case OpKind.TtuFastPath:
-                    sink.Complete(op.Token, await Reader.HasTupleToUserSetRelation(
+                    sink.Complete(op.Token, await reader.HasTupleToUserSetRelation(
                         op.EntityType, op.EntityId, op.Relation!, op.SubEntityType!, op.ComputedRelation!,
                         ctx.SubjectType!, ctx.SubjectId!, ctx.SnapToken, ct).ConfigureAwait(false));
                     break;
                 case OpKind.HasAnyDirectRelation:
-                    sink.Complete(op.Token, await Reader.HasAnyDirectRelation(
+                    sink.Complete(op.Token, await reader.HasAnyDirectRelation(
                         op.EntityType, op.EntityIds!, op.Relation!, ctx.SubjectId!, ctx.SnapToken, ct).ConfigureAwait(false));
                     break;
                 case OpKind.GetRelations:
-                    sink.CompleteWithPayload(op.Token, await Reader.GetRelations(
+                    sink.CompleteWithPayload(op.Token, await reader.GetRelations(
                         Filter(op, op.Relation!, ctx), ct).ConfigureAwait(false));
                     break;
                 case OpKind.GetIndirectRelations:
-                    sink.CompleteWithPayload(op.Token, await Reader.GetIndirectRelations(
+                    sink.CompleteWithPayload(op.Token, await reader.GetIndirectRelations(
                         Filter(op, op.Relation!, ctx), ct).ConfigureAwait(false));
                     break;
                 case OpKind.HasAnyOfDirectRelations:
-                    sink.CompleteWithPayload(op.Token, await Reader.HasAnyOfDirectRelations(
+                    sink.CompleteWithPayload(op.Token, await reader.HasAnyOfDirectRelations(
                         op.EntityType, op.EntityId, op.Relations!, ctx.SubjectId!, ctx.SnapToken, ct).ConfigureAwait(false));
                     break;
+                case OpKind.HasAnyOfAttributes:
+                    sink.CompleteWithPayload(op.Token, await reader.HasAnyOfAttributes(
+                        op.EntityType, op.EntityId, op.Relations!, ctx.SnapToken, ct).ConfigureAwait(false));
+                    break;
                 case OpKind.CheckOp:
-                    sink.Complete(op.Token, await op.Op!.Execute(Reader, ctx, op.EntityType, op.EntityId, ct)
+                    sink.Complete(op.Token, await op.Op!.Execute(reader, ctx, op.EntityType, op.EntityId, ct)
                         .ConfigureAwait(false));
                     break;
                 default:

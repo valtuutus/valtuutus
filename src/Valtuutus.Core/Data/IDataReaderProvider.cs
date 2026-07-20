@@ -50,6 +50,17 @@ public interface IDataReaderProvider
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Analogue of <see cref="HasAnyOfDirectRelations"/> for bool attributes: which of
+    /// <paramref name="attributeNames"/> are true for (<paramref name="entityType"/>,
+    /// <paramref name="entityId"/>). Collapses N individual HasTrueBoolAttribute queries — for
+    /// sibling Union/Intersect children on the same entity — into a single DB round-trip.
+    /// Deduplication is a property of the HashSet return type, not the SQL (same contract as
+    /// HasAnyOfDirectRelations).
+    /// </summary>
+    Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
+        SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Checks whether the subject has access through a tuple-to-user-set relation:
     /// returns true if there exists an intermediate entity X such that
     /// (entityType, entityId) has [tupleSetRelation] to X, and X has [computedRelation] to (subjectType, subjectId).
