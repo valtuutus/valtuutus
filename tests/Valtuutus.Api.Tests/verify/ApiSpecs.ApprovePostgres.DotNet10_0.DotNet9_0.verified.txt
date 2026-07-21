@@ -8,19 +8,21 @@ namespace Valtuutus.Data.Postgres
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddPostgres(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Postgres.ValtuutusPostgresOptions? options = null) { }
     }
-    public class PostgresDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalBatchOps, Valtuutus.Data.Db.IRelationalCheckOps
+    public sealed class PostgresBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase, System.IDisposable
+    {
+        public PostgresBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
+        public override System.Data.Common.DbBatch CreateBatch() { }
+        public void Dispose() { }
+        public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
+        protected override string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query) { }
+        protected override string WriteNameArrayParam(System.Data.Common.DbBatchCommand cmd, string baseName, string[] values) { }
+        protected override void WriteNullableStringParam(System.Data.Common.DbBatchCommand cmd, string name, string? value, int size) { }
+        protected override void WriteSnapTokenParam(System.Data.Common.DbBatchCommand cmd, string name, Valtuutus.Core.Data.SnapToken snapToken) { }
+        protected override void WriteStringParam(System.Data.Common.DbBatchCommand cmd, string name, string value, int size) { }
+    }
+    public class PostgresDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalCheckOps
     {
         public PostgresDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
-        public void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
-        public void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
-        public void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId) { }
-        public void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public System.Data.Common.DbBatch CreateBatch() { }
-        public System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {

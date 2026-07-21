@@ -60,7 +60,7 @@ public class BatchedPhysicalExecutorSpecs
                 [new object[] { true }],
                 [new object[] { false }])));
 
-        var executor = new BatchedPhysicalExecutor(EmptySchema) { Reader = reader };
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
         var ctx = Ctx();
         PendingOp[] ops =
@@ -99,7 +99,7 @@ public class BatchedPhysicalExecutorSpecs
         // Deliberately NOT IBatchableCheckOp — an opaque op the executor cannot fold into the batch.
         var opaqueOp = new FakeCheckOp(result: true);
 
-        var executor = new BatchedPhysicalExecutor(EmptySchema) { Reader = reader };
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
         var ctx = Ctx();
         // Two batchable ops (so the wave has something worth batching — Submit's single-op fast
@@ -135,7 +135,7 @@ public class BatchedPhysicalExecutorSpecs
         reader.HasDirectRelation(Arg.Any<RelationTupleFilter>(), "u1", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
-        var executor = new BatchedPhysicalExecutor(EmptySchema) { Reader = reader };
+        var executor = new BatchedPhysicalExecutor(EmptySchema, null) { Reader = reader };
         var sink = new RecordingSink();
         var ctx = Ctx();
         PendingOp[] ops = [HasDirectRelationOp(1, "household", "1", "owner")];
@@ -150,13 +150,13 @@ public class BatchedPhysicalExecutorSpecs
     {
         // Reader supports batching, but there's only one op in the wave — nothing to gain from a
         // DbBatch of one command, so Submit's fast path should dispatch it directly instead
-        // (DbBatch-Task 9's benchmarks showed this costs more than it saves for a single-op wave).
+        // (a DbBatch of one command costs more than dispatching it directly).
         var reader = Substitute.For<IDataReaderProvider, IRelationalBatchOps>();
         var batchOps = (IRelationalBatchOps)reader;
         reader.HasDirectRelation(Arg.Any<RelationTupleFilter>(), "u1", Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(true));
 
-        var executor = new BatchedPhysicalExecutor(EmptySchema) { Reader = reader };
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
         var ctx = Ctx();
         PendingOp[] ops = [HasDirectRelationOp(1, "household", "1", "owner")];
@@ -178,7 +178,7 @@ public class BatchedPhysicalExecutorSpecs
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromException<DbDataReader>(new InvalidOperationException("boom")));
 
-        var executor = new BatchedPhysicalExecutor(EmptySchema) { Reader = reader };
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
         var ctx = Ctx();
         PendingOp[] ops =

@@ -11,8 +11,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 
 /// <summary>
 /// R4 real-Postgres correctness proof (DbBatch-Task 8, Step 2): `a0 or a1 or a2` (three sibling
-/// bool attributes on the same entity) compiles to a single MultiAttributeNode
-/// (PlanCompiler.GroupSiblingAttributeTruth) which the relational rewriter turns into one
+/// bool attributes on the same entity) is fused by RelationalPlanRewriter into one
 /// HasAnyOfAttributesOp — one `attribute = ANY(@attributes)` round trip instead of three. This
 /// proves that fused SQL actually matches real seeded rows correctly, not just fakes/NSubstitute
 /// (which is all Tasks 1-7 exercised).

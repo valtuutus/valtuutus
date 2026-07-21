@@ -27,9 +27,9 @@ public class V2MetricsSpecs
         });
         listener.Start();
 
-        // `published or owner`: attribute child first so GroupSiblingDirectRelations cannot
-        // fuse the union into a single MultiDirectNode (which would remove the expression
-        // frame these counters hang off).
+        // `published or owner`: one attribute + one relation, so the union always keeps its
+        // expression frame (which these counters hang off) — no sibling pair a rewriter could
+        // ever fuse away, and the InMemory path applies no rewriters anyway.
         const string s = """
             entity user {}
             entity doc {

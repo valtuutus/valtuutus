@@ -6,14 +6,13 @@ using Valtuutus.Core.Pools;
 using Npgsql;
 using NpgsqlTypes;
 using System.Data;
-using System.Data.Common;
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps, IRelationalBatchOps
+public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
     private const string UnformattedSelectAttributes = @"SELECT
                     entity_type,
@@ -34,7 +33,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     private const string UnformattedExistsRelation = "SELECT EXISTS(SELECT 1 FROM {0}.{1} /**where**/)";
     private const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
 
-    private sealed record ReaderQueries
+    // Internal (not private): PostgresBatchOps' dialect catalog serves the exact same SQL text as
+    // these single-op queries — one definition, shared through GetQueries, so the two paths can
+    // never drift apart (and the server's prepared-statement cache sees one statement, not two).
+    internal sealed record ReaderQueries
     {
         public required string SelectAttributes { get; init; }
         public required string SelectRelations { get; init; }
@@ -45,6 +47,13 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string HasAnyDirectRelation { get; init; }
         public required string HasAnyOfDirectRelations { get; init; }
         public required string HasAnyOfAttributes { get; init; }
+        // {0}-placeholder templates of the three array-taking queries above, for PostgresBatchOps'
+        // dialect catalog (RelationalBatchProviderBase substitutes WriteNameArrayParam's fragment).
+        // The non-template properties are string.Format-derived from these in BuildQueries, so the
+        // batched and single-op SQL text stay byte-identical by construction.
+        public required string HasAnyDirectRelationBatchTemplate { get; init; }
+        public required string HasAnyOfDirectRelationsBatchTemplate { get; init; }
+        public required string HasAnyOfAttributesBatchTemplate { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
@@ -82,7 +91,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     private static readonly ConcurrentDictionary<DataSourceCacheKey, NpgsqlDataSource> DataSourceCache = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
-    private static void AddStringParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
+    // The three parameter helpers below are internal (not private) for the same reason as
+    // ReaderQueries: PostgresBatchOps' parameter hooks construct byte-identical NpgsqlParameters
+    // (same NpgsqlDbType, same Size) through these exact helpers instead of re-deriving them.
+    internal static void AddStringParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Varchar)
         {
@@ -91,7 +103,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         });
     }
 
-    private static void AddFixedCharParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
+    internal static void AddFixedCharParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Char)
         {
@@ -100,7 +112,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         });
     }
 
-    private static void AddNullableStringParameter(NpgsqlParameterCollection parameters, string name, string? value, int size)
+    internal static void AddNullableStringParameter(NpgsqlParameterCollection parameters, string name, string? value, int size)
     {
         parameters.Add(new NpgsqlParameter<string?>(name, NpgsqlDbType.Varchar)
         {
@@ -128,7 +140,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             ParseJsonValue(reader.GetString(3)));
     }
 
-    private static NpgsqlDataSource GetOrCreateDataSource(string connectionString, ValtuutusPostgresOptions options)
+    // Internal so PostgresBatchOps binds its batches to the SAME cached NpgsqlDataSource (same
+    // cache key, same instance) the reader uses — one connection pool and one auto-prepare cache
+    // for both the single-op and the batched path.
+    internal static NpgsqlDataSource GetOrCreateDataSource(string connectionString, ValtuutusPostgresOptions options)
     {
         var key = new DataSourceCacheKey(connectionString, options.MaxAutoPrepare, options.AutoPrepareMinUsages);
         return DataSourceCache.GetOrAdd(key, static cacheKey =>
@@ -149,10 +164,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         ValtuutusPostgresOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _q = QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+        _q = GetQueries(dbOptions);
         using var probeConnection = (NpgsqlConnection)_connectionFactory();
         _hotPathDataSource = GetOrCreateDataSource(probeConnection.ConnectionString, dbOptions);
     }
+
+    // Internal so PostgresBatchOps resolves the same cached ReaderQueries instance this provider
+    // uses — the dialect catalog and the single-op path reference one set of SQL strings.
+    internal static ReaderQueries GetQueries(ValtuutusPostgresOptions dbOptions) =>
+        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
 
     private static ReaderQueries BuildQueries(DbQueryCacheKey key)
     {
@@ -161,6 +181,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
         var selectAttributes = string.Format(UnformattedSelectAttributes, key.Schema, key.AttributesTable);
         var selectRelations = string.Format(UnformattedSelectRelations, key.Schema, key.RelationsTable);
+
+        // {0}-placeholder templates the batched path's dialect catalog serves as-is; the single-op
+        // strings below are derived from them with the fixed array parameter names, so both paths
+        // execute byte-identical SQL text.
+        var hasAnyDirectRelationBatchTemplate =
+            $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY({{0}}) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
+        var hasAnyOfDirectRelationsBatchTemplate =
+            $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY({{0}}) AND subject_id = @subject_id AND subject_relation = ''";
+        var hasAnyOfAttributesBatchTemplate =
+            $"SELECT DISTINCT attribute FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY({{0}}) AND value = 'true'::jsonb";
 
         return new ReaderQueries
         {
@@ -171,12 +201,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             HasDirectRelation =
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
-            HasAnyDirectRelation =
-                $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
-            HasAnyOfDirectRelations =
-                $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY(@relations) AND subject_id = @subject_id AND subject_relation = ''",
-            HasAnyOfAttributes =
-                $"SELECT DISTINCT attribute FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY(@attributes) AND value = 'true'::jsonb",
+            HasAnyDirectRelation = string.Format(hasAnyDirectRelationBatchTemplate, "@entity_ids"),
+            HasAnyOfDirectRelations = string.Format(hasAnyOfDirectRelationsBatchTemplate, "@relations"),
+            HasAnyOfAttributes = string.Format(hasAnyOfAttributesBatchTemplate, "@attributes"),
+            HasAnyDirectRelationBatchTemplate = hasAnyDirectRelationBatchTemplate,
+            HasAnyOfDirectRelationsBatchTemplate = hasAnyOfDirectRelationsBatchTemplate,
+            HasAnyOfAttributesBatchTemplate = hasAnyOfAttributesBatchTemplate,
             GetIndirectRelations =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
             GetRelationsWithSingleSubjectSnap =
@@ -660,100 +690,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             while (await reader.ReadAsync(cancellationToken))
                 result.Add(reader.GetString(0));
             return result;
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    // IRelationalCheckOps batch siblings of the two methods above: same SQL text (_q.HasAnyOfDirectRelations
-    // / _q.HasAnyOfAttributes), same parameter-population helpers, but appended to a caller-supplied batch
-    // instead of dispatched as their own round trip. DbBatch.CreateBatchCommand()'s declared return type is
-    // the ADO-abstract DbBatchCommand, but since every batch this provider ever hands out (IRelationalBatchOps
-    // .CreateBatch) is created via NpgsqlDataSource.CreateBatch(), the object it returns at runtime is always
-    // a genuine NpgsqlBatchCommand (Npgsql overrides the protected factory DbBatch.CreateBatchCommand()
-    // delegates to) — verified against the real Npgsql 9.0.3 API. The cast is therefore safe and is what lets
-    // Populate*Command's NpgsqlParameterCollection-typed helpers (Task 5) stay reusable here unmodified.
-    public void AddHasAnyOfDirectRelationsToBatch(DbBatch batch, string entityType, string entityId,
-        string[] relationNames, string subjectId, SnapToken snapToken)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyOfDirectRelations;
-        PopulateHasAnyOfDirectRelationsCommand(command.Parameters, entityType, entityId, relationNames, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasAnyOfAttributesToBatch(DbBatch batch, string entityType, string entityId,
-        string[] attributeNames, SnapToken snapToken)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyOfAttributes;
-        PopulateHasAnyOfAttributesCommand(command.Parameters, entityType, entityId, attributeNames, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasDirectRelationToBatch(DbBatch batch, RelationTupleFilter tupleFilter, string subjectId)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasDirectRelation;
-        PopulateHasDirectRelationCommand(command.Parameters, tupleFilter, subjectId);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasTrueBoolAttributeToBatch(DbBatch batch, string entityType, string entityId, string attribute,
-        SnapToken snapToken)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasTrueBoolAttribute;
-        PopulateHasTrueBoolAttributeCommand(command.Parameters, entityType, entityId, attribute, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasTupleToUserSetRelationToBatch(DbBatch batch, string entityType, string entityId,
-        string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId,
-        SnapToken snapToken)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasTupleToUserSetRelation;
-        PopulateHasTupleToUserSetRelationCommand(command.Parameters, entityType, entityId, tupleSetRelation,
-            subEntityType, computedRelation, subjectType, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasAnyDirectRelationToBatch(DbBatch batch, string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken snapToken)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyDirectRelation;
-        PopulateHasAnyDirectRelationCommand(command.Parameters, entityType, entityIds, relation, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddGetRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = PopulateGetRelationsCommand(command.Parameters, tupleFilter);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddGetIndirectRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter)
-    {
-        var command = (NpgsqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.GetIndirectRelations;
-        PopulateGetIndirectRelationsCommand(command.Parameters, tupleFilter);
-        batch.BatchCommands.Add(command);
-    }
-
-    public DbBatch CreateBatch() => _hotPathDataSource.CreateBatch();
-
-    public async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
-    {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            return await batch.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {

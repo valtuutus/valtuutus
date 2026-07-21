@@ -18,24 +18,20 @@
             <_Parameter1>Valtuutus.Lang.Tests</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- Test-only grant: CheckPlanExecutorSpecs and friends exercise internal executor
+                 mechanics (Frame, ControllablePhysicalExecutor, hazard specs) directly. -->
             <_Parameter1>Valtuutus.Data.InMemory.Tests</_Parameter1>
         </AssemblyAttribute>
         <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <_Parameter1>Valtuutus.Data.Db</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- Test-only grant: PlanValidatorSpecs and RelationalPlanRewriterSpecs call the
+                 internal PlanCompiler.Compile directly to obtain an un-rewritten plan for testing
+                 — the only public-facing compile+rewrite pipeline (CheckPlanCache) is itself
+                 internal, so there's no public way to get a pre-rewrite plan otherwise. Not
+                 production code — the seam restructure (see design doc "Seam architecture")
+                 publishes everything production code needs (PlanNode, IPlanRewriter, ICheckOp,
+                 IPhysicalExecutor/PendingOp/OpKind), so Valtuutus.Data.Db/Postgres/SqlServer no
+                 longer need this grant. -->
             <_Parameter1>Valtuutus.Data.Db.Tests</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <!-- AddPostgres (Valtuutus.Data.Postgres) replaces the CheckV2 Func<Schema,
-                 IPhysicalExecutor> factory registration with a batching one — needs to name the
-                 internal IPhysicalExecutor/Schema-factory type, same reasoning as the
-                 Valtuutus.Data.Db grant above. -->
-            <_Parameter1>Valtuutus.Data.Postgres</_Parameter1>
-        </AssemblyAttribute>
-        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-            <!-- Same as Valtuutus.Data.Postgres above, for AddSqlServer. -->
-            <_Parameter1>Valtuutus.Data.SqlServer</_Parameter1>
         </AssemblyAttribute>
     </ItemGroup>
 

@@ -480,10 +480,9 @@ public class CheckPlanExecutorSpecs
         // an unrelated request while r1's eventual completion is still pending — and when r1
         // finally lands, it would call sink.Complete against whatever _frames/_mailbox that
         // unrelated request has by then, using r1's now-stale token.
-        // r1 is an attribute, not a relation, so GroupSiblingDirectRelations (which only
-        // recognizes direct-relation refs) leaves it out and the union stays two independent
-        // ops — otherwise sibling-batching would fuse r0/r1 into one MultiDirectNode op,
-        // defeating this test's premise of one instant leg and one genuinely outstanding leg.
+        // r1 is an attribute, not a relation, so the two legs are different op kinds and the
+        // union stays two independent ops with distinct completion timing — one instant leg
+        // and one genuinely outstanding leg, which is this test's premise.
         const string s = """
             entity user {}
             entity doc {
@@ -566,21 +565,21 @@ public class CheckPlanExecutorSpecs
         """;
 
     [Fact]
-    public async Task MultiDirect_union_true_when_any_relation_matches()
+    public async Task Sibling_relation_union_true_when_any_relation_matches()
     {
         (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "u1")], null,
             "household", "1", "view")).Should().BeTrue();
     }
 
     [Fact]
-    public async Task MultiDirect_union_false_when_no_relation_matches()
+    public async Task Sibling_relation_union_false_when_no_relation_matches()
     {
         (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "someone-else")], null,
             "household", "1", "view")).Should().BeFalse();
     }
 
     [Fact]
-    public async Task MultiDirect_intersect_requires_every_relation()
+    public async Task Sibling_relation_intersect_requires_every_relation()
     {
         RelationTuple[] onlyOwner = [new RelationTuple("household", "1", "owner", "user", "u1")];
         (await RunCheck(HouseholdSchema, onlyOwner, null, "household", "1", "manage")).Should().BeFalse();
@@ -594,11 +593,11 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
-    public async Task MultiDirect_intersect_is_not_fooled_by_duplicate_tuples()
+    public async Task Sibling_relation_intersect_is_not_fooled_by_duplicate_tuples()
     {
-        // Two identical owner tuples, no admin: a count over ROWS would see 2 == 2 relations and
-        // wrongly pass; the HashSet return type guarantees set semantics (see the
-        // HasAnyOfDirectRelations doc remarks).
+        // Two identical owner tuples, no admin: duplicates must never make an intersect pass.
+        // (When the relational rewriter fuses these siblings into one HasAnyOfDirectRelationsOp,
+        // the same guarantee comes from that op's set semantics — see Valtuutus.Data.Db.)
         RelationTuple[] dupOwner =
         [
             new RelationTuple("household", "1", "owner", "user", "u1"),
@@ -608,8 +607,11 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
-    public async Task MultiDirect_submits_one_batched_op_instead_of_three_singles()
+    public async Task Sibling_relation_refs_submit_as_singles_in_one_wave()
     {
+        // Sibling fusion is relational-only now (RelationalPlanRewriter in Valtuutus.Data.Db) —
+        // without a rewriter the plan keeps three PlanRef siblings, and the wave-shaped driver
+        // loop still submits all three resulting ops in ONE Physical.Submit call.
         var (_, schema, reader) = await Arrange(HouseholdSchema,
             [new RelationTuple("household", "1", "member", "user", "u1")]);
         var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
@@ -622,9 +624,11 @@ public class CheckPlanExecutorSpecs
             [new CheckRootRequest("household", "1", "view", null, 10)], ctx, default);
 
         results[0].Should().BeTrue();
-        recording.Submitted.Should().ContainSingle();
-        recording.Submitted[0].Kind.Should().Be(OpKind.HasAnyOfDirectRelations);
-        recording.Submitted[0].Relations.Should().Equal("owner", "admin", "member");
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.Submitted.Should().HaveCount(3);
+        recording.Submitted.Should().OnlyContain(op => op.Kind == OpKind.HasDirectRelation);
+        // Ready frames drain LIFO, so wave order is not sibling order — assert membership only.
+        recording.Submitted.Select(op => op.Relation).Should().BeEquivalentTo("owner", "admin", "member");
     }
 
     private const string WaveSchema = """
@@ -641,10 +645,9 @@ public class CheckPlanExecutorSpecs
     {
         // M1: DrainReady accumulates every leaf op that becomes ready in one synchronous pass
         // and flushes them via a single Physical.Submit call, instead of one Submit per op.
-        // owner (HasDirectRelation) and published (HasTrueBoolAttribute) are different OpKinds,
-        // so GroupSiblingDirectRelations cannot fuse them at compile time — this schema isolates
-        // wave batching (a runtime driver-loop behavior) from sibling-relation batching (a
-        // compile-time pass), proving the two are independent mechanisms.
+        // owner (HasDirectRelation) and published (HasTrueBoolAttribute) are different OpKinds —
+        // this schema isolates wave batching (a runtime driver-loop behavior) from sibling
+        // fusion (a relational rewrite, absent here), proving the two are independent mechanisms.
         var (_, schema, reader) = await Arrange(WaveSchema,
             [new RelationTuple("doc", "1", "owner", "user", "u1")]);
         var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
@@ -679,10 +682,9 @@ public class CheckPlanExecutorSpecs
         // but for the wave buffer: ArrayPool<T>.Shared.Rent(8) actually rounds up to a 16-element
         // array (bucket rounding), so branchCount must exceed 16 -- not just 8 -- to force a real
         // grow. Each attribute sits behind its own one-line permission alias (p{i} := a{i}) instead
-        // of being a direct Union sibling of the others: GroupSiblingAttributeTruth (R4) fuses ≥2
-        // sibling same-entity attribute refs within ONE Union's direct children into a single
-        // HasAnyOfAttributes op, and view's Union children here are PlanRefNode(p{i}) — Permission
-        // type, not Attribute — so R4 leaves them alone. Each p{i} resolves through its own
+        // of being a direct Union sibling of the others — view's Union children are
+        // PlanRefNode(p{i}), Permission type, which no sibling-fusion rule anywhere recognizes
+        // (and the InMemory path applies no rewriters anyway). Each p{i} resolves through its own
         // separate one-node plan straight to a{i}'s AttributeTruthNode, so all 20 still submit as
         // individual HasTrueBoolAttribute ops and must all land in one wave after at least one grow.
         const int branchCount = 20;
@@ -896,10 +898,10 @@ public class CheckPlanExecutorSpecs
 
     private sealed class RootReplacingRewriter(ICheckOp op) : IPlanRewriter
     {
-        public PlanNode Rewrite(PlanNode root, Schema schema) => new PhysicalCheckNode(op);
+        public PlanNode Rewrite(PlanNode root, Schema schema, string entityType, string? subjectType) => new PhysicalCheckNode(op);
     }
 
-    private const string MultiAttributeSchema = """
+    private const string SiblingAttributeSchema = """
         entity user {}
         entity doc {
             attribute a0 bool;
@@ -910,9 +912,12 @@ public class CheckPlanExecutorSpecs
         """;
 
     [Fact]
-    public async Task MultiAttribute_submits_one_batched_op_instead_of_three_singles()
+    public async Task Sibling_attribute_refs_submit_as_singles_in_one_wave()
     {
-        var (_, schema, reader) = await Arrange(MultiAttributeSchema, [],
+        // Same as Sibling_relation_refs_submit_as_singles_in_one_wave, for the attribute case:
+        // fusion into one HasAnyOfAttributes round trip is the relational rewriter's job now;
+        // the InMemory path answers the three attribute refs as three ops in one wave.
+        var (_, schema, reader) = await Arrange(SiblingAttributeSchema, [],
             [new AttributeTuple("doc", "1", "a2", System.Text.Json.Nodes.JsonValue.Create(true))]);
         var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
         var ctx = new CheckRequestContext
@@ -924,13 +929,14 @@ public class CheckPlanExecutorSpecs
             [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
 
         results[0].Should().BeTrue();
-        recording.Submitted.Should().ContainSingle();
-        recording.Submitted[0].Kind.Should().Be(OpKind.HasAnyOfAttributes);
-        recording.Submitted[0].Relations.Should().Equal("a0", "a1", "a2");
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.Submitted.Should().HaveCount(3);
+        recording.Submitted.Should().OnlyContain(op => op.Kind == OpKind.HasTrueBoolAttribute);
+        recording.Submitted.Select(op => op.Relation).Should().BeEquivalentTo("a0", "a1", "a2");
     }
 
     [Fact]
-    public async Task MultiAttribute_intersect_requires_all_attributes()
+    public async Task Sibling_attribute_intersect_requires_all_attributes()
     {
         const string s = """
             entity user {}

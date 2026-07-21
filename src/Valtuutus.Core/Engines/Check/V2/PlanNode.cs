@@ -3,42 +3,56 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Engines.Check.V2;
 
-internal abstract record PlanNode;
+/// <summary>
+/// Root of the compiled check-plan IR. The IR mirrors the schema language (relations,
+/// attributes, unions/intersections/negations); new node types are additive — rewriters
+/// must return unrecognized nodes unchanged.
+/// </summary>
+public abstract record PlanNode;
 
-internal sealed record ConstNode(bool Value) : PlanNode
+public sealed record ConstNode(bool Value) : PlanNode
 {
     public static readonly ConstNode False = new(false);
     public static readonly ConstNode True = new(true);
 }
 
-// Plan ROOTS only (a bare relation/attribute name compiled as its own plan).
-internal sealed record DirectRelationNode(string Relation, bool HasSubRelationPaths) : PlanNode;
-internal sealed record AttributeTruthNode(string Attribute) : PlanNode;
+/// <summary>
+/// Appears as a plan ROOT only (a bare relation name compiled as its own plan), never as an
+/// interior node.
+/// </summary>
+public sealed record DirectRelationNode(string Relation, bool HasSubRelationPaths) : PlanNode;
+
+/// <summary>
+/// Appears as a plan ROOT only (a bare attribute name compiled as its own plan), never as an
+/// interior node.
+/// </summary>
+public sealed record AttributeTruthNode(string Attribute) : PlanNode;
 
 // In-tree leaves.
-internal sealed record AttributeExprNode(PermissionNodeLeafExp Expr) : PlanNode;
-internal sealed record TupleToUserSetNode(string TuplesetRelation, string ComputedRelation) : PlanNode;
-internal sealed record PlanRefNode(string Permission) : PlanNode; // same-entity ResolveDynamic re-entry
+public sealed record AttributeExprNode(PermissionNodeLeafExp Expr) : PlanNode;
+public sealed record TupleToUserSetNode(string TuplesetRelation, string ComputedRelation) : PlanNode;
 
-// Fused sibling direct-relation batch (generic "sibling grouping" pass — design doc, Pipeline).
-// Replaces ≥2 batchable PlanRefNode siblings of one Union/Intersect: RequireAll=false under
-// Union (any relation matches), true under Intersect (every relation matches). Relations is
-// duplicate-free by construction — a repeated ref is hash-consed into a MemoNode and never
-// grouped. Array-typed record ⇒ reference equality; fine, this node is created after
-// hash-consing and never interned.
-internal sealed record MultiDirectNode(string[] Relations, bool RequireAll) : PlanNode;
+/// <summary>
+/// Re-entry into the same entity's compiled plan for the named permission, relation, or
+/// attribute.
+/// </summary>
+public sealed record PlanRefNode(string Permission) : PlanNode; // executed via ResolveDynamic re-entry
 
-// Symmetric to MultiDirectNode, for ≥2 sibling same-entity bool-attribute checks (R4).
-internal sealed record MultiAttributeNode(string[] Attributes, bool RequireAll) : PlanNode;
+/// <summary>
+/// Escape hatch for provider-fused execution: a rewriter-produced node carrying its own
+/// opaque op. Reference equality; created only after hash-consing, never interned.
+/// </summary>
+public sealed record PhysicalCheckNode(ICheckOp Op) : PlanNode;
 
-// Physical escape hatch: a rewriter-fused subtree carrying its own execution (design doc, IR).
-// Reference equality, never interned — created only after hash-consing, like MultiDirectNode.
-internal sealed record PhysicalCheckNode(ICheckOp Op) : PlanNode;
+public sealed record UnionNode(ImmutableArray<PlanNode> Children) : PlanNode;
+public sealed record IntersectNode(ImmutableArray<PlanNode> Children) : PlanNode;
+public sealed record NegateNode(PlanNode Child) : PlanNode;
 
-internal sealed record UnionNode(ImmutableArray<PlanNode> Children) : PlanNode;
-internal sealed record IntersectNode(ImmutableArray<PlanNode> Children) : PlanNode;
-internal sealed record NegateNode(PlanNode Child) : PlanNode;
-internal sealed record MemoNode(int SlotId, PlanNode Child) : PlanNode;
+/// <summary>
+/// Rewrite barrier: never unwrap a MemoNode — its child is shared by multiple parents,
+/// and a shared subtree fused into one parent duplicates work for the others.
+/// </summary>
+public sealed record MemoNode(int SlotId, PlanNode Child) : PlanNode;
 
 // ImmutableArray<T> makes generated record equality reference-based; hash-consing
 // needs structural identity, so it goes through this comparer instead.

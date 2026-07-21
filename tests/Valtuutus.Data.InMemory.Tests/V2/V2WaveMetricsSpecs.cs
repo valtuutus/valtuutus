@@ -68,13 +68,14 @@ public class V2WaveMetricsSpecs
     public async Task Wave_of_same_kind_ops_credits_both_as_coalescable()
     {
         // a0 and a1 each sit behind their own one-line permission alias (p0/p1) instead of being
-        // direct Union siblings: GroupSiblingAttributeTruth (R4) fuses ≥2 sibling same-entity
-        // attribute refs within one Union's direct children into a single HasAnyOfAttributes op,
-        // and view's Union children here are PlanRefNode(p0)/PlanRefNode(p1) — Permission type,
-        // not Attribute — so R4 leaves them alone. p0/p1 each resolve through their own separate
-        // one-node plan straight to a0/a1's AttributeTruthNode, so both still submit as individual
-        // HasTrueBoolAttribute ops ready in the same wave -> both count toward WaveSameKindOps
-        // (what a same-shape coalescer could merge).
+        // direct Union siblings: even where sibling fusion exists (RelationalPlanRewriter in
+        // Valtuutus.Data.Db; the InMemory path applies no rewriters at all), it only recognizes
+        // ≥2 sibling same-entity attribute refs among one Union's direct children, and view's
+        // Union children here are PlanRefNode(p0)/PlanRefNode(p1) — Permission type, not
+        // Attribute. p0/p1 each resolve through their own separate one-node plan straight to
+        // a0/a1's AttributeTruthNode, so both still submit as individual HasTrueBoolAttribute
+        // ops ready in the same wave -> both count toward WaveSameKindOps (what a same-shape
+        // coalescer could merge).
         var (waveOps, sameKindOps, result) = await MeasureCheck(SameKindSchema,
             [], [new AttributeTuple("doc", "1", "a1", System.Text.Json.Nodes.JsonValue.Create(true))], "view");
 

@@ -22,7 +22,11 @@ internal sealed class CheckPlanCache(Schema schema, IEnumerable<IPlanRewriter>? 
             {
                 var plan = PlanCompiler.Compile(self._schema, key.EntityType, key.Permission, key.SubjectType);
                 foreach (var rewriter in self._rewriters)
-                    plan = plan with { Root = rewriter.Rewrite(plan.Root, self._schema) };
+                    plan = plan with { Root = rewriter.Rewrite(plan.Root, self._schema, key.EntityType, key.SubjectType) };
+#if DEBUG
+                // Contract check for rewriter output; debug-only — see PlanValidator doc.
+                PlanValidator.Validate(plan.Root, plan.SlotCount);
+#endif
                 return plan;
             },
             this);

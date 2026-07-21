@@ -6,6 +6,7 @@ using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data.Db;
+using Valtuutus.Data.Postgres;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
@@ -17,19 +18,21 @@ namespace Valtuutus.Data.Postgres.Tests;
 ///
 /// The schema's `view := owner or team_link.member or public` union has three sibling children
 /// of three DIFFERENT op kinds (HasDirectRelation, TtuFastPath, HasTrueBoolAttribute) — each
-/// appears only once, so neither GroupSiblingDirectRelations nor GroupSiblingAttributeTruth (both
-/// same-kind, ≥2 siblings) fires at compile time. All three land in the executor as separate
-/// leaf ops in the same wave, which is exactly the shape BatchedPhysicalExecutor's DbBatch
-/// packing targets — as opposed to reusing the R4 attribute fixture from Step 2, where the fusion
-/// already collapses to a single op at PLAN COMPILE time, before the physical executor ever sees
-/// more than one op to batch.
+/// appears only once, so RelationalPlanRewriter's sibling fusion (same-kind, ≥2 siblings) never
+/// fires at plan-rewrite time. All three land in the executor as separate leaf ops in the same
+/// wave, which is exactly the shape BatchedPhysicalExecutor's DbBatch packing targets — as
+/// opposed to reusing the R4 attribute fixture from Step 2, where the fusion already collapses
+/// to a single op at PLAN REWRITE time, before the physical executor ever sees more than one op
+/// to batch.
 ///
 /// Forcing the "one round trip per op" comparison can't go through DefaultPhysicalExecutor
 /// directly — it's internal to Valtuutus.Core with no InternalsVisibleTo grant to this test
-/// assembly. Instead this toggles whether the registered IDataReaderProvider also implements
-/// IRelationalBatchOps: BatchedPhysicalExecutor (which AddPostgres always registers) checks for
-/// that capability at runtime and falls back to SubmitAllIndividually — the exact same per-op
-/// PhysicalOpRunner path DefaultPhysicalExecutor itself uses — when it's absent. Same code path,
+/// assembly. Instead this toggles whether an IRelationalBatchOps is registered at all:
+/// BatchedPhysicalExecutor now receives its batch capability injected (constructed once per
+/// Schema by AddPostgres's Func&lt;Schema, IPhysicalExecutor&gt; factory, which resolves
+/// IRelationalBatchOps via IServiceProvider.GetService — optional, not required), so removing
+/// the registration entirely reproduces the exact same SubmitAllIndividually fallback
+/// BatchedPhysicalExecutor takes when a provider has no batch implementation. Same code path,
 /// no internals access required.
 /// </summary>
 [Collection("PostgreSqlSpec")]
@@ -104,24 +107,46 @@ public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddPostgres(_ => dbFactory).AddConcurrentQueryLimit(3);
         services.AddValtuutusCheckV2();
+
+        var counter = new RoundTripCounter();
+        services.AddSingleton(counter);
+
         // AddPostgres already registered IDataReaderProvider as a plain PostgresDataReaderProvider
         // (scoped) — Replace it with a counting decorator that wraps a freshly-constructed real
         // one, resolved via ActivatorUtilities so it still gets AddPostgres/AddDbSetup's
-        // DbConnectionFactory/ValtuutusDataOptions/ValtuutusPostgresOptions registrations.
+        // DbConnectionFactory/ValtuutusDataOptions/ValtuutusPostgresOptions registrations. Used in
+        // both runs: the batching run's savings show up as calls that never reach this decorator,
+        // routed instead through CountingBatchOps below.
         services.Replace(ServiceDescriptor.Scoped<IDataReaderProvider>(sp =>
         {
             var real = ActivatorUtilities.CreateInstance<Postgres.PostgresDataReaderProvider>(sp);
-            return batching
-                ? new BatchingCountingReader(real)
-                : (IDataReaderProvider)new NonBatchingCountingReader(real);
+            return new CountingReaderProvider(real, sp.GetRequiredService<RoundTripCounter>());
         }));
+
+        if (batching)
+        {
+            // AddPostgres already registered a real IRelationalBatchOps singleton (PostgresBatchOps)
+            // — Replace it with a counting decorator built the same way, so ExecuteBatchAsync calls
+            // land in the same counter as the reader's individual calls above.
+            services.Replace(ServiceDescriptor.Singleton<IRelationalBatchOps>(sp =>
+                new CountingBatchOps(
+                    new PostgresBatchOps(sp.GetRequiredService<DbConnectionFactory>(),
+                        sp.GetRequiredService<ValtuutusDataOptions>(),
+                        sp.GetRequiredService<ValtuutusPostgresOptions>()),
+                    sp.GetRequiredService<RoundTripCounter>())));
+        }
+        else
+        {
+            // No IRelationalBatchOps registered at all: BatchedPhysicalExecutor's injected
+            // batchOps is null, so every op falls back to SubmitAllIndividually — the individual
+            // round trips land on the counted reader above instead.
+            services.RemoveAll<IRelationalBatchOps>();
+        }
 
         await using var sp = services.BuildServiceProvider();
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
         var result = await engine.Check(request, default);
-        // Same scope, so this resolves the exact decorator instance the engine just used.
-        var counting = (RoundTripCountingReaderBase)scope.ServiceProvider.GetRequiredService<IDataReaderProvider>();
-        return (result, counting.RoundTripCount);
+        return (result, counter.Count);
     }
 }
