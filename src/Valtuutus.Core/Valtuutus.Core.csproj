@@ -33,6 +33,10 @@
                  Valtuutus.Data.Db grant above. -->
             <_Parameter1>Valtuutus.Data.Postgres</_Parameter1>
         </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- Same as Valtuutus.Data.Postgres above, for AddSqlServer. -->
+            <_Parameter1>Valtuutus.Data.SqlServer</_Parameter1>
+        </AssemblyAttribute>
     </ItemGroup>
 
     <ItemGroup>

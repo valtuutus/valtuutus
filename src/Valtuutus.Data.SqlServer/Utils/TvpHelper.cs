@@ -20,9 +20,9 @@ internal static class TvpHelper
     {
         private static readonly SqlMetaData[] _meta = [new("id", SqlDbType.NVarChar, 256)];
 
-        public void AddParameter(SqlCommand command, string name)
+        public void AddParameter(SqlParameterCollection parameters, string name)
         {
-            var param = command.Parameters.Add(name, SqlDbType.Structured);
+            var param = parameters.Add(name, SqlDbType.Structured);
             param.TypeName = typeName;
             param.Value = this;
         }
