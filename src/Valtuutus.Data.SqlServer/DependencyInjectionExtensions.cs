@@ -1,5 +1,8 @@
 using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Valtuutus.Core.Engines.Check.V2;
+using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.SqlServer;
@@ -19,6 +22,11 @@ public static class DependencyInjectionExtensions
     {
         var builder = services.AddValtuutusData();
         builder.Services.AddDbSetup(factory, options ?? new ValtuutusSqlServerOptions());
+        // Harmless when CheckV2 isn't opted in (nothing resolves CheckPlanExecutorPool then).
+        // Replace (not TryAdd) so this always wins regardless of whether AddValtuutusCheckV2()
+        // ran before or after this call — same reasoning as AddPostgres's identical registration.
+        builder.Services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
+            static _ => static schema => new BatchedPhysicalExecutor(schema)));
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();
