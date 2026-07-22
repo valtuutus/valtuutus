@@ -319,7 +319,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     // counts only when a sibling was still unresolved; first-child counts when
                     // the deciding value came from child index 0. Expression frames only —
                     // deliberate divergence from V1, which also counted TTU fan-out
-                    // short-circuits (see design doc, M2).
+                    // short-circuits; V2 has no equivalent counter for that path.
                     if (parent.Pending > 1) ValtuutusMetrics.ShortCircuits.Add(1);
                     if (childIndex == 0) ValtuutusMetrics.FirstChildDecided.Add(1);
                     CompleteFrame(parentIdx, true); return;

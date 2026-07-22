@@ -22,7 +22,8 @@ internal static class PlanCompiler
 
     // Bottom-up interning: identical subtrees become one node; any node referenced more than
     // once gets a MemoNode slot. MemoNode is also the rewrite barrier for later provider
-    // passes — never fuse across it (design doc, "MemoNode barrier rule").
+    // passes — never fuse across it: the child is shared by multiple parents, and fusing it
+    // into one duplicates the work for the others.
     private static (PlanNode Root, int SlotCount) HashCons(PlanNode root)
     {
         var interned = new Dictionary<PlanNode, PlanNode>(PlanNodeStructuralComparer.Instance);

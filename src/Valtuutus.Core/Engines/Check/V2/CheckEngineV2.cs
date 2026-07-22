@@ -76,7 +76,9 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         return dict;
     }
 
-    // Explain stays on V1 for now (design doc: "V1 keeps serving Explain initially").
+    // V2 has no explain support of its own yet (deliberate scope cut) — delegate to a
+    // throwaway V1 CheckEngine instance rather than leave callers of ICheckEngine.Explain
+    // with no implementation on the V2 engine.
     public Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
         => new CheckEngine(reader, schema).Explain(req, cancellationToken);
 }

@@ -10,20 +10,23 @@ namespace Valtuutus.Data.Db;
 // touch trees. Core's compiler knows nothing about sibling fusion — recognizing that several
 // sibling questions can be answered by one round trip is a relational concern, recognized here.
 //
-// Rule 1 (plan-time form of V1's runtime check-then-batch, CheckEngine.cs:559-577): >= 2 sibling
-// Union/Intersect children that are plain same-entity direct-relation refs collapse into one
-// HasAnyOfDirectRelationsOp — a single round trip. Only fires when the subject type is known
-// (V1 parity: CheckEngine.cs:564; plans are keyed per subjectType, so that runtime condition is
-// a rewrite-time one here). V1's memo exclusion has no plan-time equivalent — the fused batch
-// may re-fetch a relation the dynamic memo already knows, which costs no extra round trip;
-// deliberate divergence.
+// Two fusion passes run here, both over the post-hash-consing plan:
 //
-// Rule 2 (R4): symmetric for >= 2 sibling same-entity bool-attribute refs —
+// Direct-relation sibling fusion (plan-time form of V1's runtime check-then-batch,
+// CheckEngine.cs:559-577): >= 2 sibling Union/Intersect children that are plain same-entity
+// direct-relation refs collapse into one HasAnyOfDirectRelationsOp — a single round trip. Only
+// fires when the subject type is known (V1 parity: CheckEngine.cs:564; plans are keyed per
+// subjectType, so that runtime condition is a rewrite-time one here). V1's memo exclusion has
+// no plan-time equivalent — the fused batch may re-fetch a relation the dynamic memo already
+// knows, which costs no extra round trip; deliberate divergence.
+//
+// Attribute sibling fusion: symmetric for >= 2 sibling same-entity bool-attribute refs —
 // HasAnyOfAttributesOp. No subjectType gate: attributes don't depend on subject at all.
 //
-// Both rules run over the post-hash-consing plan: a shared ref is MemoNode-wrapped by then and
-// fails the PlanRefNode type test — that non-match IS the fusion barrier (design doc, "MemoNode
-// barrier rule"). Contract per IPlanRewriter: unrecognized nodes pass through unchanged (and
+// Both passes rely on hash-consing having already run: a shared ref is MemoNode-wrapped by
+// then and fails the PlanRefNode type test below — that non-match IS the fusion barrier (a
+// MemoNode's child is shared by multiple parents, so fusing it into one duplicates the work
+// for the others). Contract per IPlanRewriter: unrecognized nodes pass through unchanged (and
 // untouched subtrees come back reference-identical, preserving interning), never unwrap a
 // MemoNode, stateless — one singleton serves every plan compile; per-Rewrite state lives in a
 // Walker instance.

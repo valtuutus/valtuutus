@@ -45,8 +45,8 @@ internal sealed class HasAnyOfDirectRelationsOp(string[] relations, bool require
     }
 }
 
-// Symmetric to HasAnyOfDirectRelationsOp — R4's physical op for a fused sibling bool-attribute
-// batch.
+// Symmetric to HasAnyOfDirectRelationsOp — the physical op for a fused sibling bool-attribute
+// batch (see RelationalPlanRewriter's attribute sibling fusion pass).
 internal sealed class HasAnyOfAttributesOp(string[] attributes, bool requireAll) : ICheckOp, IBatchableCheckOp
 {
     public async ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
