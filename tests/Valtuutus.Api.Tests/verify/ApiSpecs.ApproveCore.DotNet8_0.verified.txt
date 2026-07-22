@@ -339,8 +339,9 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public sealed class TupleToUserSetNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.TupleToUserSetNode>
     {
-        public TupleToUserSetNode(string TuplesetRelation, string ComputedRelation) { }
+        public TupleToUserSetNode(string TuplesetRelation, string ComputedRelation, string? FastPathSubEntityType = null) { }
         public string ComputedRelation { get; init; }
+        public string? FastPathSubEntityType { get; init; }
         public string TuplesetRelation { get; init; }
     }
     public sealed class UnionNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.UnionNode>

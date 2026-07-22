@@ -95,6 +95,9 @@ internal static class PlanCompiler
                     && !schema.CanSubjectTypeReach(entityType, r.Permission, subjectType):
                 return ConstNode.False;
 
+            case TupleToUserSetNode t:
+                return PruneTupleToUserSet(t, schema, entityType, subjectType);
+
             case NegateNode n:
                 var inner = PruneAndFold(n.Child, schema, entityType, subjectType);
                 return inner is ConstNode c ? (c.Value ? ConstNode.False : ConstNode.True) : new NegateNode(inner);
@@ -108,6 +111,40 @@ internal static class PlanCompiler
             default:
                 return node;
         }
+    }
+
+    // R3: StepTupleToUserSet's runtime fast-path guard (CheckPlanExecutor.cs:504-513, mirroring
+    // CheckEngine.cs:742-753) is schema-static given (entityType, subjectType) apart from the
+    // per-request recursion budget (frame.Depth > 0, which stays a runtime check — see the R3
+    // plan's context notes for why). Decide the schema-static part once here instead of
+    // re-deriving it on every request. Also folds statically-dead TTU branches to ConstNode.False,
+    // the TTU analogue of the PlanRefNode prune case above.
+    private static PlanNode PruneTupleToUserSet(TupleToUserSetNode t, Schema schema, string entityType,
+        string? subjectType)
+    {
+        if (subjectType is null) return t; // fast path needs a known subjectType; nothing to decide yet
+
+        var tuplesetRel = schema.GetRelation(entityType, t.TuplesetRelation);
+
+        var reachable = false;
+        foreach (var e in tuplesetRel.Entities)
+        {
+            if (schema.CanSubjectTypeReach(e.Type, t.ComputedRelation, subjectType)) { reachable = true; break; }
+        }
+        if (!reachable) return ConstNode.False;
+
+        if (tuplesetRel.Entities.Count == 1 && tuplesetRel.Entities[0].Relation is null)
+        {
+            var subEntityType = tuplesetRel.Entities[0].Type;
+            if (schema.GetRelationType(subEntityType, t.ComputedRelation) == RelationType.DirectRelation)
+            {
+                var computedRel = schema.GetRelation(subEntityType, t.ComputedRelation);
+                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(subjectType))
+                    return t with { FastPathSubEntityType = subEntityType };
+            }
+        }
+
+        return t;
     }
 
     private static PlanNode FoldChildren(ImmutableArray<PlanNode> children, Schema schema,

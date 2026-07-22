@@ -91,11 +91,117 @@ public class PlanCompilerSpecs
     }
 
     [Fact]
-    public void Ttu_leaf_compiles_to_TupleToUserSetNode()
+    public void Ttu_leaf_meeting_all_fast_path_conditions_is_annotated_with_FastPathSubEntityType()
     {
         var plan = PlanCompiler.Compile(Parse(BasicSchema), "folder", "read", "user");
         var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
+        union.Children[1].Should().Be(
+            new TupleToUserSetNode("parent", "admin", FastPathSubEntityType: "organization"));
+    }
+
+    [Fact]
+    public void Ttu_leaf_with_null_subjectType_is_never_annotated()
+    {
+        var plan = PlanCompiler.Compile(Parse(BasicSchema), "folder", "read", null);
+        var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
         union.Children[1].Should().Be(new TupleToUserSetNode("parent", "admin"));
+    }
+
+    [Fact]
+    public void Ttu_leaf_with_multiple_tupleset_entities_is_not_fast_path_eligible()
+    {
+        // The schema DSL requires a relation's fully-resolved final entity references to be
+        // consistent, so two *unrelated* direct entity types on one relation can't parse. To get
+        // TuplesetRelation.Entities.Count > 1 while satisfying that, one entry is direct
+        // (organization) and the other is a userset (group#member) that itself resolves down to
+        // organization — still two Entities, still not fast-path eligible.
+        const string s = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity group {
+                relation member @organization;
+            }
+            entity folder {
+                relation parent @organization @group#member;
+                permission read := parent.admin;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "read", "user");
+        plan.Root.Should().Be(new TupleToUserSetNode("parent", "admin"));
+    }
+
+    [Fact]
+    public void Ttu_leaf_with_userset_typed_tupleset_target_is_not_fast_path_eligible()
+    {
+        // The schema parser resolves a TTU's computed relation against the tupleset relation's
+        // fully-recursed final entity, which always bottoms out at a non-userset reference — so
+        // `admin` must exist there. A self-referencing `viewers @organization` keeps that bottom
+        // entity at organization (which has `admin`), while folder.parent's own (single) Entities
+        // entry is still userset-typed (Relation "viewers" is non-null), which is the condition
+        // under test.
+        const string s = """
+            entity user {}
+            entity organization {
+                relation viewers @organization;
+                relation admin @user;
+            }
+            entity folder {
+                relation parent @organization#viewers;
+                permission read := parent.admin;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "read", "user");
+        plan.Root.Should().Be(new TupleToUserSetNode("parent", "admin"));
+    }
+
+    [Fact]
+    public void Ttu_leaf_whose_computed_relation_has_sub_relation_paths_is_not_fast_path_eligible()
+    {
+        const string s = """
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity organization {
+                relation admin @user @group#member;
+            }
+            entity folder {
+                relation parent @organization;
+                permission read := parent.admin;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "read", "user");
+        plan.Root.Should().Be(new TupleToUserSetNode("parent", "admin"));
+    }
+
+    [Fact]
+    public void Ttu_leaf_unreachable_for_subjectType_folds_to_ConstFalse()
+    {
+        // The TTU branch must be a non-root Union child, not the whole permission: a bare
+        // `permission read := parent.admin;` root gets short-circuited to ConstNode.False by
+        // Compile's pre-existing top-level reachability guard (PlanCompiler.cs:10-12) before
+        // PruneAndFold/PruneTupleToUserSet ever run, which would test that guard instead of
+        // PruneTupleToUserSet's own `if (!reachable) return ConstNode.False;` fold. Keeping
+        // "owner" reachable for service_account keeps the top-level permission reachable, so
+        // Compile descends into PruneAndFold and PruneTupleToUserSet independently folds the
+        // dead "parent.admin" branch (organization.admin only admits user).
+        const string s = """
+            entity user {}
+            entity service_account {}
+            entity organization {
+                relation admin @user;
+                relation bot @service_account;
+            }
+            entity folder {
+                relation owner @service_account;
+                relation parent @organization;
+                permission read := owner or parent.admin;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "read", "service_account");
+        plan.Root.Should().Be(new PlanRefNode("owner"));
     }
 
     private const string PruneSchema = """
