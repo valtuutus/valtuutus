@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Data;
-using System.Data.Common;
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
@@ -13,7 +12,7 @@ using Microsoft.Data.SqlClient;
 
 namespace Valtuutus.Data.SqlServer;
 
-public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps, IRelationalBatchOps
+public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
     private readonly DbConnectionFactory _connectionFactory;
 
@@ -25,15 +24,23 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         IValtuutusDbOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _q = QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+        _q = GetQueries(dbOptions);
     }
 
-    private static void AddStringParameter(SqlParameterCollection parameters, string name, string value, int size)
+    // Internal so SqlServerBatchOps resolves the same cached ReaderQueries instance this provider
+    // uses — the dialect catalog and the single-op path reference one set of SQL strings.
+    internal static ReaderQueries GetQueries(IValtuutusDbOptions dbOptions) =>
+        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+
+    // Internal (not private): SqlServerBatchOps' dialect hooks construct byte-identical
+    // SqlParameters (same SqlDbType, same size) through these exact helpers instead of
+    // re-deriving them.
+    internal static void AddStringParameter(SqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, size) { Value = value });
     }
 
-    private static void AddNullableStringParameter(SqlParameterCollection parameters, string name, string? value, int size)
+    internal static void AddNullableStringParameter(SqlParameterCollection parameters, string name, string? value, int size)
     {
         parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, size)
         {
@@ -41,7 +48,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         });
     }
 
-    private static void AddFixedCharParameter(SqlParameterCollection parameters, string name, string value, int size)
+    internal static void AddFixedCharParameter(SqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new SqlParameter(name, SqlDbType.NChar, size) { Value = value });
     }
@@ -444,7 +451,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         };
     }
 
-    private sealed record ReaderQueries
+    // Internal (not private): SqlServerBatchOps' dialect catalog serves the exact same SQL text
+    // as these single-op queries — one definition, shared through GetQueries, so the two paths
+    // can never drift apart.
+    internal sealed record ReaderQueries
     {
         public required string TvpListIdsTypeName { get; init; }
         public required string GetLatestSnapToken { get; init; }
@@ -572,125 +582,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         {
             Semaphore.Release();
         }
-    }
-
-    // IRelationalBatchOps: SqlServer has no NpgsqlDataSource-equivalent pooling object, so unlike
-    // Postgres, CreateBatch() cannot open a connection itself (it's a synchronous interface member
-    // with no CancellationToken). It only constructs an unopened SqlConnection + calls
-    // connection.CreateBatch() (pure object construction, no I/O — DbConnection.CreateBatch just
-    // assigns batch.Connection). All I/O (open + execute) happens in ExecuteBatchAsync, which is
-    // async and does carry a CancellationToken. CommandBehavior.CloseConnection makes the returned
-    // reader's disposal close+dispose the connection automatically — mirrors how Postgres's
-    // ephemeral per-batch connection returns to its pool when the caller disposes the reader.
-    public DbBatch CreateBatch()
-    {
-        var connection = (SqlConnection)_connectionFactory();
-        return connection.CreateBatch();
-    }
-
-    public async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
-    {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            var connection = (SqlConnection)batch.Connection!;
-            try
-            {
-                await connection.OpenAsync(cancellationToken);
-                return await batch.ExecuteReaderAsync(CommandBehavior.CloseConnection, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch
-            {
-                // CommandBehavior.CloseConnection never took effect (no reader was obtained) — the
-                // connection would otherwise leak.
-                await connection.DisposeAsync();
-                throw;
-            }
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    // Batch siblings of the 8 methods above: same SQL text (via the same Populate<Name>Command
-    // helpers Task 3 extracted), same parameter shape, appended to a caller-supplied batch instead
-    // of dispatched as their own round trip. DbBatch.CreateBatchCommand()'s declared return type is
-    // the ADO-abstract DbBatchCommand, but every batch this provider hands out (IRelationalBatchOps
-    // .CreateBatch) is created via SqlConnection.CreateBatch(), so the object it returns at runtime
-    // is always a genuine SqlBatchCommand (Microsoft.Data.SqlClient overrides the protected factory
-    // DbBatch.CreateBatchCommand() delegates to) — verified against Microsoft.Data.SqlClient 6.0.1,
-    // the package floor pinned in Directory.Packages.props. The cast is therefore safe.
-    public void AddHasAnyOfDirectRelationsToBatch(DbBatch batch, string entityType, string entityId,
-        string[] relationNames, string subjectId, SnapToken snapToken)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyOfDirectRelations;
-        PopulateHasAnyOfDirectRelationsCommand(command.Parameters, entityType, entityId, relationNames, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasAnyOfAttributesToBatch(DbBatch batch, string entityType, string entityId,
-        string[] attributeNames, SnapToken snapToken)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyOfAttributes;
-        PopulateHasAnyOfAttributesCommand(command.Parameters, entityType, entityId, attributeNames, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasDirectRelationToBatch(DbBatch batch, RelationTupleFilter tupleFilter, string subjectId)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasDirectRelation;
-        PopulateHasDirectRelationCommand(command.Parameters, tupleFilter, subjectId);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasTrueBoolAttributeToBatch(DbBatch batch, string entityType, string entityId, string attribute,
-        SnapToken snapToken)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasTrueBoolAttribute;
-        PopulateHasTrueBoolAttributeCommand(command.Parameters, entityType, entityId, attribute, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasTupleToUserSetRelationToBatch(DbBatch batch, string entityType, string entityId,
-        string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId,
-        SnapToken snapToken)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasTupleToUserSetRelation;
-        PopulateHasTupleToUserSetRelationCommand(command.Parameters, entityType, entityId, tupleSetRelation,
-            subEntityType, computedRelation, subjectType, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddHasAnyDirectRelationToBatch(DbBatch batch, string entityType, string[] entityIds, string relation,
-        string subjectId, SnapToken snapToken)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.HasAnyDirectRelation;
-        PopulateHasAnyDirectRelationCommand(command.Parameters, entityType, entityIds, relation, subjectId, snapToken);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddGetRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = PopulateGetRelationsCommand(command.Parameters, tupleFilter);
-        batch.BatchCommands.Add(command);
-    }
-
-    public void AddGetIndirectRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter)
-    {
-        var command = (SqlBatchCommand)batch.CreateBatchCommand();
-        command.CommandText = _q.GetIndirectRelations;
-        PopulateGetIndirectRelationsCommand(command.Parameters, tupleFilter);
-        batch.BatchCommands.Add(command);
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)

@@ -76,21 +76,11 @@ public class PlanCompilerSpecs
     [Fact]
     public void Union_permission_compiles_to_UnionNode_of_PlanRefs()
     {
-        // Grouping fuses the two batchable refs; compile with an unknown subject type to see
-        // the ungrouped logical shape (grouping requires subjectTypeKnown, V1 parity).
         var plan = PlanCompiler.Compile(Parse(BasicSchema), "organization", "view", null);
         var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
         union.Children.Should().HaveCount(2);
         union.Children[0].Should().Be(new PlanRefNode("admin"));
         union.Children[1].Should().Be(new PlanRefNode("member"));
-    }
-
-    [Fact]
-    public void Union_permission_groups_for_known_subjectType()
-    {
-        var plan = PlanCompiler.Compile(Parse(BasicSchema), "organization", "view", "user");
-        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
-        multi.Relations.Should().Equal("admin", "member");
     }
 
     [Fact]
@@ -211,81 +201,15 @@ public class PlanCompilerSpecs
         """;
 
     [Fact]
-    public void Union_of_batchable_refs_groups_to_MultiDirect()
+    public void Compiled_plan_keeps_sibling_refs_ungrouped()
     {
+        // Sibling fusion is the relational rewriter's job now (RelationalPlanRewriterSpecs in
+        // Valtuutus.Data.Db.Tests) — the compiler's output stays plain PlanRefNode siblings
+        // even for a fully fusable union with a known subject type.
         var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "view", "user");
-        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
-        multi.Relations.Should().Equal("owner", "admin", "member");
-        multi.RequireAll.Should().BeFalse();
-    }
-
-    [Fact]
-    public void Intersect_of_batchable_refs_groups_with_RequireAll()
-    {
-        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "manage", "user");
-        var multi = plan.Root.Should().BeOfType<MultiDirectNode>().Subject;
-        multi.Relations.Should().Equal("owner", "admin");
-        multi.RequireAll.Should().BeTrue();
-    }
-
-    [Fact]
-    public void Mixed_union_groups_only_the_batchable_refs()
-    {
-        // `open` is an attribute → PlanRefNode("open") is not a direct relation, stays a sibling.
-        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "browse", "user");
         var union = plan.Root.Should().BeOfType<UnionNode>().Subject;
-        union.Children.Should().HaveCount(2);
-        var multi = union.Children[0].Should().BeOfType<MultiDirectNode>().Subject;
-        multi.Relations.Should().Equal("owner", "admin");
-        union.Children[1].Should().Be(new PlanRefNode("open"));
-    }
-
-    [Fact]
-    public void Null_subjectType_skips_grouping()
-    {
-        // V1 parity: batching requires subjectTypeKnown (CheckEngine.cs:564).
-        var plan = PlanCompiler.Compile(Parse(HouseholdSchema), "household", "view", null);
-        plan.Root.Should().BeOfType<UnionNode>().Which.Children.Should().AllBeOfType<PlanRefNode>();
-    }
-
-    [Fact]
-    public void Sub_relation_path_refs_are_not_grouped()
-    {
-        // V1 parity: IsBatchableDirectRelation excludes HasSubRelationPaths (CheckEngine.cs:420) —
-        // those leaves still need the GetIndirectRelations fan-out.
-        const string s = """
-            entity user {}
-            entity team { relation member @user; }
-            entity doc {
-                relation viewer @user @team#member;
-                relation editor @user @team#member;
-                permission read := viewer or editor;
-            }
-            """;
-        var plan = PlanCompiler.Compile(Parse(s), "doc", "read", "user");
-        plan.Root.Should().BeOfType<UnionNode>().Which.Children.Should().AllBeOfType<PlanRefNode>();
-    }
-
-    [Fact]
-    public void Memo_wrapped_ref_stays_outside_the_batch()
-    {
-        // `owner` is referenced twice → hash-consing wraps it in a MemoNode. The MemoNode fails
-        // the PlanRefNode type test, so the union has only ONE plain batchable ref (`admin`) —
-        // below threshold, nothing groups. That non-match is the fusion barrier working.
-        const string s = """
-            entity user {}
-            entity vault {
-                relation owner @user;
-                relation admin @user;
-                permission locked := (owner or admin) and not(owner);
-            }
-            """;
-        var plan = PlanCompiler.Compile(Parse(s), "vault", "locked", "user");
-        var intersect = plan.Root.Should().BeOfType<IntersectNode>().Subject;
-        var union = intersect.Children[0].Should().BeOfType<UnionNode>().Subject;
-        union.Children.Should().HaveCount(2);
-        union.Children.OfType<MemoNode>().Should().ContainSingle();
-        union.Children.OfType<PlanRefNode>().Should().ContainSingle();
+        union.Children.Should().HaveCount(3);
+        union.Children.Should().AllBeOfType<PlanRefNode>();
     }
 
     private sealed class ConstOp(bool value) : ICheckOp
@@ -297,7 +221,7 @@ public class PlanCompilerSpecs
 
     private sealed class AttributeHijackingRewriter : IPlanRewriter
     {
-        public PlanNode Rewrite(PlanNode root, Schema schema)
+        public PlanNode Rewrite(PlanNode root, Schema schema, string entityType, string? subjectType)
             => root is AttributeTruthNode ? new PhysicalCheckNode(new ConstOp(true)) : root;
     }
 

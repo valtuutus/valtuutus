@@ -21,7 +21,11 @@ public record Schema
         _reachableSubjectTypes = ComputeReachableSubjectTypes(Entities);
     }
 
-    internal RelationType GetRelationType(string entityType, string permission)
+    /// <summary>
+    /// Classifies <paramref name="permission"/> on <paramref name="entityType"/> as a permission,
+    /// direct relation, attribute, or none of those (unknown name / unknown entity type).
+    /// </summary>
+    public RelationType GetRelationType(string entityType, string permission)
     {
         var found = Entities.TryGetValue(entityType, out var entity);
         if (!found) return RelationType.None;
@@ -31,7 +35,9 @@ public record Schema
         return RelationType.None;
     }
 
-    internal Relation GetRelation(string entityType, string relation)
+    /// <summary>Looks up a direct relation's schema definition. Throws if not found — check
+    /// <see cref="GetRelationType"/> first when the name might not be a direct relation.</summary>
+    public Relation GetRelation(string entityType, string relation)
     {
         return Entities[entityType].Relations[relation];
     }

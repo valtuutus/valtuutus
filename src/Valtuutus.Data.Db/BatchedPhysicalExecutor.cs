@@ -8,24 +8,26 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Data.Db;
 
-// A wave's ops packed into one physical DbBatch round trip when the registered reader supports
-// IRelationalBatchOps, instead of DefaultPhysicalExecutor's one-round-trip-per-op. Ops this class
-// can't batch (wrong provider, or an op kind/ICheckOp with no batch seam) fall back to the exact
-// same individual-execution path DefaultPhysicalExecutor uses (PhysicalOpRunner) so behavior for
-// the unbatchable case is identical, never a second implementation to keep in sync.
-internal sealed class BatchedPhysicalExecutor(Schema schema) : IPhysicalExecutor
+// A wave's ops packed into one physical DbBatch round trip when the provider injected an
+// IRelationalBatchOps (a provider's DI extension registers its batch-ops implementation and
+// constructs this executor with it — the capability is injected, no longer discovered by
+// type-testing the reader), instead of DefaultPhysicalExecutor's one-round-trip-per-op. A null
+// batchOps means the provider has no batch implementation (or opted out) — every wave then takes
+// the individual path below. Ops this class can't batch (null batchOps, or an op kind/ICheckOp
+// with no batch seam) fall back to the exact same individual-execution path
+// DefaultPhysicalExecutor uses (PhysicalOpRunner) so behavior for the unbatchable case is
+// identical, never a second implementation to keep in sync.
+internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps? batchOps) : IPhysicalExecutor
 {
-    // Property (not a field), same reasoning as DefaultPhysicalExecutor.Reader: set-only interface
-    // member, implicit implementations must be public even on an internal class/interface pair.
+    // Property with a getter, same reasoning as DefaultPhysicalExecutor.Reader.
     public IDataReaderProvider Reader { get; set; } = null!;
 
     public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
     {
         // A wave of 0-1 ops has nothing to gain from batching — one command is one round trip
         // either way, and building a DbBatch/DbBatchCommand object graph for it costs more than
-        // the plain single-command path (measured: this fast path exists because the DbBatch-Task 9
-        // benchmarks showed a universal latency regression against a local Postgres before it did).
-        if (ops.Length <= 1 || Reader is not IRelationalBatchOps batchOps)
+        // the plain single-command path.
+        if (ops.Length <= 1 || batchOps is null)
         {
             SubmitAllIndividually(ops, ctx, sink, ct);
             return;

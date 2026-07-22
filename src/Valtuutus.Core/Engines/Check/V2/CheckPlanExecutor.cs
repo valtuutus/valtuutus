@@ -319,7 +319,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     // counts only when a sibling was still unresolved; first-child counts when
                     // the deciding value came from child index 0. Expression frames only —
                     // deliberate divergence from V1, which also counted TTU fan-out
-                    // short-circuits (see design doc, M2).
+                    // short-circuits; V2 has no equivalent counter for that path.
                     if (parent.Pending > 1) ValtuutusMetrics.ShortCircuits.Add(1);
                     if (childIndex == 0) ValtuutusMetrics.FirstChildDecided.Add(1);
                     CompleteFrame(parentIdx, true); return;
@@ -456,22 +456,6 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 {
                     Token = idx, Kind = OpKind.AttributeExpr,
                     EntityType = frame.EntityType, EntityId = frame.EntityId, Expr = e.Expr
-                });
-                break;
-
-            case MultiDirectNode md:
-                SubmitOp(new PendingOp
-                {
-                    Token = idx, Kind = OpKind.HasAnyOfDirectRelations,
-                    EntityType = frame.EntityType, EntityId = frame.EntityId, Relations = md.Relations
-                });
-                break;
-
-            case MultiAttributeNode ma:
-                SubmitOp(new PendingOp
-                {
-                    Token = idx, Kind = OpKind.HasAnyOfAttributes,
-                    EntityType = frame.EntityType, EntityId = frame.EntityId, Relations = ma.Attributes
                 });
                 break;
 
@@ -736,25 +720,6 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             case AttributeExprNode:
                 CompleteFrame(idx, completion.Result);
                 break;
-
-            case MultiDirectNode md:
-            {
-                var matched = (HashSet<string>)completion.Payload!;
-                // Count checks are duplicate-safe: the return type is a set (dedup is a documented
-                // property of HasAnyOfDirectRelations), and Relations is duplicate-free by
-                // construction (a repeated ref is memo-wrapped and never grouped).
-                var result = md.RequireAll ? matched.Count == md.Relations.Length : matched.Count > 0;
-                CompleteFrame(idx, result);
-                break;
-            }
-
-            case MultiAttributeNode ma:
-            {
-                var matched = (HashSet<string>)completion.Payload!;
-                var result = ma.RequireAll ? matched.Count == ma.Attributes.Length : matched.Count > 0;
-                CompleteFrame(idx, result);
-                break;
-            }
 
             case PhysicalCheckNode:
                 CompleteFrame(idx, completion.Result);

@@ -34,6 +34,11 @@ namespace Valtuutus.Data.Db
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbSetup(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Db.IValtuutusDbOptions options) { }
     }
+    public interface IBatchableCheckOp
+    {
+        void AddToBatch(System.Data.Common.DbBatch batch, Valtuutus.Data.Db.IRelationalBatchOps ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, string entityType, string entityId);
+        System.Threading.Tasks.Task ReadResultAsync(System.Data.Common.DbDataReader reader, int token, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct);
+    }
     public interface IDbDataWriterProvider : Valtuutus.Core.Data.IDataWriterProvider
     {
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
@@ -65,5 +70,38 @@ namespace Valtuutus.Data.Db
         string RelationsTableName { get; }
         string Schema { get; }
         string TransactionsTableName { get; }
+    }
+    public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
+    {
+        protected RelationalBatchProviderBase() { }
+        public virtual void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
+        public virtual void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
+        public virtual void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public virtual void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public virtual void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public virtual void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId) { }
+        public virtual void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public virtual void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public abstract System.Data.Common.DbBatch CreateBatch();
+        public abstract System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken);
+        protected abstract string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query);
+        protected abstract string WriteNameArrayParam(System.Data.Common.DbBatchCommand cmd, string baseName, string[] values);
+        protected virtual void WriteNullableStringParam(System.Data.Common.DbBatchCommand cmd, string name, string? value, int size) { }
+        protected virtual void WriteSnapTokenParam(System.Data.Common.DbBatchCommand cmd, string name, Valtuutus.Core.Data.SnapToken snapToken) { }
+        protected virtual void WriteStringParam(System.Data.Common.DbBatchCommand cmd, string name, string value, int size) { }
+        protected static void AddParam(System.Data.Common.DbBatchCommand cmd, string name, object value) { }
+        protected static System.Data.Common.DbBatchCommand NewCommand(System.Data.Common.DbBatch batch, string sql) { }
+    }
+    public enum RelationalBatchQuery
+    {
+        HasDirectRelation = 0,
+        HasTrueBoolAttribute = 1,
+        HasTupleToUserSetRelation = 2,
+        HasAnyDirectRelation = 3,
+        HasAnyOfDirectRelations = 4,
+        HasAnyOfAttributes = 5,
+        GetRelations = 6,
+        GetRelationsWithSubjectFilters = 7,
+        GetIndirectRelations = 8,
     }
 }

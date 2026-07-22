@@ -38,16 +38,16 @@ public static class ValtuutusMetrics
         Meter.CreateCounter<long>("valtuutus.check.memo_hits");
 
     /// <summary>Ops submitted per DrainReady wave (one Physical.Submit call). V2 only — V1 has
-    /// no wave concept. M3 telemetry: the ops-per-Submit half of the true batching-headroom
-    /// signal (design doc "M3 — wave-shaped telemetry").</summary>
+    /// no wave concept. The ops-per-Submit half of the batching-headroom signal: how many ops
+    /// land in the same wave and could in principle be coalesced into fewer round trips.</summary>
     internal static readonly Histogram<long> WaveOps =
         Meter.CreateHistogram<long>("valtuutus.check.wave_ops");
 
     /// <summary>Ops within a wave that share their OpKind with at least one sibling in the same
-    /// wave — i.e., ops a same-shape coalescer could merge. V2 only. M3 telemetry: the
-    /// same-OpKind-per-wave half of the batching-headroom signal; divide by the sum of
-    /// <c>valtuutus.check.wave_ops</c> for the ratio the frontier-batching gate's decision rule
-    /// wants (design doc "Reading the frontier-batching gate").</summary>
+    /// wave — i.e., ops a same-shape coalescer could merge. V2 only. The same-OpKind-per-wave
+    /// half of the batching-headroom signal; divide by the sum of
+    /// <c>valtuutus.check.wave_ops</c> for the fraction of a wave that's actually coalescable
+    /// — the ratio a decision to invest in frontier batching should be judged against.</summary>
     internal static readonly Counter<long> WaveSameKindOps =
         Meter.CreateCounter<long>("valtuutus.check.wave_same_kind_ops");
 
