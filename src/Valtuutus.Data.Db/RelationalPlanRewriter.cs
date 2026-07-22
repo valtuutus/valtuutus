@@ -23,6 +23,15 @@ namespace Valtuutus.Data.Db;
 // Attribute sibling fusion: symmetric for >= 2 sibling same-entity bool-attribute refs —
 // HasAnyOfAttributesOp. No subjectType gate: attributes don't depend on subject at all.
 //
+// Userset 2-hop join: a DirectRelationNode whose PlanCompiler.PruneAndFold pass already
+// proved eligible (FastPathSubEntityType/FastPathComputedRelation both set) becomes one
+// PhysicalCheckNode(UsersetJoinOp) — a single round trip replacing the runtime
+// HasDirectRelation-then-GetIndirectRelations-fan-out sequence. Unlike the two fusion passes
+// above, this recognizes a plan ROOT directly in Walk, not a Union/Intersect child in
+// GroupChildren — DirectRelationNode never appears nested (PlanValidator enforces this), and
+// IsBatchableDirectRef above already excludes HasSubRelationPaths relations, so the two passes
+// never compete for the same node.
+//
 // Both passes rely on hash-consing having already run: a shared ref is MemoNode-wrapped by
 // then and fails the PlanRefNode type test below — that non-match IS the fusion barrier (a
 // MemoNode's child is shared by multiple parents, so fusing it into one duplicates the work
@@ -61,6 +70,10 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
                     result = ReferenceEquals(child, m.Child) ? m : new MemoNode(m.SlotId, child);
                     break;
                 }
+                case DirectRelationNode { FastPathSubEntityType: not null } d:
+                    result = new PhysicalCheckNode(
+                        new UsersetJoinOp(d.Relation, d.FastPathSubEntityType, d.FastPathComputedRelation!));
+                    break;
                 default: result = node; break;
             }
             _visited[node] = result;

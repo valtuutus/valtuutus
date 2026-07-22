@@ -128,6 +128,21 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
     }
 
     /// <inheritdoc />
+    public virtual void AddHasUsersetJoinRelationToBatch(DbBatch batch, string entityType, string entityId,
+        string relation, string subEntityType, string computedRelation, string subjectType, string subjectId,
+        SnapToken snapToken)
+    {
+        var cmd = NewCommand(batch, GetSql(RelationalBatchQuery.HasUsersetJoinRelation));
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
+        WriteStringParam(cmd, "entity_type", entityType, 256);
+        WriteStringParam(cmd, "entity_id", entityId, 64);
+        WriteStringParam(cmd, "relation", relation, 64);
+        WriteStringParam(cmd, "computed_relation", computedRelation, 64);
+        WriteStringParam(cmd, "subject_type", subjectType, 256);
+        WriteStringParam(cmd, "subject_id", subjectId, 64);
+    }
+
+    /// <inheritdoc />
     public virtual void AddHasAnyDirectRelationToBatch(DbBatch batch, string entityType, string[] entityIds,
         string relation, string subjectId, SnapToken snapToken)
     {

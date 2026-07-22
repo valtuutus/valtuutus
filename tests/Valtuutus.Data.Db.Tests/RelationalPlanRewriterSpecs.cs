@@ -259,4 +259,42 @@ public class RelationalPlanRewriterSpecs
         negate.Child.Should().BeSameAs(memo);
         memo.Child.Should().Be(new PlanRefNode("owner"));
     }
+
+    private const string UsersetJoinSchema = """
+        entity user {}
+        entity group { relation member @user; }
+        entity folder {
+            relation owner @user @group#member;
+        }
+        """;
+
+    [Fact]
+    public void Eligible_direct_relation_userset_target_rewrites_to_physical_userset_join()
+    {
+        var rewritten = Rewrite(Parse(UsersetJoinSchema), "folder", "owner", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("UsersetJoin(owner -> group#member)");
+    }
+
+    [Fact]
+    public void Direct_relation_without_userset_target_passes_through_unchanged()
+    {
+        const string s = """
+            entity user {}
+            entity folder { relation owner @user; }
+            """;
+        var rewritten = Rewrite(Parse(s), "folder", "owner", "user", out var compiledRoot);
+        rewritten.Should().BeSameAs(compiledRoot);
+        rewritten.Should().BeOfType<DirectRelationNode>();
+    }
+
+    [Fact]
+    public void Direct_relation_userset_target_stays_unfused_when_subject_type_unknown()
+    {
+        // PruneDirectRelationUserSet needs a known subjectType — without one,
+        // FastPathSubEntityType is never set, so the rewriter has nothing to recognize.
+        var rewritten = Rewrite(Parse(UsersetJoinSchema), "folder", "owner", null, out var compiledRoot);
+        rewritten.Should().BeSameAs(compiledRoot);
+        rewritten.Should().BeOfType<DirectRelationNode>();
+    }
 }

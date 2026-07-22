@@ -18,9 +18,17 @@ public sealed record ConstNode(bool Value) : PlanNode
 
 /// <summary>
 /// Appears as a plan ROOT only (a bare relation name compiled as its own plan), never as an
-/// interior node.
+/// interior node. <paramref name="FastPathSubEntityType"/>/<paramref name="FastPathComputedRelation"/>
+/// are non-null when plan-time analysis proved this relation's userset target admits a single
+/// 2-hop join instead of runtime GetIndirectRelations expansion (exactly one userset-typed
+/// target, whose computed relation is itself a direct relation with no further sub-relation
+/// paths, that admits the plan key's subjectType) — set by <see cref="PlanCompiler"/>'s
+/// PruneAndFold pass, never by CompileRoot. Null means either the guard doesn't hold, this
+/// relation has no userset target at all, or subjectType was unknown at compile time.
 /// </summary>
-public sealed record DirectRelationNode(string Relation, bool HasSubRelationPaths) : PlanNode;
+public sealed record DirectRelationNode(
+    string Relation, bool HasSubRelationPaths,
+    string? FastPathSubEntityType = null, string? FastPathComputedRelation = null) : PlanNode;
 
 /// <summary>
 /// Appears as a plan ROOT only (a bare attribute name compiled as its own plan), never as an

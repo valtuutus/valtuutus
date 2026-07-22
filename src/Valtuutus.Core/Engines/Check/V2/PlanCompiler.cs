@@ -98,6 +98,9 @@ internal static class PlanCompiler
             case TupleToUserSetNode t:
                 return PruneTupleToUserSet(t, schema, entityType, subjectType);
 
+            case DirectRelationNode d:
+                return PruneDirectRelationUserSet(d, schema, entityType, subjectType);
+
             case NegateNode n:
                 var inner = PruneAndFold(n.Child, schema, entityType, subjectType);
                 return inner is ConstNode c ? (c.Value ? ConstNode.False : ConstNode.True) : new NegateNode(inner);
@@ -145,6 +148,39 @@ internal static class PlanCompiler
         }
 
         return t;
+    }
+
+    // The userset-join fast-path guard: DirectRelationNode always compiles as the sole
+    // root of its own plan (PlanValidator enforces this), so — unlike PruneTupleToUserSet,
+    // which is nested inside a larger tree and needs its own per-branch reachability fold —
+    // this node's overall reachability is already covered by Compile()'s top-level
+    // CanSubjectTypeReach guard before PruneAndFold ever runs. This only decides whether the
+    // userset portion of the relation's targets qualifies for a single 2-hop join instead of
+    // the runtime HasDirectRelation-then-GetIndirectRelations-fan-out sequence.
+    private static PlanNode PruneDirectRelationUserSet(DirectRelationNode d, Schema schema, string entityType,
+        string? subjectType)
+    {
+        if (subjectType is null || !d.HasSubRelationPaths) return d;
+
+        var rel = schema.GetRelation(entityType, d.Relation);
+        RelationEntity? usersetTarget = null;
+        foreach (var e in rel.Entities)
+        {
+            if (e.Relation is null) continue;
+            if (usersetTarget is not null) return d; // MVP: exactly one userset target type
+            usersetTarget = e;
+        }
+        if (usersetTarget is null) return d; // defensive: HasSubRelationPaths implies one exists
+
+        var subEntityType = usersetTarget.Type;
+        var computedRelation = usersetTarget.Relation!;
+        if (!schema.CanSubjectTypeReach(subEntityType, computedRelation, subjectType)) return d;
+        if (schema.GetRelationType(subEntityType, computedRelation) != RelationType.DirectRelation) return d;
+
+        var computedRel = schema.GetRelation(subEntityType, computedRelation);
+        if (computedRel.HasSubRelationPaths || !computedRel.EntityTypes.Contains(subjectType)) return d;
+
+        return d with { FastPathSubEntityType = subEntityType, FastPathComputedRelation = computedRelation };
     }
 
     private static PlanNode FoldChildren(ImmutableArray<PlanNode> children, Schema schema,

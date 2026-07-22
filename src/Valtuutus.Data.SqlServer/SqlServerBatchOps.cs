@@ -89,6 +89,7 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         RelationalBatchQuery.HasDirectRelation => _q.HasDirectRelation,
         RelationalBatchQuery.HasTrueBoolAttribute => _q.HasTrueBoolAttribute,
         RelationalBatchQuery.HasTupleToUserSetRelation => _q.HasTupleToUserSetRelation,
+        RelationalBatchQuery.HasUsersetJoinRelation => _q.HasUsersetJoinRelation,
         RelationalBatchQuery.HasAnyDirectRelation => _q.HasAnyDirectRelation,
         RelationalBatchQuery.HasAnyOfDirectRelations => _q.HasAnyOfDirectRelations,
         RelationalBatchQuery.HasAnyOfAttributes => _q.HasAnyOfAttributes,

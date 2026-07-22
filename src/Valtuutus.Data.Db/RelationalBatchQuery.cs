@@ -21,6 +21,12 @@ public enum RelationalBatchQuery
     HasTupleToUserSetRelation,
 
     /// <summary>
+    /// Batched sibling of <see cref="IRelationalCheckOps.HasUsersetJoinRelation"/>: the userset
+    /// 2-hop join fast path (SELECT direct-membership-EXISTS OR 2-hop-join-EXISTS).
+    /// </summary>
+    HasUsersetJoinRelation,
+
+    /// <summary>
     /// Batched sibling of <see cref="Valtuutus.Core.Data.IDataReaderProvider.HasAnyDirectRelation"/>.
     /// <c>{0}</c> = entity-id array.
     /// </summary>
