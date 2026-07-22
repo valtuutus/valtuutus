@@ -113,12 +113,12 @@ internal static class PlanCompiler
         }
     }
 
-    // R3: StepTupleToUserSet's runtime fast-path guard (CheckPlanExecutor.cs:504-513, mirroring
-    // CheckEngine.cs:742-753) is schema-static given (entityType, subjectType) apart from the
-    // per-request recursion budget (frame.Depth > 0, which stays a runtime check — see the R3
-    // plan's context notes for why). Decide the schema-static part once here instead of
-    // re-deriving it on every request. Also folds statically-dead TTU branches to ConstNode.False,
-    // the TTU analogue of the PlanRefNode prune case above.
+    // The TTU fast-path guard is schema-static given (entityType, subjectType) apart from the
+    // per-request recursion budget (frame.Depth > 0 in the executor, which stays a runtime
+    // check — CheckRequest.Depth is caller-supplied and outside the plan key, so it can't be
+    // decided here). Deciding the schema-static part once here avoids re-deriving it on every
+    // request. Also folds statically-dead TTU branches to ConstNode.False, the TTU analogue of
+    // the PlanRefNode prune case above.
     private static PlanNode PruneTupleToUserSet(TupleToUserSetNode t, Schema schema, string entityType,
         string? subjectType)
     {

@@ -31,7 +31,7 @@ public sealed record AttributeTruthNode(string Attribute) : PlanNode;
 // In-tree leaves.
 public sealed record AttributeExprNode(PermissionNodeLeafExp Expr) : PlanNode;
 /// <summary>
-/// <paramref name="FastPathSubEntityType"/> is non-null when R3 plan-time analysis proved the
+/// <paramref name="FastPathSubEntityType"/> is non-null when plan-time analysis proved the
 /// runtime fast-path guard (single non-userset tupleset target, computed relation a direct
 /// relation with no sub-relation-paths, admits the plan key's subjectType) holds for this node
 /// — set by <see cref="PlanCompiler"/>'s PruneAndFold pass, never by CompileTree. Null means

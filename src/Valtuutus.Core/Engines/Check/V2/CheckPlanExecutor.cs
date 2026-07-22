@@ -499,9 +499,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     {
         ref var frame = ref _frames[idx];
 
-        // R3: eligibility (CheckEngine.cs:742-753's four schema-static conditions) is now
-        // precomputed by PlanCompiler.PruneAndFold. frame.Depth > 0 stays a runtime check —
-        // CheckRequest.Depth is a per-request recursion budget, not schema-derivable.
+        // Schema-static eligibility is precomputed by PlanCompiler.PruneAndFold. frame.Depth > 0
+        // stays a runtime check — CheckRequest.Depth is a per-request recursion budget, not
+        // schema-derivable.
         if (t.FastPathSubEntityType is not null && frame.Depth > 0)
         {
             frame.State = 1;
