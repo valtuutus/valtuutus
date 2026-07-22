@@ -50,9 +50,11 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
     // Same body SqlServerDataReaderProvider.ExecuteBatchAsync had before the batch ops moved here,
     // including the slot semantics IRelationalBatchOps.ExecuteBatchAsync documents: the rate-limit
     // slot is released as soon as the reader is obtained, NOT after the caller drains it.
-    // CommandBehavior.CloseConnection makes the returned reader's disposal close+dispose the
-    // connection automatically — mirrors how Postgres's ephemeral per-batch connection returns to
-    // its pool when the caller disposes the reader.
+    //
+    // Does NOT use CommandBehavior.CloseConnection to return the connection — see
+    // CommandBehaviorCloseConnectionWorkaroundReader's doc comment for why: it's a WORKAROUND for
+    // a Microsoft.Data.SqlClient bug (CommandBehavior.CloseConnection not honored for SqlBatch),
+    // not this design's first choice.
     public override async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
@@ -63,13 +65,15 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
             try
             {
                 await connection.OpenAsync(cancellationToken);
-                return await batch.ExecuteReaderAsync(CommandBehavior.CloseConnection, cancellationToken)
+                var reader = await batch.ExecuteReaderAsync(CommandBehavior.Default, cancellationToken)
                     .ConfigureAwait(false);
+                return new CommandBehaviorCloseConnectionWorkaroundReader(reader, connection);
             }
             catch
             {
-                // CommandBehavior.CloseConnection never took effect (no reader was obtained) — the
-                // connection would otherwise leak.
+                // No reader was obtained, so nothing downstream will ever dispose the connection —
+                // the workaround reader above only exists once ExecuteReaderAsync has already
+                // succeeded.
                 await connection.DisposeAsync();
                 throw;
             }
