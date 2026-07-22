@@ -498,31 +498,21 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     private void StepTupleToUserSet(int idx, TupleToUserSetNode t)
     {
         ref var frame = ref _frames[idx];
-        var tuplesetRel = schema.GetRelation(frame.EntityType, t.TuplesetRelation);
 
-        // Fast path — CheckEngine.cs:742-764, condition for condition.
-        if (tuplesetRel.Entities.Count == 1
-            && tuplesetRel.Entities[0].Relation is null
-            && frame.Depth > 0
-            && !string.IsNullOrEmpty(_ctx.SubjectType))
+        // Schema-static eligibility is precomputed by PlanCompiler.PruneAndFold. frame.Depth > 0
+        // stays a runtime check — CheckRequest.Depth is a per-request recursion budget, not
+        // schema-derivable.
+        if (t.FastPathSubEntityType is not null && frame.Depth > 0)
         {
-            var subEntityType = tuplesetRel.Entities[0].Type;
-            if (schema.GetRelationType(subEntityType, t.ComputedRelation) == RelationType.DirectRelation)
+            frame.State = 1;
+            SubmitOp(new PendingOp
             {
-                var computedRel = schema.GetRelation(subEntityType, t.ComputedRelation);
-                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(_ctx.SubjectType))
-                {
-                    frame.State = 1;
-                    SubmitOp(new PendingOp
-                    {
-                        Token = idx, Kind = OpKind.TtuFastPath,
-                        EntityType = frame.EntityType, EntityId = frame.EntityId,
-                        Relation = t.TuplesetRelation, SubEntityType = subEntityType,
-                        ComputedRelation = t.ComputedRelation
-                    });
-                    return;
-                }
-            }
+                Token = idx, Kind = OpKind.TtuFastPath,
+                EntityType = frame.EntityType, EntityId = frame.EntityId,
+                Relation = t.TuplesetRelation, SubEntityType = t.FastPathSubEntityType,
+                ComputedRelation = t.ComputedRelation
+            });
+            return;
         }
 
         frame.State = 2;
