@@ -20,4 +20,17 @@ public interface IRelationalCheckOps
     /// <inheritdoc cref="IDataReaderProvider.HasAnyOfAttributes"/>
     Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
         SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The userset 2-hop join fast path: true iff <paramref name="subjectId"/> either holds
+    /// <paramref name="relation"/> directly on (<paramref name="entityType"/>,
+    /// <paramref name="entityId"/>), or holds <paramref name="computedRelation"/> on
+    /// (<paramref name="subEntityType"/>, X) for some X that (<paramref name="entityType"/>,
+    /// <paramref name="entityId"/>) references via <paramref name="relation"/> as a userset
+    /// (<c>@subEntityType#computedRelation</c>). One round trip instead of
+    /// HasDirectRelation-then-GetIndirectRelations-fan-out.
+    /// </summary>
+    Task<bool> HasUsersetJoinRelation(string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation, string subjectType, string subjectId,
+        SnapToken snapToken, CancellationToken cancellationToken);
 }

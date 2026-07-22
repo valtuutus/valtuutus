@@ -61,6 +61,7 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         RelationalBatchQuery.HasDirectRelation => _q.HasDirectRelation,
         RelationalBatchQuery.HasTrueBoolAttribute => _q.HasTrueBoolAttribute,
         RelationalBatchQuery.HasTupleToUserSetRelation => _q.HasTupleToUserSetRelation,
+        RelationalBatchQuery.HasUsersetJoinRelation => _q.HasUsersetJoinRelation,
         RelationalBatchQuery.HasAnyDirectRelation => _q.HasAnyDirectRelationBatchTemplate,
         RelationalBatchQuery.HasAnyOfDirectRelations => _q.HasAnyOfDirectRelationsBatchTemplate,
         RelationalBatchQuery.HasAnyOfAttributes => _q.HasAnyOfAttributesBatchTemplate,

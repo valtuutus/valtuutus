@@ -85,6 +85,15 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
             computedRelation, subjectType, subjectId, snapToken, cancellationToken);
     }
 
+    public async Task<bool> HasUsersetJoinRelation(string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken,
+        CancellationToken cancellationToken)
+    {
+        counter.Increment();
+        return await inner.HasUsersetJoinRelation(entityType, entityId, relation, subEntityType, computedRelation,
+            subjectType, subjectId, snapToken, cancellationToken);
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         counter.Increment();
@@ -227,6 +236,11 @@ internal sealed class CountingBatchOps(IRelationalBatchOps inner, RoundTripCount
         string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId,
         SnapToken snapToken)
         => inner.AddHasTupleToUserSetRelationToBatch(batch, entityType, entityId, tupleSetRelation, subEntityType,
+            computedRelation, subjectType, subjectId, snapToken);
+
+    public void AddHasUsersetJoinRelationToBatch(DbBatch batch, string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken)
+        => inner.AddHasUsersetJoinRelationToBatch(batch, entityType, entityId, relation, subEntityType,
             computedRelation, subjectType, subjectId, snapToken);
 
     public void AddHasAnyDirectRelationToBatch(DbBatch batch, string entityType, string[] entityIds, string relation,

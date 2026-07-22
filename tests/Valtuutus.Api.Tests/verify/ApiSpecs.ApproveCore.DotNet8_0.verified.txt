@@ -251,7 +251,9 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public sealed class DirectRelationNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.DirectRelationNode>
     {
-        public DirectRelationNode(string Relation, bool HasSubRelationPaths) { }
+        public DirectRelationNode(string Relation, bool HasSubRelationPaths, string? FastPathSubEntityType = null, string? FastPathComputedRelation = null) { }
+        public string? FastPathComputedRelation { get; init; }
+        public string? FastPathSubEntityType { get; init; }
         public bool HasSubRelationPaths { get; init; }
         public string Relation { get; init; }
     }

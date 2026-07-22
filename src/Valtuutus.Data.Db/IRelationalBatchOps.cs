@@ -81,6 +81,14 @@ public interface IRelationalBatchOps
         string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken);
 
     /// <summary>
+    /// Adds a command answering <see cref="IRelationalCheckOps.HasUsersetJoinRelation"/>'s
+    /// question to <paramref name="batch"/> — the batched sibling of that method, same SQL
+    /// text/params.
+    /// </summary>
+    void AddHasUsersetJoinRelationToBatch(DbBatch batch, string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken);
+
+    /// <summary>
     /// Adds a command answering <see cref="IDataReaderProvider.HasAnyDirectRelation"/>'s question to
     /// <paramref name="batch"/> — the batched sibling of that method, same SQL text/params.
     /// </summary>

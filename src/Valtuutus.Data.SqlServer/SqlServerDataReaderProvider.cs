@@ -328,6 +328,34 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                       AND r_dep.subject_relation = ''
                 ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
                 """,
+            HasUsersetJoinRelation = $"""
+                SELECT CASE WHEN (
+                    EXISTS(
+                        SELECT 1 FROM {relationsTable}
+                        WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                          AND entity_type = @EntityType
+                          AND entity_id = @EntityId
+                          AND relation = @Relation
+                          AND subject_id = @SubjectId
+                          AND subject_relation = ''
+                    )
+                    OR EXISTS(
+                        SELECT 1 FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_dep
+                            ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
+                          AND r_main.entity_type = @EntityType
+                          AND r_main.entity_id = @EntityId
+                          AND r_main.relation = @Relation
+                          AND r_main.subject_relation = @ComputedRelation
+                          AND r_dep.created_tx_id <= @SnapToken AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @SnapToken)
+                          AND r_dep.relation = @ComputedRelation
+                          AND r_dep.subject_type = @SubjectType
+                          AND r_dep.subject_id = @SubjectId
+                          AND r_dep.subject_relation = ''
+                    )
+                ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
+                """,
             GetRelationsWithSingleSubjectScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} r_main
@@ -483,6 +511,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
+        public required string HasUsersetJoinRelation { get; init; }
         public required string GetRelationsWithSingleSubjectScoped { get; init; }
         public required string GetRelationsWithMultiSubjectScoped { get; init; }
         public required string GetRelationsWithSingleSubjectMultiRelationScoped { get; init; }
@@ -1375,6 +1404,43 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var command = CreateCommand(connection, _q.HasTupleToUserSetRelation);
             PopulateHasTupleToUserSetRelationCommand(command.Parameters, entityType, entityId, tupleSetRelation,
                 subEntityType, computedRelation, subjectType, subjectId, snapToken);
+
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    private static void PopulateHasUsersetJoinRelationCommand(SqlParameterCollection parameters,
+        string entityType, string entityId, string relation, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken)
+    {
+        AddStringParameter(parameters, "@EntityType", entityType, 256);
+        AddStringParameter(parameters, "@EntityId", entityId, 64);
+        AddStringParameter(parameters, "@Relation", relation, 64);
+        AddStringParameter(parameters, "@ComputedRelation", computedRelation, 64);
+        AddStringParameter(parameters, "@SubjectType", subjectType, 256);
+        AddStringParameter(parameters, "@SubjectId", subjectId, 64);
+        AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
+    }
+
+    public async Task<bool> HasUsersetJoinRelation(
+        string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var command = CreateCommand(connection, _q.HasUsersetJoinRelation);
+            PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
+                computedRelation, subjectType, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }

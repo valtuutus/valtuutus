@@ -204,6 +204,98 @@ public class PlanCompilerSpecs
         plan.Root.Should().Be(new PlanRefNode("owner"));
     }
 
+    private const string EligibleSchema = """
+        entity user {}
+        entity group { relation member @user; }
+        entity folder {
+            relation owner @user @group#member;
+        }
+        """;
+
+    [Fact]
+    public void DirectRelation_userset_target_meeting_all_fast_path_conditions_is_annotated()
+    {
+        var plan = PlanCompiler.Compile(Parse(EligibleSchema), "folder", "owner", "user");
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: true,
+            FastPathSubEntityType: "group", FastPathComputedRelation: "member"));
+    }
+
+    [Fact]
+    public void DirectRelation_without_userset_target_is_never_annotated()
+    {
+        const string s = """
+            entity user {}
+            entity folder {
+                relation owner @user;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "owner", "user");
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: false));
+    }
+
+    [Fact]
+    public void DirectRelation_with_null_subjectType_is_never_annotated()
+    {
+        var plan = PlanCompiler.Compile(Parse(EligibleSchema), "folder", "owner", null);
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: true));
+    }
+
+    [Fact]
+    public void DirectRelation_with_two_userset_target_types_is_not_fast_path_eligible()
+    {
+        const string s = """
+            entity user {}
+            entity group { relation member @user; }
+            entity team { relation lead @user; }
+            entity folder {
+                relation owner @user @group#member @team#lead;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "owner", "user");
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: true));
+    }
+
+    [Fact]
+    public void DirectRelation_whose_computed_relation_has_sub_relation_paths_is_not_fast_path_eligible()
+    {
+        const string s = """
+            entity user {}
+            entity org { relation employee @user; }
+            entity group { relation member @user @org#employee; }
+            entity folder {
+                relation owner @user @group#member;
+            }
+            """;
+        var plan = PlanCompiler.Compile(Parse(s), "folder", "owner", "user");
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: true));
+    }
+
+    [Fact]
+    public void DirectRelation_whose_computed_relation_does_not_admit_subjectType_is_not_fast_path_eligible()
+    {
+        // Compile()'s top-level guard already passed (the @user direct target makes folder/"owner"
+        // reachable for "user"), so PruneAndFold runs — but the userset half alone doesn't reach
+        // "user" (group.member only admits service_account), so it must stay ineligible. This
+        // exercises PruneDirectRelationUserSet's own CanSubjectTypeReach check specifically.
+        //
+        // Built via SchemaBuilder directly rather than Parse(): the DSL parser requires a
+        // relation's direct and userset legs to bottom out at the same final entity type, so this
+        // exact shape (owner's direct leg reaching only "user", its userset leg only
+        // "service_account") can't be expressed as schema text. Schema.CanSubjectTypeReach carries
+        // no such restriction — it just unions admissible subject types across a relation's legs —
+        // so building the Relation objects directly still exercises the real runtime guard.
+        var builder = new SchemaBuilder();
+        builder.WithEntity("user");
+        builder.WithEntity("service_account");
+        builder.WithEntity("group").WithRelation("member", r => r.WithEntityType("service_account"));
+        builder.WithEntity("folder").WithRelation("owner",
+            r => r.WithEntityType("user").WithEntityType("group", "member"));
+        var schema = builder.Build();
+
+        var plan = PlanCompiler.Compile(schema, "folder", "owner", "user");
+        plan.Root.Should().Be(new DirectRelationNode("owner", HasSubRelationPaths: true));
+    }
+
     private const string PruneSchema = """
         entity user {}
         entity service_account {}

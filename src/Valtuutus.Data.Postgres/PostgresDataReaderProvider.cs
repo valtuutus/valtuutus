@@ -63,6 +63,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
+        public required string HasUsersetJoinRelation { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
@@ -273,6 +274,34 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                       AND r_dep.subject_type = @subject_type
                       AND r_dep.subject_id = @subject_id
                       AND r_dep.subject_relation = ''
+                )
+                """,
+            HasUsersetJoinRelation = $"""
+                SELECT (
+                    EXISTS(
+                        SELECT 1 FROM {relationsTable}
+                        WHERE {SnapTokenPredicate}
+                          AND entity_type = @entity_type
+                          AND entity_id = @entity_id
+                          AND relation = @relation
+                          AND subject_id = @subject_id
+                          AND subject_relation = ''
+                    )
+                    OR EXISTS(
+                        SELECT 1 FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_dep
+                            ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.entity_id = @entity_id
+                          AND r_main.relation = @relation
+                          AND r_main.subject_relation = @computed_relation
+                          AND r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                          AND r_dep.relation = @computed_relation
+                          AND r_dep.subject_type = @subject_type
+                          AND r_dep.subject_id = @subject_id
+                          AND r_dep.subject_relation = ''
+                    )
                 )
                 """,
             GetAttribute =
@@ -1088,6 +1117,44 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             command.CommandText = _q.HasTupleToUserSetRelation;
             PopulateHasTupleToUserSetRelationCommand(command.Parameters, entityType, entityId, tupleSetRelation,
                 subEntityType, computedRelation, subjectType, subjectId, snapToken);
+
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    private void PopulateHasUsersetJoinRelationCommand(NpgsqlParameterCollection parameters,
+        string entityType, string entityId, string relation, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken)
+    {
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        AddStringParameter(parameters, "relation", relation, 64);
+        AddStringParameter(parameters, "computed_relation", computedRelation, 64);
+        AddStringParameter(parameters, "subject_type", subjectType, 256);
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+    }
+
+    // subEntityType is accepted for interface-signature symmetry with HasTupleToUserSetRelation
+    // but isn't a runtime filter here — it's what proved the join eligible at compile time; the
+    // query only needs relation/computedRelation/subjectType/subjectId.
+    public async Task<bool> HasUsersetJoinRelation(
+        string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasUsersetJoinRelation;
+            PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
+                computedRelation, subjectType, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
