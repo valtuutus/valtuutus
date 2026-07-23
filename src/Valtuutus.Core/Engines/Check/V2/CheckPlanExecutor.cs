@@ -63,11 +63,30 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     private Dictionary<CheckMemoKey, int>? _memoIndex;
     private List<MemoEntry> _memoEntries = [];
 
+    // Explain-only side channel. Indexed by the same frame index as _frames — populated only
+    // when ExecuteAsync's `explain` parameter is true (Task 4), never touched otherwise, so
+    // normal Check()/SubjectPermission() calls pay zero cost. Grows in lockstep with _frames
+    // inside SpawnFrame (see Step 4 below).
+    private bool _explain;
+    private CheckNode?[] _explainNodes = [];
+    // Set once the single root frame completes (see CompleteFrame's generic attach logic,
+    // Step 5). Explain is always single-root (mirrors ExecuteSingleAsync) — multi-root explain
+    // is not supported and not needed, since ICheckEngine.Explain() takes one CheckRequest.
+    private CheckNode? _explainRoot;
+
+    // Carries the same (Parent, RootIndex, ChildIndex) tuple both waiter lists already needed,
+    // plus an optional pre-created explain node: a waiter's structural position in the explain
+    // tree is fixed at registration time (see ResolveDynamic/StepFrame's MemoNode case), but its
+    // Result is only known once the in-flight original resolves — carried here so the eventual
+    // wake-up (ChildCompleted's MemoNode case / CompleteFrame's dynamic-memo waiters loop) can
+    // fill it in. Null in every non-explain call.
+    internal readonly record struct Waiter(int Parent, int RootIndex, int ChildIndex, CheckNode? ExplainNode);
+
     private struct MemoEntry
     {
         public bool Done;
         public bool Value;
-        public List<(int Parent, int RootIndex, int ChildIndex)>? Waiters;
+        public List<Waiter>? Waiters;
     }
 
     private struct Frame
@@ -97,7 +116,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     {
         public byte State;   // 0 empty, 1 in-flight, 2 done
         public bool Value;
-        public List<(int Parent, int RootIndex, int ChildIndex)>? Waiters;
+        public List<Waiter>? Waiters;
     }
 
     private readonly record struct CheckMemoKey(
@@ -225,9 +244,48 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         FlushWave();
     }
 
+    // Maps a compiled PlanNode to the CheckNodeType/Name an explain tree shows for it — the V2
+    // analogue of V1's CheckEngine.GetNodeInfo. `fallbackName` is used only where a PlanNode
+    // carries no name of its own (ConstNode, and the `_` default for any node kind that should
+    // never actually reach here structurally).
+    private static (CheckNodeType Type, string Name) DescribeNode(PlanNode node, string fallbackName) => node switch
+    {
+        DirectRelationNode d => (CheckNodeType.Relation, d.Relation),
+        AttributeTruthNode a => (CheckNodeType.Attribute, a.Attribute),
+        AttributeExprNode e => (CheckNodeType.Function, e.Expr.FunctionName),
+        TupleToUserSetNode t => (CheckNodeType.TupleToUserSet, $"{t.TuplesetRelation}.{t.ComputedRelation}"),
+        PlanRefNode p => (CheckNodeType.Permission, p.Permission),
+        UnionNode => (CheckNodeType.Expression, "or"),
+        IntersectNode => (CheckNodeType.Expression, "and"),
+        NegateNode => (CheckNodeType.Expression, "not"),
+        PhysicalCheckNode p => (CheckNodeType.FusedOp, p.Op.Describe()),
+        // MemoNode is never itself a visible node — peel through to what it wraps. Only reachable
+        // here via SpawnPlan's explicit DescribeNode(plan.Root, ...) call (Task 3); the
+        // StartExpression/StepFrame auto-derive path never calls DescribeNode on a bare MemoNode
+        // (see the SpawnFrame change in Step 4 below).
+        MemoNode m => DescribeNode(m.Child, fallbackName),
+        _ => (CheckNodeType.Permission, fallbackName),
+    };
+
+    // Attaches `node` to the nearest real (non-pass-through) ancestor's children list, or sets it
+    // as the explain root if there is no such ancestor. "Pass-through" ancestors are frames whose
+    // _explainNodes slot is deliberately left null (the MemoNode 1st-reference wrapper, Task 3) —
+    // walking past them means a shared subtree's real expansion attaches directly to whatever
+    // referenced the MemoNode, never showing an extra wrapper level. `parent` is a FRAME index
+    // (NoParent for a request root), matching every call site's own `parent`/`frame.Parent` value.
+    private void AttachOrSetRoot(CheckNode? node, int parent)
+    {
+        if (node is null) return;
+        if (parent == NoParent) { _explainRoot ??= node; return; }
+        var p = parent;
+        while (p != NoParent && _explainNodes[p] is null) p = _frames[p].Parent;
+        if (p == NoParent) _explainRoot ??= node;
+        else _explainNodes[p]!._children.Add(node);
+    }
+
     private int SpawnFrame(PlanNode node, string entityType, string entityId, string? subjectRelation,
         int depth, int parent, int rootIndex, int memoEntry = -1, MemoSlotState[]? slots = null,
-        int childIndex = -1)
+        int childIndex = -1, CheckNode? explainNode = null)
     {
         if (_frameCount == _frames.Length)
         {
@@ -235,6 +293,13 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             Array.Copy(_frames, bigger, _frameCount);
             ArrayPool<Frame>.Shared.Return(_frames, clearArray: true);
             _frames = bigger;
+            if (_explain)
+            {
+                var biggerNodes = ArrayPool<CheckNode?>.Shared.Rent(_frames.Length);
+                Array.Copy(_explainNodes, biggerNodes, _frameCount);
+                ArrayPool<CheckNode?>.Shared.Return(_explainNodes, clearArray: true);
+                _explainNodes = biggerNodes;
+            }
         }
         var idx = _frameCount++;
         _frames[idx] = new Frame
@@ -244,7 +309,26 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             Slots = slots, NextReady = _readyHead,
         };
         _readyHead = idx;
+        if (_explain)
+        {
+            // Explicit explainNode (from ResolveDynamic/SpawnPlan, or a fan-out call site, Task 3)
+            // always wins. Otherwise auto-derive from the PlanNode's own shape — EXCEPT a bare
+            // MemoNode, which must stay null (a deliberate pass-through wrapper; StepFrame's
+            // MemoNode case, Task 3, decides its real node lazily once it knows whether this is
+            // the 1st or 2nd+ reference to the shared slot).
+            _explainNodes[idx] = explainNode ?? (node is MemoNode ? null : MakeExplainNode(node, entityType, entityId));
+        }
         return idx;
+    }
+
+    private CheckNode MakeExplainNode(PlanNode node, string entityType, string entityId)
+    {
+        var (type, name) = DescribeNode(node, entityType);
+        return new CheckNode
+        {
+            Type = type, Name = name, EntityType = entityType, EntityId = entityId,
+            SubjectType = _ctx.SubjectType, SubjectId = _ctx.SubjectId,
+        };
     }
 
     // Exact analogue of V1 CheckInternal (CheckEngine.cs:211-276): the ONLY place depth is
@@ -274,7 +358,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         {
             var entry = _memoEntries[entryIdx];
             if (entry.Done) { ValtuutusMetrics.MemoHits.Add(1); Notify(parent, rootIndex, entry.Value); return; }
-            (entry.Waiters ??= []).Add((parent, rootIndex, -1));
+            (entry.Waiters ??= []).Add(new Waiter(parent, rootIndex, -1, null));
             _memoEntries[entryIdx] = entry;
             return;
         }
@@ -361,8 +445,11 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 slot.Waiters = null;
                 CompleteFrame(parentIdx, childResult);
                 if (waiters is not null)
-                    foreach (var (p, r, ci) in waiters)
-                        Notify(p, r, childResult, ci);
+                    foreach (var w in waiters)
+                    {
+                        if (_explain && w.ExplainNode is not null) w.ExplainNode.Result = childResult;
+                        Notify(w.Parent, w.RootIndex, childResult, w.ChildIndex);
+                    }
                 break;
             }
 
@@ -379,6 +466,16 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         frame.Completed = true;
         frame.Result = result;
 
+        if (_explain)
+        {
+            var selfNode = _explainNodes[idx];
+            if (selfNode is not null)
+            {
+                selfNode.Result = result;
+                AttachOrSetRoot(selfNode, frame.Parent);
+            }
+        }
+
         if (frame.MemoEntry >= 0)
         {
             var entry = _memoEntries[frame.MemoEntry];
@@ -388,8 +485,11 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             entry.Waiters = null;
             _memoEntries[frame.MemoEntry] = entry;
             if (waiters is not null)
-                foreach (var (p, r, ci) in waiters)
-                    Notify(p, r, result, ci);
+                foreach (var w in waiters)
+                {
+                    if (_explain && w.ExplainNode is not null) w.ExplainNode.Result = result;
+                    Notify(w.Parent, w.RootIndex, result, w.ChildIndex);
+                }
         }
 
         Notify(frame.Parent, frame.RootIndex, result, frame.ChildIndex);
@@ -475,7 +575,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 {
                     case 2: CompleteFrame(idx, slot.Value); break;
                     case 1:
-                        (slot.Waiters ??= []).Add((frame.Parent, frame.RootIndex, frame.ChildIndex));
+                        (slot.Waiters ??= []).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex, null));
                         // This frame dissolves into a waiter registration; mark completed so
                         // stale bookkeeping never routes to it again.
                         frame.Completed = true;
