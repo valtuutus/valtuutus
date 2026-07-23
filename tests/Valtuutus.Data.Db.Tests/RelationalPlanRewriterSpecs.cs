@@ -118,24 +118,24 @@ public class RelationalPlanRewriterSpecs
     }
 
     [Fact]
-    public void Mixed_children_partial_fusion()
+    public void Full_fusion_when_every_child_is_recognizable()
     {
-        // Two batchable refs + one TTU: the refs fuse, the TTU child survives — fused node
-        // first, then the non-batchable children in their original order, reference-identical.
-        var rewritten = Rewrite(Parse(HouseholdSchema), "household", "mixed", "user", out var compiledRoot);
-        var union = rewritten.Should().BeOfType<UnionNode>().Subject;
-        union.Children.Should().HaveCount(2);
-        union.Children[0].Should().BeOfType<PhysicalCheckNode>()
-            .Which.Op.Describe().Should().Be("HasAnyOfDirectRelations([owner, admin], any)");
-        var originalTtu = compiledRoot.Should().BeOfType<UnionNode>().Subject.Children[^1];
-        union.Children[1].Should().BeSameAs(originalTtu).And.BeOfType<TupleToUserSetNode>();
+        // household.mixed := owner or admin or parent.admin — owner/admin group into MultiDirect,
+        // parent.admin is TTU-fast-path-eligible (organization.admin is a direct relation
+        // admitting user) — every child recognized, 2 leaves, so the WHOLE union fuses, not just
+        // the direct-relation pair.
+        var rewritten = Rewrite(Parse(HouseholdSchema), "household", "mixed", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([MultiDirect([owner, admin], any), Ttu(parent -> organization#admin)], any)");
     }
 
     [Fact]
-    public void Single_attribute_sibling_stays_when_only_the_direct_pair_fuses()
+    public void Full_fusion_when_attribute_and_direct_groups_are_the_only_children()
     {
-        // One attribute ref is below the >= 2 threshold for its own group — it stays a plain
-        // walked sibling next to the fused direct-relation pair.
+        // household.browse := owner or admin or open — owner/admin group into MultiDirect,
+        // open is a single attribute leaf. Both leaves are already-fused-or-singleton groups
+        // with nothing left over, so the whole union fuses into one FusedExpressionOp instead
+        // of staying two separate PhysicalCheckNode children of a Union.
         const string s = """
             entity user {}
             entity household {
@@ -146,20 +146,17 @@ public class RelationalPlanRewriterSpecs
             }
             """;
         var rewritten = Rewrite(Parse(s), "household", "browse", "user", out _);
-        var union = rewritten.Should().BeOfType<UnionNode>().Subject;
-        union.Children.Should().HaveCount(2);
-        union.Children[0].Should().BeOfType<PhysicalCheckNode>()
-            .Which.Op.Describe().Should().Be("HasAnyOfDirectRelations([owner, admin], any)");
-        union.Children[1].Should().Be(new PlanRefNode("open"));
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([Attribute(open), MultiDirect([owner, admin], any)], any)");
     }
 
     [Fact]
     public void Direct_and_attribute_sibling_groups_both_fuse_under_one_parent()
     {
-        // Both groups may fire under the same parent. The rewritten plan's shape is
-        // deterministic and contractual: fused attribute group first, fused direct group
-        // second, unfused children in original order. (Same shape the old sequential compiler
-        // passes produced: directs grouped first, attributes then prepended.)
+        // Both groups fuse AND the whole union collapses into one FusedExpressionOp (2 leaves,
+        // full fusion) rather than staying two separate PhysicalCheckNode children of a Union.
+        // Deterministic leaf order matches the pre-existing group-ordering contract: attribute
+        // group first, direct-relation group second.
         const string s = """
             entity user {}
             entity doc {
@@ -171,12 +168,8 @@ public class RelationalPlanRewriterSpecs
             }
             """;
         var rewritten = Rewrite(Parse(s), "doc", "view", "user", out _);
-        var union = rewritten.Should().BeOfType<UnionNode>().Subject;
-        union.Children.Should().HaveCount(2);
-        union.Children[0].Should().BeOfType<PhysicalCheckNode>()
-            .Which.Op.Describe().Should().Be("HasAnyOfAttributes([a0, a1], any)");
-        union.Children[1].Should().BeOfType<PhysicalCheckNode>()
-            .Which.Op.Describe().Should().Be("HasAnyOfDirectRelations([r0, r1], any)");
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([MultiAttribute([a0, a1], any), MultiDirect([r0, r1], any)], any)");
     }
 
     [Fact]
@@ -221,13 +214,15 @@ public class RelationalPlanRewriterSpecs
     }
 
     [Fact]
-    public void Unrecognized_nodes_pass_through_as_the_same_instance()
+    public void Single_direct_and_single_ttu_leaf_fuse_together()
     {
-        // escalate := owner or parent.admin — one batchable ref + a TTU: below the >= 2
-        // threshold nothing fuses, and the contract says untouched trees come back
-        // reference-identical.
-        var rewritten = Rewrite(Parse(HouseholdSchema), "household", "escalate", "user", out var compiledRoot);
-        rewritten.Should().BeSameAs(compiledRoot);
+        // household.escalate := owner or parent.admin — one unfused Direct (below the >= 2 group
+        // threshold) + one TTU-fast-path leaf. Neither alone is worth wrapping, but together they
+        // fuse (mirrors benchmarks/Valtuutus.Benchmarks/schema.vtt's team.edit := org.admin or
+        // owner) — 2 leaves, full fusion.
+        var rewritten = Rewrite(Parse(HouseholdSchema), "household", "escalate", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([Direct(owner), Ttu(parent -> organization#admin)], any)");
     }
 
     [Fact]
@@ -296,5 +291,112 @@ public class RelationalPlanRewriterSpecs
         var rewritten = Rewrite(Parse(UsersetJoinSchema), "folder", "owner", null, out var compiledRoot);
         rewritten.Should().BeSameAs(compiledRoot);
         rewritten.Should().BeOfType<DirectRelationNode>();
+    }
+
+    private const string TeamSchema = """
+        entity user {}
+        entity organization { relation admin @user; }
+        entity team {
+            relation owner @user;
+            relation member @user;
+            relation banned @user;
+            relation org @organization;
+            permission edit := org.admin or owner;
+            permission invite := org.admin and (owner or member);
+            permission negate_sibling_batch := owner and member and not(banned);
+        }
+        """;
+
+    [Fact]
+    public void Ttu_and_direct_fuse_under_union()
+    {
+        var rewritten = Rewrite(Parse(TeamSchema), "team", "edit", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([Direct(owner), Ttu(org -> organization#admin)], any)");
+    }
+
+    [Fact]
+    public void Ttu_and_nested_multi_direct_fuse_under_intersect()
+    {
+        // org.admin and (owner or member): the outer Intersect's raw children are [Ttu,
+        // Union(owner, member)] — NEITHER is a raw PlanRefNode, so the outer relations/attributes
+        // lists stay empty; walking the second child fuses the inner union to
+        // PhysicalCheckNode(MultiDirect) first, and TryRecognizeSingleLeaf picks that up as a
+        // MultiDirect leaf. Both leaves land in singleLeaves in encounter order — Ttu first (it
+        // was the first original child), MultiDirect second (unlike Full_fusion_when_every_
+        // child_is_recognizable's household.mixed case above, where owner/admin ARE raw
+        // PlanRefNode siblings at THIS level, so they populate the outer `relations` list
+        // directly and the group-leaf-before-singleLeaves ordering rule applies instead).
+        var rewritten = Rewrite(Parse(TeamSchema), "team", "invite", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([Ttu(org -> organization#admin), MultiDirect([owner, member], any)], all)");
+    }
+
+    [Fact]
+    public void Negated_single_leaf_fuses_alongside_a_multi_direct_group()
+    {
+        // owner and member and not(banned): {owner, member} group into MultiDirect(all);
+        // not(banned) is a negated single Direct leaf — both recognized, 2 leaves, full fusion.
+        var rewritten = Rewrite(Parse(TeamSchema), "team", "negate_sibling_batch", "user", out _);
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be("FusedExpression([MultiDirect([owner, member], all), not Direct(banned)], all)");
+    }
+
+    [Fact]
+    public void Full_fusion_does_not_fire_when_subject_type_unknown()
+    {
+        // Without subjectType: PlanCompiler.PruneTupleToUserSet returns early before ever setting
+        // FastPathSubEntityType, so org.admin isn't recognized either — and directGate being
+        // false means owner never enters the relations group. Both children stay unrecognized,
+        // so nothing fuses at all (falls all the way through to RebuildIfChanged unchanged).
+        var rewritten = Rewrite(Parse(TeamSchema), "team", "edit", null, out var compiledRoot);
+        rewritten.Should().BeSameAs(compiledRoot);
+    }
+
+    [Fact]
+    public void Nested_fused_expression_flattens_into_the_outer_fusion()
+    {
+        // A hand-built tree standing in for "(a or b or org.admin) or member", built directly
+        // rather than through PlanCompiler.Compile: SchemaBuilder flattens any homogeneous
+        // "or of or"/"and of and" chain in a permission's DSL text into one flat n-ary
+        // Union/Intersect (PermissionNode.Flatten) BEFORE PlanCompiler.CompileTree ever runs —
+        // confirmed by compiling this exact permission text and observing a/b/member all land in
+        // one MultiDirect group with no nesting left for GroupChildren to recurse into. Only
+        // heterogeneous nesting (mixed AND/OR, e.g. Ttu_and_nested_multi_direct_fuse_under_
+        // intersect above) survives the schema compiler, and that always has a mismatched
+        // combinator for this flatten guard (inner requireAll can only equal outer's !isUnion
+        // when both levels share one combinator — which is exactly the case Flatten already
+        // collapses). So the only way to exercise GroupChildren's own recursive recognition of a
+        // nested FusedExpressionOp is a directly constructed PlanNode tree, which any provider
+        // rewriter must still handle correctly regardless of how it got here.
+        const string s = """
+            entity user {}
+            entity organization { relation admin @user; }
+            entity team {
+                relation a @user;
+                relation b @user;
+                relation member @user;
+                relation org @organization;
+            }
+            """;
+        var schema = Parse(s);
+        var innerUnion = new UnionNode([
+            new PlanRefNode("a"),
+            new PlanRefNode("b"),
+            new TupleToUserSetNode("org", "admin", FastPathSubEntityType: "organization"),
+        ]);
+        var outerUnion = new UnionNode([innerUnion, new PlanRefNode("member")]);
+
+        // Walking the inner union first fuses it to PhysicalCheckNode(FusedExpressionOp(
+        // [MultiDirect([a, b], any), Ttu(...)], requireAll: false)) — its own combinator (any,
+        // from being a Union) matches what the outer Union needs, so the outer classification
+        // loop splices those 2 leaves straight into singleLeaves instead of treating the whole
+        // nested op as one opaque leaf. `member` is a plain PlanRefNode at the outer level, so it
+        // populates the outer `relations` group (count 1) as its own Direct leaf, ordered before
+        // the flattened leaves per the existing group-before-singleLeaves contract.
+        var rewritten = new RelationalPlanRewriter().Rewrite(outerUnion, schema, "team", "user");
+        var physical = rewritten.Should().BeOfType<PhysicalCheckNode>().Subject;
+        physical.Op.Describe().Should().Be(
+            "FusedExpression([Direct(member), MultiDirect([a, b], any), Ttu(org -> organization#admin)], any)");
     }
 }

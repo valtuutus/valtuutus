@@ -33,4 +33,22 @@ public interface IRelationalCheckOps
     Task<bool> HasUsersetJoinRelation(string entityType, string entityId, string relation,
         string subEntityType, string computedRelation, string subjectType, string subjectId,
         SnapToken snapToken, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The boolean-combination fusion fast path: true iff the leaves in
+    /// <paramref name="leaves"/> combine — per-leaf <see cref="FusedCheckLeaf.Negate"/>, joined by
+    /// <paramref name="requireAll"/> (AND) or its negation (OR) — to true for
+    /// (<paramref name="entityType"/>, <paramref name="entityId"/>) against
+    /// (<paramref name="subjectType"/>, <paramref name="subjectId"/>). One round trip instead of
+    /// one per leaf (even batched, that's N statements in one DbBatch — this is exactly one
+    /// statement). <paramref name="subjectType"/>/<paramref name="subjectId"/> are null only when
+    /// every leaf is <see cref="FusedLeafKind.Attribute"/>/<see cref="FusedLeafKind.MultiAttribute"/>
+    /// (attributes have no subject dependency); any <see cref="FusedLeafKind.Direct"/>/
+    /// <see cref="FusedLeafKind.MultiDirect"/>/<see cref="FusedLeafKind.TupleToUserSet"/> leaf
+    /// requires both non-null (the rewriter only recognizes those leaf kinds when subjectType is
+    /// known, so this holds by construction).
+    /// </summary>
+    Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
+        bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken,
+        CancellationToken cancellationToken);
 }

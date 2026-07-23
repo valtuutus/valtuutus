@@ -31,13 +31,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 FROM {0}.{1} /**where**/";
 
     private const string UnformattedExistsRelation = "SELECT EXISTS(SELECT 1 FROM {0}.{1} /**where**/)";
-    private const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
+    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
+    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
+    // exact same snap-token predicate text those queries use.
+    internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
 
     // Internal (not private): PostgresBatchOps' dialect catalog serves the exact same SQL text as
     // these single-op queries — one definition, shared through GetQueries, so the two paths can
     // never drift apart (and the server's prepared-statement cache sees one statement, not two).
     internal sealed record ReaderQueries
     {
+        public required string RelationsTable { get; init; }
+        public required string AttributesTable { get; init; }
         public required string SelectAttributes { get; init; }
         public required string SelectRelations { get; init; }
         public required string GetLatestSnapToken { get; init; }
@@ -195,6 +200,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
         return new ReaderQueries
         {
+            RelationsTable = relationsTable,
+            AttributesTable = attributesTable,
             SelectAttributes = selectAttributes,
             SelectRelations = selectRelations,
             GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
@@ -1157,6 +1164,32 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 computedRelation, subjectType, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
+        bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+            await using var command = _hotPathDataSource.CreateCommand(sql);
+            AddStringParameter(command.Parameters, "entity_type", entityType, 256);
+            AddStringParameter(command.Parameters, "entity_id", entityId, 64);
+            if (subjectType is not null) AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+            if (subjectId is not null) AddStringParameter(command.Parameters, "subject_id", subjectId, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
+            for (var i = 0; i < leaves.Count; i++)
+                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            return await reader.ReadAsync(cancellationToken) && reader.GetBoolean(0);
         }
         finally
         {

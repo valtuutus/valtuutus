@@ -34,6 +34,28 @@ namespace Valtuutus.Data.Db
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddDbSetup(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Db.IValtuutusDbOptions options) { }
     }
+    public sealed class FusedCheckLeaf : System.IEquatable<Valtuutus.Data.Db.FusedCheckLeaf>
+    {
+        public FusedCheckLeaf(Valtuutus.Data.Db.FusedLeafKind Kind, bool Negate, string[] Names, bool RequireAll = false, string? TtuSubEntityType = null, string? TtuComputedRelation = null) { }
+        public Valtuutus.Data.Db.FusedLeafKind Kind { get; init; }
+        public string[] Names { get; init; }
+        public bool Negate { get; init; }
+        public bool RequireAll { get; init; }
+        public string? TtuComputedRelation { get; init; }
+        public string? TtuSubEntityType { get; init; }
+    }
+    public static class FusedExpressionSqlBuilder
+    {
+        public static string BuildBooleanExpression(System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, System.Func<Valtuutus.Data.Db.FusedCheckLeaf, int, string> fragment) { }
+    }
+    public enum FusedLeafKind
+    {
+        Direct = 0,
+        MultiDirect = 1,
+        Attribute = 2,
+        MultiAttribute = 3,
+        TupleToUserSet = 4,
+    }
     public interface IBatchableCheckOp
     {
         void AddToBatch(System.Data.Common.DbBatch batch, Valtuutus.Data.Db.IRelationalBatchOps ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, string entityType, string entityId);
@@ -54,6 +76,7 @@ namespace Valtuutus.Data.Db
         void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId);
+        void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasUsersetJoinRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
@@ -64,6 +87,7 @@ namespace Valtuutus.Data.Db
     {
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<bool> HasFusedExpression(string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasUsersetJoinRelation(string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
     }
     public interface IValtuutusDbOptions
@@ -82,6 +106,7 @@ namespace Valtuutus.Data.Db
         public virtual void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasDirectRelationToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId) { }
+        public abstract void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken);
         public virtual void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasUsersetJoinRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }

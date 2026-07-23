@@ -12,18 +12,24 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.Postgres.Tests;
 
 /// <summary>
-/// DbBatch-Task 8, Step 3: the one claim in the whole R4 plan that only real Postgres can prove —
-/// BatchedPhysicalExecutor genuinely collapses a wave's several batchable ops into fewer physical
-/// round trips than running them individually, and produces the identical answer either way.
+/// The one claim only real Postgres can prove — BatchedPhysicalExecutor genuinely collapses a
+/// wave's several batchable ops into fewer physical round trips than running them individually,
+/// and produces the identical answer either way.
 ///
-/// The schema's `view := owner or team_link.member or public` union has three sibling children
-/// of three DIFFERENT op kinds (HasDirectRelation, TtuFastPath, HasTrueBoolAttribute) — each
-/// appears only once, so RelationalPlanRewriter's sibling fusion (same-kind, ≥2 siblings) never
-/// fires at plan-rewrite time. All three land in the executor as separate leaf ops in the same
-/// wave, which is exactly the shape BatchedPhysicalExecutor's DbBatch packing targets — as
-/// opposed to reusing the R4 attribute fixture from Step 2, where the fusion already collapses
-/// to a single op at PLAN REWRITE time, before the physical executor ever sees more than one op
-/// to batch.
+/// The schema's `view` union has FOUR sibling children that can never fuse into one op: a bare
+/// relation ref (`owner`), a tuple-to-userset fast-path ref (`team_link.member`), a bare
+/// attribute ref (`public`), and a reference to another PERMISSION
+/// (`unfusable_sub_permission`, itself `owner and public`). RelationalPlanRewriter's
+/// full-fusion pass requires every child of the union to resolve to a recognizable leaf kind
+/// (direct relation, attribute, TTU fast path, or an already-fused sibling group) — a reference
+/// to another permission resolves to `RelationType.Permission`, which none of those checks
+/// recognize, so the pass can't fully fuse this union. Partial fusion (which only groups >= 2
+/// same-kind siblings) also can't fire here, since `owner` and `public` each appear only once at
+/// this level. The result: `owner`, `team_link.member`, `public`, and the sub-permission's own
+/// resolved op each land in the executor as separate leaf ops in the same wave — exactly the
+/// shape BatchedPhysicalExecutor's DbBatch packing targets, as opposed to a union whose children
+/// the rewriter CAN fully fuse, where fusion already collapses everything to a single op at plan
+/// rewrite time, before the physical executor ever sees more than one op to batch.
 ///
 /// Forcing the "one round trip per op" comparison can't go through DefaultPhysicalExecutor
 /// directly — it's internal to Valtuutus.Core with no InternalsVisibleTo grant to this test
@@ -47,7 +53,8 @@ public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
             relation owner @user;
             relation team_link @team;
             attribute public bool;
-            permission view := owner or team_link.member or public;
+            permission unfusable_sub_permission := owner and public;
+            permission view := owner or team_link.member or public or unfusable_sub_permission;
         }
         """;
 

@@ -14,6 +14,11 @@ namespace Valtuutus.Data.SqlServer;
 
 public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
+    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
+    // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, and needs the
+    // exact same snap-token predicate text those queries use.
+    internal const string SnapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+
     private readonly DbConnectionFactory _connectionFactory;
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> QueryCache = new();
@@ -102,10 +107,12 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     {
         var relationsTable = $"[{key.Schema}].[{key.RelationsTable}]";
         var attributesTable = $"[{key.Schema}].[{key.AttributesTable}]";
-        const string snapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+        var snapPredicate = SnapPredicate;
 
         return new ReaderQueries
         {
+            RelationsTable = relationsTable,
+            AttributesTable = attributesTable,
             TvpListIdsTypeName = SqlBuilderExtensions.FormatTvpListIdsName(key.Schema),
             GetLatestSnapToken = string.Format(
                 "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY id DESC", key.Schema, key.TransactionsTable),
@@ -484,6 +491,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     // can never drift apart.
     internal sealed record ReaderQueries
     {
+        public required string RelationsTable { get; init; }
+        public required string AttributesTable { get; init; }
         public required string TvpListIdsTypeName { get; init; }
         public required string GetLatestSnapToken { get; init; }
         public required string GetAttribute { get; init; }
@@ -1441,6 +1450,34 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var command = CreateCommand(connection, _q.HasUsersetJoinRelation);
             PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
                 computedRelation, subjectType, subjectId, snapToken);
+
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
+        bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+            await using var connection = (SqlConnection)_connectionFactory();
+            await connection.OpenAsync(cancellationToken);
+
+            await using var command = CreateCommand(connection, sql);
+            AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
+            AddStringParameter(command.Parameters, "@EntityId", entityId, 64);
+            if (subjectType is not null) AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
+            if (subjectId is not null) AddStringParameter(command.Parameters, "@SubjectId", subjectId, 64);
+            AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
+            for (var i = 0; i < leaves.Count; i++)
+                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i, _q.TvpListIdsTypeName);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
