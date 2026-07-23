@@ -50,6 +50,11 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
         // preserving the DAG interchange form instead of silently duplicating shared subtrees.
         private readonly Dictionary<PlanNode, PlanNode> _visited = new(ReferenceEqualityComparer.Instance);
 
+        // subjectType is fixed for a Walker's whole lifetime (one Walker per Rewrite call), so
+        // this gate is computed once and shared by GroupChildren and TryRecognizeSingleLeaf
+        // rather than recomputed as a per-call local.
+        private readonly bool directGate = !string.IsNullOrEmpty(subjectType);
+
         public PlanNode Walk(PlanNode node)
         {
             if (_visited.TryGetValue(node, out var done)) return done;
@@ -83,19 +88,71 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
         private PlanNode GroupChildren(PlanNode original, ImmutableArray<PlanNode> children, bool isUnion)
         {
             // A ref can't be both (GetRelationType resolves a name to exactly one kind), so the
-            // two collections are disjoint by construction.
-            var directGate = !string.IsNullOrEmpty(subjectType);
+            // two collections are disjoint by construction. Every child is walked FIRST (not the
+            // raw child) before classification: a nested Union/Intersect child (e.g. the
+            // "(owner or member)" in "org.admin and (owner or member)") only becomes recognizable
+            // once its own sibling-group fusion has already turned it into a
+            // PhysicalCheckNode(HasAnyOfDirectRelationsOp) — that happens inside Walk, so
+            // classification must happen after. Walk is memoized (_visited), so walking every
+            // child up front costs nothing extra when the partial-fusion path below walks
+            // survivors again.
             List<string>? relations = null;
             List<string>? attributes = null;
+            List<FusedCheckLeaf>? singleLeaves = null;
+            var fullyRecognized = true;
             foreach (var child in children)
             {
-                if (directGate && IsBatchableDirectRef(child, out var relation))
+                var walked = Walk(child);
+                if (directGate && IsBatchableDirectRef(walked, out var relation))
                     (relations ??= []).Add(relation);
-                else if (IsBatchableAttributeRef(child, out var attribute))
+                else if (IsBatchableAttributeRef(walked, out var attribute))
                     (attributes ??= []).Add(attribute);
+                // A nested FusedExpressionOp holds its own ImmutableArray<FusedCheckLeaf> rather
+                // than a single Names/RequireAll pair, so it can't go through
+                // TryRecognizeSingleLeaf's single-leaf-out contract — it contributes MANY leaves,
+                // handled here directly. Flattening is only safe when the nested op's own
+                // combinator agrees with what this outer level needs (f.RequireAll == !isUnion):
+                // an inner OR's leaves flattened into an outer AND (or vice versa) would silently
+                // change the boolean semantics. On a mismatch this child is left unrecognized —
+                // it survives as an ordinary sibling via the partial-fusion path below, still a
+                // single round trip for itself, just not folded into the outer one.
+                else if (walked is PhysicalCheckNode { Op: FusedExpressionOp f } && f.RequireAll == !isUnion)
+                    (singleLeaves ??= []).AddRange(f.Leaves);
+                else if (TryRecognizeSingleLeaf(walked, out var leaf))
+                    (singleLeaves ??= []).Add(leaf);
+                else
+                    fullyRecognized = false;
             }
 
-            // A group only fires with >= 2 members — one batchable child alone saves nothing.
+            // Full fusion: every child accounted for, and collapsing groups still leaves >= 2
+            // distinct leaves — a single already-optimal group (e.g. 3 plain direct-relation
+            // siblings, nothing else) is left to the single-group path below unchanged; wrapping
+            // it in FusedExpressionOp would gain nothing and would silently change its SQL text.
+            if (fullyRecognized)
+            {
+                var fused = ImmutableArray.CreateBuilder<FusedCheckLeaf>();
+                if (attributes is { Count: >= 2 })
+                    fused.Add(new FusedCheckLeaf(FusedLeafKind.MultiAttribute, false, attributes.ToArray(), !isUnion));
+                else if (attributes is { Count: 1 })
+                    fused.Add(new FusedCheckLeaf(FusedLeafKind.Attribute, false, [attributes[0]]));
+                if (relations is { Count: >= 2 })
+                    fused.Add(new FusedCheckLeaf(FusedLeafKind.MultiDirect, false, relations.ToArray(), !isUnion));
+                else if (relations is { Count: 1 })
+                    fused.Add(new FusedCheckLeaf(FusedLeafKind.Direct, false, [relations[0]]));
+                if (singleLeaves is not null) fused.AddRange(singleLeaves);
+
+                if (fused.Count >= 2)
+                    return new PhysicalCheckNode(new FusedExpressionOp(fused.ToImmutable(), requireAll: !isUnion));
+            }
+
+            // Partial fusion (unchanged pre-existing behavior): only the direct-relation and/or
+            // attribute sibling groups fuse (each needs >= 2 members — one batchable child alone
+            // saves nothing); everything else, including TTU/negated/nested leaves recognized
+            // above, survives as its own walked child. Note this rebuild loop still checks
+            // IsBatchableDirectRef/IsBatchableAttributeRef against the RAW child (not `walked`) —
+            // identical result for the cases that matter here (a raw direct/attribute PlanRefNode
+            // walks to itself), and Walk(child) below is a memoized re-fetch of what the
+            // classification loop above already computed, not new work.
             var fuseRelations = relations is { Count: >= 2 };
             var fuseAttributes = attributes is { Count: >= 2 };
             if (!fuseRelations && !fuseAttributes)
@@ -122,6 +179,56 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
             if (kept.Count == 1) return kept[0]; // single-survivor collapse: everything fused
             var keptArr = kept.MoveToImmutable();
             return isUnion ? new UnionNode(keptArr) : new IntersectNode(keptArr);
+        }
+
+        // Recognizes a single (non-grouped) leaf the full-fusion path above can use directly: a
+        // plan-time TTU fast-path node (eligibility already proved by PlanCompiler.PruneAndFold),
+        // an already-fused HasAnyOfDirectRelationsOp/HasAnyOfAttributesOp sibling group nested one
+        // level down (walked before this is called, so a former Union/Intersect child arrives
+        // here as a PhysicalCheckNode if its own children partially fused), or a Negate over any
+        // of those / a direct-relation ref / an attribute ref. Non-negated direct-relation/
+        // attribute refs are handled by IsBatchableDirectRef/IsBatchableAttributeRef above (they
+        // feed the sibling-group lists, not this method) — this method only covers what those two
+        // do not. A nested PhysicalCheckNode { Op: FusedExpressionOp } is NOT handled here:
+        // it needs to contribute MULTIPLE leaves to the outer fusion (not one opaque leaf), which
+        // this method's single-leaf-out signature can't express — GroupChildren's classification
+        // loop checks for and flattens that case itself, before ever calling this method.
+        private bool TryRecognizeSingleLeaf(PlanNode node, out FusedCheckLeaf leaf)
+        {
+            switch (node)
+            {
+                case TupleToUserSetNode { FastPathSubEntityType: not null } t:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.TupleToUserSet, false,
+                        [t.TuplesetRelation], TtuSubEntityType: t.FastPathSubEntityType, TtuComputedRelation: t.ComputedRelation);
+                    return true;
+                case PhysicalCheckNode { Op: HasAnyOfDirectRelationsOp d }:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.MultiDirect, false, d.Relations, d.RequireAll);
+                    return true;
+                case PhysicalCheckNode { Op: HasAnyOfAttributesOp a }:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.MultiAttribute, false, a.Attributes, a.RequireAll);
+                    return true;
+                case NegateNode { Child: PlanRefNode p } when directGate
+                        && schema.GetRelationType(entityType, p.Permission) == RelationType.DirectRelation
+                        && !schema.GetRelation(entityType, p.Permission).HasSubRelationPaths:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.Direct, true, [p.Permission]);
+                    return true;
+                case NegateNode { Child: PlanRefNode p2 } when schema.GetRelationType(entityType, p2.Permission) == RelationType.Attribute:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.Attribute, true, [p2.Permission]);
+                    return true;
+                case NegateNode { Child: TupleToUserSetNode { FastPathSubEntityType: not null } t2 }:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.TupleToUserSet, true,
+                        [t2.TuplesetRelation], TtuSubEntityType: t2.FastPathSubEntityType, TtuComputedRelation: t2.ComputedRelation);
+                    return true;
+                case NegateNode { Child: PhysicalCheckNode { Op: HasAnyOfDirectRelationsOp d2 } }:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.MultiDirect, true, d2.Relations, d2.RequireAll);
+                    return true;
+                case NegateNode { Child: PhysicalCheckNode { Op: HasAnyOfAttributesOp a2 } }:
+                    leaf = new FusedCheckLeaf(FusedLeafKind.MultiAttribute, true, a2.Attributes, a2.RequireAll);
+                    return true;
+                default:
+                    leaf = null!;
+                    return false;
+            }
         }
 
         private PlanNode RebuildIfChanged(PlanNode original, ImmutableArray<PlanNode> children, bool isUnion)

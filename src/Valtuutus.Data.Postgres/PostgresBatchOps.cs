@@ -91,6 +91,22 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
     protected override void WriteSnapTokenParam(DbBatchCommand cmd, string name, SnapToken snapToken)
         => PostgresDataReaderProvider.AddFixedCharParameter(Parameters(cmd), name, snapToken.Value, 26);
 
+    /// <inheritdoc />
+    public override void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
+        IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
+    {
+        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+        var cmd = NewCommand(batch, sql);
+        var parameters = Parameters(cmd);
+        PostgresDataReaderProvider.AddStringParameter(parameters, "entity_type", entityType, 256);
+        PostgresDataReaderProvider.AddStringParameter(parameters, "entity_id", entityId, 64);
+        if (subjectType is not null) PostgresDataReaderProvider.AddStringParameter(parameters, "subject_type", subjectType, 256);
+        if (subjectId is not null) PostgresDataReaderProvider.AddStringParameter(parameters, "subject_id", subjectId, 64);
+        PostgresDataReaderProvider.AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+        for (var i = 0; i < leaves.Count; i++)
+            FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i);
+    }
+
     // DbBatchCommand's declared type is the ADO-abstract one, but every batch this class hands out
     // (CreateBatch) comes from NpgsqlDataSource.CreateBatch(), so the command the base class
     // creates from it is always a genuine NpgsqlBatchCommand (Npgsql overrides the protected

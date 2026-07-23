@@ -43,6 +43,18 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
     protected abstract string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values);
 
     /// <summary>
+    /// Composes and adds the fused-expression command — unlike every other Add* member below, this
+    /// one cannot be implemented generically here: the SQL shape varies per call (leaf
+    /// count/kind/negation), so there is no single <see cref="RelationalBatchQuery"/> catalog entry
+    /// to key off. Each provider builds its own text per call via
+    /// <see cref="FusedExpressionSqlBuilder.BuildBooleanExpression"/> plus its own leaf-fragment
+    /// templates and parameter writing (see <c>PostgresBatchOps</c>/<c>SqlServerBatchOps</c>).
+    /// </summary>
+    public abstract void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
+        IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId,
+        SnapToken snapToken);
+
+    /// <summary>
     /// Generic parameter append: <see cref="DbBatchCommand.CreateParameter"/> (net8+), name+value,
     /// add. The default implementation the Write*Param hooks fall back to when a provider doesn't
     /// need provider-typed parameters.

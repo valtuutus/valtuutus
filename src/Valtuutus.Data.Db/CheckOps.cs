@@ -9,6 +9,9 @@ namespace Valtuutus.Data.Db;
 // check-then-batch: one round trip answers what would otherwise be N sibling children.
 internal sealed class HasAnyOfDirectRelationsOp(string[] relations, bool requireAll) : ICheckOp, IBatchableCheckOp
 {
+    internal string[] Relations => relations;
+    internal bool RequireAll => requireAll;
+
     public async ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
         string entityType, string entityId, CancellationToken ct)
     {
@@ -49,6 +52,9 @@ internal sealed class HasAnyOfDirectRelationsOp(string[] relations, bool require
 // batch (see RelationalPlanRewriter's attribute sibling fusion pass).
 internal sealed class HasAnyOfAttributesOp(string[] attributes, bool requireAll) : ICheckOp, IBatchableCheckOp
 {
+    internal string[] Attributes => attributes;
+    internal bool RequireAll => requireAll;
+
     public async ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
         string entityType, string entityId, CancellationToken ct)
     {
@@ -106,6 +112,55 @@ internal sealed class UsersetJoinOp(string relation, string subEntityType, strin
         string entityType, string entityId)
         => ops.AddHasUsersetJoinRelationToBatch(batch, entityType, entityId, relation, subEntityType,
             computedRelation, ctx.SubjectType!, ctx.SubjectId!, ctx.SnapToken);
+
+    public async Task ReadResultAsync(DbDataReader reader, int token, IOpCompletionSink sink, CancellationToken ct)
+    {
+        var result = await reader.ReadAsync(ct).ConfigureAwait(false) && reader.GetBoolean(0);
+        sink.Complete(token, result);
+    }
+}
+
+// Physical op for the boolean-combination fusion fast path: one round trip answers a whole
+// Union/Intersect whose every child was a recognizable relational leaf (see
+// RelationalPlanRewriter's GroupChildren), instead of one round trip per leaf (or one DbBatch
+// packing N statements — this is exactly one statement).
+internal sealed class FusedExpressionOp(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll)
+    : ICheckOp, IBatchableCheckOp
+{
+    internal IReadOnlyList<FusedCheckLeaf> Leaves => leaves;
+    internal bool RequireAll => requireAll;
+
+    public async ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
+        string entityType, string entityId, CancellationToken ct)
+    {
+        if (reader is not IRelationalCheckOps ops)
+            throw new InvalidOperationException(
+                $"RelationalPlanRewriter installed a relational op, but the registered " +
+                $"IDataReaderProvider ({reader.GetType().Name}) does not implement " +
+                $"{nameof(IRelationalCheckOps)}. Readers used with AddDbSetup must implement it.");
+
+        return await ops.HasFusedExpression(entityType, entityId, leaves, requireAll,
+            ctx.SubjectType, ctx.SubjectId, ctx.SnapToken, ct).ConfigureAwait(false);
+    }
+
+    public string Describe()
+    {
+        var parts = leaves.Select(l => (l.Negate ? "not " : "") + l.Kind switch
+        {
+            FusedLeafKind.Direct => $"Direct({l.Names[0]})",
+            FusedLeafKind.MultiDirect => $"MultiDirect([{string.Join(", ", l.Names)}], {(l.RequireAll ? "all" : "any")})",
+            FusedLeafKind.Attribute => $"Attribute({l.Names[0]})",
+            FusedLeafKind.MultiAttribute => $"MultiAttribute([{string.Join(", ", l.Names)}], {(l.RequireAll ? "all" : "any")})",
+            FusedLeafKind.TupleToUserSet => $"Ttu({l.Names[0]} -> {l.TtuSubEntityType}#{l.TtuComputedRelation})",
+            _ => throw new ArgumentOutOfRangeException(nameof(l.Kind), l.Kind, null),
+        });
+        return $"FusedExpression([{string.Join(", ", parts)}], {(requireAll ? "all" : "any")})";
+    }
+
+    public void AddToBatch(DbBatch batch, IRelationalBatchOps ops, CheckRequestContext ctx,
+        string entityType, string entityId)
+        => ops.AddHasFusedExpressionToBatch(batch, entityType, entityId, leaves, requireAll,
+            ctx.SubjectType, ctx.SubjectId, ctx.SnapToken);
 
     public async Task ReadResultAsync(DbDataReader reader, int token, IOpCompletionSink sink, CancellationToken ct)
     {

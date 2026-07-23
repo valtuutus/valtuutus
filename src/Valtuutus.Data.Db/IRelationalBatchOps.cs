@@ -108,4 +108,17 @@ public interface IRelationalBatchOps
     /// <paramref name="batch"/> — the batched sibling of that method, same SQL text/params.
     /// </summary>
     void AddGetIndirectRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter);
+
+    /// <summary>
+    /// Adds a command answering <see cref="IRelationalCheckOps.HasFusedExpression"/>'s question to
+    /// <paramref name="batch"/> — the batched sibling of that method. Unlike every other Add* member
+    /// on this interface, there is no shared fixed SQL text this mirrors byte-for-byte: the compound
+    /// expression's shape varies per call (leaf count/kind/negation), so each provider composes its
+    /// own text per call via <see cref="RelationalBatchProviderBase.AddHasFusedExpressionToBatch"/>
+    /// (declared abstract there, alongside <see cref="RelationalBatchProviderBase.CreateBatch"/> —
+    /// the class's other genuinely dialect-specific hooks).
+    /// </summary>
+    void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
+        IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId,
+        SnapToken snapToken);
 }

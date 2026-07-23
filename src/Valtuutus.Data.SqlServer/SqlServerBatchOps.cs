@@ -149,6 +149,22 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unmapped batch parameter name."),
     };
 
+    /// <inheritdoc />
+    public override void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
+        IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
+    {
+        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+        var cmd = NewCommand(batch, sql);
+        var parameters = Parameters(cmd);
+        SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityType", entityType, 256);
+        SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityId", entityId, 64);
+        if (subjectType is not null) SqlServerDataReaderProvider.AddStringParameter(parameters, "@SubjectType", subjectType, 256);
+        if (subjectId is not null) SqlServerDataReaderProvider.AddStringParameter(parameters, "@SubjectId", subjectId, 64);
+        SqlServerDataReaderProvider.AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
+        for (var i = 0; i < leaves.Count; i++)
+            FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i, _q.TvpListIdsTypeName);
+    }
+
     // DbBatchCommand's declared type is the ADO-abstract one, but every batch this class hands out
     // (CreateBatch) comes from SqlConnection.CreateBatch(), so the command the base class creates
     // from it is always a genuine SqlBatchCommand (Microsoft.Data.SqlClient overrides the

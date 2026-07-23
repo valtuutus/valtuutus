@@ -14,12 +14,32 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// SqlServer counterpart of Valtuutus.Data.Postgres.Tests.BatchedExecutorRoundTripSpecs — the one
 /// claim only a real SqlServer can prove: BatchedPhysicalExecutor genuinely collapses a wave's
 /// several batchable ops into fewer physical round trips than running them individually, and
-/// produces the identical answer either way. Same schema/scenario/technique as the Postgres
-/// version — see that file's doc comment for full rationale (three different op kinds in one
-/// Union, so RelationalPlanRewriter's sibling fusion never fuses any of them away at
-/// plan-rewrite time; toggling IRelationalBatchOps presence via a counting decorator instead of
-/// touching DefaultPhysicalExecutor directly, since that type is internal to Valtuutus.Core with
-/// no InternalsVisibleTo grant to this test assembly).
+/// produces the identical answer either way.
+///
+/// The schema's `view` union has FOUR sibling children that can never fuse into one op: a bare
+/// relation ref (`owner`), a tuple-to-userset fast-path ref (`team_link.member`), a bare
+/// attribute ref (`public`), and a reference to another PERMISSION
+/// (`unfusable_sub_permission`, itself `owner and public`). RelationalPlanRewriter's
+/// full-fusion pass requires every child of the union to resolve to a recognizable leaf kind
+/// (direct relation, attribute, TTU fast path, or an already-fused sibling group) — a reference
+/// to another permission resolves to `RelationType.Permission`, which none of those checks
+/// recognize, so the pass can't fully fuse this union. Partial fusion (which only groups >= 2
+/// same-kind siblings) also can't fire here, since `owner` and `public` each appear only once at
+/// this level. The result: `owner`, `team_link.member`, `public`, and the sub-permission's own
+/// resolved op each land in the executor as separate leaf ops in the same wave — exactly the
+/// shape BatchedPhysicalExecutor's DbBatch packing targets, as opposed to a union whose children
+/// the rewriter CAN fully fuse, where fusion already collapses everything to a single op at plan
+/// rewrite time, before the physical executor ever sees more than one op to batch.
+///
+/// Forcing the "one round trip per op" comparison can't go through DefaultPhysicalExecutor
+/// directly — it's internal to Valtuutus.Core with no InternalsVisibleTo grant to this test
+/// assembly. Instead this toggles whether an IRelationalBatchOps is registered at all:
+/// BatchedPhysicalExecutor now receives its batch capability injected (constructed once per
+/// Schema by AddSqlServer's Func&lt;Schema, IPhysicalExecutor&gt; factory, which resolves
+/// IRelationalBatchOps via IServiceProvider.GetService — optional, not required), so removing
+/// the registration entirely reproduces the exact same SubmitAllIndividually fallback
+/// BatchedPhysicalExecutor takes when a provider has no batch implementation. Same code path,
+/// no internals access required.
 /// </summary>
 [Collection("SqlServerSpec")]
 public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
@@ -33,7 +53,8 @@ public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
             relation owner @user;
             relation team_link @team;
             attribute public bool;
-            permission view := owner or team_link.member or public;
+            permission unfusable_sub_permission := owner and public;
+            permission view := owner or team_link.member or public or unfusable_sub_permission;
         }
         """;
 

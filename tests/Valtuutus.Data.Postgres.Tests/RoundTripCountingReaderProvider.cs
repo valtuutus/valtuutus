@@ -94,6 +94,14 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
             subjectType, subjectId, snapToken, cancellationToken);
     }
 
+    public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
+        bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        counter.Increment();
+        return await inner.HasFusedExpression(entityType, entityId, leaves, requireAll, subjectType, subjectId,
+            snapToken, cancellationToken);
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         counter.Increment();
@@ -242,6 +250,10 @@ internal sealed class CountingBatchOps(IRelationalBatchOps inner, RoundTripCount
         string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken)
         => inner.AddHasUsersetJoinRelationToBatch(batch, entityType, entityId, relation, subEntityType,
             computedRelation, subjectType, subjectId, snapToken);
+
+    public void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
+        IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
+        => inner.AddHasFusedExpressionToBatch(batch, entityType, entityId, leaves, requireAll, subjectType, subjectId, snapToken);
 
     public void AddHasAnyDirectRelationToBatch(DbBatch batch, string entityType, string[] entityIds, string relation,
         string subjectId, SnapToken snapToken)
