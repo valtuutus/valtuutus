@@ -7,7 +7,14 @@ public enum CheckNodeType
     Relation,
     TupleToUserSet,
     Attribute,
-    Function
+    Function,
+    /// <summary>
+    /// A rewriter-fused subtree resolved via one opaque provider-level <c>ICheckOp</c> call
+    /// (see Valtuutus.Core.Engines.Check.V2.ICheckOp/PhysicalCheckNode). Never has children —
+    /// fusion replaces what would otherwise be several separately-resolvable branches with a
+    /// single round trip, so there is nothing left to show per-branch.
+    /// </summary>
+    FusedOp
 }
 
 public sealed class CheckNode
