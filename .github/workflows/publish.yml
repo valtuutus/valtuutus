@@ -15,6 +15,10 @@ on:
 env:
   NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
+concurrency:
+  group: publish-${{ github.event.release.tag_name || inputs.package_version }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -85,10 +89,10 @@ jobs:
           } > ReleaseNotes.props
 
       - name: Restore
-        run: dotnet restore Valtuutus.sln
+        run: dotnet restore Valtuutus.slnx
 
       - name: Build
-        run: dotnet build Valtuutus.sln --no-restore -c Release
+        run: dotnet build Valtuutus.slnx --no-restore -c Release
 
       - name: Pack
         shell: bash

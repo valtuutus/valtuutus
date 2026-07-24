@@ -112,6 +112,7 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
@@ -176,6 +177,7 @@ namespace Valtuutus.Core.Engines.Check
         TupleToUserSet = 3,
         Attribute = 4,
         Function = 5,
+        FusedOp = 6,
     }
     public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
     {
@@ -191,6 +193,14 @@ namespace Valtuutus.Core.Engines.Check
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
+    }
+    public sealed class CheckRequestContext
+    {
+        public CheckRequestContext() { }
+        public required System.Collections.Generic.IDictionary<string, object> Context { get; init; }
+        public required Valtuutus.Core.Data.SnapToken SnapToken { get; init; }
+        public required string? SubjectId { get; init; }
+        public required string? SubjectType { get; init; }
     }
     public interface ICheckEngine
     {
@@ -214,6 +224,134 @@ namespace Valtuutus.Core.Engines.Check
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public required string SubjectId { get; init; }
         public required string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Engines.Check.V2
+{
+    public sealed class AttributeExprNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.AttributeExprNode>
+    {
+        public AttributeExprNode(Valtuutus.Core.Schemas.PermissionNodeLeafExp Expr) { }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafExp Expr { get; init; }
+    }
+    public sealed class AttributeTruthNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.AttributeTruthNode>
+    {
+        public AttributeTruthNode(string Attribute) { }
+        public string Attribute { get; init; }
+    }
+    public sealed class ConstNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.ConstNode>
+    {
+        public static readonly Valtuutus.Core.Engines.Check.V2.ConstNode False;
+        public static readonly Valtuutus.Core.Engines.Check.V2.ConstNode True;
+        public ConstNode(bool Value) { }
+        public bool Value { get; init; }
+    }
+    public sealed class DefaultPhysicalExecutor : Valtuutus.Core.Engines.Check.V2.IPhysicalExecutor
+    {
+        public DefaultPhysicalExecutor(Valtuutus.Core.Schemas.Schema schema) { }
+        public Valtuutus.Core.Data.IDataReaderProvider Reader { get; set; }
+        public void Submit(System.ReadOnlySpan<Valtuutus.Core.Engines.Check.V2.PendingOp> ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct) { }
+    }
+    public sealed class DirectRelationNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.DirectRelationNode>
+    {
+        public DirectRelationNode(string Relation, bool HasSubRelationPaths, string? FastPathSubEntityType = null, string? FastPathComputedRelation = null) { }
+        public string? FastPathComputedRelation { get; init; }
+        public string? FastPathSubEntityType { get; init; }
+        public bool HasSubRelationPaths { get; init; }
+        public string Relation { get; init; }
+    }
+    public interface ICheckOp
+    {
+        string Describe();
+        System.Threading.Tasks.ValueTask<bool> Execute(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, string entityType, string entityId, System.Threading.CancellationToken ct);
+    }
+    public interface IOpCompletionSink
+    {
+        void Complete(int token, bool result);
+        void CompleteWithPayload(int token, object payload);
+        void Fail(int token, System.Exception error);
+    }
+    public interface IPhysicalExecutor
+    {
+        Valtuutus.Core.Data.IDataReaderProvider Reader { set; }
+        void Submit(System.ReadOnlySpan<Valtuutus.Core.Engines.Check.V2.PendingOp> ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct);
+    }
+    public interface IPlanRewriter
+    {
+        Valtuutus.Core.Engines.Check.V2.PlanNode Rewrite(Valtuutus.Core.Engines.Check.V2.PlanNode root, Valtuutus.Core.Schemas.Schema schema, string entityType, string? subjectType);
+    }
+    public sealed class IntersectNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.IntersectNode>
+    {
+        public IntersectNode(System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children) { }
+        public System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children { get; init; }
+    }
+    public sealed class MemoNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.MemoNode>
+    {
+        public MemoNode(int SlotId, Valtuutus.Core.Engines.Check.V2.PlanNode Child) { }
+        public Valtuutus.Core.Engines.Check.V2.PlanNode Child { get; init; }
+        public int SlotId { get; init; }
+    }
+    public sealed class NegateNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.NegateNode>
+    {
+        public NegateNode(Valtuutus.Core.Engines.Check.V2.PlanNode Child) { }
+        public Valtuutus.Core.Engines.Check.V2.PlanNode Child { get; init; }
+    }
+    public enum OpKind : byte
+    {
+        HasDirectRelation = 0,
+        HasTrueBoolAttribute = 1,
+        AttributeExpr = 2,
+        TtuFastPath = 3,
+        HasAnyDirectRelation = 4,
+        GetRelations = 5,
+        GetIndirectRelations = 6,
+        CheckOp = 7,
+    }
+    public readonly struct PendingOp
+    {
+        public string? ComputedRelation { get; init; }
+        public required string EntityId { get; init; }
+        public string[]? EntityIds { get; init; }
+        public required string EntityType { get; init; }
+        public Valtuutus.Core.Schemas.PermissionNodeLeafExp? Expr { get; init; }
+        public required Valtuutus.Core.Engines.Check.V2.OpKind Kind { get; init; }
+        public Valtuutus.Core.Engines.Check.V2.ICheckOp? Op { get; init; }
+        public string? Relation { get; init; }
+        public string? SubEntityType { get; init; }
+        public required int Token { get; init; }
+    }
+    public sealed class PhysicalCheckNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.PhysicalCheckNode>
+    {
+        public PhysicalCheckNode(Valtuutus.Core.Engines.Check.V2.ICheckOp Op) { }
+        public Valtuutus.Core.Engines.Check.V2.ICheckOp Op { get; init; }
+    }
+    public static class PhysicalOpRunner
+    {
+        public static System.Threading.Tasks.Task RunAsync(Valtuutus.Core.Engines.Check.V2.PendingOp op, Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct) { }
+    }
+    public abstract class PlanNode : System.IEquatable<Valtuutus.Core.Engines.Check.V2.PlanNode>
+    {
+        protected PlanNode() { }
+    }
+    public sealed class PlanRefNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.PlanRefNode>
+    {
+        public PlanRefNode(string Permission) { }
+        public string Permission { get; init; }
+    }
+    public static class PlanValidator
+    {
+        public static void Validate(Valtuutus.Core.Engines.Check.V2.PlanNode root, int slotCount) { }
+    }
+    public sealed class TupleToUserSetNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.TupleToUserSetNode>
+    {
+        public TupleToUserSetNode(string TuplesetRelation, string ComputedRelation, string? FastPathSubEntityType = null) { }
+        public string ComputedRelation { get; init; }
+        public string? FastPathSubEntityType { get; init; }
+        public string TuplesetRelation { get; init; }
+    }
+    public sealed class UnionNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.UnionNode>
+    {
+        public UnionNode(System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children) { }
+        public System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children { get; init; }
     }
 }
 namespace Valtuutus.Core.Engines
@@ -380,10 +518,29 @@ namespace Valtuutus.Core.Schemas
     {
         public string Name { get; init; }
     }
+    public abstract class PermissionNodeExpArgument : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeExpArgument>
+    {
+        protected PermissionNodeExpArgument() { }
+        public required int ArgOrder { get; init; }
+        public abstract Valtuutus.Core.Schemas.PermissionNodeExpArgumentType Type { get; }
+    }
+    public enum PermissionNodeExpArgumentType
+    {
+        Attribute = 0,
+        ContextAccess = 1,
+        Literal = 2,
+    }
+    public class PermissionNodeLeafExp : System.IEquatable<Valtuutus.Core.Schemas.PermissionNodeLeafExp>
+    {
+        public PermissionNodeLeafExp(string FunctionName, Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args) { }
+        public Valtuutus.Core.Schemas.PermissionNodeExpArgument[] Args { get; init; }
+        public string FunctionName { get; init; }
+    }
     public class Relation : System.IEquatable<Valtuutus.Core.Schemas.Relation>
     {
         public Relation() { }
         public required System.Collections.Generic.List<Valtuutus.Core.Schemas.RelationEntity> Entities { get; init; }
+        public bool HasSubRelationPaths { get; init; }
         public required string Name { get; init; }
     }
     public class RelationEntity : System.IEquatable<Valtuutus.Core.Schemas.RelationEntity>
@@ -397,5 +554,7 @@ namespace Valtuutus.Core.Schemas
         public Schema(System.Collections.Generic.IDictionary<string, Valtuutus.Core.Schemas.Entity> entities, System.Collections.Generic.IDictionary<string, Valtuutus.Core.Schemas.Function> functions) { }
         public System.Collections.Frozen.FrozenDictionary<string, Valtuutus.Core.Schemas.Entity> Entities { get; init; }
         public System.Collections.Frozen.FrozenDictionary<string, Valtuutus.Core.Schemas.Function> Functions { get; init; }
+        public Valtuutus.Core.Schemas.Relation GetRelation(string entityType, string relation) { }
+        public Valtuutus.Core.Engines.Check.RelationType GetRelationType(string entityType, string permission) { }
     }
 }

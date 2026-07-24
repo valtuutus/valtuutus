@@ -37,9 +37,9 @@ jobs:
       - name: Install dotnet-coverage
         run: dotnet tool install --global dotnet-coverage
       - name: Build
-        run: dotnet build Valtuutus.sln --no-incremental
+        run: dotnet build Valtuutus.slnx --no-incremental
       - name: Test with coverage
-        run: dotnet-coverage collect 'dotnet test Valtuutus.sln -c Release --logger:"trx;LogFilePrefix=testResults"' -f cobertura -o 'coverage.xml' -s coverage.runsettings
+        run: dotnet-coverage collect 'dotnet test Valtuutus.slnx -c Release --logger:"trx;LogFilePrefix=testResults"' -f cobertura -o 'coverage.xml' -s coverage.runsettings
       - name: Upload coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:

@@ -4,7 +4,7 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.SqlServer.Tests;
 
 [Collection("SqlServerSpec")]
-public sealed class CheckEngineExplainSpecs : BaseCheckEngineExplainSpecs
+public sealed class CheckEngineExplainSpecs : BaseCheckEngineV1OnlyExplainSpecs
 {
     public CheckEngineExplainSpecs(SqlServerFixture fixture) : base(fixture) { }
 

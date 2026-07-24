@@ -27,18 +27,47 @@ public class CheckPlanExecutorSpecs
     {
         public readonly List<(int Token, bool Result)> Completed = [];
         public readonly List<(int Token, Exception Error)> Failed = [];
+        public readonly List<(int Token, object Payload)> Payloads = [];
         public void Complete(int token, bool result) { lock (Completed) Completed.Add((token, result)); }
-        public void CompleteWithPayload(int token, object payload) => throw new NotSupportedException();
+        public void CompleteWithPayload(int token, object payload) { lock (Payloads) Payloads.Add((token, payload)); }
         public void Fail(int token, Exception error) { lock (Failed) Failed.Add((token, error)); }
+    }
+
+    // Records every submitted op, then forwards to the real executor — lets a test assert on
+    // query SHAPE (one batched op vs N singles) while the check still runs for real. Submitted
+    // is a flattened view across every Submit call; SubmitCalls preserves per-call boundaries so
+    // a test can additionally assert on wave SIZE (how many ops one Submit call carried).
+    internal sealed class RecordingPhysicalExecutor(IPhysicalExecutor inner) : IPhysicalExecutor
+    {
+        // Forwards to the wrapped real executor — this double never reads Reader itself, only
+        // the inner executor (constructed with Reader already set in these tests) does.
+        public IDataReaderProvider Reader { set => inner.Reader = value; }
+        public readonly List<PendingOp> Submitted = [];
+        public readonly List<PendingOp[]> SubmitCalls = [];
+        public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
+        {
+            lock (Submitted)
+            {
+                foreach (var op in ops) Submitted.Add(op);
+                SubmitCalls.Add(ops.ToArray());
+            }
+            inner.Submit(ops, ctx, sink, ct);
+        }
     }
 
     // Test double letting a test deterministically simulate a genuinely still-in-flight op
     // (unlike InMemory's real provider, which resolves synchronously and can never produce one).
     // Ops whose relation name is in HeldRelations don't complete until the test explicitly
-    // calls Release — everything else completes immediately with the configured result.
+    // calls a Release* method; ops whose relation is in FailRelations fail synchronously inside
+    // Submit — everything else completes immediately with the configured result.
     internal sealed class ControllablePhysicalExecutor : IPhysicalExecutor
     {
+        // This double fabricates results without ever touching a real reader, so the setter is
+        // a no-op — it exists only to satisfy the IPhysicalExecutor contract.
+        public IDataReaderProvider Reader { set { } }
         public readonly HashSet<string> HeldRelations = [];
+        public readonly HashSet<string> FailRelations = [];
+        public Exception FailureException = new InvalidOperationException("boom");
         public bool ImmediateResult = true;
         private readonly Dictionary<string, List<(int Token, IOpCompletionSink Sink)>> _held = new();
 
@@ -46,7 +75,11 @@ public class CheckPlanExecutorSpecs
         {
             foreach (var op in ops)
             {
-                if (op.Relation is not null && HeldRelations.Contains(op.Relation))
+                if (op.Relation is not null && FailRelations.Contains(op.Relation))
+                {
+                    sink.Fail(op.Token, FailureException);
+                }
+                else if (op.Relation is not null && HeldRelations.Contains(op.Relation))
                 {
                     lock (_held)
                     {
@@ -61,16 +94,28 @@ public class CheckPlanExecutorSpecs
             }
         }
 
-        // Releases every op held under `relation` with `result`, targeting whichever sink was
-        // current when Submit ran for it — this is exactly how a genuine straggler behaves: it
-        // completes against whatever IOpCompletionSink it captured at dispatch time, regardless
-        // of what that instance is doing by the time it actually finishes.
+        // Releases every op held under `relation`, targeting whichever sink was current when
+        // Submit ran for it — this is exactly how a genuine straggler behaves: it completes
+        // against whatever IOpCompletionSink it captured at dispatch time, regardless of what
+        // that instance is doing by the time it actually finishes.
         public void Release(string relation, bool result)
         {
-            List<(int Token, IOpCompletionSink Sink)> list;
-            lock (_held) { list = _held.TryGetValue(relation, out var l) ? l : []; }
-            foreach (var (token, sink) in list)
-                sink.Complete(token, result);
+            foreach (var (token, sink) in Drain(relation)) sink.Complete(token, result);
+        }
+
+        public void ReleaseWithPayload(string relation, object payload)
+        {
+            foreach (var (token, sink) in Drain(relation)) sink.CompleteWithPayload(token, payload);
+        }
+
+        public void ReleaseWithFailure(string relation, Exception error)
+        {
+            foreach (var (token, sink) in Drain(relation)) sink.Fail(token, error);
+        }
+
+        private List<(int Token, IOpCompletionSink Sink)> Drain(string relation)
+        {
+            lock (_held) return _held.TryGetValue(relation, out var l) ? l : [];
         }
     }
 
@@ -336,6 +381,35 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
+    public async Task AddValtuutusCheckV2_wires_ICheckEngine_Explain_through_the_V2_executor()
+    {
+        // Task 5: CheckEngineV2.Explain() no longer delegates to a throwaway V1 CheckEngine —
+        // it must run through the same DI-resolved V2 executor pool as Check()/SubjectPermission.
+        // This resolves ICheckEngine exactly as a real caller would (no direct reference to the
+        // V1 CheckEngine type anywhere in this test) and asserts on the full CheckExplainResult
+        // shape, not just the boolean.
+        var services = new ServiceCollection().AddValtuutusCore(DocSchema);
+        services.AddInMemory();
+        services.AddValtuutusCheckV2();
+        var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        await sp.GetRequiredService<IDataWriterProvider>()
+            .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
+
+        var engine = sp.GetRequiredService<ICheckEngine>();
+        engine.Should().BeOfType<CheckEngineV2>();
+
+        var explainTrue = await engine.Explain(new CheckRequest("doc", "1", "view", "user", "u1"), default);
+        explainTrue.Result.Should().BeTrue();
+        explainTrue.Root.Should().NotBeNull();
+        explainTrue.Root.Result.Should().BeTrue();
+
+        var explainFalse = await engine.Explain(new CheckRequest("doc", "1", "view", "user", "u2"), default);
+        explainFalse.Result.Should().BeFalse();
+        explainFalse.Root.Should().NotBeNull();
+        explainFalse.Root.Result.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Pooled_executor_carries_no_state_across_interleaved_calls()
     {
         // Regression test for CheckPlanExecutorPool (Task 16 Stage 4): the same pooled
@@ -435,11 +509,14 @@ public class CheckPlanExecutorSpecs
         // an unrelated request while r1's eventual completion is still pending — and when r1
         // finally lands, it would call sink.Complete against whatever _frames/_mailbox that
         // unrelated request has by then, using r1's now-stale token.
+        // r1 is an attribute, not a relation, so the two legs are different op kinds and the
+        // union stays two independent ops with distinct completion timing — one instant leg
+        // and one genuinely outstanding leg, which is this test's premise.
         const string s = """
             entity user {}
             entity doc {
                 relation r0 @user;
-                relation r1 @user;
+                attribute r1 bool;
                 permission view := r0 or r1;
             }
             """;
@@ -503,5 +580,451 @@ public class CheckPlanExecutorSpecs
             (await executor.ExecuteSingleAsync(new CheckRootRequest("doc", "2", "editor", null, 10), ctxBob, default))[0]
                 .Should().BeTrue($"iteration {i}: bob edits doc/2");
         }
+    }
+
+    private const string HouseholdSchema = """
+        entity user {}
+        entity household {
+            relation owner @user;
+            relation admin @user;
+            relation member @user;
+            permission view := owner or admin or member;
+            permission manage := owner and admin;
+        }
+        """;
+
+    [Fact]
+    public async Task Sibling_relation_union_true_when_any_relation_matches()
+    {
+        (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "u1")], null,
+            "household", "1", "view")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Sibling_relation_union_false_when_no_relation_matches()
+    {
+        (await RunCheck(HouseholdSchema, [new RelationTuple("household", "1", "member", "user", "someone-else")], null,
+            "household", "1", "view")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Sibling_relation_intersect_requires_every_relation()
+    {
+        RelationTuple[] onlyOwner = [new RelationTuple("household", "1", "owner", "user", "u1")];
+        (await RunCheck(HouseholdSchema, onlyOwner, null, "household", "1", "manage")).Should().BeFalse();
+
+        RelationTuple[] both =
+        [
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+            new RelationTuple("household", "1", "admin", "user", "u1"),
+        ];
+        (await RunCheck(HouseholdSchema, both, null, "household", "1", "manage")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Sibling_relation_intersect_is_not_fooled_by_duplicate_tuples()
+    {
+        // Two identical owner tuples, no admin: duplicates must never make an intersect pass.
+        // (When the relational rewriter fuses these siblings into one HasAnyOfDirectRelationsOp,
+        // the same guarantee comes from that op's set semantics — see Valtuutus.Data.Db.)
+        RelationTuple[] dupOwner =
+        [
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+            new RelationTuple("household", "1", "owner", "user", "u1"),
+        ];
+        (await RunCheck(HouseholdSchema, dupOwner, null, "household", "1", "manage")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Sibling_relation_refs_submit_as_singles_in_one_wave()
+    {
+        // Sibling fusion is relational-only now (RelationalPlanRewriter in Valtuutus.Data.Db) —
+        // without a rewriter the plan keeps three PlanRef siblings, and the wave-shaped driver
+        // loop still submits all three resulting ops in ONE Physical.Submit call.
+        var (_, schema, reader) = await Arrange(HouseholdSchema,
+            [new RelationTuple("household", "1", "member", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("household", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.Submitted.Should().HaveCount(3);
+        recording.Submitted.Should().OnlyContain(op => op.Kind == OpKind.HasDirectRelation);
+        // Ready frames drain LIFO, so wave order is not sibling order — assert membership only.
+        recording.Submitted.Select(op => op.Relation).Should().BeEquivalentTo("owner", "admin", "member");
+    }
+
+    private const string WaveSchema = """
+        entity user {}
+        entity doc {
+            relation owner @user;
+            attribute published bool;
+            permission view := owner or published;
+        }
+        """;
+
+    [Fact]
+    public async Task Different_kind_siblings_ready_in_the_same_pass_submit_in_one_wave()
+    {
+        // M1: DrainReady accumulates every leaf op that becomes ready in one synchronous pass
+        // and flushes them via a single Physical.Submit call, instead of one Submit per op.
+        // owner (HasDirectRelation) and published (HasTrueBoolAttribute) are different OpKinds —
+        // this schema isolates wave batching (a runtime driver-loop behavior) from sibling
+        // fusion (a relational rewrite, absent here), proving the two are independent mechanisms.
+        var (_, schema, reader) = await Arrange(WaveSchema,
+            [new RelationTuple("doc", "1", "owner", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue("owner is granted");
+        recording.SubmitCalls.Should().ContainSingle(
+            "both leaf ops become ready in the same DrainReady pass and must flush as one wave");
+        // Set membership, not positional order: DrainReady drains its intrusive LIFO ready-stack
+        // (see _readyHead), so union children surface in reverse-of-spawn order — a pre-existing,
+        // deliberate characteristic of the scheduler (Union is commutative; order was never
+        // observable before wave batching existed). BeEquivalentTo would enforce byte-for-byte
+        // positional equality here regardless of source order since OpKind is byte-backed and
+        // FluentAssertions special-cases byte-sized collections like raw byte arrays — Contain +
+        // HaveCount checks the same two distinct kinds are present without asserting an order the
+        // wave never promised.
+        var kinds = recording.SubmitCalls[0].Select(o => o.Kind).ToArray();
+        kinds.Should().HaveCount(2);
+        kinds.Should().Contain([OpKind.HasDirectRelation, OpKind.HasTrueBoolAttribute]);
+    }
+
+    [Fact]
+    public async Task Wave_buffer_growth_does_not_corrupt_submitted_ops()
+    {
+        // Regression test mirroring Wide_union_forces_frame_array_growth_without_corruption,
+        // but for the wave buffer: ArrayPool<T>.Shared.Rent(8) actually rounds up to a 16-element
+        // array (bucket rounding), so branchCount must exceed 16 -- not just 8 -- to force a real
+        // grow. Each attribute sits behind its own one-line permission alias (p{i} := a{i}) instead
+        // of being a direct Union sibling of the others — view's Union children are
+        // PlanRefNode(p{i}), Permission type, which no sibling-fusion rule anywhere recognizes
+        // (and the InMemory path applies no rewriters anyway). Each p{i} resolves through its own
+        // separate one-node plan straight to a{i}'s AttributeTruthNode, so all 20 still submit as
+        // individual HasTrueBoolAttribute ops and must all land in one wave after at least one grow.
+        const int branchCount = 20;
+        var attrDecls = string.Join("\n", Enumerable.Range(0, branchCount).Select(i => $"    attribute a{i} bool;"));
+        var permDecls = string.Join("\n", Enumerable.Range(0, branchCount).Select(i => $"    permission p{i} := a{i};"));
+        var unionExpr = string.Join(" or ", Enumerable.Range(0, branchCount).Select(i => $"p{i}"));
+        var schemaText = $$"""
+            entity user {}
+            entity doc {
+            {{attrDecls}}
+            {{permDecls}}
+                permission view := {{unionExpr}};
+            }
+            """;
+        var (_, schema, reader) = await Arrange(schemaText, [],
+            [new AttributeTuple("doc", "1", $"a{branchCount - 1}", System.Text.Json.Nodes.JsonValue.Create(true))]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.SubmitCalls[0].Should().HaveCount(branchCount);
+        recording.SubmitCalls[0].Select(o => o.Kind).Should().AllBeEquivalentTo(OpKind.HasTrueBoolAttribute);
+    }
+
+    private const string StragglerSchema = """
+        entity user {}
+        entity doc {
+            relation r0 @user;
+            attribute r1 bool;
+            permission view := r0 or r1;
+        }
+        """;
+
+    private static CheckRequestContext Ctx() => new()
+        { SubjectType = "user", SubjectId = "u1", SnapToken = default, Context = new Dictionary<string, object>() };
+
+    [Fact]
+    public async Task Fail_faults_the_request_with_the_original_exception_and_drain_still_waits_for_the_held_sibling()
+    {
+        // Hazard: "failure = per-token, terminal, fail-fast" + post-fault completion. r0 fails
+        // synchronously inside Submit; r1 is genuinely outstanding. ExecuteAsync must throw
+        // r0's exception (not swallow it because r1 might still return true — authorization
+        // must not guess around missing data), and the instance must still not report idle
+        // until r1 lands. (CheckEngineV2 abandons a faulted executor rather than pooling it;
+        // this spec pins the executor-level contract that makes even pooling it safe.)
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var boom = new InvalidOperationException("r0 exploded");
+        var physical = new ControllablePhysicalExecutor { FailureException = boom };
+        physical.FailRelations.Add("r0");
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        var act = async () => await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
+
+        var drainTask = executor.DrainStragglersAsync();
+        await Task.Delay(50);
+        drainTask.IsCompleted.Should().BeFalse("r1 is still outstanding after the fault");
+        physical.Release("r1", true);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Straggler_that_fails_after_the_answer_is_discarded_by_the_drain()
+    {
+        // Hazard: provider completing (with an error) after the request already answered.
+        // The caller has their result; a losing sibling's failure has nothing to propagate to.
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor { ImmediateResult = true };
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits the union");
+
+        var drainTask = executor.DrainStragglersAsync();
+        physical.ReleaseWithFailure("r1", new TimeoutException("late failure"));
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        drainTask.IsCompletedSuccessfully.Should().BeTrue("a straggler's failure must be discarded, not thrown");
+
+        // The instance must still be fully usable afterwards (this is what pooling relies on).
+        physical.HeldRelations.Clear();
+        var again = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        again[0].Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Straggler_payload_after_short_circuit_is_processed_without_corrupting_the_next_call()
+    {
+        // Hazard: a TTU's GetRelations payload lands AFTER the union already short-circuited
+        // true. The drain must process (or discard) that late expansion without corrupting a
+        // subsequent request on the same pooled instance.
+        const string s = """
+            entity user {}
+            entity group { relation member @user; }
+            entity doc {
+                relation r0 @user;
+                relation shared @group;
+                permission view := r0 or shared.member;
+            }
+            """;
+        var (_, schema, _) = await Arrange(s, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor { ImmediateResult = true };
+        physical.HeldRelations.Add("shared"); // holds the TTU's GetRelations op
+        executor.Physical = physical;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits before the TTU expansion arrives");
+
+        var drainTask = executor.DrainStragglersAsync();
+        // PooledList is a readonly struct rented from the shared pool; boxing it into the
+        // object-typed payload channel is exactly what DefaultPhysicalExecutor does for real.
+        var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
+        physical.ReleaseWithPayload("shared", payload);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        physical.HeldRelations.Clear();
+        var again = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        again[0].Should().BeTrue("the drained straggler expansion must not leak into this call");
+    }
+
+    [Fact]
+    public async Task Drain_time_descendants_after_the_answer_are_dropped_not_submitted()
+    {
+        // Once every root already has its final answer (_rootsPending == 0 — true throughout
+        // DrainStragglersAsync), FlushWave drops the wave instead of submitting it: nobody will
+        // ever read an answer for work discovered after the caller already has _results back.
+        // r0 short-circuits the union immediately; shared's TTU op is held. Its late payload
+        // (delivered during drain) fans out to 2 member-relation checks against g1/g2 — those
+        // must never reach Physical.Submit.
+        const string s = """
+            entity user {}
+            entity group { relation member @user; }
+            entity doc {
+                relation r0 @user;
+                relation shared @group;
+                permission view := r0 or shared.member;
+            }
+            """;
+        var (_, schema, _) = await Arrange(s, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var controllable = new ControllablePhysicalExecutor { ImmediateResult = true };
+        controllable.HeldRelations.Add("shared");
+        var recording = new RecordingPhysicalExecutor(controllable);
+        executor.Physical = recording;
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+        results[0].Should().BeTrue("r0 short-circuits the union");
+        var submittedBeforeDrain = recording.Submitted.Count;
+
+        var drainTask = executor.DrainStragglersAsync();
+        var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
+        payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
+        controllable.ReleaseWithPayload("shared", payload);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        recording.Submitted.Count.Should().Be(submittedBeforeDrain,
+            "member-relation fan-out ops discovered after the answer must be dropped, not submitted");
+    }
+
+    [Fact]
+    public async Task Cancellation_with_an_outstanding_op_throws_and_the_drain_still_completes()
+    {
+        // Hazard: request-level cancellation. The provider must still complete every token
+        // (contract semantic 3); the executor surfaces OperationCanceledException to the
+        // caller and the instance drains to idle once the op lands.
+        var (_, schema, _) = await Arrange(StragglerSchema, []);
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema));
+        var physical = new ControllablePhysicalExecutor();
+        physical.HeldRelations.Add("r0");
+        physical.HeldRelations.Add("r1");
+        executor.Physical = physical;
+
+        using var cts = new CancellationTokenSource(50);
+        var act = async () => await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), cts.Token, memoizeRoots: false);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        var drainTask = executor.DrainStragglersAsync();
+        physical.Release("r0", false);
+        physical.Release("r1", false);
+        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        drainTask.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
+    private sealed class FixedResultOp(bool value) : ICheckOp
+    {
+        public ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx,
+            string entityType, string entityId, CancellationToken ct) => new(value);
+        public string Describe() => $"Fixed({value})";
+    }
+
+    private sealed class RootReplacingRewriter(ICheckOp op) : IPlanRewriter
+    {
+        public PlanNode Rewrite(PlanNode root, Schema schema, string entityType, string? subjectType) => new PhysicalCheckNode(op);
+    }
+
+    private const string SiblingAttributeSchema = """
+        entity user {}
+        entity doc {
+            attribute a0 bool;
+            attribute a1 bool;
+            attribute a2 bool;
+            permission view := a0 or a1 or a2;
+        }
+        """;
+
+    [Fact]
+    public async Task Sibling_attribute_refs_submit_as_singles_in_one_wave()
+    {
+        // Same as Sibling_relation_refs_submit_as_singles_in_one_wave, for the attribute case:
+        // fusion into one HasAnyOfAttributes round trip is the relational rewriter's job now;
+        // the InMemory path answers the three attribute refs as three ops in one wave.
+        var (_, schema, reader) = await Arrange(SiblingAttributeSchema, [],
+            [new AttributeTuple("doc", "1", "a2", System.Text.Json.Nodes.JsonValue.Create(true))]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var recording = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+        recording.SubmitCalls.Should().ContainSingle();
+        recording.Submitted.Should().HaveCount(3);
+        recording.Submitted.Should().OnlyContain(op => op.Kind == OpKind.HasTrueBoolAttribute);
+        recording.Submitted.Select(op => op.Relation).Should().BeEquivalentTo("a0", "a1", "a2");
+    }
+
+    [Fact]
+    public async Task Sibling_attribute_intersect_requires_all_attributes()
+    {
+        const string s = """
+            entity user {}
+            entity doc {
+                attribute a0 bool;
+                attribute a1 bool;
+                permission edit := a0 and a1;
+            }
+            """;
+        (await RunCheck(s, [], [new AttributeTuple("doc", "1", "a0", System.Text.Json.Nodes.JsonValue.Create(true))],
+            "doc", "1", "edit")).Should().BeFalse();
+        (await RunCheck(s, [],
+            [new AttributeTuple("doc", "1", "a0", System.Text.Json.Nodes.JsonValue.Create(true)),
+             new AttributeTuple("doc", "1", "a1", System.Text.Json.Nodes.JsonValue.Create(true))],
+            "doc", "1", "edit")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Executor_runs_a_PhysicalCheckNode_op_through_the_default_physical_executor()
+    {
+        // No tuples at all — a true result can only come from the injected op.
+        var (_, schema, reader) = await Arrange(DocSchema, []);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var cache = new CheckPlanCache(schema, [new RootReplacingRewriter(new FixedResultOp(true))]);
+        var executor = new CheckPlanExecutor(schema, cache)
+            { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+
+        results[0].Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteExplainAsync_returns_a_non_null_root_matching_a_plain_check()
+    {
+        // Minimal plumbing proof that `explain` is now reachable through a real public entry
+        // point, not just via reflection: the boolean answer must agree with a plain Check()
+        // call for the identical request, and the explain tree must come back populated. Fuller
+        // behavioral coverage of Detail text / tree shape belongs to the shared explain spec
+        // suite (Tasks 6-10), not here.
+        var (_, schema, reader) = await Arrange(DocSchema, [new RelationTuple("doc", "1", "owner", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema))
+            { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
+
+        var (result, root) = await executor.ExecuteExplainAsync(
+            new CheckRootRequest("doc", "1", "view", null, 10), ctx, default);
+
+        result.Should().BeTrue();
+        root.Should().NotBeNull();
+        root.Result.Should().Be(result);
+
+        var plainResult = (await executor.ExecuteSingleAsync(
+            new CheckRootRequest("doc", "1", "view", null, 10), ctx, default))[0];
+        plainResult.Should().Be(result);
     }
 }

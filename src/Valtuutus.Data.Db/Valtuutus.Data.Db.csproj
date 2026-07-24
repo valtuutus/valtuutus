@@ -12,4 +12,20 @@
       <ProjectReference Include="..\Valtuutus.Data\Valtuutus.Data.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.Db.Tests</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- Lets a relational provider's DI extension (e.g. AddPostgres) new up the internal
+                 BatchedPhysicalExecutor directly, the same way Valtuutus.Core exposes its V2
+                 internals to Valtuutus.Data.Db itself. -->
+            <_Parameter1>Valtuutus.Data.Postgres</_Parameter1>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <!-- Same as Valtuutus.Data.Postgres above, for AddSqlServer. -->
+            <_Parameter1>Valtuutus.Data.SqlServer</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
 </Project>

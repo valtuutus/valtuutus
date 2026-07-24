@@ -47,14 +47,14 @@ internal sealed class PermissionNodeLeafPermission
     }
 }
 
-internal enum PermissionNodeExpArgumentType
+public enum PermissionNodeExpArgumentType
 {
     Attribute,
     ContextAccess,
     Literal
 }
 
-internal abstract record PermissionNodeExpArgument
+public abstract record PermissionNodeExpArgument
 {
     public abstract PermissionNodeExpArgumentType Type { get; }
     public required int ArgOrder { get; init; }
@@ -74,7 +74,7 @@ internal record PermissionNodeExpArgumentContextAccess : PermissionNodeExpArgume
 
 internal abstract record PermissionNodeExpArgumentLiteral : PermissionNodeExpArgument
 {
-    public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.ContextAccess;
+    public override PermissionNodeExpArgumentType Type => PermissionNodeExpArgumentType.Literal;
     public abstract LangType LiteralType { get; }
 }
 
@@ -102,7 +102,7 @@ internal record PermissionNodeExpArgumentBooleanLiteral : PermissionNodeExpArgum
     public required bool Value { get; init; }
 }
 
-internal record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
+public record PermissionNodeLeafExp(string FunctionName, PermissionNodeExpArgument[] Args)
 {
     internal string[] AttributeArgNames { get; } = Args
         .Where(a => a.Type == PermissionNodeExpArgumentType.Attribute)

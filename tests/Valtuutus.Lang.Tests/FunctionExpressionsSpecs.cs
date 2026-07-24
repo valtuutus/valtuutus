@@ -1,5 +1,7 @@
 ﻿using FluentAssertions;
+using Valtuutus.Core.Engines;
 using Valtuutus.Core.Lang.SchemaReaders;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Lang.Tests;
 
@@ -431,5 +433,30 @@ public class FunctionExpressionsSpecs
                 ["value"] = 100, ["threshold"] = 1000,
             }).Should()
             .BeTrue();
+    }
+
+    // Regression: PermissionNodeExpArgumentLiteral.Type used to report ContextAccess, which
+    // made ContextUtils.IsContextValid crash-cast literal arguments to
+    // PermissionNodeExpArgumentContextAccess (e.g. `check_age(18, context.age)`).
+    private static PermissionNodeLeafExp LiteralAndContextAccessExp() => new("check_age",
+    [
+        new PermissionNodeExpArgumentIntLiteral { ArgOrder = 0, Value = 18 },
+        new PermissionNodeExpArgumentContextAccess { ArgOrder = 1, ContextPropertyName = "age" },
+    ]);
+
+    [Fact]
+    public void IsContextValid_skips_literal_args_and_accepts_present_context_prop()
+    {
+        LiteralAndContextAccessExp()
+            .IsContextValid(new Dictionary<string, object> { ["age"] = 21 })
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsContextValid_skips_literal_args_and_rejects_missing_context_prop()
+    {
+        LiteralAndContextAccessExp()
+            .IsContextValid(new Dictionary<string, object>())
+            .Should().BeFalse();
     }
 }

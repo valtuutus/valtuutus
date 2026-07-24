@@ -12,7 +12,7 @@ using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
 
-public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider
+public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
     private const string UnformattedSelectAttributes = @"SELECT
                     entity_type,
@@ -31,10 +31,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 FROM {0}.{1} /**where**/";
 
     private const string UnformattedExistsRelation = "SELECT EXISTS(SELECT 1 FROM {0}.{1} /**where**/)";
-    private const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
+    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
+    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
+    // exact same snap-token predicate text those queries use.
+    internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
 
-    private sealed record ReaderQueries
+    // Internal (not private): PostgresBatchOps' dialect catalog serves the exact same SQL text as
+    // these single-op queries — one definition, shared through GetQueries, so the two paths can
+    // never drift apart (and the server's prepared-statement cache sees one statement, not two).
+    internal sealed record ReaderQueries
     {
+        public required string RelationsTable { get; init; }
+        public required string AttributesTable { get; init; }
         public required string SelectAttributes { get; init; }
         public required string SelectRelations { get; init; }
         public required string GetLatestSnapToken { get; init; }
@@ -43,6 +51,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string HasDirectRelation { get; init; }
         public required string HasAnyDirectRelation { get; init; }
         public required string HasAnyOfDirectRelations { get; init; }
+        public required string HasAnyOfAttributes { get; init; }
+        // {0}-placeholder templates of the three array-taking queries above, for PostgresBatchOps'
+        // dialect catalog (RelationalBatchProviderBase substitutes WriteNameArrayParam's fragment).
+        // The non-template properties are string.Format-derived from these in BuildQueries, so the
+        // batched and single-op SQL text stay byte-identical by construction.
+        public required string HasAnyDirectRelationBatchTemplate { get; init; }
+        public required string HasAnyOfDirectRelationsBatchTemplate { get; init; }
+        public required string HasAnyOfAttributesBatchTemplate { get; init; }
         public required string GetIndirectRelations { get; init; }
         public required string GetRelationsWithSingleSubjectSnap { get; init; }
         public required string GetRelationsWithMultiSubjectSnap { get; init; }
@@ -52,6 +68,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetRelationsJoined { get; init; }
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
+        public required string HasUsersetJoinRelation { get; init; }
         public required string GetAttribute { get; init; }
         public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
@@ -80,27 +97,30 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     private static readonly ConcurrentDictionary<DataSourceCacheKey, NpgsqlDataSource> DataSourceCache = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
-    private static void AddStringParameter(NpgsqlCommand command, string name, string value, int size)
+    // The three parameter helpers below are internal (not private) for the same reason as
+    // ReaderQueries: PostgresBatchOps' parameter hooks construct byte-identical NpgsqlParameters
+    // (same NpgsqlDbType, same Size) through these exact helpers instead of re-deriving them.
+    internal static void AddStringParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
     {
-        command.Parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Varchar)
+        parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Varchar)
         {
             Size = size,
             TypedValue = value
         });
     }
 
-    private static void AddFixedCharParameter(NpgsqlCommand command, string name, string value, int size)
+    internal static void AddFixedCharParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
     {
-        command.Parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Char)
+        parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Char)
         {
             Size = size,
             TypedValue = value
         });
     }
 
-    private static void AddNullableStringParameter(NpgsqlCommand command, string name, string? value, int size)
+    internal static void AddNullableStringParameter(NpgsqlParameterCollection parameters, string name, string? value, int size)
     {
-        command.Parameters.Add(new NpgsqlParameter<string?>(name, NpgsqlDbType.Varchar)
+        parameters.Add(new NpgsqlParameter<string?>(name, NpgsqlDbType.Varchar)
         {
             Size = size,
             TypedValue = string.IsNullOrWhiteSpace(value) ? null : value
@@ -126,7 +146,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             ParseJsonValue(reader.GetString(3)));
     }
 
-    private static NpgsqlDataSource GetOrCreateDataSource(string connectionString, ValtuutusPostgresOptions options)
+    // Internal so PostgresBatchOps binds its batches to the SAME cached NpgsqlDataSource (same
+    // cache key, same instance) the reader uses — one connection pool and one auto-prepare cache
+    // for both the single-op and the batched path.
+    internal static NpgsqlDataSource GetOrCreateDataSource(string connectionString, ValtuutusPostgresOptions options)
     {
         var key = new DataSourceCacheKey(connectionString, options.MaxAutoPrepare, options.AutoPrepareMinUsages);
         return DataSourceCache.GetOrAdd(key, static cacheKey =>
@@ -147,10 +170,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         ValtuutusPostgresOptions dbOptions) : base(options)
     {
         _connectionFactory = connectionFactory;
-        _q = QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+        _q = GetQueries(dbOptions);
         using var probeConnection = (NpgsqlConnection)_connectionFactory();
         _hotPathDataSource = GetOrCreateDataSource(probeConnection.ConnectionString, dbOptions);
     }
+
+    // Internal so PostgresBatchOps resolves the same cached ReaderQueries instance this provider
+    // uses — the dialect catalog and the single-op path reference one set of SQL strings.
+    internal static ReaderQueries GetQueries(ValtuutusPostgresOptions dbOptions) =>
+        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
 
     private static ReaderQueries BuildQueries(DbQueryCacheKey key)
     {
@@ -160,8 +188,20 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         var selectAttributes = string.Format(UnformattedSelectAttributes, key.Schema, key.AttributesTable);
         var selectRelations = string.Format(UnformattedSelectRelations, key.Schema, key.RelationsTable);
 
+        // {0}-placeholder templates the batched path's dialect catalog serves as-is; the single-op
+        // strings below are derived from them with the fixed array parameter names, so both paths
+        // execute byte-identical SQL text.
+        var hasAnyDirectRelationBatchTemplate =
+            $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY({{0}}) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
+        var hasAnyOfDirectRelationsBatchTemplate =
+            $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY({{0}}) AND subject_id = @subject_id AND subject_relation = ''";
+        var hasAnyOfAttributesBatchTemplate =
+            $"SELECT DISTINCT attribute FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY({{0}}) AND value = 'true'::jsonb";
+
         return new ReaderQueries
         {
+            RelationsTable = relationsTable,
+            AttributesTable = attributesTable,
             SelectAttributes = selectAttributes,
             SelectRelations = selectRelations,
             GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
@@ -169,10 +209,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             HasDirectRelation =
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
-            HasAnyDirectRelation =
-                $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
-            HasAnyOfDirectRelations =
-                $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY(@relations) AND subject_id = @subject_id AND subject_relation = ''",
+            HasAnyDirectRelation = string.Format(hasAnyDirectRelationBatchTemplate, "@entity_ids"),
+            HasAnyOfDirectRelations = string.Format(hasAnyOfDirectRelationsBatchTemplate, "@relations"),
+            HasAnyOfAttributes = string.Format(hasAnyOfAttributesBatchTemplate, "@attributes"),
+            HasAnyDirectRelationBatchTemplate = hasAnyDirectRelationBatchTemplate,
+            HasAnyOfDirectRelationsBatchTemplate = hasAnyOfDirectRelationsBatchTemplate,
+            HasAnyOfAttributesBatchTemplate = hasAnyOfAttributesBatchTemplate,
             GetIndirectRelations =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
             GetRelationsWithSingleSubjectSnap =
@@ -239,6 +281,34 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                       AND r_dep.subject_type = @subject_type
                       AND r_dep.subject_id = @subject_id
                       AND r_dep.subject_relation = ''
+                )
+                """,
+            HasUsersetJoinRelation = $"""
+                SELECT (
+                    EXISTS(
+                        SELECT 1 FROM {relationsTable}
+                        WHERE {SnapTokenPredicate}
+                          AND entity_type = @entity_type
+                          AND entity_id = @entity_id
+                          AND relation = @relation
+                          AND subject_id = @subject_id
+                          AND subject_relation = ''
+                    )
+                    OR EXISTS(
+                        SELECT 1 FROM {relationsTable} r_main
+                        INNER JOIN {relationsTable} r_dep
+                            ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
+                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                          AND r_main.entity_type = @entity_type
+                          AND r_main.entity_id = @entity_id
+                          AND r_main.relation = @relation
+                          AND r_main.subject_relation = @computed_relation
+                          AND r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                          AND r_dep.relation = @computed_relation
+                          AND r_dep.subject_type = @subject_type
+                          AND r_dep.subject_id = @subject_id
+                          AND r_dep.subject_relation = ''
+                    )
                 )
                 """,
             GetAttribute =
@@ -447,28 +517,34 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private string PopulateGetRelationsCommand(NpgsqlParameterCollection parameters, RelationTupleFilter tupleFilter)
+    {
+        var noSubjectFilters = string.IsNullOrWhiteSpace(tupleFilter.SubjectId)
+            && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
+            && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
+
+        AddStringParameter(parameters, "entity_type", tupleFilter.EntityType, 256);
+        AddStringParameter(parameters, "entity_id", tupleFilter.EntityId, 64);
+        AddStringParameter(parameters, "relation", tupleFilter.Relation, 64);
+        if (!noSubjectFilters)
+        {
+            AddNullableStringParameter(parameters, "subject_id", tupleFilter.SubjectId, 64);
+            AddNullableStringParameter(parameters, "subject_relation", tupleFilter.SubjectRelation, 64);
+            AddNullableStringParameter(parameters, "subject_type", tupleFilter.SubjectType, 256);
+        }
+        AddFixedCharParameter(parameters, "snap_token", tupleFilter.SnapToken.Value, 26);
+
+        return noSubjectFilters ? _q.SelectRelationsByTupleFilterNoSubject : _q.SelectRelationsByTupleFilter;
+    }
+
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            var noSubjectFilters = string.IsNullOrWhiteSpace(tupleFilter.SubjectId)
-                && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
-                && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
-
-            await using var command = _hotPathDataSource.CreateCommand(
-                noSubjectFilters ? _q.SelectRelationsByTupleFilterNoSubject : _q.SelectRelationsByTupleFilter);
-            AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
-            AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
-            AddStringParameter(command, "relation", tupleFilter.Relation, 64);
-            if (!noSubjectFilters)
-            {
-                AddNullableStringParameter(command, "subject_id", tupleFilter.SubjectId, 64);
-                AddNullableStringParameter(command, "subject_relation", tupleFilter.SubjectRelation, 64);
-                AddNullableStringParameter(command, "subject_type", tupleFilter.SubjectType, 256);
-            }
-            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = PopulateGetRelationsCommand(command.Parameters, tupleFilter);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -490,19 +566,24 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private void PopulateHasDirectRelationCommand(NpgsqlParameterCollection parameters, RelationTupleFilter tupleFilter, string subjectId)
+    {
+        AddStringParameter(parameters, "entity_type", tupleFilter.EntityType, 256);
+        AddStringParameter(parameters, "entity_id", tupleFilter.EntityId, 64);
+        AddStringParameter(parameters, "relation", tupleFilter.Relation, 64);
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+        AddFixedCharParameter(parameters, "snap_token", tupleFilter.SnapToken.Value, 26);
+    }
+
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.HasDirectRelation);
-            AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
-            AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
-            AddStringParameter(command, "relation", tupleFilter.Relation, 64);
-            AddStringParameter(command, "subject_id", subjectId, 64);
-            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
-
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasDirectRelation;
+            PopulateHasDirectRelationCommand(command.Parameters, tupleFilter, subjectId);
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
         finally
@@ -511,17 +592,23 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private void PopulateGetIndirectRelationsCommand(NpgsqlParameterCollection parameters, RelationTupleFilter tupleFilter)
+    {
+        AddStringParameter(parameters, "entity_type", tupleFilter.EntityType, 256);
+        AddStringParameter(parameters, "entity_id", tupleFilter.EntityId, 64);
+        AddStringParameter(parameters, "relation", tupleFilter.Relation, 64);
+        AddFixedCharParameter(parameters, "snap_token", tupleFilter.SnapToken.Value, 26);
+    }
+
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.GetIndirectRelations);
-            AddStringParameter(command, "entity_type", tupleFilter.EntityType, 256);
-            AddStringParameter(command, "entity_id", tupleFilter.EntityId, 64);
-            AddStringParameter(command, "relation", tupleFilter.Relation, 64);
-            AddFixedCharParameter(command, "snap_token", tupleFilter.SnapToken.Value, 26);
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.GetIndirectRelations;
+            PopulateGetIndirectRelationsCommand(command.Parameters, tupleFilter);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -551,6 +638,19 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private void PopulateHasAnyDirectRelationCommand(NpgsqlParameterCollection parameters, string entityType, string[] entityIds,
+        string relation, string subjectId, SnapToken snapToken)
+    {
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
+        {
+            TypedValue = entityIds
+        });
+        AddStringParameter(parameters, "relation", relation, 64);
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+    }
+
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
@@ -558,15 +658,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyDirectRelation);
-            AddStringParameter(command, "entity_type", entityType, 256);
-            command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
-            {
-                TypedValue = entityIds
-            });
-            AddStringParameter(command, "relation", relation, 64);
-            AddStringParameter(command, "subject_id", subjectId, 64);
-            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasAnyDirectRelation;
+            PopulateHasAnyDirectRelationCommand(command.Parameters, entityType, entityIds, relation, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
@@ -574,6 +668,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         {
             Semaphore.Release();
         }
+    }
+
+    private static void PopulateHasAnyOfDirectRelationsCommand(NpgsqlParameterCollection parameters,
+        string entityType, string entityId, string[] relationNames, string subjectId, SnapToken snapToken)
+    {
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
     }
 
     public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
@@ -584,13 +688,40 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyOfDirectRelations);
-            AddStringParameter(command, "entity_type", entityType, 256);
-            AddStringParameter(command, "entity_id", entityId, 64);
-            command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
-            AddStringParameter(command, "subject_id", subjectId, 64);
-            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            PopulateHasAnyOfDirectRelationsCommand(command.Parameters, entityType, entityId, relationNames, subjectId, snapToken);
 
             var result = new HashSet<string>(relationNames.Length, StringComparer.Ordinal);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                result.Add(reader.GetString(0));
+            return result;
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    private static void PopulateHasAnyOfAttributesCommand(NpgsqlParameterCollection parameters,
+        string entityType, string entityId, string[] attributeNames, SnapToken snapToken)
+    {
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = attributeNames });
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+    }
+
+    public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
+        SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.Instance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand(_q.HasAnyOfAttributes);
+            PopulateHasAnyOfAttributesCommand(command.Parameters, entityType, entityId, attributeNames, snapToken);
+
+            var result = new HashSet<string>(attributeNames.Length, StringComparer.Ordinal);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
                 result.Add(reader.GetString(0));
@@ -609,15 +740,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectRelationsWithEntityIds);
-            AddNullableStringParameter(command, "subject_type", subjectType, 256);
-            AddNullableStringParameter(command, "entity_type", entityRelationFilter.EntityType, 256);
-            AddNullableStringParameter(command, "relation", entityRelationFilter.Relation, 64);
+            AddNullableStringParameter(command.Parameters, "subject_type", subjectType, 256);
+            AddNullableStringParameter(command.Parameters, "entity_type", entityRelationFilter.EntityType, 256);
+            AddNullableStringParameter(command.Parameters, "relation", entityRelationFilter.Relation, 64);
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
                 TypedValue = entityIds as string[] ?? entityIds.ToArray()
             });
-            AddNullableStringParameter(command, "subject_relation", subjectRelation, 64);
-            AddFixedCharParameter(command, "snap_token", entityRelationFilter.SnapToken.Value, 26);
+            AddNullableStringParameter(command.Parameters, "subject_relation", subjectRelation, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", entityRelationFilter.SnapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -651,15 +782,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     ? _q.GetRelationsWithSingleSubjectScoped
                     : _q.GetRelationsWithMultiSubjectScoped;
                 await using var command = _hotPathDataSource.CreateCommand(sql);
-                AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
-                AddStringParameter(command, "relation", entityFilter.Relation, 64);
-                AddStringParameter(command, "subject_type", subjectType, 256);
-                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
-                AddStringParameter(command, "scope_relation", s.Relation, 64);
-                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
-                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                AddStringParameter(command.Parameters, "entity_type", entityFilter.EntityType, 256);
+                AddStringParameter(command.Parameters, "relation", entityFilter.Relation, 64);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+                AddFixedCharParameter(command.Parameters, "snap_token", entityFilter.SnapToken.Value, 26);
+                AddStringParameter(command.Parameters, "scope_relation", s.Relation, 64);
+                AddStringParameter(command.Parameters, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command.Parameters, "scope_subject_id", s.SubjectId, 64);
                 if (subjectsIds.Length == 1)
-                    AddStringParameter(command, "subject_id", subjectsIds[0], 64);
+                    AddStringParameter(command.Parameters, "subject_id", subjectsIds[0], 64);
                 else
                     command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
 
@@ -677,11 +808,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             if (subjectsIds.Length == 1)
             {
                 await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithSingleSubjectSnap);
-                AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
-                AddStringParameter(command, "relation", entityFilter.Relation, 64);
-                AddStringParameter(command, "subject_type", subjectType, 256);
-                AddStringParameter(command, "subject_id", subjectsIds[0], 64);
-                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
+                AddStringParameter(command.Parameters, "entity_type", entityFilter.EntityType, 256);
+                AddStringParameter(command.Parameters, "relation", entityFilter.Relation, 64);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+                AddStringParameter(command.Parameters, "subject_id", subjectsIds[0], 64);
+                AddFixedCharParameter(command.Parameters, "snap_token", entityFilter.SnapToken.Value, 26);
 
                 var pooled = PooledList<RelationTuple>.Rent();
                 try
@@ -708,14 +839,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
             {
                 await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithMultiSubjectSnap);
-                AddStringParameter(command, "entity_type", entityFilter.EntityType, 256);
-                AddStringParameter(command, "relation", entityFilter.Relation, 64);
-                AddStringParameter(command, "subject_type", subjectType, 256);
+                AddStringParameter(command.Parameters, "entity_type", entityFilter.EntityType, 256);
+                AddStringParameter(command.Parameters, "relation", entityFilter.Relation, 64);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
                 {
                     TypedValue = subjectsIds
                 });
-                AddFixedCharParameter(command, "snap_token", entityFilter.SnapToken.Value, 26);
+                AddFixedCharParameter(command.Parameters, "snap_token", entityFilter.SnapToken.Value, 26);
 
                 var multi = PooledList<RelationTuple>.Rent();
                 try
@@ -760,15 +891,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     ? _q.GetRelationsWithSingleSubjectMultiRelationScoped
                     : _q.GetRelationsWithMultiSubjectMultiRelationScoped;
                 await using var command = _hotPathDataSource.CreateCommand(sql);
-                AddStringParameter(command, "entity_type", entityType, 256);
+                AddStringParameter(command.Parameters, "entity_type", entityType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
-                AddStringParameter(command, "subject_type", subjectType, 256);
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
-                AddStringParameter(command, "scope_relation", s.Relation, 64);
-                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
-                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+                AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
+                AddStringParameter(command.Parameters, "scope_relation", s.Relation, 64);
+                AddStringParameter(command.Parameters, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command.Parameters, "scope_subject_id", s.SubjectId, 64);
                 if (subjectsIds.Length == 1)
-                    AddStringParameter(command, "subject_id", subjectsIds[0], 64);
+                    AddStringParameter(command.Parameters, "subject_id", subjectsIds[0], 64);
                 else
                     command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
 
@@ -786,11 +917,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             if (subjectsIds.Length == 1)
             {
                 await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithSingleSubjectMultiRelationSnap);
-                AddStringParameter(command, "entity_type", entityType, 256);
+                AddStringParameter(command.Parameters, "entity_type", entityType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
-                AddStringParameter(command, "subject_type", subjectType, 256);
-                AddStringParameter(command, "subject_id", subjectsIds[0], 64);
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+                AddStringParameter(command.Parameters, "subject_id", subjectsIds[0], 64);
+                AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
 
                 var pooled = PooledList<RelationTuple>.Rent();
                 try
@@ -809,11 +940,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
             {
                 await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithMultiSubjectMultiRelationSnap);
-                AddStringParameter(command, "entity_type", entityType, 256);
+                AddStringParameter(command.Parameters, "entity_type", entityType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
-                AddStringParameter(command, "subject_type", subjectType, 256);
+                AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("subject_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = subjectsIds });
-                AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+                AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
 
                 var multi = PooledList<RelationTuple>.Rent();
                 try
@@ -845,15 +976,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsWithEntityIdsMultiRelationSnap);
-            AddStringParameter(command, "entity_type", entityType, 256);
+            AddStringParameter(command.Parameters, "entity_type", entityType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("relations", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = relationNames });
-            AddStringParameter(command, "subject_type", subjectType, 256);
+            AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
                 TypedValue = entityIds as string[] ?? entityIds.ToArray()
             });
-            AddNullableStringParameter(command, "subject_relation", subjectRelation, 64);
-            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            AddNullableStringParameter(command.Parameters, "subject_relation", subjectRelation, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -885,18 +1016,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         {
             var sql = scope.HasValue ? _q.GetRelationsJoinedScoped : _q.GetRelationsJoined;
             await using var command = _hotPathDataSource.CreateCommand(sql);
-            AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
-            AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
-            AddStringParameter(command, "relation", mainFilter.Relation, 64);
-            AddStringParameter(command, "sub_entity_type", subEntityType, 256);
-            AddStringParameter(command, "sub_relation", subRelation, 64);
-            AddStringParameter(command, "subject_type", subjectType, 256);
-            AddStringParameter(command, "subject_id", subjectId, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", mainFilter.SnapToken.Value, 26);
+            AddStringParameter(command.Parameters, "entity_type", mainFilter.EntityType, 256);
+            AddStringParameter(command.Parameters, "relation", mainFilter.Relation, 64);
+            AddStringParameter(command.Parameters, "sub_entity_type", subEntityType, 256);
+            AddStringParameter(command.Parameters, "sub_relation", subRelation, 64);
+            AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+            AddStringParameter(command.Parameters, "subject_id", subjectId, 64);
             if (scope is { } s)
             {
-                AddStringParameter(command, "scope_relation", s.Relation, 64);
-                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
-                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                AddStringParameter(command.Parameters, "scope_relation", s.Relation, 64);
+                AddStringParameter(command.Parameters, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command.Parameters, "scope_subject_id", s.SubjectId, 64);
             }
 
             var pooled = PooledList<RelationTuple>.Rent();
@@ -932,15 +1063,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.GetRelationsJoinedByEntityIds);
-            AddFixedCharParameter(command, "snap_token", mainFilter.SnapToken.Value, 26);
-            AddStringParameter(command, "entity_type", mainFilter.EntityType, 256);
-            AddStringParameter(command, "relation", mainFilter.Relation, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", mainFilter.SnapToken.Value, 26);
+            AddStringParameter(command.Parameters, "entity_type", mainFilter.EntityType, 256);
+            AddStringParameter(command.Parameters, "relation", mainFilter.Relation, 64);
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
                 TypedValue = entityIds as string[] ?? entityIds.ToArray()
             });
-            AddStringParameter(command, "sub_entity_type", subEntityType, 256);
-            AddStringParameter(command, "sub_relation", subRelation, 64);
+            AddStringParameter(command.Parameters, "sub_entity_type", subEntityType, 256);
+            AddStringParameter(command.Parameters, "sub_relation", subRelation, 64);
 
             var pooled = PooledList<RelationTuple>.Rent();
             try
@@ -966,6 +1097,20 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private void PopulateHasTupleToUserSetRelationCommand(NpgsqlParameterCollection parameters,
+        string entityType, string entityId, string tupleSetRelation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken)
+    {
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        AddStringParameter(parameters, "tuple_set_relation", tupleSetRelation, 64);
+        AddStringParameter(parameters, "computed_relation", computedRelation, 64);
+        AddStringParameter(parameters, "subject_type", subjectType, 256);
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+    }
+
     public async Task<bool> HasTupleToUserSetRelation(
         string entityType, string entityId, string tupleSetRelation,
         string subEntityType, string computedRelation,
@@ -975,16 +1120,76 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.HasTupleToUserSetRelation);
-            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
-            AddStringParameter(command, "entity_type", entityType, 256);
-            AddStringParameter(command, "entity_id", entityId, 64);
-            AddStringParameter(command, "tuple_set_relation", tupleSetRelation, 64);
-            AddStringParameter(command, "computed_relation", computedRelation, 64);
-            AddStringParameter(command, "subject_type", subjectType, 256);
-            AddStringParameter(command, "subject_id", subjectId, 64);
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasTupleToUserSetRelation;
+            PopulateHasTupleToUserSetRelationCommand(command.Parameters, entityType, entityId, tupleSetRelation,
+                subEntityType, computedRelation, subjectType, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    private void PopulateHasUsersetJoinRelationCommand(NpgsqlParameterCollection parameters,
+        string entityType, string entityId, string relation, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken)
+    {
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        AddStringParameter(parameters, "relation", relation, 64);
+        AddStringParameter(parameters, "computed_relation", computedRelation, 64);
+        AddStringParameter(parameters, "subject_type", subjectType, 256);
+        AddStringParameter(parameters, "subject_id", subjectId, 64);
+    }
+
+    // subEntityType is accepted for interface-signature symmetry with HasTupleToUserSetRelation
+    // but isn't a runtime filter here — it's what proved the join eligible at compile time; the
+    // query only needs relation/computedRelation/subjectType/subjectId.
+    public async Task<bool> HasUsersetJoinRelation(
+        string entityType, string entityId, string relation,
+        string subEntityType, string computedRelation,
+        string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasUsersetJoinRelation;
+            PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
+                computedRelation, subjectType, subjectId, snapToken);
+
+            return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+        }
+        finally
+        {
+            Semaphore.Release();
+        }
+    }
+
+    public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
+        bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
+    {
+        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        await EnterQuery(cancellationToken);
+        try
+        {
+            var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+            await using var command = _hotPathDataSource.CreateCommand(sql);
+            AddStringParameter(command.Parameters, "entity_type", entityType, 256);
+            AddStringParameter(command.Parameters, "entity_id", entityId, 64);
+            if (subjectType is not null) AddStringParameter(command.Parameters, "subject_type", subjectType, 256);
+            if (subjectId is not null) AddStringParameter(command.Parameters, "subject_id", subjectId, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", snapToken.Value, 26);
+            for (var i = 0; i < leaves.Count; i++)
+                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            return await reader.ReadAsync(cancellationToken) && reader.GetBoolean(0);
         }
         finally
         {
@@ -1001,11 +1206,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
             await using var command = _hotPathDataSource.CreateCommand(hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute);
 
-            AddStringParameter(command, "entity_type", filter.EntityType, 256);
-            AddStringParameter(command, "attribute", filter.Attribute, 64);
+            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command.Parameters, "attribute", filter.Attribute, 64);
             if (hasEntityId)
-                AddStringParameter(command, "entity_id", filter.EntityId!, 64);
-            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+                AddStringParameter(command.Parameters, "entity_id", filter.EntityId!, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
@@ -1019,6 +1224,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         }
     }
 
+    private void PopulateHasTrueBoolAttributeCommand(NpgsqlParameterCollection parameters, string entityType, string entityId,
+        string attribute, SnapToken snapToken)
+    {
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "entity_id", entityId, 64);
+        AddStringParameter(parameters, "attribute", attribute, 64);
+        AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+    }
+
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
@@ -1026,11 +1240,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.HasTrueBoolAttribute);
-            AddStringParameter(command, "entity_type", entityType, 256);
-            AddStringParameter(command, "entity_id", entityId, 64);
-            AddStringParameter(command, "attribute", attribute, 64);
-            AddFixedCharParameter(command, "snap_token", snapToken.Value, 26);
+            await using var command = _hotPathDataSource.CreateCommand();
+            command.CommandText = _q.HasTrueBoolAttribute;
+            PopulateHasTrueBoolAttributeCommand(command.Parameters, entityType, entityId, attribute, snapToken);
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
         finally
@@ -1046,10 +1258,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributeFilter);
-            AddStringParameter(command, "entity_type", filter.EntityType, 256);
-            AddStringParameter(command, "attribute", filter.Attribute, 64);
-            AddNullableStringParameter(command, "entity_id", filter.EntityId, 64);
-            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command.Parameters, "attribute", filter.Attribute, 64);
+            AddNullableStringParameter(command.Parameters, "entity_id", filter.EntityId, 64);
+            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             var rows = new List<AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1072,12 +1284,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             if (scope is { } s)
             {
                 await using var command = _hotPathDataSource.CreateCommand(_q.GetAttributesDictScoped);
-                AddStringParameter(command, "entity_type", filter.EntityType, 256);
+                AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
                 command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
-                AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
-                AddStringParameter(command, "scope_relation", s.Relation, 64);
-                AddStringParameter(command, "scope_subject_type", s.SubjectType, 256);
-                AddStringParameter(command, "scope_subject_id", s.SubjectId, 64);
+                AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
+                AddStringParameter(command.Parameters, "scope_relation", s.Relation, 64);
+                AddStringParameter(command.Parameters, "scope_subject_type", s.SubjectType, 256);
+                AddStringParameter(command.Parameters, "scope_subject_id", s.SubjectId, 64);
 
                 var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1090,10 +1302,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             }
 
             await using var unscopedCommand = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter);
-            AddNullableStringParameter(unscopedCommand, "entity_id", filter.EntityId, 64);
-            AddStringParameter(unscopedCommand, "entity_type", filter.EntityType, 256);
+            AddNullableStringParameter(unscopedCommand.Parameters, "entity_id", filter.EntityId, 64);
+            AddStringParameter(unscopedCommand.Parameters, "entity_type", filter.EntityType, 256);
             unscopedCommand.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
-            AddFixedCharParameter(unscopedCommand, "snap_token", filter.SnapToken.Value, 26);
+            AddFixedCharParameter(unscopedCommand.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             var unscopedResult = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             await using var unscopedReader = await unscopedCommand.ExecuteReaderAsync(cancellationToken);
@@ -1117,10 +1329,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter);
-            AddNullableStringParameter(command, "entity_id", filter.EntityId, 64);
-            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            AddNullableStringParameter(command.Parameters, "entity_id", filter.EntityId, 64);
+            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
-            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             var pooled = PooledList<AttributeTuple>.Rent();
             try
@@ -1149,13 +1361,13 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByAttributeFilter);
-            AddStringParameter(command, "entity_type", filter.EntityType, 256);
-            AddStringParameter(command, "attribute", filter.Attribute, 64);
+            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command.Parameters, "attribute", filter.Attribute, 64);
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
                 TypedValue = entitiesIds as string[] ?? entitiesIds.ToArray()
             });
-            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             var rows = new List<AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -1177,13 +1389,13 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         try
         {
             await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesWithEntityIdsByEntityAttributesFilter);
-            AddStringParameter(command, "entity_type", filter.EntityType, 256);
+            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
             command.Parameters.Add(new NpgsqlParameter<string[]>("entity_ids", NpgsqlDbType.Array | NpgsqlDbType.Varchar)
             {
                 TypedValue = entitiesIds as string[] ?? entitiesIds.ToArray()
             });
-            AddFixedCharParameter(command, "snap_token", filter.SnapToken.Value, 26);
+            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
 
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);

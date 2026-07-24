@@ -14,12 +14,16 @@ internal static class PlanCompiler
         var root = CompileRoot(schema, entityType, permission);
         root = PruneAndFold(root, schema, entityType, subjectType);
         var (consed, slotCount) = HashCons(root);
+        // Sibling fusion (batching several same-entity refs into one round trip) is NOT the
+        // compiler's job: it lives in provider-side IPlanRewriter implementations
+        // (Valtuutus.Data.Db's RelationalPlanRewriter), applied by CheckPlanCache after compile.
         return new CheckPlan(consed, slotCount);
     }
 
     // Bottom-up interning: identical subtrees become one node; any node referenced more than
     // once gets a MemoNode slot. MemoNode is also the rewrite barrier for later provider
-    // passes — never fuse across it (design doc, "MemoNode barrier rule").
+    // passes — never fuse across it: the child is shared by multiple parents, and fusing it
+    // into one duplicates the work for the others.
     private static (PlanNode Root, int SlotCount) HashCons(PlanNode root)
     {
         var interned = new Dictionary<PlanNode, PlanNode>(PlanNodeStructuralComparer.Instance);
@@ -91,6 +95,12 @@ internal static class PlanCompiler
                     && !schema.CanSubjectTypeReach(entityType, r.Permission, subjectType):
                 return ConstNode.False;
 
+            case TupleToUserSetNode t:
+                return PruneTupleToUserSet(t, schema, entityType, subjectType);
+
+            case DirectRelationNode d:
+                return PruneDirectRelationUserSet(d, schema, entityType, subjectType);
+
             case NegateNode n:
                 var inner = PruneAndFold(n.Child, schema, entityType, subjectType);
                 return inner is ConstNode c ? (c.Value ? ConstNode.False : ConstNode.True) : new NegateNode(inner);
@@ -104,6 +114,73 @@ internal static class PlanCompiler
             default:
                 return node;
         }
+    }
+
+    // The TTU fast-path guard is schema-static given (entityType, subjectType) apart from the
+    // per-request recursion budget (frame.Depth > 0 in the executor, which stays a runtime
+    // check — CheckRequest.Depth is caller-supplied and outside the plan key, so it can't be
+    // decided here). Deciding the schema-static part once here avoids re-deriving it on every
+    // request. Also folds statically-dead TTU branches to ConstNode.False, the TTU analogue of
+    // the PlanRefNode prune case above.
+    private static PlanNode PruneTupleToUserSet(TupleToUserSetNode t, Schema schema, string entityType,
+        string? subjectType)
+    {
+        if (subjectType is null) return t; // fast path needs a known subjectType; nothing to decide yet
+
+        var tuplesetRel = schema.GetRelation(entityType, t.TuplesetRelation);
+
+        var reachable = false;
+        foreach (var e in tuplesetRel.Entities)
+        {
+            if (schema.CanSubjectTypeReach(e.Type, t.ComputedRelation, subjectType)) { reachable = true; break; }
+        }
+        if (!reachable) return ConstNode.False;
+
+        if (tuplesetRel.Entities.Count == 1 && tuplesetRel.Entities[0].Relation is null)
+        {
+            var subEntityType = tuplesetRel.Entities[0].Type;
+            if (schema.GetRelationType(subEntityType, t.ComputedRelation) == RelationType.DirectRelation)
+            {
+                var computedRel = schema.GetRelation(subEntityType, t.ComputedRelation);
+                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(subjectType))
+                    return t with { FastPathSubEntityType = subEntityType };
+            }
+        }
+
+        return t;
+    }
+
+    // The userset-join fast-path guard: DirectRelationNode always compiles as the sole
+    // root of its own plan (PlanValidator enforces this), so — unlike PruneTupleToUserSet,
+    // which is nested inside a larger tree and needs its own per-branch reachability fold —
+    // this node's overall reachability is already covered by Compile()'s top-level
+    // CanSubjectTypeReach guard before PruneAndFold ever runs. This only decides whether the
+    // userset portion of the relation's targets qualifies for a single 2-hop join instead of
+    // the runtime HasDirectRelation-then-GetIndirectRelations-fan-out sequence.
+    private static PlanNode PruneDirectRelationUserSet(DirectRelationNode d, Schema schema, string entityType,
+        string? subjectType)
+    {
+        if (subjectType is null || !d.HasSubRelationPaths) return d;
+
+        var rel = schema.GetRelation(entityType, d.Relation);
+        RelationEntity? usersetTarget = null;
+        foreach (var e in rel.Entities)
+        {
+            if (e.Relation is null) continue;
+            if (usersetTarget is not null) return d; // MVP: exactly one userset target type
+            usersetTarget = e;
+        }
+        if (usersetTarget is null) return d; // defensive: HasSubRelationPaths implies one exists
+
+        var subEntityType = usersetTarget.Type;
+        var computedRelation = usersetTarget.Relation!;
+        if (!schema.CanSubjectTypeReach(subEntityType, computedRelation, subjectType)) return d;
+        if (schema.GetRelationType(subEntityType, computedRelation) != RelationType.DirectRelation) return d;
+
+        var computedRel = schema.GetRelation(subEntityType, computedRelation);
+        if (computedRel.HasSubRelationPaths || !computedRel.EntityTypes.Contains(subjectType)) return d;
+
+        return d with { FastPathSubEntityType = subEntityType, FastPathComputedRelation = computedRelation };
     }
 
     private static PlanNode FoldChildren(ImmutableArray<PlanNode> children, Schema schema,

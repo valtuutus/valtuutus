@@ -20,18 +20,36 @@ public static class ValtuutusMetrics
     internal static readonly Counter<long> ExpressionNodes =
         Meter.CreateCounter<long>("valtuutus.check.expression_nodes");
 
-    /// <summary>Expression nodes decided by the short-circuit value before all children finished.</summary>
+    /// <summary>Expression nodes decided by the short-circuit value before all children finished.
+    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
+    /// only (V1 also counts TTU fan-out short-circuits).</summary>
     internal static readonly Counter<long> ShortCircuits =
         Meter.CreateCounter<long>("valtuutus.check.short_circuits");
 
     /// <summary>Expression nodes where child index 0 alone would have decided the node
-    /// (sequential-first scheduling would have saved the sibling queries).</summary>
+    /// (sequential-first scheduling would have saved the sibling queries).
+    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
+    /// only (V1 also counts TTU fan-out short-circuits).</summary>
     internal static readonly Counter<long> FirstChildDecided =
         Meter.CreateCounter<long>("valtuutus.check.first_child_decided");
 
     /// <summary>Request-scoped memo hits inside CheckEngine.</summary>
     internal static readonly Counter<long> MemoHits =
         Meter.CreateCounter<long>("valtuutus.check.memo_hits");
+
+    /// <summary>Ops submitted per DrainReady wave (one Physical.Submit call). V2 only — V1 has
+    /// no wave concept. The ops-per-Submit half of the batching-headroom signal: how many ops
+    /// land in the same wave and could in principle be coalesced into fewer round trips.</summary>
+    internal static readonly Histogram<long> WaveOps =
+        Meter.CreateHistogram<long>("valtuutus.check.wave_ops");
+
+    /// <summary>Ops within a wave that share their OpKind with at least one sibling in the same
+    /// wave — i.e., ops a same-shape coalescer could merge. V2 only. The same-OpKind-per-wave
+    /// half of the batching-headroom signal; divide by the sum of
+    /// <c>valtuutus.check.wave_ops</c> for the fraction of a wave that's actually coalescable
+    /// — the ratio a decision to invest in frontier batching should be judged against.</summary>
+    internal static readonly Counter<long> WaveSameKindOps =
+        Meter.CreateCounter<long>("valtuutus.check.wave_same_kind_ops");
 
     /// <summary>Provider-level DB/store queries issued (all read methods).</summary>
     public static readonly Counter<long> DbQueries =

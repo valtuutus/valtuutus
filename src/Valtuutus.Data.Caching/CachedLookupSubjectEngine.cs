@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Core.Observability;
@@ -9,9 +10,12 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
 {
     private readonly IDataReaderProvider _reader;
     private readonly IFusionCache _cache;
-    private readonly LookupSubjectEngine _engine;
+    private readonly ILookupSubjectEngine _engine;
 
-    public CachedLookupSubjectEngine(IDataReaderProvider reader, LookupSubjectEngine engine, IFusionCache cache)
+    public CachedLookupSubjectEngine(
+        IDataReaderProvider reader,
+        [FromKeyedServices(Consts.InnerLookupSubjectEngineKey)] ILookupSubjectEngine engine,
+        IFusionCache cache)
     {
         _reader = reader;
         _engine = engine;
