@@ -177,6 +177,7 @@ namespace Valtuutus.Core.Engines.Check
         TupleToUserSet = 3,
         Attribute = 4,
         Function = 5,
+        FusedOp = 6,
     }
     public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
     {

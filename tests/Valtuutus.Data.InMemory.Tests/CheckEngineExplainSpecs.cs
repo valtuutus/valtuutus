@@ -5,7 +5,7 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.InMemory.Tests;
 
 [Collection("InMemorySpecs")]
-public sealed class CheckEngineExplainSpecs : BaseCheckEngineExplainSpecs
+public sealed class CheckEngineExplainSpecs : BaseCheckEngineV1OnlyExplainSpecs
 {
     public CheckEngineExplainSpecs(InMemoryFixture fixture) : base(fixture) { }
 

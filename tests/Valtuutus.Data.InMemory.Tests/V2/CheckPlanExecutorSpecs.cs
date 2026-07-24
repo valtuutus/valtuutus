@@ -381,6 +381,35 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
+    public async Task AddValtuutusCheckV2_wires_ICheckEngine_Explain_through_the_V2_executor()
+    {
+        // Task 5: CheckEngineV2.Explain() no longer delegates to a throwaway V1 CheckEngine —
+        // it must run through the same DI-resolved V2 executor pool as Check()/SubjectPermission.
+        // This resolves ICheckEngine exactly as a real caller would (no direct reference to the
+        // V1 CheckEngine type anywhere in this test) and asserts on the full CheckExplainResult
+        // shape, not just the boolean.
+        var services = new ServiceCollection().AddValtuutusCore(DocSchema);
+        services.AddInMemory();
+        services.AddValtuutusCheckV2();
+        var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        await sp.GetRequiredService<IDataWriterProvider>()
+            .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
+
+        var engine = sp.GetRequiredService<ICheckEngine>();
+        engine.Should().BeOfType<CheckEngineV2>();
+
+        var explainTrue = await engine.Explain(new CheckRequest("doc", "1", "view", "user", "u1"), default);
+        explainTrue.Result.Should().BeTrue();
+        explainTrue.Root.Should().NotBeNull();
+        explainTrue.Root.Result.Should().BeTrue();
+
+        var explainFalse = await engine.Explain(new CheckRequest("doc", "1", "view", "user", "u2"), default);
+        explainFalse.Result.Should().BeFalse();
+        explainFalse.Root.Should().NotBeNull();
+        explainFalse.Root.Result.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Pooled_executor_carries_no_state_across_interleaved_calls()
     {
         // Regression test for CheckPlanExecutorPool (Task 16 Stage 4): the same pooled
@@ -970,5 +999,32 @@ public class CheckPlanExecutorSpecs
             [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
 
         results[0].Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteExplainAsync_returns_a_non_null_root_matching_a_plain_check()
+    {
+        // Minimal plumbing proof that `explain` is now reachable through a real public entry
+        // point, not just via reflection: the boolean answer must agree with a plain Check()
+        // call for the identical request, and the explain tree must come back populated. Fuller
+        // behavioral coverage of Detail text / tree shape belongs to the shared explain spec
+        // suite (Tasks 6-10), not here.
+        var (_, schema, reader) = await Arrange(DocSchema, [new RelationTuple("doc", "1", "owner", "user", "u1")]);
+        var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
+        var ctx = new CheckRequestContext
+            { SubjectType = "user", SubjectId = "u1", SnapToken = snap, Context = new Dictionary<string, object>() };
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema))
+            { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
+
+        var (result, root) = await executor.ExecuteExplainAsync(
+            new CheckRootRequest("doc", "1", "view", null, 10), ctx, default);
+
+        result.Should().BeTrue();
+        root.Should().NotBeNull();
+        root.Result.Should().Be(result);
+
+        var plainResult = (await executor.ExecuteSingleAsync(
+            new CheckRootRequest("doc", "1", "view", null, 10), ctx, default))[0];
+        plainResult.Should().Be(result);
     }
 }

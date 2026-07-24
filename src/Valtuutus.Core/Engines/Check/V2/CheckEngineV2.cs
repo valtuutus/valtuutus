@@ -76,9 +76,22 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         return dict;
     }
 
-    // V2 has no explain support of its own yet (deliberate scope cut) — delegate to a
-    // throwaway V1 CheckEngine instance rather than leave callers of ICheckEngine.Explain
-    // with no implementation on the V2 engine.
-    public Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
-        => new CheckEngine(reader, schema).Explain(req, cancellationToken);
+    public async Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
+    {
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
+        var ctx = new CheckRequestContext
+        {
+            SubjectType = req.SubjectType, SubjectId = req.SubjectId,
+            SnapToken = snapToken, Context = req.Context
+        };
+        var executor = executorPool.Rent(reader);
+        // Not the Check()/DrainAndReturn fire-and-forget pattern: ExecuteExplainAsync already
+        // awaits DrainStragglersAsync internally before returning (see its own comment for why),
+        // so by this point the executor is fully quiesced and safe to return synchronously.
+        var (result, root) = await executor.ExecuteExplainAsync(
+            new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
+            ctx, cancellationToken);
+        executorPool.Return(executor);
+        return new CheckExplainResult { Result = result, Root = root };
+    }
 }
