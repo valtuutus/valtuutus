@@ -82,19 +82,23 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // is not supported and not needed, since ICheckEngine.Explain() takes one CheckRequest.
     private CheckNode? _explainRoot;
 
-    // Carries the same (Parent, RootIndex, ChildIndex) tuple both waiter lists already needed,
-    // plus an optional pre-created explain node: a waiter's structural position in the explain
-    // tree is fixed at registration time (see ResolveDynamic/StepFrame's MemoNode case), but its
-    // Result is only known once the in-flight original resolves — carried here so the eventual
-    // wake-up (ChildCompleted's MemoNode case / CompleteFrame's dynamic-memo waiters loop) can
-    // fill it in. Null in every non-explain call.
-    internal readonly record struct Waiter(int Parent, int RootIndex, int ChildIndex, CheckNode? ExplainNode);
+    // Kept intentionally lean (3 ints, no reference field) — used on every memo-wait
+    // registration regardless of _explain, so its size directly affects List<Waiter>'s backing
+    // array cost on the hot Check()/SubjectPermission() path. The explain-mode correlation lives
+    // in a SEPARATE parallel list (MemoEntry.ExplainWaiters / MemoSlotState.ExplainWaiters,
+    // below) instead of a field on this struct, so a plain (non-explaining) call never pays for
+    // a wider struct here.
+    internal readonly record struct Waiter(int Parent, int RootIndex, int ChildIndex);
 
     private struct MemoEntry
     {
         public bool Done;
         public bool Value;
         public List<Waiter>? Waiters;
+        // Parallel to Waiters, same index for the same logical waiter — only ever populated when
+        // _explain is true (see ResolveDynamic's memo-waiting branch). Kept separate from Waiter
+        // itself so a plain, non-explaining call never allocates or touches this at all.
+        public List<CheckNode?>? ExplainWaiters;
     }
 
     private struct Frame
@@ -125,6 +129,10 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         public byte State;   // 0 empty, 1 in-flight, 2 done
         public bool Value;
         public List<Waiter>? Waiters;
+        // Parallel to Waiters, same index for the same logical waiter — only ever populated when
+        // _explain is true (see StepFrame's MemoNode case 1). Kept separate from Waiter itself so
+        // a plain, non-explaining call never allocates or touches this at all.
+        public List<CheckNode?>? ExplainWaiters;
     }
 
     private readonly record struct CheckMemoKey(
@@ -485,7 +493,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 selfNode.Detail = "memoized";
                 AttachOrSetRoot(selfNode, parent);
             }
-            (entry.Waiters ??= []).Add(new Waiter(parent, rootIndex, -1, selfNode));
+            (entry.Waiters ??= []).Add(new Waiter(parent, rootIndex, -1));
+            if (_explain) (entry.ExplainWaiters ??= []).Add(selfNode);
             _memoEntries[entryIdx] = entry;
             return;
         }
@@ -633,12 +642,19 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 slot.State = 2;
                 slot.Value = childResult;
                 var waiters = slot.Waiters;
+                var explainWaiters = slot.ExplainWaiters;
                 slot.Waiters = null;
+                slot.ExplainWaiters = null;
                 CompleteFrame(parentIdx, childResult);
                 if (waiters is not null)
-                    foreach (var w in waiters)
+                    for (var i = 0; i < waiters.Count; i++)
                     {
-                        if (_explain && w.ExplainNode is not null) w.ExplainNode.Result = childResult;
+                        var w = waiters[i];
+                        if (_explain && explainWaiters is not null)
+                        {
+                            var explainNode = explainWaiters[i];
+                            if (explainNode is not null) explainNode.Result = childResult;
+                        }
                         Notify(w.Parent, w.RootIndex, childResult, w.ChildIndex);
                     }
                 break;
@@ -690,12 +706,19 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             entry.Done = true;
             entry.Value = result;
             var waiters = entry.Waiters;
+            var explainWaiters = entry.ExplainWaiters;
             entry.Waiters = null;
+            entry.ExplainWaiters = null;
             _memoEntries[frame.MemoEntry] = entry;
             if (waiters is not null)
-                foreach (var w in waiters)
+                for (var i = 0; i < waiters.Count; i++)
                 {
-                    if (_explain && w.ExplainNode is not null) w.ExplainNode.Result = result;
+                    var w = waiters[i];
+                    if (_explain && explainWaiters is not null)
+                    {
+                        var explainNode = explainWaiters[i];
+                        if (explainNode is not null) explainNode.Result = result;
+                    }
                     Notify(w.Parent, w.RootIndex, result, w.ChildIndex);
                 }
         }
@@ -832,6 +855,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                         CompleteFrame(idx, slot.Value);
                         break;
                     case 1:
+                        (slot.Waiters ??= []).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex));
                         if (_explain)
                         {
                             var (type, name) = DescribeNode(m.Child, frame.EntityType);
@@ -842,11 +866,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                                 Detail = "memoized (shared subtree)",
                             };
                             AttachOrSetRoot(waiterNode, frame.Parent);
-                            (slot.Waiters ??= []).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex, waiterNode));
-                        }
-                        else
-                        {
-                            (slot.Waiters ??= []).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex, null));
+                            (slot.ExplainWaiters ??= []).Add(waiterNode);
                         }
                         // This frame dissolves into a waiter registration; mark completed so
                         // stale bookkeeping never routes to it again.
