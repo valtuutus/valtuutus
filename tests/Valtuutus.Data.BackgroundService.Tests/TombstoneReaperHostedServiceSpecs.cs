@@ -19,50 +19,37 @@ public class TombstoneReaperHostedServiceSpecs
     private sealed class ScopeMarker;
 
     /// <summary>
-    /// Advances the fake clock and waits for the resulting tick, retrying the Advance() call (not
-    /// just the wait) if the first one doesn't produce a signal. This exists specifically for a
-    /// test's FIRST tick: PeriodicTimer computes its own start-of-interval baseline from
-    /// TimeProvider.GetUtcNow() at construction time, inside ExecuteAsync. On net11.0 with this
-    /// repo's runtime-async=on, BackgroundService.StartAsync can return before ExecuteAsync's async
-    /// body has actually constructed `new PeriodicTimer(...)` — unlike a normally-compiled async
-    /// method's synchronous-until-first-await prefix. When that happens, the test's first Advance()
-    /// fires before the timer's baseline exists; the timer is then constructed from the
-    /// already-advanced clock and needs a FULL ADDITIONAL interval past that shifted baseline — no
-    /// amount of waiting on that same Advance() will ever produce a tick, only a second Advance()
-    /// (now measured from the real, shifted baseline) will. Retrying is safe specifically because
-    /// PeriodicTimer coalesces: however many Advance() calls it actually takes before the timer
-    /// exists to observe them, the consumer only ever receives ONE tick for it — confirmed via an
-    /// isolated repro outside this test project. Once this race is behind us (after the first
-    /// tick), a single Advance() reliably produces exactly one tick every time — see
-    /// AdvanceAndAwaitTick, used for every tick after the first.
+    /// A FakeTimeProvider that resolves <see cref="TimerCreated"/> the instant a PeriodicTimer
+    /// backed by it exists: PeriodicTimer's constructor calls CreateTimer synchronously as its
+    /// first action, so overriding it gives a deterministic signal for "ExecuteAsync has reached
+    /// `new PeriodicTimer(...)`" — no need to guess via clock-advance-and-poll. This matters because
+    /// on net11.0 with this repo's runtime-async=on, BackgroundService.StartAsync can return before
+    /// ExecuteAsync's async body has actually constructed the timer, unlike a normally-compiled
+    /// async method's synchronous-until-first-await prefix; advancing the clock before that point is
+    /// invisible to the timer once it does get constructed.
     /// </summary>
-    private static async Task AdvanceUntilFirstTick(FakeTimeProvider timeProvider, TimeSpan interval, SemaphoreSlim tickSignal)
+    private sealed class SignalingTimeProvider : FakeTimeProvider
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
-        while (true)
+        private readonly TaskCompletionSource _timerCreated =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task TimerCreated => _timerCreated.Task;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            timeProvider.Advance(interval);
-            if (await tickSignal.WaitAsync(TimeSpan.FromMilliseconds(50)))
-            {
-                await SettleAfterTick();
-                return;
-            }
-            if (DateTime.UtcNow >= deadline)
-            {
-                throw new TimeoutException(
-                    "Timed out waiting for the first PeriodicTimer tick after repeatedly advancing the fake clock.");
-            }
+            var timer = base.CreateTimer(callback, state, dueTime, period);
+            _timerCreated.TrySetResult();
+            return timer;
         }
     }
 
     /// <summary>
     /// Advances the fake clock by one SweepInterval (deterministically triggering exactly one
-    /// PeriodicTimer tick, once the timer's construction race in AdvanceUntilFirstTick's doc comment
-    /// is behind us) and waits, with a real timeout as a safety net against a genuinely stuck test
-    /// (not a tuned interval the timer itself depends on), for the resulting ExecuteAsync loop
-    /// iteration to actually finish running.
+    /// PeriodicTimer tick, once SignalingTimeProvider's TimerCreated has resolved) and waits, with a
+    /// real timeout as a safety net against a genuinely stuck test (not a tuned interval the timer
+    /// itself depends on), for the resulting ExecuteAsync loop iteration to actually finish running.
     /// </summary>
-    private static async Task AdvanceAndAwaitTick(FakeTimeProvider timeProvider, TimeSpan interval, SemaphoreSlim tickSignal)
+    private static async Task AdvanceAndAwaitTick(SignalingTimeProvider timeProvider, TimeSpan interval, SemaphoreSlim tickSignal)
     {
         timeProvider.Advance(interval);
         var signaled = await tickSignal.WaitAsync(TimeSpan.FromSeconds(5));
@@ -105,7 +92,7 @@ public class TombstoneReaperHostedServiceSpecs
         });
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 
-        var timeProvider = new FakeTimeProvider();
+        var timeProvider = new SignalingTimeProvider();
         var options = new ValtuutusReaperOptions { SweepInterval = TimeSpan.FromMinutes(1) };
         var hostedService = new TombstoneReaperHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
@@ -114,13 +101,12 @@ public class TombstoneReaperHostedServiceSpecs
             NullLogger<TombstoneReaperHostedService>.Instance);
 
         await hostedService.StartAsync(default);
+        await timeProvider.TimerCreated;
 
-        // Deterministically drive exactly 3 ticks — no arbitrary wall-clock margin to tune, just a
-        // condition-based retry on the first tick (see AdvanceUntilFirstTick) to absorb the
-        // documented net11.0 timer-construction race.
+        // Deterministically drive exactly 3 ticks — no arbitrary wall-clock margin to tune, just the
+        // TimerCreated await above to clear the documented net11.0 timer-construction race.
         const int expectedTicks = 3;
-        await AdvanceUntilFirstTick(timeProvider, options.SweepInterval, tickSignal);
-        for (var i = 1; i < expectedTicks; i++)
+        for (var i = 0; i < expectedTicks; i++)
         {
             await AdvanceAndAwaitTick(timeProvider, options.SweepInterval, tickSignal);
         }
@@ -155,7 +141,7 @@ public class TombstoneReaperHostedServiceSpecs
         services.AddScoped(_ => reaper);
         await using var provider = services.BuildServiceProvider();
 
-        var timeProvider = new FakeTimeProvider();
+        var timeProvider = new SignalingTimeProvider();
         var options = new ValtuutusReaperOptions { SweepInterval = TimeSpan.FromMinutes(1) };
         var hostedService = new TombstoneReaperHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
@@ -166,10 +152,11 @@ public class TombstoneReaperHostedServiceSpecs
         var act = async () =>
         {
             await hostedService.StartAsync(default);
+            await timeProvider.TimerCreated;
 
             // Two ticks: the first sweep throws, and this proves the loop survives it and keeps
             // ticking rather than the exception unwinding ExecuteAsync and killing the host.
-            await AdvanceUntilFirstTick(timeProvider, options.SweepInterval, tickSignal);
+            await AdvanceAndAwaitTick(timeProvider, options.SweepInterval, tickSignal);
             await AdvanceAndAwaitTick(timeProvider, options.SweepInterval, tickSignal);
 
             await hostedService.StopAsync(default);
