@@ -58,6 +58,7 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();
+        builder.Services.AddScoped<ITombstoneReaperProvider, SqlServerTombstoneReaperProvider>();
         return builder;
     }
 }

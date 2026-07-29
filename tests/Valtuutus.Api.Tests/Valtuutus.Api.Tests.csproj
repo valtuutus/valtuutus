@@ -17,6 +17,7 @@
         </PackageReference>
     </ItemGroup>
     <ItemGroup>
+      <ProjectReference Include="..\..\src\Valtuutus.Data.BackgroundService\Valtuutus.Data.BackgroundService.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.InMemory\Valtuutus.Data.InMemory.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />

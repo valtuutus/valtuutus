@@ -1,5 +1,6 @@
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Data;
+using Valtuutus.Data.BackgroundService;
 using Valtuutus.Data.Db;
 using Valtuutus.Data.InMemory;
 using Valtuutus.Data.Postgres;
@@ -44,5 +45,11 @@ public class ApiSpecs
     public Task ApproveInMemory()
     {
         return ApiSpecExtensions.VerifyAssembly<InMemoryProvider>();
+    }
+
+    [Fact]
+    public Task ApproveDataBackgroundService()
+    {
+        return ApiSpecExtensions.VerifyAssembly<TombstoneReaperHostedService>();
     }
 }

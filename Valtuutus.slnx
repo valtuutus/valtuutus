@@ -32,6 +32,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Valtuutus.Core/Valtuutus.Core.csproj" />
+    <Project Path="src/Valtuutus.Data.BackgroundService/Valtuutus.Data.BackgroundService.csproj" />
     <Project Path="src/Valtuutus.Data.Caching/Valtuutus.Data.Caching.csproj" />
     <Project Path="src/Valtuutus.Data.Db/Valtuutus.Data.Db.csproj" />
     <Project Path="src/Valtuutus.Data.InMemory/Valtuutus.Data.InMemory.csproj" />
@@ -43,6 +44,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Valtuutus.Api.Tests/Valtuutus.Api.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.BackgroundService.Tests/Valtuutus.Data.BackgroundService.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.Caching.Tests/Valtuutus.Data.Caching.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.Db.Tests/Valtuutus.Data.Db.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.InMemory.Tests/Valtuutus.Data.InMemory.Tests.csproj" />
