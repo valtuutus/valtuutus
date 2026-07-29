@@ -38,7 +38,12 @@ public class TombstoneReaperMetricsSpecs
         await reaper.ReapAsync();
 
         listener.Dispose();
-        return measurements;
+
+        // ReapedRows is a shared static instrument (see the class comment above): a callback from
+        // another concurrently-running test can still be mid-flight after Dispose() and mutate
+        // `measurements` on another thread. Snapshot under the same lock the callback uses, rather
+        // than handing back the live list for the caller to enumerate unsynchronized.
+        lock (measurements) return measurements.ToList();
     }
 
     [Fact]
