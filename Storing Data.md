@@ -146,9 +146,11 @@ DELETE FROM relation_tuples WHERE deleted_tx_id IS NOT NULL;
 DELETE FROM attributes       WHERE deleted_tx_id IS NOT NULL;
 ```
 
+**These commands purge every tombstoned row unconditionally — there's no age filter.** A reader holding a snap token older than a given row's `deleted_tx_id` still needs that row to serve a consistent read; deleting it out from under that reader is exactly the kind of correctness break the soft-delete/snap-token scheme exists to prevent (see [Snap Tokens](#snap-tokens) below). Only run this as a one-off, e.g. during a maintenance window where you can guarantee no client is holding an old enough token. For ongoing, scheduled cleanup, use the [tombstone reaper](#tombstone-reaper) instead — it only ever removes tombstones older than a configurable retention window.
+
 After a bulk purge in Postgres, run `VACUUM ANALYZE` on both tables to update statistics and reclaim pages.
 
-How often to purge depends on your write volume. For high-throughput applications (frequent permission changes), consider scheduling a periodic purge job. For low-write applications, manual purges as needed are fine.
+How often to purge depends on your write volume. For high-throughput applications (frequent permission changes), use the tombstone reaper below for scheduled cleanup rather than scripting the raw commands above. For low-write applications, an occasional manual purge during a maintenance window is fine.
 
 Passing around raw entity/relation/permission names as strings, and writing custom `fn` logic, can also be handled at build time — see [Source Generator](Source%20Generator.md).
 
@@ -175,4 +177,53 @@ bool canView = await checkEngine.Check(
 If you don't need strict consistency (e.g. read-heavy paths where eventual consistency is acceptable), omit the token entirely — the engine will use the latest available snapshot.
 
 A common pattern is to store the token alongside the resource in your application database after a write, then read it back and pass it on the next authorization check for that resource.
+
+### Tombstone Reaper
+
+Soft-deleted rows are safe to keep around for a while — reads simply filter them out — but they still take up space and slow down scans if left forever. Instead of running the raw purge queries above, Valtuutus ships an opt-in tombstone reaper that removes tombstoned rows on a retention schedule, safely.
+
+The reaper is opt-in, not automatic — nothing is deleted unless you register it and either call or schedule it yourself.
+
+Register it with `AddTombstoneReaper` on your data builder:
+
+```csharp
+builder.Services
+    .AddPostgres(_ => () => new NpgsqlConnection(builder.Configuration.GetConnectionString("PostgresDb")!))
+    .AddTombstoneReaper(options =>
+    {
+        options.RetentionPeriod = TimeSpan.FromDays(14);
+    });
+```
+
+This registers `ITombstoneReaper`, which you can inject and call from any trigger you like — your own cron job, an admin endpoint, `pg_cron`, or anything else:
+
+```csharp
+public class PurgeJob(ITombstoneReaper reaper)
+{
+    public Task<ReapResult> RunAsync(CancellationToken cancellationToken) =>
+        reaper.ReapAsync(cancellationToken);
+}
+```
+
+If you'd rather not wire up your own trigger, add the `Valtuutus.Data.BackgroundService` package and call `AddTombstoneReaperHostedService()` to get a built-in timer that calls `ReapAsync` for you on an interval:
+
+```csharp
+builder.Services.AddTombstoneReaperHostedService();
+```
+
+This requires `AddTombstoneReaper` to already be registered — it throws at startup otherwise. The two approaches aren't exclusive; you can add the hosted service for routine sweeps and still call `ReapAsync` yourself for an on-demand run (e.g. from an admin endpoint).
+
+`ValtuutusReaperOptions`, passed to `AddTombstoneReaper`, configures the reaper:
+- `RetentionPeriod` (default 7 days) — tombstoned rows older than this are eligible for deletion.
+- `BatchSize` (default 1000) — max rows deleted per table, per batch.
+- `PauseBetweenBatches` (default 100ms) — delay between batches within one sweep.
+- `SweepInterval` (default 1 hour) — only used by `AddTombstoneReaperHostedService`'s timer; ignored if you call `ReapAsync` yourself.
+
+**The retention contract:** the reaper only ever deletes tombstoned rows (`deleted_tx_id` set) older than `RetentionPeriod`. A live row — one that was never deleted — is never touched, no matter how old it is; reads of live data are always safe regardless of what retention is set to.
+
+`RetentionPeriod` only matters for reads presenting a snap token older than it. Those reads are served best-effort — whatever rows still happen to be there — not guaranteed complete, and they are **not** rejected with an error. This is deliberate: adding a per-read check for a stale token would put a permanent cost on every single `Check`/read call to guard a rare edge case, so there's no such check on the read path.
+
+In practice, keep `RetentionPeriod` comfortably longer than the longest-lived snap token any client might realistically hold. The built-in `ResolveLatest` cache (used when you call `AddCaching`, see [Caching](Caching.md)) holds resolved snap tokens for 5 minutes — comfortably inside any sane retention default.
+
+The `transactions` table is pruned differently: rows older than the watermark are removed by age alone, with no tombstone/live distinction (there's nothing to tombstone — it's an append-only log). This is safe: nothing on the read path joins back to `transactions` to decide whether a relation tuple or attribute is visible — visibility is decided purely by comparing `deleted_tx_id`/`created_tx_id` ULIDs as strings. The one consequence is that a still-live tuple's `created_at` audit metadata, if you look it up via its `created_tx_id`, can become unavailable once its `transactions` row ages out past the retention window — the tuple itself stays fully valid and readable either way.
 

@@ -7,7 +7,16 @@ namespace Valtuutus.Data
     public static class DependencyInjectionExtensions
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddConcurrentQueryLimit(this Valtuutus.Data.IValtuutusDataBuilder builder, int limit) { }
+        public static Valtuutus.Data.IValtuutusDataBuilder AddTombstoneReaper(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.ValtuutusReaperOptions>? configure = null) { }
         public static Valtuutus.Data.IValtuutusDataBuilder AddValtuutusData(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
+    public interface ITombstoneReaper
+    {
+        System.Threading.Tasks.Task<Valtuutus.Data.ReapResult> ReapAsync(System.Threading.CancellationToken ct = default);
+    }
+    public interface ITombstoneReaperProvider
+    {
+        System.Threading.Tasks.Task<Valtuutus.Data.ReapBatchResult> ReapBatchAsync(Valtuutus.Core.Data.SnapToken watermark, int batchSize, System.Threading.CancellationToken ct);
     }
     public interface IValtuutusDataBuilder
     {
@@ -21,10 +30,45 @@ namespace Valtuutus.Data
         public void Dispose() { }
         protected System.Threading.Tasks.Task EnterQuery(System.Threading.CancellationToken cancellationToken) { }
     }
+    public sealed class ReapBatchResult : System.IEquatable<Valtuutus.Data.ReapBatchResult>
+    {
+        public ReapBatchResult(int RelationTuplesDeleted, int AttributesDeleted, int TransactionsDeleted, bool MoreRemaining, bool LockAcquired) { }
+        public int AttributesDeleted { get; init; }
+        public bool LockAcquired { get; init; }
+        public bool MoreRemaining { get; init; }
+        public int RelationTuplesDeleted { get; init; }
+        public int TransactionsDeleted { get; init; }
+    }
+    public sealed class ReapResult : System.IEquatable<Valtuutus.Data.ReapResult>
+    {
+        public ReapResult(int RelationTuplesDeleted, int AttributesDeleted, int TransactionsDeleted, int BatchesRun, Valtuutus.Core.Data.SnapToken? Watermark) { }
+        public int AttributesDeleted { get; init; }
+        public int BatchesRun { get; init; }
+        public int RelationTuplesDeleted { get; init; }
+        public int TransactionsDeleted { get; init; }
+        public Valtuutus.Core.Data.SnapToken? Watermark { get; init; }
+    }
+    public static class SnapTokenWatermark
+    {
+        public static Valtuutus.Core.Data.SnapToken Compute(System.DateTimeOffset now, System.TimeSpan retention) { }
+    }
+    public sealed class TombstoneReaper : Valtuutus.Data.ITombstoneReaper
+    {
+        public TombstoneReaper(Valtuutus.Data.ITombstoneReaperProvider provider, Valtuutus.Data.ValtuutusReaperOptions options) { }
+        public System.Threading.Tasks.Task<Valtuutus.Data.ReapResult> ReapAsync(System.Threading.CancellationToken ct = default) { }
+    }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
     {
         public ValtuutusDataOptions() { }
         public int MaxConcurrentQueries { get; }
         public System.Func<System.IServiceProvider, Valtuutus.Core.Data.SnapToken, System.Threading.Tasks.Task>? OnDataWritten { get; set; }
+    }
+    public sealed class ValtuutusReaperOptions : System.IEquatable<Valtuutus.Data.ValtuutusReaperOptions>
+    {
+        public ValtuutusReaperOptions() { }
+        public int BatchSize { get; set; }
+        public System.TimeSpan PauseBetweenBatches { get; set; }
+        public System.TimeSpan RetentionPeriod { get; set; }
+        public System.TimeSpan SweepInterval { get; set; }
     }
 }

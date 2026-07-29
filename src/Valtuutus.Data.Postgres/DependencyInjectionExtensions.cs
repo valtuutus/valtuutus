@@ -56,6 +56,7 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, PostgresDataWriterProvider>();
+        builder.Services.AddScoped<ITombstoneReaperProvider, PostgresTombstoneReaperProvider>();
         return builder;
     }
 }

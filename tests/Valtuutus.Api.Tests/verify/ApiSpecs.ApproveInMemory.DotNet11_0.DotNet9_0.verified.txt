@@ -19,6 +19,7 @@ namespace Valtuutus.Data.InMemory
         public System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple> GetByNamesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entityIds) { }
         public System.Collections.Generic.HashSet<string> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snap) { }
         public bool HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snap) { }
+        public int ReapTombstones(System.Ulid watermark) { }
         public void Write(System.Ulid transactId, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes) { }
     }
     public static class DependencyInjectionExtensions
@@ -80,6 +81,7 @@ namespace Valtuutus.Data.InMemory
         public System.Collections.Generic.HashSet<string> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public bool HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter filter, string subjectId) { }
         public bool HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public int ReapTombstones(System.Ulid watermark) { }
         public void Write(System.Ulid transactId, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations) { }
     }
 }

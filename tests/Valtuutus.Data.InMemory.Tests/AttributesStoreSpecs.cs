@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using FluentAssertions;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 
@@ -217,5 +218,69 @@ public sealed class AttributesStoreSpecs
 
         Assert.False(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx1)));
         Assert.True(store.HasTrueBoolAttribute("project", "p1", "public", SnapAt(tx2)));
+    }
+
+    [Fact]
+    public void ReapTombstones_removes_entries_tombstoned_before_the_watermark()
+    {
+        using var store = new AttributesStore();
+        // OrderedPair guarantees tx2 > tx1 — required below so the pre-delete snapshot check
+        // is actually meaningful (see comment further down in this test).
+        var (tx1, tx2) = OrderedPair();
+        store.Write(tx1, new[] { new AttributeTuple("project", "p1", "name", System.Text.Json.Nodes.JsonValue.Create("a")!) });
+        store.Delete(tx2, new[] { new DeleteAttributesFilter { EntityType = "project", EntityId = "p1" } });
+
+        var watermark = Ulid.NewUlid(DateTimeOffset.UtcNow.AddSeconds(1));
+        var removed = store.ReapTombstones(watermark);
+
+        removed.Should().Be(1);
+        store.Dump().Should().BeEmpty();
+
+        // Query with a snapshot from BEFORE the delete (tx1). Under IsVisible's own rules, an
+        // entry created at-or-before tx1 and deleted strictly after tx1 (tx2 > tx1, guaranteed
+        // by OrderedPair) would still count as visible at this snapshot if it still physically
+        // existed in a bucket — IsVisible only checks DeletedTxId > snapId, which holds here.
+        // So the only way these assertions can pass is if ReapTombstones truly removed the
+        // entry from the secondary index buckets, not just tombstoned it logically. Checking
+        // both _byEntityTypeAttr (GetAttribute) and _byEntityType (GetAllEntityIds) covers
+        // both buckets RemoveFromBuckets is called against.
+        var preDeleteSnap = SnapAt(tx1);
+        store.GetAttribute(new EntityAttributeFilter
+        {
+            EntityType = "project", EntityId = "p1", Attribute = "name", SnapToken = preDeleteSnap
+        }).Should().BeNull();
+
+        var target = new HashSet<string>();
+        store.GetAllEntityIds("project", preDeleteSnap, target);
+        target.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ReapTombstones_never_removes_a_live_entry_regardless_of_its_age()
+    {
+        using var store = new AttributesStore();
+        var tx1 = Ulid.NewUlid();
+        store.Write(tx1, new[] { new AttributeTuple("project", "p1", "name", System.Text.Json.Nodes.JsonValue.Create("a")!) });
+
+        var farFutureWatermark = Ulid.NewUlid(DateTimeOffset.UtcNow.AddYears(10));
+        var removed = store.ReapTombstones(farFutureWatermark);
+
+        removed.Should().Be(0);
+        store.Dump().Should().ContainSingle(a => a.EntityId == "p1");
+    }
+
+    [Fact]
+    public void ReapTombstones_keeps_a_tombstone_exactly_at_the_watermark()
+    {
+        using var store = new AttributesStore();
+        var tx1 = Ulid.NewUlid();
+        store.Write(tx1, new[] { new AttributeTuple("project", "p1", "name", System.Text.Json.Nodes.JsonValue.Create("a")!) });
+        var tx2 = Ulid.NewUlid();
+        store.Delete(tx2, new[] { new DeleteAttributesFilter { EntityType = "project", EntityId = "p1" } });
+
+        // watermark == tx2 exactly: only strictly-older tombstones are eligible
+        var removed = store.ReapTombstones(tx2);
+
+        removed.Should().Be(0);
     }
 }
