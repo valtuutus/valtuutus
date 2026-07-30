@@ -4,7 +4,8 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Engines.Check.V2;
 
-internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, CheckPlanExecutorPool executorPool)
+internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, CheckPlanExecutorPool executorPool,
+    CombinedPlanCache combinedPlans)
     : ICheckEngine
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
@@ -64,10 +65,19 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
             i++;
         }
 
+        // Combined plan: all N permission trees hash-consed together (cached per
+        // (EntityType, SubjectType)), so a subtree shared across two permissions gets one slot
+        // in one shared array below instead of one array per root. Roots is index-aligned with
+        // roots[]/names[] because both this loop and CombinedPlanCache iterate the same
+        // schema.GetPermissions(entityType) FrozenDictionary.Values, whose iteration order is
+        // fixed once the schema is built.
+        var combined = combinedPlans.GetOrCompile(req.EntityType, ctx.SubjectType);
+
         // One driver loop, N roots: all permissions evaluate concurrently and share the
         // request's dynamic memo — the V2 equivalent of V1's shared CheckMemo here.
         var executor = executorPool.Rent(reader);
-        var results = await executor.ExecuteAsync(roots, ctx, cancellationToken);
+        var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
+            precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
         _ = DrainAndReturn(executor);
 
         var dict = new Dictionary<string, bool>(names.Length);

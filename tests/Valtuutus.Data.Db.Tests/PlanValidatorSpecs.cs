@@ -87,4 +87,46 @@ public class PlanValidatorSpecs
         var act = () => PlanValidator.Validate(root, slotCount: 0);
         act.Should().Throw<InvalidOperationException>().WithMessage("*root-only*");
     }
+
+    [Fact]
+    public void ValidateCombined_accepts_a_slot_shared_across_two_roots()
+    {
+        // The case ValidateCombined exists for: ONE MemoNode instance is each of TWO roots'
+        // top-level node (not just reachable from within one tree) — Validate() alone has no
+        // concept of "multiple roots", so a naive per-root call would need its own fresh seenSlots
+        // per root and would wrongly reject this as two different MemoNode instances reusing a slot.
+        var shared = new MemoNode(0, new PlanRefNode("a"));
+
+        var act = () => PlanValidator.ValidateCombined([shared, shared], slotCount: 1);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ValidateCombined_rejects_duplicate_memo_slot_instances_across_roots()
+    {
+        var dup1 = new MemoNode(0, new PlanRefNode("a"));
+        var dup2 = new MemoNode(0, new PlanRefNode("a"));
+
+        var act = () => PlanValidator.ValidateCombined([dup1, dup2], slotCount: 1);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*two distinct MemoNode instances*");
+    }
+
+    [Fact]
+    public void ValidateCombined_accepts_direct_relation_node_as_a_second_roots_own_root()
+    {
+        // Each of the N combined roots is independently root-only-legal: a DirectRelationNode is
+        // fine as root #1 even though root #0 is a totally different shape.
+        var act = () => PlanValidator.ValidateCombined(
+            [new UnionNode([new PlanRefNode("a")]), new DirectRelationNode("owner", false)], slotCount: 0);
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void ValidateCombined_rejects_direct_relation_node_below_root_in_any_root()
+    {
+        var act = () => PlanValidator.ValidateCombined(
+            [new DirectRelationNode("owner", false), new UnionNode([new DirectRelationNode("editor", false)])],
+            slotCount: 0);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*root-only*");
+    }
 }

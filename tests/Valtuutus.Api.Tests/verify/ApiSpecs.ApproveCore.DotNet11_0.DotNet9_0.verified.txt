@@ -340,6 +340,7 @@ namespace Valtuutus.Core.Engines.Check.V2
     public static class PlanValidator
     {
         public static void Validate(Valtuutus.Core.Engines.Check.V2.PlanNode root, int slotCount) { }
+        public static void ValidateCombined(Valtuutus.Core.Engines.Check.V2.PlanNode[] roots, int slotCount) { }
     }
     public sealed class TupleToUserSetNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.TupleToUserSetNode>
     {

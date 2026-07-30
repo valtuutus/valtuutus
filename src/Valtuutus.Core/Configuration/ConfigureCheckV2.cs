@@ -16,6 +16,7 @@ public static class ConfigureCheckV2
     public static IServiceCollection AddValtuutusCheckV2(this IServiceCollection services)
     {
         services.TryAddSingleton<CheckPlanCache>();
+        services.TryAddSingleton<CombinedPlanCache>();
         // Default: the generic, provider-agnostic executor. A relational provider (e.g.
         // Valtuutus.Data.Postgres) may Replace() this with a batching factory; order between
         // AddValtuutusCheckV2() and the provider's AddXxx() doesn't matter — TryAddSingleton here
