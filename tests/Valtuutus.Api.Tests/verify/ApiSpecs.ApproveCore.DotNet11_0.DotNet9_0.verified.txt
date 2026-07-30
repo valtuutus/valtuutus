@@ -218,6 +218,7 @@ namespace Valtuutus.Core.Engines.Check
     public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         public SubjectPermissionRequest() { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
         public int Depth { get; init; }
         public required string EntityId { get; init; }
         public required string EntityType { get; init; }

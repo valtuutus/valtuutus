@@ -51,7 +51,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         var ctx = new CheckRequestContext
         {
             SubjectType = req.SubjectType, SubjectId = req.SubjectId,
-            SnapToken = snapToken, Context = new Dictionary<string, object>(0)
+            SnapToken = snapToken, Context = req.Context
         };
 
         var permissions = schema.GetPermissions(req.EntityType);

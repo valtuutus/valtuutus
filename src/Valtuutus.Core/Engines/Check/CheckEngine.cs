@@ -141,7 +141,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             SubjectType = req.SubjectType,
             SubjectId = req.SubjectId,
             SnapToken = snapToken,
-            Context = new Dictionary<string, object>(0)
+            Context = req.Context
         };
 
         var i = 0;
