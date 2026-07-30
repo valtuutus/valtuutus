@@ -26,7 +26,7 @@ internal sealed class CombinedPlanCache(Schema schema, IEnumerable<IPlanRewriter
             static (key, self) =>
             {
                 var permissions = self._schema.GetPermissions(key.EntityType);
-                var pruned = new PlanNode[permissions.Count];
+                var pruned = new PlanNode[permissions.Length];
                 var i = 0;
                 foreach (var perm in permissions)
                 {

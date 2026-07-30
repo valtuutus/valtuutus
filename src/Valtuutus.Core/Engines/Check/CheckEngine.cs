@@ -132,7 +132,7 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
         var permissions = schema.GetPermissions(req.EntityType);
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
 
-        var count = permissions.Count;
+        var count = permissions.Length;
         var names = new string[count];
         var tasks = new Task<bool>[count];
         var memo = new CheckMemo();
