@@ -484,6 +484,7 @@ namespace Valtuutus.Core.Pools
         public System.ReadOnlySpan<T> AsSpan() { }
         public void Dispose() { }
         public System.Collections.Generic.List<T>.Enumerator GetEnumerator() { }
+        public System.Collections.Generic.List<T> Transfer() { }
         public static Valtuutus.Core.Pools.PooledList<T> Rent() { }
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Valtuutus.Core.Engines.Check;
 
@@ -52,7 +53,12 @@ public record Schema
         return Entities[entityType].Attributes[attribute];
     }
 
-    internal IReadOnlyCollection<Permission> GetPermissions(string entityType)
+    // Concrete return type (not IReadOnlyCollection<Permission>) so `var`-typed callers get
+    // ImmutableArray<Permission>'s own struct enumerator via foreach's pattern-based binding,
+    // instead of boxing through IEnumerator<Permission> — this is on the SubjectPermission hot
+    // path (CheckEngineV2.SubjectPermission, V1 CheckEngine.SubjectPermission). Callers use
+    // .Length, not .Count (ImmutableArray<T> only exposes Count via explicit interface impl).
+    internal ImmutableArray<Permission> GetPermissions(string entityType)
     {
         return Entities[entityType].Permissions.Values;
     }

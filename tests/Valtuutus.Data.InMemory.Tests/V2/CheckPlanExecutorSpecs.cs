@@ -156,7 +156,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema))
             { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest(entityType, entityId, permission, subjectRelation, depth)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest(entityType, entityId, permission, subjectRelation, depth) }, ctx, default);
         return results[0];
     }
 
@@ -222,7 +222,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = physical };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10)],
+            new CheckRootRequest[] { new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10) },
             ctx, default, precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
 
         results.Should().Equal(true, true);
@@ -262,7 +262,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = physical };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10)],
+            new CheckRootRequest[] { new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10) },
             ctx, default);
 
         results.Should().Equal(true, true);
@@ -606,7 +606,7 @@ public class CheckPlanExecutorSpecs
             { SubjectType = "user", SubjectId = "u1", SnapToken = default, Context = new Dictionary<string, object>() };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, ctx, default, memoizeRoots: false);
         results[0].Should().BeTrue("r0 resolves immediately true and short-circuits the union");
 
         // r1's op is still genuinely outstanding at this point — the executor must not be
@@ -726,7 +726,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("household", "1", "view", null, 10)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest("household", "1", "view", null, 10) }, ctx, default);
 
         results[0].Should().BeTrue();
         recording.SubmitCalls.Should().ContainSingle();
@@ -762,7 +762,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, ctx, default);
 
         results[0].Should().BeTrue("owner is granted");
         recording.SubmitCalls.Should().ContainSingle(
@@ -813,7 +813,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, ctx, default);
 
         results[0].Should().BeTrue();
         recording.SubmitCalls.Should().ContainSingle();
@@ -851,7 +851,7 @@ public class CheckPlanExecutorSpecs
         executor.Physical = physical;
 
         var act = async () => await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
 
         var drainTask = executor.DrainStragglersAsync();
@@ -873,7 +873,7 @@ public class CheckPlanExecutorSpecs
         executor.Physical = physical;
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         results[0].Should().BeTrue("r0 short-circuits the union");
 
         var drainTask = executor.DrainStragglersAsync();
@@ -884,7 +884,7 @@ public class CheckPlanExecutorSpecs
         // The instance must still be fully usable afterwards (this is what pooling relies on).
         physical.HeldRelations.Clear();
         var again = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         again[0].Should().BeTrue();
     }
 
@@ -910,21 +910,22 @@ public class CheckPlanExecutorSpecs
         executor.Physical = physical;
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         results[0].Should().BeTrue("r0 short-circuits before the TTU expansion arrives");
 
         var drainTask = executor.DrainStragglersAsync();
-        // PooledList is a readonly struct rented from the shared pool; boxing it into the
-        // object-typed payload channel is exactly what DefaultPhysicalExecutor does for real.
+        // Rent a PooledList and hand off its raw List<T> via .Transfer() — mirrors what
+        // PhysicalOpRunner does for real (see PhysicalExecution.cs): the object-typed payload
+        // channel carries the List<T> itself, not the PooledList<T> struct, to avoid boxing it.
         var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
-        physical.ReleaseWithPayload("shared", payload);
+        physical.ReleaseWithPayload("shared", payload.Transfer());
         await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         physical.HeldRelations.Clear();
         var again = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         again[0].Should().BeTrue("the drained straggler expansion must not leak into this call");
     }
 
@@ -954,7 +955,7 @@ public class CheckPlanExecutorSpecs
         executor.Physical = recording;
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), default, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), default, memoizeRoots: false);
         results[0].Should().BeTrue("r0 short-circuits the union");
         var submittedBeforeDrain = recording.Submitted.Count;
 
@@ -962,7 +963,7 @@ public class CheckPlanExecutorSpecs
         var payload = Valtuutus.Core.Pools.PooledList<RelationTuple>.Rent();
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
-        controllable.ReleaseWithPayload("shared", payload);
+        controllable.ReleaseWithPayload("shared", payload.Transfer());
         await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         recording.Submitted.Count.Should().Be(submittedBeforeDrain,
@@ -984,7 +985,7 @@ public class CheckPlanExecutorSpecs
 
         using var cts = new CancellationTokenSource(50);
         var act = async () => await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], Ctx(), cts.Token, memoizeRoots: false);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, Ctx(), cts.Token, memoizeRoots: false);
         await act.Should().ThrowAsync<OperationCanceledException>();
 
         var drainTask = executor.DrainStragglersAsync();
@@ -1031,7 +1032,7 @@ public class CheckPlanExecutorSpecs
         var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = recording };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, ctx, default);
 
         results[0].Should().BeTrue();
         recording.SubmitCalls.Should().ContainSingle();
@@ -1072,7 +1073,7 @@ public class CheckPlanExecutorSpecs
             { Physical = new DefaultPhysicalExecutor(schema) { Reader = reader } };
 
         var results = await executor.ExecuteAsync(
-            [new CheckRootRequest("doc", "1", "view", null, 10)], ctx, default);
+            new CheckRootRequest[] { new CheckRootRequest("doc", "1", "view", null, 10) }, ctx, default);
 
         results[0].Should().BeTrue();
     }
