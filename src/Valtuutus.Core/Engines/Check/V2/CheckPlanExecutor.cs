@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
@@ -50,6 +51,24 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // `roots` synchronously in its prologue, before any await — nothing else can be writing to
     // this same pooled instance's buffer concurrently (see pool ownership sequencing above).
     private readonly CheckRootRequest[] _singleRootBuffer = new CheckRootRequest[1];
+    // Analogous buffer for the N-root case (CheckEngineV2.SubjectPermission) — grown to fit,
+    // never shrunk, reused across calls on this pooled instance. Same safety argument as
+    // _singleRootBuffer: the caller fills it synchronously, before ExecuteAsync's first await,
+    // so nothing else on this pooled instance can be writing to it concurrently. Sized to exactly
+    // fit the last call's root count in steady state (repeated SubjectPermission calls against
+    // the same EntityType always request the same count), so growth only recurs when the
+    // permission-set size actually changes.
+    private CheckRootRequest[] _multiRootBuffer = [];
+
+    /// <summary>Returns this pooled instance's reusable multi-root buffer, grown to fit
+    /// <paramref name="count"/> if needed, sliced to exactly <paramref name="count"/> entries.
+    /// Caller must fill every slot before the first await inside <see cref="ExecuteAsync"/>.</summary>
+    internal Memory<CheckRootRequest> RentMultiRootBuffer(int count)
+    {
+        if (_multiRootBuffer.Length < count)
+            _multiRootBuffer = new CheckRootRequest[count];
+        return _multiRootBuffer.AsMemory(0, count);
+    }
     // Total dispatched-but-not-yet-completed ops, independent of _rootsPending. A short-circuited
     // Union/Intersect can make _rootsPending hit 0 while sibling ops are still in flight — this
     // instance is NOT safe to return to the pool until _pendingOps also reaches 0 (see
@@ -57,11 +76,43 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // using a colliding frame token.
     private int _pendingOps;
 
+    // Reused List<Waiter> instances across both waiter mechanisms below (MemoEntry.Waiters,
+    // MemoSlotState.Waiters) and across requests on this pooled executor instance — avoids a
+    // fresh List<T> + backing array per shared-slot/shared-memo-key wait registration, the
+    // dominant allocation source once cross-permission sharing (CombinedPlanCache) makes
+    // multiple frames commonly wait on the same in-flight entry/slot. Rent via
+    // RentWaiterList(), return (cleared) via ReturnWaiterList() at the exact point the list's
+    // owner (a MemoEntry or MemoSlotState) drains and nulls it out — never held past that
+    // point, so a list is never referenced by two owners at once.
+    private readonly Stack<List<Waiter>> _waiterListPool = new();
+
+    private List<Waiter> RentWaiterList() => _waiterListPool.TryPop(out var list) ? list : [];
+
+    private void ReturnWaiterList(List<Waiter> list)
+    {
+        list.Clear();
+        _waiterListPool.Push(list);
+    }
+
     // Dynamic memo — the V1 CheckMemo equivalent, allocated lazily on first cross-boundary
     // resolution beyond the roots. Cleared (not reallocated) at the start of each ExecuteAsync
     // so a pooled instance reuses the same backing Dictionary/List across requests.
     private Dictionary<CheckMemoKey, int>? _memoIndex;
     private List<MemoEntry> _memoEntries = [];
+
+    // Every MemoSlotState[] rented during the current ExecuteAsync call (the shared
+    // combined-plan array from the prologue, plus one per per-permission plan spawned via the
+    // non-combined SpawnPlan branch) — returned together once _pendingOps reaches 0, the same
+    // lifetime rule _frames itself follows (a straggler frame may still hold a `ref` into one
+    // of these). Cleared, not reallocated, at the start of each ExecuteAsync.
+    private readonly List<MemoSlotState[]> _rentedSlots = [];
+
+    private MemoSlotState[] RentSlots(int count)
+    {
+        var rented = ArrayPool<MemoSlotState>.Shared.Rent(count);
+        _rentedSlots.Add(rented);
+        return rented;
+    }
 
     // Explain-only side channel. Indexed by the same frame index as _frames — populated only
     // when ExecuteAsync's `explain` parameter is true (Task 4), never touched otherwise, so
@@ -143,8 +194,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // entirely (mirrors V1 CheckEngine.Check() passing memoize: false to its one CheckInternal
     // call). SubjectPermission's N roots keep memoizing (V1 default) since they can
     // legitimately reference each other.
-    public async Task<bool[]> ExecuteAsync(CheckRootRequest[] roots, CheckRequestContext ctx, CancellationToken ct,
-        bool memoizeRoots = true, bool explain = false)
+    // ReadOnlyMemory<T> (not CheckRootRequest[] or ReadOnlySpan<T>): a Span can't be an async
+    // method parameter, but Memory<T> can — this lets ExecuteSingleAsync/SubjectPermission pass a
+    // slice of a buffer they own (_singleRootBuffer / CheckPlanExecutor's own _multiRootBuffer)
+    // without allocating a fresh array sized to exactly `roots.Length` on every call. A plain
+    // T[] converts to ReadOnlyMemory<T> implicitly, so every existing caller is unaffected.
+    public async Task<bool[]> ExecuteAsync(ReadOnlyMemory<CheckRootRequest> roots, CheckRequestContext ctx,
+        CancellationToken ct, bool memoizeRoots = true, bool explain = false,
+        PlanNode[]? precompiledRoots = null, int combinedSlotCount = 0)
     {
         _ctx = ctx;
         _ct = ct;
@@ -165,23 +222,37 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _waveCount = 0;
         _memoIndex?.Clear();
         _memoEntries.Clear();
+        _rentedSlots.Clear();
         _results = new bool[roots.Length];
         _rootsPending = roots.Length;
         _pendingOps = 0;
+        // Shared across all N roots ONLY on the precompiled combined-plan path
+        // (CheckEngineV2.SubjectPermission) — every other caller (Check()/Explain(), and any
+        // nested SpawnPlan reached during evaluation) leaves precompiledRoots/combinedSlotCount
+        // at their defaults and keeps getting its own per-root Slots array from SpawnPlan below.
+        var sharedSlots = combinedSlotCount > 0 ? RentSlots(combinedSlotCount) : null;
+        Debug.Assert(precompiledRoots is null || precompiledRoots.Length == roots.Length,
+            "precompiledRoots, when supplied, must be index-aligned with roots — the caller (CheckEngineV2.SubjectPermission) builds both from the same schema.GetPermissions(entityType) iteration.");
         try
         {
-            for (var i = 0; i < roots.Length; i++)
+            // .Span is safe here (and only here): this whole prologue runs synchronously, before
+            // the first await below — see the type this method's `roots` docs point at
+            // (_singleRootBuffer/_multiRootBuffer) for why nothing else can mutate the backing
+            // buffer out from under this span mid-loop.
+            var rootsSpan = roots.Span;
+            for (var i = 0; i < rootsSpan.Length; i++)
             {
                 CheckNode? rootNode = _explain
                     ? new CheckNode
                     {
-                        Type = CheckNodeType.Permission, Name = roots[i].Permission,
-                        EntityType = roots[i].EntityType, EntityId = roots[i].EntityId,
+                        Type = CheckNodeType.Permission, Name = rootsSpan[i].Permission,
+                        EntityType = rootsSpan[i].EntityType, EntityId = rootsSpan[i].EntityId,
                         SubjectType = _ctx.SubjectType, SubjectId = _ctx.SubjectId,
                     }
                     : null;
-                ResolveDynamic(roots[i].EntityType, roots[i].EntityId, roots[i].Permission,
-                    roots[i].SubjectRelation, roots[i].Depth, NoParent, i, memoizeRoots, rootNode);
+                ResolveDynamic(rootsSpan[i].EntityType, rootsSpan[i].EntityId, rootsSpan[i].Permission,
+                    rootsSpan[i].SubjectRelation, rootsSpan[i].Depth, NoParent, i, memoizeRoots, rootNode,
+                    precompiledRoots?[i], sharedSlots);
             }
 
             DrainReady();
@@ -227,6 +298,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     ArrayPool<CheckNode?>.Shared.Return(_wrapSelfNodes, clearArray: true);
                     _wrapSelfNodes = [];
                 }
+                foreach (var rented in _rentedSlots)
+                    ArrayPool<MemoSlotState>.Shared.Return(rented, clearArray: true);
+                _rentedSlots.Clear();
             }
         }
     }
@@ -295,6 +369,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             ArrayPool<CheckNode?>.Shared.Return(_wrapSelfNodes, clearArray: true);
             _wrapSelfNodes = [];
         }
+        foreach (var rented in _rentedSlots)
+            ArrayPool<MemoSlotState>.Shared.Return(rented, clearArray: true);
+        _rentedSlots.Clear();
     }
 
     // ── IOpCompletionSink (called from provider threads) ────────────────────
@@ -426,7 +503,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // charged, guards run, and the dynamic memo is consulted.
     private void ResolveDynamic(string entityType, string entityId, string permission,
         string? subjectRelation, int depth, int parent, int rootIndex, bool memoize = true,
-        CheckNode? selfNode = null)
+        CheckNode? selfNode = null, PlanNode? precompiledRoot = null, MemoSlotState[]? sharedSlots = null)
     {
         if (depth <= 0)
         {
@@ -467,7 +544,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
         if (!memoize)
         {
-            SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, memoEntry: -1, selfNode);
+            SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, memoEntry: -1,
+                selfNode, precompiledRoot, sharedSlots);
             return;
         }
 
@@ -493,7 +571,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 selfNode.Detail = "memoized";
                 AttachOrSetRoot(selfNode, parent);
             }
-            (entry.Waiters ??= []).Add(new Waiter(parent, rootIndex, -1));
+            (entry.Waiters ??= RentWaiterList()).Add(new Waiter(parent, rootIndex, -1));
             if (_explain) (entry.ExplainWaiters ??= []).Add(selfNode);
             _memoEntries[entryIdx] = entry;
             return;
@@ -503,15 +581,30 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         var newEntryIdx = _memoEntries.Count;
         _memoEntries.Add(new MemoEntry());
 
-        SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, newEntryIdx, selfNode);
+        SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, newEntryIdx, selfNode,
+            precompiledRoot, sharedSlots);
     }
 
     private void SpawnPlan(string entityType, string entityId, string permission, string? subjectRelation,
-        int depth, int parent, int rootIndex, int memoEntry, CheckNode? selfNode)
+        int depth, int parent, int rootIndex, int memoEntry, CheckNode? selfNode,
+        PlanNode? precompiledRoot = null, MemoSlotState[]? sharedSlots = null)
     {
-        var plan = plans.GetOrCompile(entityType, permission, _ctx.SubjectType);
+        PlanNode root;
+        MemoSlotState[]? slots;
+        if (precompiledRoot is not null)
+        {
+            root = precompiledRoot;
+            slots = sharedSlots;
+        }
+        else
+        {
+            var plan = plans.GetOrCompile(entityType, permission, _ctx.SubjectType);
+            root = plan.Root;
+            slots = plan.SlotCount > 0 ? RentSlots(plan.SlotCount) : null;
+        }
+
         int newIdx;
-        if (_explain && selfNode is not null && plan.Root is UnionNode or IntersectNode)
+        if (_explain && selfNode is not null && root is UnionNode or IntersectNode)
         {
             // V1 parity (CheckEngine.CheckExpressionWithWrapper): when the permission's own tree
             // IS a union/intersect, that combinator gets a separate "and"/"or" wrapper node as
@@ -522,7 +615,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             // logic, MarkSiblingsSkipped, and AttachOrSetRoot, all of which must treat
             // _wrapSelfNodes[idx] (when set) as the real, attachable node instead of
             // _explainNodes[idx].
-            newIdx = SpawnFrame(plan.Root, entityType, entityId, subjectRelation, depth - 1, parent, rootIndex, memoEntry,
+            newIdx = SpawnFrame(root, entityType, entityId, subjectRelation, depth - 1, parent, rootIndex, memoEntry,
                 wrapSelfNode: selfNode);
         }
         else
@@ -536,12 +629,12 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             // NEVER touches the passed node's Type at all — it only ever adds the negated
             // child as a plain child, so selfNode must keep whatever Type/Name its own caller
             // gave it (e.g. Type=Permission, Name="view").
-            if (_explain && selfNode is not null && plan.Root is not NegateNode)
-                selfNode.Type = DescribeNode(plan.Root, permission).Type;
-            newIdx = SpawnFrame(plan.Root, entityType, entityId, subjectRelation, depth - 1, parent, rootIndex, memoEntry,
+            if (_explain && selfNode is not null && root is not NegateNode)
+                selfNode.Type = DescribeNode(root, permission).Type;
+            newIdx = SpawnFrame(root, entityType, entityId, subjectRelation, depth - 1, parent, rootIndex, memoEntry,
                 explainNode: selfNode);
         }
-        _frames[newIdx].Slots = plan.SlotCount > 0 ? new MemoSlotState[plan.SlotCount] : null;
+        _frames[newIdx].Slots = slots;
     }
 
     private void Notify(int parent, int rootIndex, bool result, int childIndex = -1)
@@ -647,6 +740,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 slot.ExplainWaiters = null;
                 CompleteFrame(parentIdx, childResult);
                 if (waiters is not null)
+                {
                     for (var i = 0; i < waiters.Count; i++)
                     {
                         var w = waiters[i];
@@ -657,6 +751,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                         }
                         Notify(w.Parent, w.RootIndex, childResult, w.ChildIndex);
                     }
+                    ReturnWaiterList(waiters);
+                }
                 break;
             }
 
@@ -711,6 +807,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             entry.ExplainWaiters = null;
             _memoEntries[frame.MemoEntry] = entry;
             if (waiters is not null)
+            {
                 for (var i = 0; i < waiters.Count; i++)
                 {
                     var w = waiters[i];
@@ -721,6 +818,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     }
                     Notify(w.Parent, w.RootIndex, result, w.ChildIndex);
                 }
+                ReturnWaiterList(waiters);
+            }
         }
 
         Notify(frame.Parent, frame.RootIndex, result, frame.ChildIndex);
@@ -775,6 +874,18 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                         };
                     }
                 }
+                // Deliberately does NOT forward precompiledRoot/sharedSlots — a PlanRefNode
+                // re-entry always falls back to the regular per-permission CheckPlanCache path
+                // (ResolveDynamic's default null/null), even inside a combined-plan evaluation.
+                // This is still correctly shared, not a lost optimization: when p.Permission is
+                // one of the SubjectPermission call's own N roots, every root was already
+                // registered in _memoIndex synchronously before any frame stepped (see
+                // ExecuteAsync's root loop), so this re-entry's ResolveDynamic call finds that
+                // root's existing (or in-flight) memo entry and coalesces onto it — no duplicate
+                // work happens, and no combined-plan wiring is needed to make that happen. When
+                // p.Permission is NOT one of the N roots, it's a genuinely different plan the
+                // combined cache never built a shared slot for anyway, so falling back to its own
+                // private CheckPlanCache-compiled plan and slots array is simply correct.
                 ResolveDynamic(frame.EntityType, frame.EntityId, p.Permission,
                     frame.SubjectRelation, frame.Depth + 1, idx, frame.RootIndex, selfNode: reentryNode);
                 // +1: this frame's Depth was already charged by the ResolveDynamic that spawned
@@ -855,7 +966,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                         CompleteFrame(idx, slot.Value);
                         break;
                     case 1:
-                        (slot.Waiters ??= []).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex));
+                        (slot.Waiters ??= RentWaiterList()).Add(new Waiter(frame.Parent, frame.RootIndex, frame.ChildIndex));
                         if (_explain)
                         {
                             var (type, name) = DescribeNode(m.Child, frame.EntityType);
@@ -1099,16 +1210,23 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         ref var frame = ref _frames[idx];
         if (frame.Completed)
         {
-            (completion.Payload as IDisposable)?.Dispose();
+            // Payload travels as the raw List<RelationTuple> (not a PooledList<RelationTuple>) to
+            // avoid boxing the struct through this `object` field — see PhysicalOpRunner/
+            // BatchedPhysicalExecutor's .Transfer() calls. Return it to the pool directly instead
+            // of via PooledList<T>.Dispose(), which this payload shape no longer offers.
+            if (completion.Payload is List<RelationTuple> staleList) ListPool<RelationTuple>.Return(staleList);
             return; // stale — most commonly a short-circuit straggler (see DrainStragglersAsync)
         }
 
         switch (frame.Node)
         {
             case DirectRelationNode d:
-                if (completion.Payload is PooledList<RelationTuple> indirect)
+                if (completion.Payload is List<RelationTuple> indirectList)
                 {
-                    OnIndirectRelationsFetched(idx, indirect);
+                    // Re-wrap into a PooledList<T> here (not further down the call chain) so
+                    // OnIndirectRelationsFetched's `using var _ = relations;` still returns it to
+                    // the pool exactly once, same as before this payload shape changed.
+                    OnIndirectRelationsFetched(idx, new PooledList<RelationTuple>(indirectList));
                 }
                 else if (completion.Result || !d.HasSubRelationPaths)
                 {
@@ -1146,9 +1264,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 break;
 
             case TupleToUserSetNode t:
-                if (completion.Payload is PooledList<RelationTuple> rels)
+                if (completion.Payload is List<RelationTuple> relsList)
                 {
-                    OnTupleToUserSetExpanded(idx, t, rels);
+                    OnTupleToUserSetExpanded(idx, t, new PooledList<RelationTuple>(relsList));
                 }
                 else
                 {

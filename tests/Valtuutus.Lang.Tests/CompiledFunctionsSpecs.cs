@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
 
 namespace Valtuutus.Lang.Tests;
@@ -8,7 +9,7 @@ public class CompiledFunctionsSpecs
     [Fact]
     public void Should_use_compiled_function_delegate_when_name_matches()
     {
-        var compiledFunctions = new Dictionary<string, Func<IDictionary<string, object?>, bool>>
+        var compiledFunctions = new Dictionary<string, FunctionExecutor>
         {
             // Deliberately returns the opposite of what the DSL body says, to prove
             // the compiled delegate is what actually executes, not the Expression-tree fallback.
@@ -21,14 +22,14 @@ public class CompiledFunctionsSpecs
 
         schema.Should().NotBeNull();
         schema.AsT0.Functions["isActiveStatus"]
-            .Execute(new Dictionary<string, object?> { ["status"] = 1 })
+            .Execute([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeFalse();
     }
 
     [Fact]
     public void Should_fall_back_to_expression_compile_when_name_not_in_map()
     {
-        var compiledFunctions = new Dictionary<string, Func<IDictionary<string, object?>, bool>>
+        var compiledFunctions = new Dictionary<string, FunctionExecutor>
         {
             ["someOtherFunction"] = _ => false
         };
@@ -39,7 +40,7 @@ public class CompiledFunctionsSpecs
 
         schema.Should().NotBeNull();
         schema.AsT0.Functions["isActiveStatus"]
-            .Execute(new Dictionary<string, object?> { ["status"] = 1 })
+            .Execute([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeTrue();
     }
 
@@ -52,7 +53,7 @@ public class CompiledFunctionsSpecs
 
         schema.Should().NotBeNull();
         schema.AsT0.Functions["isActiveStatus"]
-            .Execute(new Dictionary<string, object?> { ["status"] = 1 })
+            .Execute([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeTrue();
     }
 }

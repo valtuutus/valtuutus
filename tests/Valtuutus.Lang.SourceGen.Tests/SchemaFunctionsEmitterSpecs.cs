@@ -15,8 +15,8 @@ public class SchemaFunctionsEmitterSpecs
             diagnostics.Add);
 
         Assert.Empty(diagnostics);
-        Assert.Contains("public static bool IsActiveStatus(IDictionary<string, object?> args)", source);
-        Assert.Contains("var @status = (int?)args[\"status\"];", source);
+        Assert.Contains("public static bool IsActiveStatus(ReadOnlySpan<LiteralValueUnion> args)", source);
+        Assert.Contains("var @status = args[0].IntValue;", source);
         Assert.Contains("return (@status) == (1);", source);
         Assert.Contains("[\"isActiveStatus\"] = IsActiveStatus,", source);
     }
@@ -42,7 +42,7 @@ public class SchemaFunctionsEmitterSpecs
 
         Assert.Single(diagnostics);
         Assert.DoesNotContain("Broken", source);
-        Assert.Contains("public static bool Ok(IDictionary<string, object?> args)", source);
+        Assert.Contains("public static bool Ok(ReadOnlySpan<LiteralValueUnion> args)", source);
         Assert.DoesNotContain("[\"broken\"]", source);
         Assert.Contains("[\"ok\"] = Ok,", source);
     }
@@ -56,7 +56,7 @@ public class SchemaFunctionsEmitterSpecs
             diagnostics.Add);
 
         Assert.Empty(diagnostics);
-        Assert.Contains("public static bool IsActiveStatus(IDictionary<string, object?> args)", source);
+        Assert.Contains("public static bool IsActiveStatus(ReadOnlySpan<LiteralValueUnion> args)", source);
         Assert.Contains("[\"is_active_status\"] = IsActiveStatus,", source);
     }
 
@@ -69,7 +69,7 @@ public class SchemaFunctionsEmitterSpecs
             diagnostics.Add);
 
         Assert.Single(diagnostics);
-        Assert.Contains("public static bool IsActive(IDictionary<string, object?> args)", source);
+        Assert.Contains("public static bool IsActive(ReadOnlySpan<LiteralValueUnion> args)", source);
         Assert.Contains("[\"isActive\"] = IsActive,", source);
         Assert.DoesNotContain("[\"is_active\"]", source);
     }
@@ -83,7 +83,7 @@ public class SchemaFunctionsEmitterSpecs
             diagnostics.Add);
 
         Assert.Empty(diagnostics);
-        Assert.Contains("var @class = (string?)args[\"class\"];", source);
+        Assert.Contains("var @class = args[0].StringValue;", source);
         Assert.Contains("return (@class) == (\"admin\");", source);
     }
 }

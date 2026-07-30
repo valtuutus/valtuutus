@@ -10,7 +10,7 @@ namespace Valtuutus.Core
         public string EntityId { get; }
         public string EntityType { get; }
         public System.Text.Json.Nodes.JsonValue Value { get; }
-        public object? GetValue(System.Type type) { }
+        public Valtuutus.Core.Lang.LiteralValueUnion GetValue(System.Type type) { }
     }
     public readonly struct RelationTuple : System.IEquatable<Valtuutus.Core.RelationTuple>
     {
@@ -32,8 +32,8 @@ namespace Valtuutus.Core.Configuration
     }
     public static class ConfigureSchema
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText, System.Collections.Generic.IReadOnlyDictionary<string, System.Func<System.Collections.Generic.IDictionary<string, object?>, bool>>? compiledFunctions = null) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, string schemaText, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
     }
 }
 namespace Valtuutus.Core.Data
@@ -217,6 +217,7 @@ namespace Valtuutus.Core.Engines.Check
     public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
     {
         public SubjectPermissionRequest() { }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
         public int Depth { get; init; }
         public required string EntityId { get; init; }
         public required string EntityType { get; init; }
@@ -339,6 +340,7 @@ namespace Valtuutus.Core.Engines.Check.V2
     public static class PlanValidator
     {
         public static void Validate(Valtuutus.Core.Engines.Check.V2.PlanNode root, int slotCount) { }
+        public static void ValidateCombined(Valtuutus.Core.Engines.Check.V2.PlanNode[] roots, int slotCount) { }
     }
     public sealed class TupleToUserSetNode : Valtuutus.Core.Engines.Check.V2.PlanNode, System.IEquatable<Valtuutus.Core.Engines.Check.V2.TupleToUserSetNode>
     {
@@ -432,6 +434,7 @@ namespace Valtuutus.Core.Engines.LookupSubject
 }
 namespace Valtuutus.Core.Lang
 {
+    public delegate bool FunctionExecutor(System.ReadOnlySpan<Valtuutus.Core.Lang.LiteralValueUnion> args);
     public class LangError : System.IEquatable<Valtuutus.Core.Lang.LangError>
     {
         public LangError() { }
@@ -453,6 +456,19 @@ namespace Valtuutus.Core.Lang
         String = 1,
         Decimal = 2,
         Boolean = 3,
+    }
+    public struct LiteralValueUnion : System.IComparable<Valtuutus.Core.Lang.LiteralValueUnion>, System.IEquatable<Valtuutus.Core.Lang.LiteralValueUnion>
+    {
+        public bool? BooleanValue { get; set; }
+        public decimal? DecimalValue { get; set; }
+        public int? IntValue { get; set; }
+        public Valtuutus.Core.Lang.LangType LiteralType { get; set; }
+        public string? StringValue { get; set; }
+        public int CompareTo(Valtuutus.Core.Lang.LiteralValueUnion other) { }
+        public static bool operator <(Valtuutus.Core.Lang.LiteralValueUnion left, Valtuutus.Core.Lang.LiteralValueUnion right) { }
+        public static bool operator <=(Valtuutus.Core.Lang.LiteralValueUnion left, Valtuutus.Core.Lang.LiteralValueUnion right) { }
+        public static bool operator >(Valtuutus.Core.Lang.LiteralValueUnion left, Valtuutus.Core.Lang.LiteralValueUnion right) { }
+        public static bool operator >=(Valtuutus.Core.Lang.LiteralValueUnion left, Valtuutus.Core.Lang.LiteralValueUnion right) { }
     }
 }
 namespace Valtuutus.Core.Observability
@@ -481,6 +497,7 @@ namespace Valtuutus.Core.Pools
         public System.ReadOnlySpan<T> AsSpan() { }
         public void Dispose() { }
         public System.Collections.Generic.List<T>.Enumerator GetEnumerator() { }
+        public System.Collections.Generic.List<T> Transfer() { }
         public static Valtuutus.Core.Pools.PooledList<T> Rent() { }
     }
 }
@@ -504,7 +521,7 @@ namespace Valtuutus.Core.Schemas
     {
         public string Name { get; init; }
         public System.Collections.Generic.List<Valtuutus.Core.Schemas.FunctionParameter> Parameters { get; init; }
-        public bool Execute(System.Collections.Generic.IDictionary<string, object?> arguments) { }
+        public bool Execute(System.ReadOnlySpan<Valtuutus.Core.Lang.LiteralValueUnion> arguments) { }
     }
     public class FunctionParameter : System.IEquatable<Valtuutus.Core.Schemas.FunctionParameter>
     {

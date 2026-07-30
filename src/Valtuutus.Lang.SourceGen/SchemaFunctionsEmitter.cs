@@ -58,13 +58,14 @@ public static class SchemaFunctionsEmitter
                 continue;
             }
 
-            methods.AppendLine($"\tpublic static bool {methodName}(IDictionary<string, object?> args)");
+            methods.AppendLine($"\tpublic static bool {methodName}(ReadOnlySpan<LiteralValueUnion> args)");
             methods.AppendLine("\t{");
-            foreach (var p in result.Parameters)
+            for (int i = 0; i < result.Parameters.Count; i++)
             {
+                var p = result.Parameters[i];
                 // Verbatim-escape the local var name unconditionally, mirroring FunctionExpressionTranspiler's
                 // parameter references, since either may be a C# reserved keyword (e.g. "class").
-                methods.AppendLine($"\t\tvar @{p.Name} = {CastExpression(p.Type)}args[\"{p.Name}\"];");
+                methods.AppendLine($"\t\tvar @{p.Name} = args[{i}].{FieldName(p.Type)};");
             }
             methods.AppendLine($"\t\treturn {result.BodyExpression};");
             methods.AppendLine("\t}");
@@ -77,6 +78,7 @@ public static class SchemaFunctionsEmitter
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using Valtuutus.Core.Lang;");
         sb.AppendLine();
         sb.AppendLine("namespace Valtuutus.Lang;");
         sb.AppendLine();
@@ -86,7 +88,7 @@ public static class SchemaFunctionsEmitter
         sb.AppendLine("public static class SchemaFunctionsGen");
         sb.AppendLine("{");
         sb.Append(methods);
-        sb.AppendLine("\tpublic static readonly IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>> All = new Dictionary<string, Func<IDictionary<string, object?>, bool>>");
+        sb.AppendLine("\tpublic static readonly IReadOnlyDictionary<string, FunctionExecutor> All = new Dictionary<string, FunctionExecutor>");
         sb.AppendLine("\t{");
         sb.Append(dictionaryEntries);
         sb.AppendLine("\t};");
@@ -121,12 +123,12 @@ public static class SchemaFunctionsEmitter
         return sb.ToString();
     }
 
-    private static string CastExpression(FunctionParamType type) => type switch
+    private static string FieldName(FunctionParamType type) => type switch
     {
-        FunctionParamType.Int => "(int?)",
-        FunctionParamType.String => "(string?)",
-        FunctionParamType.Decimal => "(decimal?)",
-        FunctionParamType.Boolean => "(bool?)",
+        FunctionParamType.Int => "IntValue",
+        FunctionParamType.String => "StringValue",
+        FunctionParamType.Decimal => "DecimalValue",
+        FunctionParamType.Boolean => "BooleanValue",
         _ => throw new ArgumentOutOfRangeException(nameof(type))
     };
 }

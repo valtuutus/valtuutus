@@ -179,7 +179,11 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                     pooled.Dispose();
                     throw;
                 }
-                sink.CompleteWithPayload(op.Token, pooled);
+                // .Transfer() (not pooled itself): CompleteWithPayload takes `object`, and boxing
+                // the PooledList<T> struct there is a real per-op heap allocation. The underlying
+                // List<T> is already a reference type — CheckPlanExecutor re-wraps it in a
+                // PooledList<T> on the consuming side (see CheckPlanExecutor.OnOpCompleted).
+                sink.CompleteWithPayload(op.Token, pooled.Transfer());
                 break;
             }
             case OpKind.CheckOp:

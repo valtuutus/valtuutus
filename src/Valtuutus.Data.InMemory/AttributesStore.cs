@@ -251,6 +251,39 @@ public sealed class AttributesStore : IDisposable
         return result.ToArray();
     }
 
+    /// <summary>
+    /// Removes entries whose DeletedTxId is strictly older than watermark, from _all and every
+    /// secondary index bucket that references them, dropping any bucket left empty. Live entries
+    /// (DeletedTxId is null) are never touched regardless of CreatedTxId age.
+    /// </summary>
+    public int ReapTombstones(Ulid watermark)
+    {
+        using var _ = Write();
+        bool ShouldReap(Entry e) => e.DeletedTxId is not null && e.DeletedTxId.Value.CompareTo(watermark) < 0;
+
+        var removedCount = _all.RemoveAll(ShouldReap);
+
+        RemoveFromBuckets(_byEntityTypeAttr, ShouldReap);
+        RemoveFromBuckets(_byEntityType, ShouldReap);
+
+        return removedCount;
+    }
+
+    private static void RemoveFromBuckets<TKey>(Dictionary<TKey, List<Entry>> buckets, Func<Entry, bool> shouldReap)
+        where TKey : notnull
+    {
+        List<TKey>? emptyKeys = null;
+        foreach (var (key, bucket) in buckets)
+        {
+            bucket.RemoveAll(e => shouldReap(e));
+            if (bucket.Count == 0)
+                (emptyKeys ??= new List<TKey>()).Add(key);
+        }
+        if (emptyKeys is not null)
+            foreach (var key in emptyKeys)
+                buckets.Remove(key);
+    }
+
     public void Dispose() => _rwls.Dispose();
 
     private readonly struct ReadScope(ReaderWriterLockSlim rwls) : IDisposable

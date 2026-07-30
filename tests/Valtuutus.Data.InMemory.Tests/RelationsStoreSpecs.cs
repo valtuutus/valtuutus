@@ -1,3 +1,4 @@
+using FluentAssertions;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 
@@ -99,5 +100,68 @@ public sealed class RelationsStoreSpecs
         Assert.Equal(
             new HashSet<(string, string)> { ("g1", "u1"), ("g2", "u3") },
             result.Select(r => (r.EntityId, r.SubjectId)).ToHashSet());
+    }
+
+    [Fact]
+    public void ReapTombstones_removes_entries_tombstoned_before_the_watermark()
+    {
+        using var store = new RelationsStore();
+        // OrderedPair guarantees tx2 > tx1 — required below so the pre-delete snapshot check
+        // is actually meaningful (see comment at the bottom of this test).
+        var (tx1, tx2) = OrderedPair();
+        store.Write(tx1, new[] { new RelationTuple("project", "p1", "owner", "user", "u1") });
+        store.Delete(tx2, new[] { new DeleteRelationsFilter { EntityType = "project", EntityId = "p1" } });
+
+        // watermark strictly after tx2 -> the tombstone (deleted at tx2) is eligible
+        var watermark = Ulid.NewUlid(DateTimeOffset.UtcNow.AddSeconds(1));
+        var removed = store.ReapTombstones(watermark);
+
+        removed.Should().Be(1);
+        store.Dump().Should().BeEmpty();
+
+        // Query with a snapshot from BEFORE the delete (tx1). Under IsVisible's own rules, an
+        // entry created at-or-before tx1 and deleted strictly after tx1 (tx2 > tx1, guaranteed
+        // by OrderedPair) would still count as visible at this snapshot if it still physically
+        // existed in a bucket — IsVisible only checks DeletedTxId > snapId, which holds here.
+        // So the only way these assertions can pass is if ReapTombstones truly removed the
+        // entry from the secondary index buckets, not just tombstoned it logically. Checking
+        // both a string-keyed bucket (_byEntityType) and a tuple-keyed bucket
+        // (_byRelationSubjectType) covers both TKey shapes RemoveFromBuckets is instantiated with.
+        var preDeleteSnap = SnapAt(tx1);
+        store.GetAllEntityIds("project", preDeleteSnap).Should().BeEmpty();
+        using var stillThere = store.GetRelationsWithSubjectIds(
+            new EntityRelationFilter { EntityType = "project", Relation = "owner", SnapToken = preDeleteSnap },
+            new[] { "u1" }, "user");
+        stillThere.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ReapTombstones_never_removes_a_live_entry_regardless_of_its_age()
+    {
+        using var store = new RelationsStore();
+        var tx1 = Ulid.NewUlid();
+        store.Write(tx1, new[] { new RelationTuple("project", "p1", "owner", "user", "u1") });
+
+        // watermark far in the future — if this ever removed live rows it would prune production data
+        var farFutureWatermark = Ulid.NewUlid(DateTimeOffset.UtcNow.AddYears(10));
+        var removed = store.ReapTombstones(farFutureWatermark);
+
+        removed.Should().Be(0);
+        store.Dump().Should().ContainSingle(r => r.EntityId == "p1");
+    }
+
+    [Fact]
+    public void ReapTombstones_keeps_a_tombstone_exactly_at_the_watermark()
+    {
+        using var store = new RelationsStore();
+        var tx1 = Ulid.NewUlid();
+        store.Write(tx1, new[] { new RelationTuple("project", "p1", "owner", "user", "u1") });
+        var tx2 = Ulid.NewUlid();
+        store.Delete(tx2, new[] { new DeleteRelationsFilter { EntityType = "project", EntityId = "p1" } });
+
+        // watermark == tx2 exactly: only strictly-older tombstones are eligible
+        var removed = store.ReapTombstones(tx2);
+
+        removed.Should().Be(0);
     }
 }

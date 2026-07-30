@@ -1,0 +1,16 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
+[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace Valtuutus.Data.BackgroundService
+{
+    public static class DependencyInjectionExtensions
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddTombstoneReaperHostedService(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
+    public sealed class TombstoneReaperHostedService : Microsoft.Extensions.Hosting.BackgroundService
+    {
+        public TombstoneReaperHostedService(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory scopeFactory, Valtuutus.Data.ValtuutusReaperOptions options, System.TimeProvider timeProvider, Microsoft.Extensions.Logging.ILogger<Valtuutus.Data.BackgroundService.TombstoneReaperHostedService> logger) { }
+        protected override System.Threading.Tasks.Task ExecuteAsync(System.Threading.CancellationToken stoppingToken) { }
+    }
+}

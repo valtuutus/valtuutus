@@ -27,13 +27,13 @@ public readonly struct PooledList<T> : IEnumerable<T>, IDisposable
     public void Add(T item) => _list.Add(item);
     public void AddRange(IEnumerable<T> items) => _list.AddRange(items);
 
+    public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_list);
+
     /// <summary>
     /// Transfers ownership of the underlying list to the caller.
     /// The list is NOT returned to the pool — the caller is responsible for its lifecycle.
     /// </summary>
-    public ReadOnlySpan<T> AsSpan() => CollectionsMarshal.AsSpan(_list);
-
-    internal List<T> Transfer() => _list;
+    public List<T> Transfer() => _list;
 
     public void Dispose() => ListPool<T>.Return(_list);
 }

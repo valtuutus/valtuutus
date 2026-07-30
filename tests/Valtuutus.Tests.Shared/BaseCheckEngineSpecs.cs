@@ -498,6 +498,48 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SubjectPermissionWithSharedInlineSubtreeAcrossPermissions()
+    {
+        // The motivating case for the combined-plan work: edit/delete are byte-identical bodies
+        // referencing the SAME org.admin subtree, inlined (not factored into a shared named
+        // permission) — exactly the benchmarks/Valtuutus.Benchmarks/schema.vtt team entity shape.
+        // Correctness must be identical regardless of whether the engine evaluates org.admin
+        // once (V2 combined path) or twice (V1, and V2 before this change).
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity team {
+                relation owner @user;
+                relation org @organization;
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+                permission view := owner;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("team", "t1", "org", "organization", "org1"),
+                new RelationTuple("organization", "org1", "admin", "user", "1"),
+            ], [], schema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "team",
+                EntityId = "t1",
+                SubjectType = "user",
+                SubjectId = "1"
+            }, default);
+
+        result["edit"].Should().BeTrue();
+        result["delete"].Should().BeTrue();
+        result["view"].Should().BeFalse();
+    }
+
+    [Fact]
     public async Task SubjectPermissionWithDepthLimit()
     {
         // Arrange
@@ -1211,5 +1253,63 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         result.Should().ContainKey("view").WhoseValue.Should().BeTrue();
         result.Should().ContainKey("admin").WhoseValue.Should().BeTrue();
+    }
+
+    private const string ContextFunctionSchema = """
+        entity user {}
+        entity account {
+            relation owner @user;
+            attribute balance int;
+            permission withdraw := check_balance(context.amount, balance) and owner;
+        }
+
+        fn check_balance(amount int, balance int) =>
+            (balance >= amount) and (amount <= 5000);
+        """;
+
+    [Fact]
+    public async Task SubjectPermissionShouldEvaluateContextAccessFunctionArgWhenContextSupplied()
+    {
+        // SubjectPermissionRequest.Context must reach the same CheckRequestContext.Context
+        // that Check() uses, or any context-access function arg (context.amount here) always
+        // evaluates its leaf to false via IsContextValid.
+        var engine = await CreateEngine(
+            [new RelationTuple("account", "1", "owner", "user", "1")],
+            [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
+            ContextFunctionSchema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "account",
+                EntityId = "1",
+                SubjectType = "user",
+                SubjectId = "1",
+                Context = new Dictionary<string, object> { ["amount"] = 5000 }
+            }, default);
+
+        result.Should().ContainKey("withdraw").WhoseValue.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionShouldKeepDefaultBehaviorWhenNoContextSupplied()
+    {
+        // When the caller supplies no Context, check_balance's context.amount arg is missing,
+        // IsContextValid fails, and the leaf evaluates to false.
+        var engine = await CreateEngine(
+            [new RelationTuple("account", "1", "owner", "user", "1")],
+            [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
+            ContextFunctionSchema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "account",
+                EntityId = "1",
+                SubjectType = "user",
+                SubjectId = "1"
+            }, default);
+
+        result.Should().ContainKey("withdraw").WhoseValue.Should().BeFalse();
     }
 }

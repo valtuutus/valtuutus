@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
 
 namespace Valtuutus.Core.Configuration;
@@ -25,7 +26,7 @@ public static class ConfigureSchema
     public static IServiceCollection AddValtuutusCore(
         this IServiceCollection services,
         string schemaText,
-        IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>>? compiledFunctions = null)
+        IReadOnlyDictionary<string, FunctionExecutor>? compiledFunctions = null)
     {
         var builder = new SchemaReader(compiledFunctions);
         var result = builder.Parse(schemaText);
@@ -55,7 +56,7 @@ public static class ConfigureSchema
     public static IServiceCollection AddValtuutusCore(
         this IServiceCollection services,
         Stream stream,
-        IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>>? compiledFunctions = null)
+        IReadOnlyDictionary<string, FunctionExecutor>? compiledFunctions = null)
     {
         var builder = new SchemaReader(compiledFunctions);
         var result = builder.Parse(stream);

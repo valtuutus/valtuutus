@@ -7,6 +7,7 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
@@ -333,33 +334,32 @@ public sealed class LookupSubjectEngine(
                 Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
             }, req.EntitiesIds, ct);
 
-        using var paramToArgMap = fn.CreateParamToArgMap(node.Args);
-
-        return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, paramToArgMap));
+        return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, node.Args));
     }
 
     private List<AttributeTuple> EvaluateExpressionMatches(
         IReadOnlyDictionary<(string AttributeName, string EntityId), AttributeTuple> attributes,
         LookupSubjectRequestInternal req,
         Function fn,
-        PooledDictionary<FunctionParameter, PermissionNodeExpArgument> paramToArgMap)
+        PermissionNodeExpArgument[] args)
     {
         var result = new List<AttributeTuple>();
 
         foreach (var attr in attributes.Values)
         {
-            using var fnArgs = paramToArgMap.ToLambdaArgs(
-                static (arg, state) =>
+            using var fnArgs = fn.BuildArgs(
+                args,
+                static (arg, paramType, state) =>
                 {
                     var (attrs, entityId, entityType, sch) = state;
                     if (!attrs.TryGetValue((arg.AttributeName, entityId), out var a))
-                        return null;
+                        return new LiteralValueUnion { LiteralType = paramType };
                     return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
                 },
                 (attributes, attr.EntityId, req.EntityType, schema),
                 req.Context);
 
-            if (fn.Lambda(fnArgs.Dictionary))
+            if (fn.Lambda(fnArgs.Span))
             {
                 result.Add(attr);
             }

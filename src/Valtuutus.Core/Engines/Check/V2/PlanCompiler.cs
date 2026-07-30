@@ -11,20 +11,32 @@ internal static class PlanCompiler
         if (subjectType is not null && !schema.CanSubjectTypeReach(entityType, permission, subjectType))
             return new CheckPlan(ConstNode.False, SlotCount: 0);
 
-        var root = CompileRoot(schema, entityType, permission);
-        root = PruneAndFold(root, schema, entityType, subjectType);
-        var (consed, slotCount) = HashCons(root);
+        var pruned = Prune(schema, entityType, permission, subjectType);
+        var (roots, slotCount) = Cons([pruned]);
         // Sibling fusion (batching several same-entity refs into one round trip) is NOT the
         // compiler's job: it lives in provider-side IPlanRewriter implementations
         // (Valtuutus.Data.Db's RelationalPlanRewriter), applied by CheckPlanCache after compile.
-        return new CheckPlan(consed, slotCount);
+        return new CheckPlan(roots[0], slotCount);
     }
 
-    // Bottom-up interning: identical subtrees become one node; any node referenced more than
-    // once gets a MemoNode slot. MemoNode is also the rewrite barrier for later provider
-    // passes — never fuse across it: the child is shared by multiple parents, and fusing it
-    // into one duplicates the work for the others.
-    private static (PlanNode Root, int SlotCount) HashCons(PlanNode root)
+    // Prune/fold only, no hash-consing — the seam CombinedPlanCache needs to gather N permission
+    // trees BEFORE they're interned, so structural sharing can be detected across permissions
+    // instead of only within one. Compile() itself is just Cons([Prune(...)]) below; callers that
+    // don't need cross-permission sharing keep using Compile().
+    public static PlanNode Prune(Schema schema, string entityType, string permission, string? subjectType)
+    {
+        var root = CompileRoot(schema, entityType, permission);
+        return PruneAndFold(root, schema, entityType, subjectType);
+    }
+
+    // Bottom-up interning over however many roots are given: identical subtrees ACROSS all of
+    // them become one node; any node referenced more than once (whether within one root or
+    // shared between two different roots) gets a MemoNode slot, drawn from one shared slot space
+    // for the whole call. Compile() calls this with a single-element array — CombinedPlanCache
+    // calls it with N roots to detect sharing between permissions. MemoNode is also the rewrite
+    // barrier for later provider passes — never fuse across it: the child is shared by multiple
+    // parents, and fusing it into one duplicates the work for the others.
+    public static (PlanNode[] Roots, int SlotCount) Cons(PlanNode[] roots)
     {
         var interned = new Dictionary<PlanNode, PlanNode>(PlanNodeStructuralComparer.Instance);
         var refCounts = new Dictionary<PlanNode, int>(ReferenceEqualityComparer.Instance);
@@ -57,7 +69,9 @@ internal static class PlanCompiler
             return node;
         }
 
-        var canonicalRoot = Intern(root);
+        var canonicalRoots = new PlanNode[roots.Length];
+        for (var i = 0; i < roots.Length; i++)
+            canonicalRoots[i] = Intern(roots[i]);
 
         // Assign slots to shared non-Const nodes, rebuild with MemoNode wrappers.
         var slots = new Dictionary<PlanNode, int>(ReferenceEqualityComparer.Instance);
@@ -65,7 +79,7 @@ internal static class PlanCompiler
             if (count > 1 && node is not ConstNode)
                 slots[node] = slots.Count;
 
-        if (slots.Count == 0) return (canonicalRoot, 0);
+        if (slots.Count == 0) return (canonicalRoots, 0);
 
         var memoized = new Dictionary<PlanNode, MemoNode>(ReferenceEqualityComparer.Instance);
         PlanNode Wrap(PlanNode node)
@@ -84,7 +98,10 @@ internal static class PlanCompiler
             return memo;
         }
 
-        return (Wrap(canonicalRoot), slots.Count);
+        var wrapped = new PlanNode[roots.Length];
+        for (var i = 0; i < roots.Length; i++)
+            wrapped[i] = Wrap(canonicalRoots[i]);
+        return (wrapped, slots.Count);
     }
 
     private static PlanNode PruneAndFold(PlanNode node, Schema schema, string entityType, string? subjectType)

@@ -4,7 +4,8 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Engines.Check.V2;
 
-internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, CheckPlanExecutorPool executorPool)
+internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, CheckPlanExecutorPool executorPool,
+    CombinedPlanCache combinedPlans)
     : ICheckEngine
 {
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
@@ -50,29 +51,43 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         var ctx = new CheckRequestContext
         {
             SubjectType = req.SubjectType, SubjectId = req.SubjectId,
-            SnapToken = snapToken, Context = new Dictionary<string, object>(0)
+            SnapToken = snapToken, Context = req.Context
         };
 
         var permissions = schema.GetPermissions(req.EntityType);
-        var roots = new CheckRootRequest[permissions.Count];
-        var names = new string[permissions.Count];
+
+        // Roots buffer is rented from the executor itself (reused across calls on this pooled
+        // instance — see CheckPlanExecutor.RentMultiRootBuffer), not a fresh `new
+        // CheckRootRequest[permissions.Length]` every call. Rent the executor before filling it:
+        // the buffer is owned by the executor instance, so it must be picked first.
+        var executor = executorPool.Rent(reader);
+        var roots = executor.RentMultiRootBuffer(permissions.Length);
+        var rootsSpan = roots.Span;
         var i = 0;
         foreach (var perm in permissions)
-        {
-            names[i] = perm.Name;
-            roots[i] = new CheckRootRequest(req.EntityType, req.EntityId, perm.Name, null, req.Depth);
-            i++;
-        }
+            rootsSpan[i++] = new CheckRootRequest(req.EntityType, req.EntityId, perm.Name, null, req.Depth);
+
+        // Combined plan: all N permission trees hash-consed together (cached per
+        // (EntityType, SubjectType)), so a subtree shared across two permissions gets one slot
+        // in one shared array below instead of one array per root. Roots is index-aligned with
+        // combined.Roots and (below) with permissions itself, because this loop, CombinedPlanCache,
+        // and the result-building loop below all iterate the same schema.GetPermissions(entityType)
+        // FrozenDictionary.Values, whose iteration order is fixed once the schema is built.
+        var combined = combinedPlans.GetOrCompile(req.EntityType, ctx.SubjectType);
 
         // One driver loop, N roots: all permissions evaluate concurrently and share the
         // request's dynamic memo — the V2 equivalent of V1's shared CheckMemo here.
-        var executor = executorPool.Rent(reader);
-        var results = await executor.ExecuteAsync(roots, ctx, cancellationToken);
+        var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
+            precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
         _ = DrainAndReturn(executor);
 
-        var dict = new Dictionary<string, bool>(names.Length);
-        for (var j = 0; j < names.Length; j++)
-            dict[names[j]] = results[j];
+        // Re-enumerate permissions (instead of a `names[]` array built alongside roots above) to
+        // pair each name with its result — avoids a second heap array purely to carry names
+        // across the await.
+        var dict = new Dictionary<string, bool>(permissions.Length);
+        var j = 0;
+        foreach (var perm in permissions)
+            dict[perm.Name] = results[j++];
         return dict;
     }
 

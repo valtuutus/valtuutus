@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Data;
+using Valtuutus.Data;
 
 namespace Valtuutus.Data.InMemory;
 
@@ -18,6 +19,7 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<InMemoryProvider>();
         builder.Services.AddScoped<IDataReaderProvider>(sp => sp.GetRequiredService<InMemoryProvider>());
         builder.Services.AddScoped<IDataWriterProvider>(sp => sp.GetRequiredService<InMemoryProvider>());
+        builder.Services.AddScoped<ITombstoneReaperProvider, InMemoryTombstoneReaperProvider>();
         return builder;
     }
 }
