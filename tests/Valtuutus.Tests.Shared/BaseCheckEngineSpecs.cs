@@ -1254,4 +1254,62 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         result.Should().ContainKey("view").WhoseValue.Should().BeTrue();
         result.Should().ContainKey("admin").WhoseValue.Should().BeTrue();
     }
+
+    private const string ContextFunctionSchema = """
+        entity user {}
+        entity account {
+            relation owner @user;
+            attribute balance int;
+            permission withdraw := check_balance(context.amount, balance) and owner;
+        }
+
+        fn check_balance(amount int, balance int) =>
+            (balance >= amount) and (amount <= 5000);
+        """;
+
+    [Fact]
+    public async Task SubjectPermissionShouldEvaluateContextAccessFunctionArgWhenContextSupplied()
+    {
+        // SubjectPermissionRequest.Context must reach the same CheckRequestContext.Context
+        // that Check() uses, or any context-access function arg (context.amount here) always
+        // evaluates its leaf to false via IsContextValid.
+        var engine = await CreateEngine(
+            [new RelationTuple("account", "1", "owner", "user", "1")],
+            [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
+            ContextFunctionSchema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "account",
+                EntityId = "1",
+                SubjectType = "user",
+                SubjectId = "1",
+                Context = new Dictionary<string, object> { ["amount"] = 5000 }
+            }, default);
+
+        result.Should().ContainKey("withdraw").WhoseValue.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SubjectPermissionShouldKeepDefaultBehaviorWhenNoContextSupplied()
+    {
+        // When the caller supplies no Context, check_balance's context.amount arg is missing,
+        // IsContextValid fails, and the leaf evaluates to false.
+        var engine = await CreateEngine(
+            [new RelationTuple("account", "1", "owner", "user", "1")],
+            [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
+            ContextFunctionSchema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "account",
+                EntityId = "1",
+                SubjectType = "user",
+                SubjectId = "1"
+            }, default);
+
+        result.Should().ContainKey("withdraw").WhoseValue.Should().BeFalse();
+    }
 }
