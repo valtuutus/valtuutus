@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Lang.SourceGen.IntegrationTests;
 
@@ -7,10 +8,10 @@ public class GeneratedSchemaFunctionsSpecs
     [Fact]
     public void ShouldExposeCompiledFunctionMethod()
     {
-        SchemaFunctionsGen.IsActiveStatus(new Dictionary<string, object?> { ["status"] = 1 })
+        SchemaFunctionsGen.IsActiveStatus([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeTrue();
 
-        SchemaFunctionsGen.IsActiveStatus(new Dictionary<string, object?> { ["status"] = 2 })
+        SchemaFunctionsGen.IsActiveStatus([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 2 }])
             .Should().BeFalse();
     }
 
@@ -19,24 +20,24 @@ public class GeneratedSchemaFunctionsSpecs
     {
         SchemaFunctionsGen.All.Should().ContainKey("isActiveStatus");
 
-        SchemaFunctionsGen.All["isActiveStatus"](new Dictionary<string, object?> { ["status"] = 1 })
+        SchemaFunctionsGen.All["isActiveStatus"]([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeTrue();
     }
 
     [Fact]
     public void ShouldHandleNullAttributeValueWithoutThrowing()
     {
-        SchemaFunctionsGen.IsActiveStatus(new Dictionary<string, object?> { ["status"] = null })
+        SchemaFunctionsGen.IsActiveStatus([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = null }])
             .Should().BeFalse();
     }
 
     [Fact]
     public void ShouldCompileAndExecuteFunctionWithKeywordParameterName()
     {
-        SchemaFunctionsGen.CheckClass(new Dictionary<string, object?> { ["class"] = "admin" })
+        SchemaFunctionsGen.CheckClass([new LiteralValueUnion { LiteralType = LangType.String, StringValue = "admin" }])
             .Should().BeTrue();
 
-        SchemaFunctionsGen.CheckClass(new Dictionary<string, object?> { ["class"] = "guest" })
+        SchemaFunctionsGen.CheckClass([new LiteralValueUnion { LiteralType = LangType.String, StringValue = "guest" }])
             .Should().BeFalse();
     }
 }

@@ -2,6 +2,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Lang;
 
@@ -10,7 +11,7 @@ namespace Valtuutus.Lang;
 /// </summary>
 public static class SchemaFunctionsGen
 {
-	public static readonly IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>> All = new Dictionary<string, Func<IDictionary<string, object?>, bool>>
+	public static readonly IReadOnlyDictionary<string, FunctionExecutor> All = new Dictionary<string, FunctionExecutor>
 	{
 	};
 }

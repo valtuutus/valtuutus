@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
@@ -675,20 +676,19 @@ public sealed class CheckEngine(IDataReaderProvider reader, Schema schema) : ICh
             foreach (var a in attributes)
                 attributesByName[a.Attribute] = a;
 
-            using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
-
-            using var fnArgs = paramToArg.ToLambdaArgs(
-                static (arg, state) =>
+            using var fnArgs = fn.BuildArgs(
+                leafExp.Args,
+                static (arg, paramType, state) =>
                 {
                     var (byName, entityType, sch) = state;
-                    return byName.TryGetValue(arg.AttributeName, out var a)
-                        ? a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type)
-                        : null;
+                    if (!byName.TryGetValue(arg.AttributeName, out var a))
+                        return new LiteralValueUnion { LiteralType = paramType };
+                    return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
                 },
                 (attributesByName, entityType, schema),
                 ctx.Context);
 
-            var result = fn.Lambda(fnArgs.Dictionary);
+            var result = fn.Lambda(fnArgs.Span);
             if (node is not null) node.Detail = $"fn result={result}";
             return result;
         }

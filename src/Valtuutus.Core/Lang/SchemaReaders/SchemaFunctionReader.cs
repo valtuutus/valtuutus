@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Linq.Expressions;
 using Valtuutus.Core.Schemas;
 using Valtuutus.Lang;
@@ -7,7 +7,7 @@ namespace Valtuutus.Core.Lang.SchemaReaders;
 
 internal class SchemaFunctionReader(
     SchemaReader schemaReader,
-    IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>>? compiledFunctions = null)
+    IReadOnlyDictionary<string, FunctionExecutor>? compiledFunctions = null)
 {
     public Function Parse(ValtuutusParser.FunctionDefinitionContext funcCtx)
     {
@@ -41,19 +41,23 @@ internal class SchemaFunctionReader(
         }
 
         var tree = ParseFunctionExpression(
-            parameters.ToDictionary(x => x.ParamName, x => x.ParamType),
+            parameters.ToDictionary(x => x.ParamName),
             funcCtx.functionBody().functionExpression()
         );
 
-        var parameter = Expression.Parameter(typeof(IDictionary<string, object?>), "args");
+        var parameter = Expression.Parameter(typeof(ReadOnlySpan<LiteralValueUnion>), "args");
         var expression = tree.GetExpression(parameter);
 
         schemaReader.AddSymbol(new FunctionSymbol(functionName, funcCtx.Start.Line, funcCtx.Start.Column, parameters));
 
-        return new Function(functionName, parameters, expression.Compile());
+        // expression.Compile() returns FunctionNodeExecutor<bool>, a distinct-but-signature-identical
+        // delegate type from FunctionExecutor -- the explicit `new FunctionExecutor(...)` conversion
+        // is a standard C# delegate-to-delegate conversion (verified during the #275 spike), not a
+        // wrapper allocation cost beyond the usual delegate object.
+        return new Function(functionName, parameters, new FunctionExecutor(expression.Compile()));
     }
 
-    private FunctionNode<bool> ParseFunctionExpression(IDictionary<string, LangType> args,
+    private FunctionNode<bool> ParseFunctionExpression(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.FunctionExpressionContext exprCtx)
     {
         return exprCtx switch
@@ -75,7 +79,7 @@ internal class SchemaFunctionReader(
         };
     }
 
-    private FunctionNode<LiteralValueUnion> ParseLiteralExpression(IDictionary<string, LangType> args,
+    private FunctionNode<LiteralValueUnion> ParseLiteralExpression(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.FunctionExpressionContext exprCtx)
     {
         return exprCtx switch
@@ -87,7 +91,7 @@ internal class SchemaFunctionReader(
         };
     }
 
-    private FunctionNode<bool> CreateAndExpressionNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> CreateAndExpressionNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.AndExpressionContext andCtx)
     {
         return new AndExpressionFnNode
@@ -97,7 +101,7 @@ internal class SchemaFunctionReader(
         };
     }
 
-    private FunctionNode<bool> CreateOrExpressionNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> CreateOrExpressionNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.OrExpressionContext orCtx)
     {
         return new OrExpressionFnNode
@@ -107,7 +111,7 @@ internal class SchemaFunctionReader(
         };
     }
 
-    private FunctionNode<bool> CreateComparisonExpressionNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> CreateComparisonExpressionNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.FunctionExpressionContext ctx)
     {
         BinaryFunctionNode<bool, LiteralValueUnion> node = ctx switch
@@ -155,7 +159,7 @@ internal class SchemaFunctionReader(
         return node;
     }
 
-    private FunctionNode<bool> CreateParenthesisExpressionNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> CreateParenthesisExpressionNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.ParenthesisExpressionContext parenCtx)
     {
         var node = new ParenthesisExpressionFnNode
@@ -166,7 +170,7 @@ internal class SchemaFunctionReader(
         return node;
     }
 
-    private FunctionNode<bool> CreateNotExpressionNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> CreateNotExpressionNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.NotExpressionContext notCtx)
     {
         var node = new NotExpressionFnNode { Child = ParseFunctionExpression(args, notCtx.functionExpression()) };
@@ -174,7 +178,7 @@ internal class SchemaFunctionReader(
         return node;
     }
 
-    private FunctionNode<bool> TryHandleBooleanIdOrParamNode(IDictionary<string, LangType> args,
+    private FunctionNode<bool> TryHandleBooleanIdOrParamNode(IDictionary<string, FunctionParameter> args,
         ValtuutusParser.FunctionExpressionContext exprCtx)
     {
         var handleLiteralNode = (ValtuutusParser.LiteralExpressionContext litCtx) =>
@@ -219,18 +223,18 @@ internal class SchemaFunctionReader(
     }
 
     private FunctionNode<LiteralValueUnion> CreateParameterIdFnNode(
-        IDictionary<string, LangType> args,
+        IDictionary<string, FunctionParameter> args,
         ValtuutusParser.IdentifierExpressionContext idCtx
     )
     {
         var id = idCtx.ID().GetText();
-        if (!args.TryGetValue(id, out var type))
+        if (!args.TryGetValue(id, out var parameter))
         {
             throw new LangException($"{idCtx.ID().GetText()} is not defined in the function context.", idCtx.Start.Line,
                 idCtx.Start.Column);
         }
 
-        return new ParameterIdFnNode() { ParameterType = type, ParameterName = id };
+        return new ParameterIdFnNode() { ParameterType = parameter.ParamType, ParameterName = id, ParameterOrder = parameter.ParamOrder };
     }
 
     private FunctionNode<LiteralValueUnion> ParseLiteralFnNode(ValtuutusParser.LiteralContext literalCtx)

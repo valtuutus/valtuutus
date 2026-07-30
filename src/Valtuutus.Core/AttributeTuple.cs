@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Core;
 
@@ -20,14 +21,14 @@ public sealed record AttributeTuple
         Value = value;
     }
 
-    public object? GetValue(Type type)
+    public LiteralValueUnion GetValue(Type type)
     {
         return type switch
         {
-            { } t when t == typeof(string) => Value.GetValue<string>(),
-            { } t when t == typeof(int) => Value.GetValue<int>(),
-            { } t when t == typeof(decimal) => Value.GetValue<decimal>(),
-            { } t when t == typeof(bool) => Value.GetValue<bool>(),
+            { } t when t == typeof(string) => new LiteralValueUnion { LiteralType = LangType.String, StringValue = Value.GetValue<string>() },
+            { } t when t == typeof(int) => new LiteralValueUnion { LiteralType = LangType.Int, IntValue = Value.GetValue<int>() },
+            { } t when t == typeof(decimal) => new LiteralValueUnion { LiteralType = LangType.Decimal, DecimalValue = Value.GetValue<decimal>() },
+            { } t when t == typeof(bool) => new LiteralValueUnion { LiteralType = LangType.Boolean, BooleanValue = Value.GetValue<bool>() },
             _ => throw new NotSupportedException("Unsupported type")
         };
     }

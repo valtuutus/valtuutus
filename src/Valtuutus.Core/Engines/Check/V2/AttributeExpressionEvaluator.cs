@@ -1,4 +1,5 @@
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
 
@@ -37,19 +38,19 @@ internal static class AttributeExpressionEvaluator
             foreach (var a in attributes)
                 attributesByName[a.Attribute] = a;
 
-            using var paramToArg = fn.CreateParamToArgMap(leafExp.Args);
-            using var fnArgs = paramToArg.ToLambdaArgs(
-                static (arg, state) =>
+            using var fnArgs = fn.BuildArgs(
+                leafExp.Args,
+                static (arg, paramType, state) =>
                 {
                     var (byName, entityType, sch) = state;
-                    return byName.TryGetValue(arg.AttributeName, out var a)
-                        ? a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type)
-                        : null;
+                    if (!byName.TryGetValue(arg.AttributeName, out var a))
+                        return new LiteralValueUnion { LiteralType = paramType };
+                    return a.GetValue(sch.GetAttribute(entityType, arg.AttributeName).Type);
                 },
                 (attributesByName, entityType, schema),
                 ctx.Context);
 
-            return fn.Lambda(fnArgs.Dictionary);
+            return fn.Lambda(fnArgs.Span);
         }
         finally
         {
