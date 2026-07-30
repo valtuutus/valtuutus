@@ -194,6 +194,82 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
+    public async Task Combined_roots_share_one_slot_and_evaluate_shared_TTU_once()
+    {
+        const string schemaText = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity team {
+                relation owner @user;
+                relation org @organization;
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+            }
+            """;
+        var (_, schema, reader) = await Arrange(schemaText,
+            [new RelationTuple("team", "1", "org", "organization", "org1"),
+             new RelationTuple("organization", "org1", "admin", "user", "u1")]);
+        var ctx = new CheckRequestContext
+        {
+            SubjectType = "user", SubjectId = "u1",
+            SnapToken = (await reader.GetLatestSnapToken(default))!.Value, Context = new Dictionary<string, object>()
+        };
+
+        var combined = new CombinedPlanCache(schema).GetOrCompile("team", "user");
+        var physical = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = physical };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10)],
+            ctx, default, precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
+
+        results.Should().Equal(true, true);
+        // The whole edit/delete body is one shared MemoNode under the combined plan — "org" gets
+        // resolved exactly once total across both permissions, not once each.
+        physical.Submitted.Count(op => op.Relation == "org").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Without_combined_roots_the_same_shared_subtree_evaluates_twice()
+    {
+        // Baseline contrast for the test above: two SEPARATE per-permission plans (today's existing
+        // behavior, precompiledRoots omitted) do NOT share a slot, so "org" gets resolved once per
+        // permission that references it.
+        const string schemaText = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity team {
+                relation owner @user;
+                relation org @organization;
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+            }
+            """;
+        var (_, schema, reader) = await Arrange(schemaText,
+            [new RelationTuple("team", "1", "org", "organization", "org1"),
+             new RelationTuple("organization", "org1", "admin", "user", "u1")]);
+        var ctx = new CheckRequestContext
+        {
+            SubjectType = "user", SubjectId = "u1",
+            SnapToken = (await reader.GetLatestSnapToken(default))!.Value, Context = new Dictionary<string, object>()
+        };
+
+        var physical = new RecordingPhysicalExecutor(new DefaultPhysicalExecutor(schema) { Reader = reader });
+        var executor = new CheckPlanExecutor(schema, new CheckPlanCache(schema)) { Physical = physical };
+
+        var results = await executor.ExecuteAsync(
+            [new CheckRootRequest("team", "1", "edit", null, 10), new CheckRootRequest("team", "1", "delete", null, 10)],
+            ctx, default);
+
+        results.Should().Equal(true, true);
+        physical.Submitted.Count(op => op.Relation == "org").Should().Be(2);
+    }
+
+    [Fact]
     public async Task Depth_zero_returns_false()
     {
         (await RunCheck(DocSchema, [new RelationTuple("doc", "1", "owner", "user", "u1")], null,

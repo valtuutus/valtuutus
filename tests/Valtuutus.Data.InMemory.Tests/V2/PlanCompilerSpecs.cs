@@ -385,6 +385,65 @@ public class PlanCompilerSpecs
         second.SlotId.Should().Be(first.SlotId);
     }
 
+    [Fact]
+    public void Cons_of_single_root_matches_todays_Compile_output()
+    {
+        // Regression guard for the Prune/Cons split: Cons([Prune(...)]) must produce byte-identical
+        // output to Compile() for a single permission — every existing Compile()-based test in this
+        // file is an implicit regression test for this too, but this one is explicit about the seam.
+        const string s = """
+            entity user {}
+            entity folder {
+                relation owner @user;
+                relation editor @user;
+                permission admin := owner or (editor and owner);
+            }
+            """;
+        var schema = Parse(s);
+        var viaCompile = PlanCompiler.Compile(schema, "folder", "admin", "user");
+
+        var pruned = PlanCompiler.Prune(schema, "folder", "admin", "user");
+        var (roots, slotCount) = PlanCompiler.Cons([pruned]);
+
+        roots.Should().HaveCount(1);
+        PlanNodeStructuralComparer.Instance.Equals(roots[0], viaCompile.Root).Should().BeTrue();
+        slotCount.Should().Be(viaCompile.SlotCount);
+    }
+
+    [Fact]
+    public void Cons_of_two_roots_sharing_a_subtree_gets_one_combined_slot()
+    {
+        const string s = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity team {
+                relation owner @user;
+                relation org @organization;
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+            }
+            """;
+        var schema = Parse(s);
+        var editPruned = PlanCompiler.Prune(schema, "team", "edit", "user");
+        var deletePruned = PlanCompiler.Prune(schema, "team", "delete", "user");
+
+        var (roots, slotCount) = PlanCompiler.Cons([editPruned, deletePruned]);
+
+        // edit and delete are byte-identical bodies, so the whole root interns to one canonical
+        // node — the combined plan gives BOTH permissions the exact same (Memo-wrapped) root.
+        // Refcounting is per-node, not "outermost shared node only": org.admin (TTU) and owner
+        // are each independently referenced by both edit and delete, on top of the outer Union
+        // itself, so all three cross refcount>1 and each gets a slot (3 total) — the nested
+        // slots are allocated but never independently re-triggered, since the outer MemoNode's
+        // own memoization short-circuits before the second root's traversal ever reaches them.
+        roots.Should().HaveCount(2);
+        slotCount.Should().Be(3);
+        roots[0].Should().BeOfType<MemoNode>();
+        roots[1].Should().BeSameAs(roots[0]);
+    }
+
     private const string HouseholdSchema = """
         entity user {}
         entity household {

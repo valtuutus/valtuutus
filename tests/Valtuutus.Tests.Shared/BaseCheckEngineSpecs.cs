@@ -498,6 +498,48 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SubjectPermissionWithSharedInlineSubtreeAcrossPermissions()
+    {
+        // The motivating case for the combined-plan work: edit/delete are byte-identical bodies
+        // referencing the SAME org.admin subtree, inlined (not factored into a shared named
+        // permission) — exactly the benchmarks/Valtuutus.Benchmarks/schema.vtt team entity shape.
+        // Correctness must be identical regardless of whether the engine evaluates org.admin
+        // once (V2 combined path) or twice (V1, and V2 before this change).
+        const string schema = """
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity team {
+                relation owner @user;
+                relation org @organization;
+                permission edit := org.admin or owner;
+                permission delete := org.admin or owner;
+                permission view := owner;
+            }
+            """;
+
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("team", "t1", "org", "organization", "org1"),
+                new RelationTuple("organization", "org1", "admin", "user", "1"),
+            ], [], schema);
+
+        var result = await engine.SubjectPermission(
+            new SubjectPermissionRequest
+            {
+                EntityType = "team",
+                EntityId = "t1",
+                SubjectType = "user",
+                SubjectId = "1"
+            }, default);
+
+        result["edit"].Should().BeTrue();
+        result["delete"].Should().BeTrue();
+        result["view"].Should().BeFalse();
+    }
+
+    [Fact]
     public async Task SubjectPermissionWithDepthLimit()
     {
         // Arrange
