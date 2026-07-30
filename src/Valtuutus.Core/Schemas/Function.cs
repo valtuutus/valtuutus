@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Pools;
 
@@ -15,79 +15,57 @@ public record Function
 {
     public string Name { get; init; }
     public List<FunctionParameter> Parameters { get; init; }
-    internal Func<IDictionary<string, object?>, bool> Lambda { get; init; }
-    
-    internal Function(string name, List<FunctionParameter> parameters, Func<IDictionary<string, object?>, bool> lambda)
+    internal FunctionExecutor Lambda { get; init; }
+
+    internal Function(string name, List<FunctionParameter> parameters, FunctionExecutor lambda)
     {
         Name = name;
         Parameters = parameters;
         Lambda = lambda;
     }
-    
-    internal PooledDictionary<FunctionParameter, PermissionNodeExpArgument> CreateParamToArgMap(IList<PermissionNodeExpArgument> args)
-    {
-        var pooled = PooledDictionary<FunctionParameter, PermissionNodeExpArgument>.Rent();
-        foreach (var parameter in Parameters)
-            pooled.Dictionary[parameter] = args[parameter.ParamOrder];
-        return pooled;
-    }
 
-    public bool Execute(IDictionary<string, object?> arguments)
-    {
-        return Lambda(arguments);
-    }
-}
+    public bool Execute(ReadOnlySpan<LiteralValueUnion> arguments) => Lambda(arguments);
 
-internal static class ParamToArgMapExtensions
-{
-    public static PooledDictionary<string, object?> ToLambdaArgs(
-        this PooledDictionary<FunctionParameter, PermissionNodeExpArgument> map,
-        Func<PermissionNodeExpArgumentAttribute, object?> attrValueMapper,
-        IDictionary<string, object> context)
-    {
-        var pooled = PooledDictionary<string, object?>.Rent();
-
-        foreach (var pair in map.Dictionary)
-        {
-            object? value = pair.Value switch
-            {
-                PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg),
-                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
-                _ => throw new NotSupportedException("Unsupported argument type.")
-            };
-
-            pooled.Dictionary[pair.Key.ParamName] = value;
-        }
-
-        return pooled;
-    }
-
-    public static PooledDictionary<string, object?> ToLambdaArgs<TState>(
-        this PooledDictionary<FunctionParameter, PermissionNodeExpArgument> map,
-        Func<PermissionNodeExpArgumentAttribute, TState, object?> attrValueMapper,
+    /// <summary>
+    /// Builds this function's positional argument buffer directly from Parameters' ParamOrder --
+    /// replaces the old two-step CreateParamToArgMap (FunctionParameter -&gt; PermissionNodeExpArgument
+    /// pooled dict) + ToLambdaArgs (string-keyed, object?-boxing pooled dict) pipeline with one pass
+    /// into an ArrayPool-backed buffer. Caller disposes the returned PooledLiteralValueArray and
+    /// passes its Span to Lambda.
+    /// </summary>
+    internal PooledLiteralValueArray BuildArgs<TState>(
+        IList<PermissionNodeExpArgument> args,
+        Func<PermissionNodeExpArgumentAttribute, LangType, TState, LiteralValueUnion> attrValueMapper,
         TState state,
         IDictionary<string, object> context)
     {
-        var pooled = PooledDictionary<string, object?>.Rent();
+        var pooled = PooledLiteralValueArray.Rent(Parameters.Count);
+        var span = pooled.Span;
 
-        foreach (var pair in map.Dictionary)
+        foreach (var parameter in Parameters)
         {
-            object? value = pair.Value switch
+            var arg = args[parameter.ParamOrder];
+            span[parameter.ParamOrder] = arg switch
             {
-                PermissionNodeExpArgumentAttribute arg => attrValueMapper(arg, state),
-                PermissionNodeExpArgumentStringLiteral arg => arg.Value,
-                PermissionNodeExpArgumentIntLiteral arg => arg.Value,
-                PermissionNodeExpArgumentDecimalLiteral arg => arg.Value,
-                PermissionNodeExpArgumentContextAccess arg => context[arg.ContextPropertyName],
+                PermissionNodeExpArgumentAttribute a => attrValueMapper(a, parameter.ParamType, state),
+                PermissionNodeExpArgumentStringLiteral s => new LiteralValueUnion { LiteralType = LangType.String, StringValue = s.Value },
+                PermissionNodeExpArgumentIntLiteral i => new LiteralValueUnion { LiteralType = LangType.Int, IntValue = i.Value },
+                PermissionNodeExpArgumentDecimalLiteral d => new LiteralValueUnion { LiteralType = LangType.Decimal, DecimalValue = d.Value },
+                PermissionNodeExpArgumentBooleanLiteral b => new LiteralValueUnion { LiteralType = LangType.Boolean, BooleanValue = b.Value },
+                PermissionNodeExpArgumentContextAccess c => FromContextValue(context[c.ContextPropertyName], parameter.ParamType),
                 _ => throw new NotSupportedException("Unsupported argument type.")
             };
-
-            pooled.Dictionary[pair.Key.ParamName] = value;
         }
 
         return pooled;
     }
+
+    private static LiteralValueUnion FromContextValue(object value, LangType type) => type switch
+    {
+        LangType.String => new LiteralValueUnion { LiteralType = LangType.String, StringValue = (string)value },
+        LangType.Int => new LiteralValueUnion { LiteralType = LangType.Int, IntValue = (int)value },
+        LangType.Decimal => new LiteralValueUnion { LiteralType = LangType.Decimal, DecimalValue = (decimal)value },
+        LangType.Boolean => new LiteralValueUnion { LiteralType = LangType.Boolean, BooleanValue = (bool)value },
+        _ => throw new NotSupportedException("Unsupported type for LiteralValueUnion")
+    };
 }

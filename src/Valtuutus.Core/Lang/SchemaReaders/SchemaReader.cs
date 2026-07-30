@@ -13,7 +13,7 @@ internal class SchemaReader
     private readonly SchemaAttributeReader _schemaAttributeReader;
     private readonly SchemaPermissionReader _schemaPermissionReader;
 
-    public SchemaReader(IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>>? compiledFunctions = null)
+    public SchemaReader(IReadOnlyDictionary<string, FunctionExecutor>? compiledFunctions = null)
     {
         _schemaFunctionReader = new SchemaFunctionReader(this, compiledFunctions);
         _schemaAttributeReader = new SchemaAttributeReader(this);

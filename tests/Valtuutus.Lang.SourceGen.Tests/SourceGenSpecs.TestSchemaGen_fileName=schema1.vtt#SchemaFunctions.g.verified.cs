@@ -2,6 +2,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using Valtuutus.Core.Lang;
 
 namespace Valtuutus.Lang;
 
@@ -10,13 +11,13 @@ namespace Valtuutus.Lang;
 /// </summary>
 public static class SchemaFunctionsGen
 {
-	public static bool IsActiveStatus(IDictionary<string, object?> args)
+	public static bool IsActiveStatus(ReadOnlySpan<LiteralValueUnion> args)
 	{
-		var @status = (int?)args["status"];
+		var @status = args[0].IntValue;
 		return (@status) == (1);
 	}
 
-	public static readonly IReadOnlyDictionary<string, Func<IDictionary<string, object?>, bool>> All = new Dictionary<string, Func<IDictionary<string, object?>, bool>>
+	public static readonly IReadOnlyDictionary<string, FunctionExecutor> All = new Dictionary<string, FunctionExecutor>
 	{
 		["isActiveStatus"] = IsActiveStatus,
 	};

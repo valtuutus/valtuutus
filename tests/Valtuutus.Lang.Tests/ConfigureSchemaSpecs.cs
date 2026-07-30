@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
+using Valtuutus.Core.Lang;
 using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Lang.Tests;
@@ -10,7 +11,7 @@ public class ConfigureSchemaSpecs
     [Fact]
     public void Should_use_compiled_function_when_registered_via_AddValtuutusCore()
     {
-        var compiledFunctions = new Dictionary<string, Func<IDictionary<string, object?>, bool>>
+        var compiledFunctions = new Dictionary<string, FunctionExecutor>
         {
             // Deliberately returns the opposite of what the DSL body (`status == 1`) would produce,
             // to prove the compiled delegate registered via AddValtuutusCore is what actually executes.
@@ -31,7 +32,7 @@ public class ConfigureSchemaSpecs
         var schema = provider.GetRequiredService<Schema>();
 
         schema.Functions["isActiveStatus"]
-            .Execute(new Dictionary<string, object?> { ["status"] = 1 })
+            .Execute([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeFalse();
     }
 
@@ -52,7 +53,7 @@ public class ConfigureSchemaSpecs
         var schema = provider.GetRequiredService<Schema>();
 
         schema.Functions["isActiveStatus"]
-            .Execute(new Dictionary<string, object?> { ["status"] = 1 })
+            .Execute([new LiteralValueUnion { LiteralType = LangType.Int, IntValue = 1 }])
             .Should().BeTrue();
     }
 }

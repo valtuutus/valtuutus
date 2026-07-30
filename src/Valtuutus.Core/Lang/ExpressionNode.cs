@@ -1,4 +1,5 @@
-﻿using System.Linq.Expressions;
+using System.Diagnostics.CodeAnalysis;
+using System.Linq.Expressions;
 using System.Reflection;
 using Valtuutus.Lang;
 
@@ -6,7 +7,7 @@ namespace Valtuutus.Core.Lang;
 
 internal abstract record FunctionNode<T>
 {
-    internal abstract Expression<Func<IDictionary<string, object?>, T>> GetExpression(ParameterExpression args);
+    internal abstract Expression<FunctionNodeExecutor<T>> GetExpression(ParameterExpression args);
     internal abstract LangType TypeContext { get; }
 }
 
@@ -62,52 +63,6 @@ internal static class LangTypeExtensions
     }
 }
 
-internal record struct LiteralValueUnion : IComparable<LiteralValueUnion>
-{
-    public LangType LiteralType { get; set; }
-    public int? IntValue { get; set; }
-    public string? StringValue { get; set; }
-    public decimal? DecimalValue { get; set; }
-    public bool? BooleanValue { get; set; }
-
-    public int CompareTo(LiteralValueUnion other)
-    {
-        if (LiteralType != other.LiteralType)
-            throw new ArgumentException("Incompatible literal type comparison");
-
-        var intValueComparison = Nullable.Compare(IntValue, other.IntValue);
-        if (intValueComparison != 0)
-            return intValueComparison;
-
-        var stringValueComparison = string.Compare(StringValue, other.StringValue, StringComparison.Ordinal);
-        if (stringValueComparison != 0)
-            return stringValueComparison;
-
-        return Nullable.Compare(DecimalValue, other.DecimalValue);
-    }
-
-    public static bool operator <(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) < 0;
-
-    public static bool operator >(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) > 0;
-
-    public static bool operator <=(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) <= 0;
-
-    public static bool operator >=(LiteralValueUnion left, LiteralValueUnion right) => left.CompareTo(right) >= 0;
-
-    // Named wrappers around the operators above, so ExpressionNode.cs's comparison nodes can pass an
-    // explicit MethodInfo into Expression.Equal/NotEqual/LessThan/etc. instead of relying on those
-    // factories' by-name operator-method search (GetUserDefinedBinaryOperator), which throws under
-    // NativeAOT once trimming removes an operator that's otherwise only reachable via reflection.
-    // Calling the operators here directly (a == b, a < b, ...) also keeps them reachable for the
-    // trimmer, since this is now a normal static call site rather than a reflection-only one.
-    internal static bool AreEqual(LiteralValueUnion left, LiteralValueUnion right) => left == right;
-    internal static bool AreNotEqual(LiteralValueUnion left, LiteralValueUnion right) => left != right;
-    internal static bool IsLessThan(LiteralValueUnion left, LiteralValueUnion right) => left < right;
-    internal static bool IsGreaterThan(LiteralValueUnion left, LiteralValueUnion right) => left > right;
-    internal static bool IsLessThanOrEqual(LiteralValueUnion left, LiteralValueUnion right) => left <= right;
-    internal static bool IsGreaterThanOrEqual(LiteralValueUnion left, LiteralValueUnion right) => left >= right;
-}
-
 internal abstract record LeafFunctionNode : FunctionNode<LiteralValueUnion>
 {
 }
@@ -117,22 +72,22 @@ internal record StringLiteralFnNode : LeafFunctionNode
     internal override LangType TypeContext => LangType.String;
     internal required string Value { get; init; }
 
-    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
+    internal override Expression<FunctionNodeExecutor<LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LangType.String, StringValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
+        return Expression.Lambda<FunctionNodeExecutor<LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 }
 
 internal record IntegerLiteralFnNode : LeafFunctionNode
 {
-    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
+    internal override Expression<FunctionNodeExecutor<LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LangType.Int, IntValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
+        return Expression.Lambda<FunctionNodeExecutor<LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 
@@ -145,11 +100,11 @@ internal record DecimalLiteralFnNode : LeafFunctionNode
     internal override LangType TypeContext => LangType.Decimal;
     internal required decimal Value { get; init; }
 
-    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
+    internal override Expression<FunctionNodeExecutor<LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LangType.Decimal, DecimalValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
+        return Expression.Lambda<FunctionNodeExecutor<LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 }
@@ -159,87 +114,42 @@ internal record BooleanLiteralFnNode : LeafFunctionNode
     internal override LangType TypeContext => LangType.Boolean;
     internal required bool Value { get; init; }
 
-    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
+    internal override Expression<FunctionNodeExecutor<LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
         var wrappedValue = new LiteralValueUnion { LiteralType = LangType.Boolean, BooleanValue = Value };
-        return Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(
+        return Expression.Lambda<FunctionNodeExecutor<LiteralValueUnion>>(
             Expression.Constant(wrappedValue), args);
     }
 }
 
 internal record ParameterIdFnNode : LeafFunctionNode
 {
-    // IDictionary<string, object?>.get_Item, resolved once via a typeof() on the exact interface
-    // (a linker-recognized pattern that doesn't require DynamicallyAccessedMembers/produce a
-    // warning) rather than Expression.Property(instance, "Item", args), whose *overload* is
-    // unconditionally [RequiresUnreferencedCode] and throws under trimming/NativeAOT. Calling the
-    // indexer's own get_Item directly (not a wrapper method) keeps the compiled/interpreted tree
-    // identical in shape to the original code -- no extra call frame on this hot path.
-    private static readonly MethodInfo DictionaryIndexerGetMethod =
-        typeof(IDictionary<string, object?>).GetProperty("Item")!.GetGetMethod()!;
+    // Expression Trees can't build a managed-pointer node for ReadOnlySpan<T>'s indexer (see
+    // SpanIndexHelper's doc comment in LiteralValueUnion.cs) -- indexing goes through that helper
+    // via Expression.Call instead of Expression.Property/MakeIndex. Reached only via this reflected
+    // MethodInfo, so [DynamicDependency] keeps SpanIndexHelper.At rooted under trimming/NativeAOT --
+    // without it the trimmer has no ordinary call-graph edge to At and could remove it as unused.
+    [DynamicDependency(nameof(SpanIndexHelper.At), typeof(SpanIndexHelper))]
+    private static readonly MethodInfo AtMethod =
+        typeof(SpanIndexHelper).GetMethod(nameof(SpanIndexHelper.At), BindingFlags.NonPublic | BindingFlags.Static)!;
 
-    internal override Expression<Func<IDictionary<string, object?>, LiteralValueUnion>> GetExpression(
+    internal override Expression<FunctionNodeExecutor<LiteralValueUnion>> GetExpression(
         ParameterExpression args)
     {
-        var key = Expression.Constant(ParameterName);
+        // No MemberInit/type-switch needed here (unlike the old dict-indexer version): the arg
+        // buffer built by Function.BuildArgs already carries the correctly-typed LiteralValueUnion
+        // (LiteralType + the one relevant value field) at this parameter's position -- this node
+        // just reads it back out by position.
+        var indexExpression = Expression.Call(AtMethod, args, Expression.Constant(ParameterOrder));
 
-        var indexExpression = Expression.Call(args, DictionaryIndexerGetMethod, key);
-
-        var newLiteralValueUnionExpression = ParameterType switch
-        {
-           LangType.String => Expression.MemberInit(
-                Expression.New(typeof(LiteralValueUnion)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.LiteralType))!,
-                    Expression.Constant(ParameterType)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.StringValue))!,
-                    Expression.Convert(indexExpression, typeof(string)))
-            ),
-            LangType.Int => Expression.MemberInit(
-                Expression.New(typeof(LiteralValueUnion)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.LiteralType))!,
-                    Expression.Constant(ParameterType)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.IntValue))!,
-                    Expression.Convert(indexExpression, typeof(int?)))
-            ),
-
-            LangType.Decimal => Expression.MemberInit(
-                Expression.New(typeof(LiteralValueUnion)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.LiteralType))!,
-                    Expression.Constant(ParameterType)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.DecimalValue))!,
-                    Expression.Convert(indexExpression, typeof(decimal?)))
-            ),
-            LangType.Boolean => Expression.MemberInit(
-                Expression.New(typeof(LiteralValueUnion)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.LiteralType))!,
-                    Expression.Constant(ParameterType)),
-                Expression.Bind(
-                    typeof(LiteralValueUnion).GetProperty(nameof(LiteralValueUnion.BooleanValue))!,
-                    Expression.Convert(indexExpression, typeof(bool?)))
-            ),
-
-            _ => throw new ArgumentException("Unsupported type for LiteralValueUnion")
-        };
-
-        var lambda =
-            Expression.Lambda<Func<IDictionary<string, object?>, LiteralValueUnion>>(newLiteralValueUnionExpression,
-                args);
-
-        return lambda;
+        return Expression.Lambda<FunctionNodeExecutor<LiteralValueUnion>>(indexExpression, args);
     }
 
     internal override LangType TypeContext => ParameterType;
     internal required string ParameterName { get; set; }
+    internal required int ParameterOrder { get; set; }
     internal required LangType ParameterType { get; set; }
-    
 }
 
 internal abstract record BinaryFunctionNode<TOut, TIn> : FunctionNode<TOut>
@@ -253,14 +163,14 @@ internal record LessOrEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralVa
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsLessThanOrEqual).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.LessThanOrEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -271,14 +181,14 @@ internal record LessExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUnio
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsLessThan).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.LessThan(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -289,14 +199,14 @@ internal record GreaterOrEqualExpressionFnNode : BinaryFunctionNode<bool, Litera
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsGreaterThanOrEqual).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.GreaterThanOrEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -307,14 +217,14 @@ internal record GreaterExpressionFnNode : BinaryFunctionNode<bool, LiteralValueU
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.IsGreaterThan).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.GreaterThan(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -325,14 +235,14 @@ internal record NotEqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValue
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.AreNotEqual).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.NotEqual(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -343,14 +253,14 @@ internal record EqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUni
     private static readonly MethodInfo Method =
         ((Func<LiteralValueUnion, LiteralValueUnion, bool>)LiteralValueUnion.AreEqual).Method;
 
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.Equal(leftExpression, rightExpression, liftToNull: false, method: Method);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -358,14 +268,14 @@ internal record EqualExpressionFnNode : BinaryFunctionNode<bool, LiteralValueUni
 
 internal record OrExpressionFnNode : BinaryFunctionNode<bool, bool>
 {
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.OrElse(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -373,11 +283,11 @@ internal record OrExpressionFnNode : BinaryFunctionNode<bool, bool>
 
 internal record ParenthesisExpressionFnNode : UnaryFunctionNode<bool>
 {
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var childExpression = Child.GetExpression(args).Body;
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(childExpression, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(childExpression, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -385,11 +295,11 @@ internal record ParenthesisExpressionFnNode : UnaryFunctionNode<bool>
 
 internal record NotExpressionFnNode : UnaryFunctionNode<bool>
 {
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var childExpression = Child.GetExpression(args).Body;
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(Expression.Not(childExpression), args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(Expression.Not(childExpression), args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
@@ -397,14 +307,14 @@ internal record NotExpressionFnNode : UnaryFunctionNode<bool>
 
 internal record AndExpressionFnNode : BinaryFunctionNode<bool, bool>
 {
-    internal override Expression<Func<IDictionary<string, object?>, bool>> GetExpression(ParameterExpression args)
+    internal override Expression<FunctionNodeExecutor<bool>> GetExpression(ParameterExpression args)
     {
         var leftExpression = Left.GetExpression(args).Body;
         var rightExpression = Right.GetExpression(args).Body;
 
         var comparison = Expression.AndAlso(leftExpression, rightExpression);
 
-        return Expression.Lambda<Func<IDictionary<string, object?>, bool>>(comparison, args);
+        return Expression.Lambda<FunctionNodeExecutor<bool>>(comparison, args);
     }
 
     internal override LangType TypeContext => LangType.Boolean;
