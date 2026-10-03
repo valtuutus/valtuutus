@@ -26,7 +26,7 @@ public static class DependencyInjectionExtensions
         // Singleton batch ops for BatchedPhysicalExecutor: NpgsqlDataSource-backed (the same
         // cached data source the scoped readers share), so nothing per-scope is captured beyond
         // the connection string the first resolution probes. Constructed lazily — the factory only
-        // runs if something resolves IRelationalBatchOps (i.e. CheckV2 is opted in).
+        // runs if something resolves IRelationalBatchOps (i.e. the default CheckV2 is active).
         //
         // DbConnectionFactory is Scoped (AddDbSetup), but this factory runs against the ROOT
         // provider (singleton factories always resolve from root, by design — never the calling
@@ -44,8 +44,8 @@ public static class DependencyInjectionExtensions
                 sp.GetRequiredService<ValtuutusDataOptions>(),
                 postgresOptions);
         });
-        // Harmless when CheckV2 isn't opted in (nothing resolves CheckPlanExecutorPool then).
-        // Replace (not TryAdd) so this always wins regardless of whether AddValtuutusCheckV2()
+        // Harmless when the legacy CheckV1 is selected (nothing resolves CheckPlanExecutorPool then).
+        // Replace (not TryAdd) so this always wins regardless of whether AddValtuutusCore()
         // ran before or after this call. The batch capability is injected (resolved inside the
         // inner lambda, i.e. at first executor creation during a check — never at startup), not
         // discovered by type-testing the reader; GetService (not Required) so removing the

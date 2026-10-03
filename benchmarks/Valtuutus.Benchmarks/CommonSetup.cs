@@ -29,8 +29,6 @@ public static class CommonSetup
             .AddValtuutusCore(schema);
 
         configureProvider(serviceCollection);
-        if (Environment.GetEnvironmentVariable("VALTUUTUS_CHECK_V2") == "1")
-            serviceCollection.AddValtuutusCheckV2();
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
@@ -75,8 +73,6 @@ public static class CommonSetup
             .AddValtuutusCore(schema);
 
         configureProvider(serviceCollection);
-        if (Environment.GetEnvironmentVariable("VALTUUTUS_CHECK_V2") == "1")
-            serviceCollection.AddValtuutusCheckV2();
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();

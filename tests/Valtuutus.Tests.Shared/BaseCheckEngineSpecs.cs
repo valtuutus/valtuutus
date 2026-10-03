@@ -24,8 +24,6 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
 
-    protected virtual bool UseCheckV2 => false;
-
     private ServiceProvider CreateServiceProvider(string? schema = null)
     {
         var services = new ServiceCollection()
@@ -33,9 +31,6 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
-
-        if (UseCheckV2)
-            services.AddValtuutusCheckV2();
 
         return services.BuildServiceProvider();
     }

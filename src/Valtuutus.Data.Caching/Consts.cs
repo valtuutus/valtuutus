@@ -6,7 +6,7 @@ public static class Consts
 
     /// <summary>
     /// Keyed-service key under which <c>AddCaching</c> re-registers whatever <c>ICheckEngine</c>
-    /// was previously registered (V1 <c>CheckEngine</c> or the opt-in <c>CheckEngineV2</c>), so
+    /// was previously registered (the default <c>CheckEngineV2</c> or opt-in <c>CheckEngine</c>), so
     /// <see cref="CachedCheckEngine"/> can decorate it regardless of which one it is.
     /// </summary>
     public const string InnerCheckEngineKey = "valtuutus:caching:inner-check-engine";

@@ -64,7 +64,6 @@ public sealed class UsersetJoinRelationSpecs : IAsyncLifetime
 
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddPostgres(_ => dbFactory).AddConcurrentQueryLimit(3);
-        services.AddValtuutusCheckV2();
         await using var sp = services.BuildServiceProvider();
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
@@ -97,7 +96,6 @@ public sealed class UsersetJoinRelationSpecs : IAsyncLifetime
 
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddPostgres(_ => dbFactory).AddConcurrentQueryLimit(3);
-        services.AddValtuutusCheckV2();
 
         var counter = new RoundTripCounter();
         services.AddSingleton(counter);
