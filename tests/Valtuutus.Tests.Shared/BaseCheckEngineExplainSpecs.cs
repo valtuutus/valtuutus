@@ -13,7 +13,7 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
     protected BaseCheckEngineExplainSpecs(IDatabaseFixture fixture) { Fixture = fixture; }
     protected IDatabaseFixture Fixture { get; }
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    protected virtual bool UseCheckV2 => false;
+    protected virtual bool UseCheckV1 => false;
 
     protected async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         string? schema = null)
@@ -21,8 +21,8 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         var services = new ServiceCollection()
             .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services).AddConcurrentQueryLimit(3);
-        if (UseCheckV2)
-            services.AddValtuutusCheckV2();
+        if (UseCheckV1)
+            services.AddValtuutusCheckV1();
         var sp = services.BuildServiceProvider();
         var scope = sp.CreateScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();

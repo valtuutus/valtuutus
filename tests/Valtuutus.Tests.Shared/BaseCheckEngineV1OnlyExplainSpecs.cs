@@ -18,6 +18,7 @@ namespace Valtuutus.Tests.Shared;
 public abstract class BaseCheckEngineV1OnlyExplainSpecs : BaseCheckEngineExplainSpecs
 {
     protected BaseCheckEngineV1OnlyExplainSpecs(IDatabaseFixture fixture) : base(fixture) { }
+    protected override bool UseCheckV1 => true;
 
     [Fact]
     public async Task Explain_UnionExpression_ShortCircuitsAfterFirstTrue()

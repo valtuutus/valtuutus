@@ -44,7 +44,6 @@ public sealed class HasAnyOfAttributesRealDbSpecs : IAsyncLifetime
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddPostgres(_ => ((IWithDbConnectionFactory)Fixture).DbFactory).AddConcurrentQueryLimit(3);
-        services.AddValtuutusCheckV2();
         await using var sp = services.BuildServiceProvider();
         await using var scope = sp.CreateAsyncScope();
 

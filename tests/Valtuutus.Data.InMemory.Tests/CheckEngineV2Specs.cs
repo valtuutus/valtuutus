@@ -7,7 +7,6 @@ namespace Valtuutus.Data.InMemory.Tests;
 public sealed class CheckEngineV2Specs : BaseCheckEngineSpecs
 {
     public CheckEngineV2Specs(InMemoryFixture fixture) : base(fixture) { }
-    protected override bool UseCheckV2 => true;
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
         => services.AddInMemory();
 }

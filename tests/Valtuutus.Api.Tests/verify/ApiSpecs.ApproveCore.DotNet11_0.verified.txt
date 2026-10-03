@@ -27,9 +27,9 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
-    public static class ConfigureCheckV2
+    public static class ConfigureCheckV1
     {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV1(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
     }
     public static class ConfigureSchema
     {

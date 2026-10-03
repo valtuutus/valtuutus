@@ -10,8 +10,8 @@ public static class DependencyInjectionExtensions
 {
     /// <summary>
     /// Wraps whichever <c>ICheckEngine</c>/<c>ILookupEntityEngine</c>/<c>ILookupSubjectEngine</c> is
-    /// currently registered (V1 or the opt-in V2 check engine) in a FusionCache-backed decorator.
-    /// Call this after any engine-selection call (e.g. <c>AddValtuutusCheckV2</c>) so it decorates
+    /// currently registered (the default V2 engine or opt-in V1 engine) in a FusionCache-backed decorator.
+    /// Call this after any engine-selection call (e.g. <c>AddValtuutusCheckV1</c>) so it decorates
     /// the engine actually in effect, rather than the other way around.
     /// </summary>
     /// <param name="builder">Valtuutus data builder</param>
@@ -51,7 +51,7 @@ public static class DependencyInjectionExtensions
         {
             throw new InvalidOperationException(
                 $"AddCaching requires {typeof(TService).Name} to already be registered with a concrete " +
-                "implementation type (e.g. via AddValtuutusCore, or AddValtuutusCheckV2 for ICheckEngine).");
+                "implementation type (e.g. via AddValtuutusCore or AddValtuutusCheckV1 for ICheckEngine).");
         }
 
         services.Remove(descriptor);
