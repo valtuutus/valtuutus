@@ -149,7 +149,6 @@ public sealed class FusedExpressionRoundTripSpecs : IAsyncLifetime
 
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddSqlServer(_ => dbFactory).AddConcurrentQueryLimit(3);
-        services.AddValtuutusCheckV2();
 
         var counter = new RoundTripCounter();
         services.AddSingleton(counter);

@@ -11,8 +11,6 @@ namespace Valtuutus.Tests.Shared;
 public abstract class BaseCheckEngineV2ExplainSpecs : BaseCheckEngineExplainSpecs
 {
     protected BaseCheckEngineV2ExplainSpecs(IDatabaseFixture fixture) : base(fixture) { }
-    protected override bool UseCheckV2 => true;
-
     [Fact]
     public async Task Explain_MemoizedSubCheck_RecordsMemoizedSharedSubtreeDetail()
     {

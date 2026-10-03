@@ -7,7 +7,6 @@ namespace Valtuutus.Data.Postgres.Tests;
 public sealed class CheckEngineV2Specs : BaseCheckEngineSpecs
 {
     public CheckEngineV2Specs(PostgresFixture fixture): base(fixture){}
-    protected override bool UseCheckV2 => true;
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

@@ -1,9 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Valtuutus.Core.Engines.Check;
+using Valtuutus.Core.Engines.Check.V2;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Core.Configuration;
 
@@ -36,7 +39,7 @@ public static class ConfigureSchema
         }
         var schema = result.AsT0;
         services.AddSingleton(schema);
-        services.AddScoped<ICheckEngine, CheckEngine>();
+        AddDefaultCheckEngine(services);
         services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
         services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
 
@@ -66,11 +69,20 @@ public static class ConfigureSchema
         }
         var schema = result.AsT0;
         services.AddSingleton(schema);
-        services.AddScoped<ICheckEngine, CheckEngine>();
+        AddDefaultCheckEngine(services);
         services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
         services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
 
         return services;
+    }
+
+    private static void AddDefaultCheckEngine(IServiceCollection services)
+    {
+        services.TryAddSingleton<CheckPlanCache>();
+        services.TryAddSingleton<CombinedPlanCache>();
+        services.TryAddSingleton<Func<Schema, IPhysicalExecutor>>(_ => static schema => new DefaultPhysicalExecutor(schema));
+        services.TryAddSingleton<CheckPlanExecutorPool>();
+        services.AddScoped<ICheckEngine, CheckEngineV2>();
     }
 
 }

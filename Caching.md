@@ -59,22 +59,22 @@ builder.Services.AddValtuutusCore("""
 ```
 That's it. Now all your queries to the engines will be cached to reduce the load in your database. (It is not required to use a database provider to use caching)
 
-## Composing with CheckEngineV2
+## Selecting a check engine
 
-`AddCaching` decorates whichever `ICheckEngine` is registered at the point it runs, so if you opt into
-the V2 check engine (`AddValtuutusCheckV2`) call it **before** `.AddCaching()`:
+`AddValtuutusCore` uses CheckEngineV2 by default. `AddCaching` decorates whichever `ICheckEngine`
+is registered at the point it runs. If you need the legacy V1 engine, call `AddValtuutusCheckV1()`
+**before** `.AddCaching()`:
 ```csharp
 builder.Services.AddValtuutusCore("...");
-builder.Services.AddValtuutusCheckV2(); // opt-in, before AddCaching
+builder.Services.AddValtuutusCheckV1(); // legacy opt-out, before AddCaching
 
 builder.Services.AddPostgres(...)
     .AddConcurrentQueryLimit(3)
-    .AddCaching(); // <--- decorates CheckEngineV2
+    .AddCaching(); // <--- decorates the selected engine
 ```
-Calling `AddValtuutusCheckV2()` after `.AddCaching()` replaces the cached engine outright and you lose caching.
+Calling `AddValtuutusCheckV1()` after `.AddCaching()` replaces the cached engine outright and you lose caching.
 
 ## Multi node scenario
 ⚠️ If you are writing/deleting data from a multi node scenario, it is highly recommended to use a backplane for Fusion Cache. 
 That way, any writes/deletes in the data will automatically invalidate the cache in all instances.
 [Click here for more information.](https://github.com/ZiggyCreatures/FusionCache/blob/main/docs/Backplane.md)
-

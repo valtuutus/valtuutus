@@ -32,6 +32,24 @@ public class MyService(
 
 ---
 
+## Check engine selection
+
+`AddValtuutusCore` registers the plan/executor check engine (V2) by default. No additional
+registration is required for `Check`, `SubjectPermission`, or `Explain`.
+
+If you need the legacy recursive check engine temporarily, opt out explicitly after registering
+core services:
+
+```csharp
+builder.Services.AddValtuutusCore("...");
+builder.Services.AddValtuutusCheckV1();
+```
+
+V1 and V2 return the same authorization decisions. Their `Explain` trees can differ in execution
+details such as batching, fused operations, memoized subtrees, and short-circuited branches.
+
+---
+
 ## Snap Tokens and Read Consistency
 
 Every write operation returns a `SnapToken`:

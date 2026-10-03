@@ -113,7 +113,6 @@ public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddPostgres(_ => dbFactory).AddConcurrentQueryLimit(3);
-        services.AddValtuutusCheckV2();
 
         var counter = new RoundTripCounter();
         services.AddSingleton(counter);

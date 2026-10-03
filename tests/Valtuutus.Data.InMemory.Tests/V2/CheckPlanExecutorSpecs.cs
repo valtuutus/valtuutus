@@ -437,11 +437,10 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
-    public async Task AddValtuutusCheckV2_replaces_the_engine_and_answers_checks()
+    public async Task AddValtuutusCore_uses_CheckEngineV2_by_default_and_answers_checks()
     {
         var services = new ServiceCollection().AddValtuutusCore(DocSchema);
         services.AddInMemory();
-        services.AddValtuutusCheckV2();
         var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
         await sp.GetRequiredService<IDataWriterProvider>()
             .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
@@ -457,7 +456,18 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
-    public async Task AddValtuutusCheckV2_wires_ICheckEngine_Explain_through_the_V2_executor()
+    public void AddValtuutusCheckV1_replaces_the_default_engine()
+    {
+        var services = new ServiceCollection().AddValtuutusCore(DocSchema);
+        services.AddValtuutusCheckV1();
+        services.AddInMemory();
+
+        using var scope = services.BuildServiceProvider().CreateScope();
+        scope.ServiceProvider.GetRequiredService<ICheckEngine>().Should().BeOfType<CheckEngine>();
+    }
+
+    [Fact]
+    public async Task AddValtuutusCore_wires_ICheckEngine_Explain_through_the_V2_executor()
     {
         // Task 5: CheckEngineV2.Explain() no longer delegates to a throwaway V1 CheckEngine —
         // it must run through the same DI-resolved V2 executor pool as Check()/SubjectPermission.
@@ -466,7 +476,6 @@ public class CheckPlanExecutorSpecs
         // shape, not just the boolean.
         var services = new ServiceCollection().AddValtuutusCore(DocSchema);
         services.AddInMemory();
-        services.AddValtuutusCheckV2();
         var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
         await sp.GetRequiredService<IDataWriterProvider>()
             .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
@@ -505,7 +514,6 @@ public class CheckPlanExecutorSpecs
             """;
         var services = new ServiceCollection().AddValtuutusCore(s);
         services.AddInMemory();
-        services.AddValtuutusCheckV2();
         var scoped = services.BuildServiceProvider().CreateScope().ServiceProvider;
         await scoped.GetRequiredService<IDataWriterProvider>().Write([
             new RelationTuple("doc", "1", "owner", "user", "alice"),
@@ -559,7 +567,6 @@ public class CheckPlanExecutorSpecs
 
         var services = new ServiceCollection().AddValtuutusCore(schemaText);
         services.AddInMemory();
-        services.AddValtuutusCheckV2();
         var scoped = services.BuildServiceProvider().CreateScope().ServiceProvider;
         await scoped.GetRequiredService<IDataWriterProvider>().Write(
             [new RelationTuple("doc", "1", "r0", "user", "u1")], [], default);
