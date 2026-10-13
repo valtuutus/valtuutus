@@ -58,4 +58,10 @@ public enum RelationalBatchQuery
 
     /// <summary>Batched sibling of <see cref="Valtuutus.Core.Data.IDataReaderProvider.GetIndirectRelations"/>.</summary>
     GetIndirectRelations,
+
+    /// <summary>
+    /// Batched sibling of <see cref="Valtuutus.Core.Data.IDataReaderProvider.GetAttributesSingleEntity"/>
+    /// with a non-null entity id. <c>{0}</c> = attribute-name array.
+    /// </summary>
+    GetAttributesSingleEntity,
 }

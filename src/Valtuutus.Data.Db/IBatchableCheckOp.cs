@@ -23,6 +23,11 @@ public interface IBatchableCheckOp
     /// order to op tokens via a positional 1:1 zip against the sequence AddToBatch calls were made
     /// in, so an implementation that added zero or more than one command would silently misroute
     /// every result after it.
+    /// <para>Build the command only through <paramref name="ops"/>, passing
+    /// <paramref name="ctx"/>'s snap token along — never through a captured batch-ops instance, and
+    /// never by writing the snap token into the SQL yourself. When the batch resolves the request's
+    /// snap token itself, <paramref name="ops"/> is <see cref="IRelationalBatchOps.UsingBatchResolvedSnapToken"/>
+    /// and <paramref name="ctx"/> carries only a placeholder token, which that instance ignores.</para>
     /// </remarks>
     void AddToBatch(DbBatch batch, IRelationalBatchOps ops, CheckRequestContext ctx,
         string entityType, string entityId);

@@ -15,11 +15,24 @@ internal static class FusedExpressionSql
     // so the full command text is built once per distinct fused shape instead of being
     // re-interpolated from scratch on every request. ConditionalWeakTable ties each cached entry's
     // lifetime to the leaves list's own (no manual eviction needed when a plan is GC'd).
+    // The batch-resolved-token form is the same text behind SqlServerDataReaderProvider's
+    // DeclareBatchResolvedSnapToken prefix, cached separately.
     private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, string> CommandSqlCache = new();
+    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, string> BatchResolvedSnapTokenCommandSqlCache = new();
 
     internal static string BuildCommandSql(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll,
-        string relationsTable, string attributesTable)
+        string relationsTable, string attributesTable, bool batchResolvedSnapToken)
     {
+        if (batchResolvedSnapToken)
+        {
+            if (BatchResolvedSnapTokenCommandSqlCache.TryGetValue(leaves, out var cachedBatchResolved))
+                return cachedBatchResolved;
+            var batchResolved = SqlServerDataReaderProvider.DeclareBatchResolvedSnapToken
+                + BuildCommandSql(leaves, requireAll, relationsTable, attributesTable, batchResolvedSnapToken: false);
+            BatchResolvedSnapTokenCommandSqlCache.AddOrUpdate(leaves, batchResolved);
+            return batchResolved;
+        }
+
         if (CommandSqlCache.TryGetValue(leaves, out var cached)) return cached;
         var expr = FusedExpressionSqlBuilder.BuildBooleanExpression(leaves, requireAll,
             (leaf, i) => LeafFragment(leaf, i, relationsTable, attributesTable));

@@ -1,4 +1,5 @@
 using System.Data.Common;
+using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -8,22 +9,53 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Data.Db;
 
-// A wave's ops packed into one physical DbBatch round trip when the provider injected an
-// IRelationalBatchOps (a provider's DI extension registers its batch-ops implementation and
-// constructs this executor with it — the capability is injected, no longer discovered by
-// type-testing the reader), instead of DefaultPhysicalExecutor's one-round-trip-per-op. A null
+// A wave's ops packed into one physical DbBatch round trip when the provider registered an
+// IRelationalBatchOps (AddDbSetup constructs this executor with whatever IRelationalBatchOps is
+// registered — the capability is injected, not discovered by type-testing the reader), instead
+// of DefaultPhysicalExecutor's one-round-trip-per-op. A null
 // batchOps means the provider has no batch implementation (or opted out) — every wave then takes
 // the individual path below. Ops this class can't batch (null batchOps, or an op kind/ICheckOp
 // with no batch seam) fall back to the exact same individual-execution path
 // DefaultPhysicalExecutor uses (PhysicalOpRunner) so behavior for the unbatchable case is
 // identical, never a second implementation to keep in sync.
-internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps? batchOps) : IPhysicalExecutor
+internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps? batchOps)
+    : IPhysicalExecutor
 {
     // Property with a getter, same reasoning as DefaultPhysicalExecutor.Reader.
     public IDataReaderProvider Reader { get; set; } = null!;
 
+    public bool CanResolveSnapTokenInFirstRoundTrip => batchOps?.UsingBatchResolvedSnapToken is not null;
+
+    // Instances are rented per request. For a request whose token this executor resolves: the
+    // request's unresolved context, and the context carrying the token once its first batch has
+    // resolved it. Submit is only ever called by the request's single driver loop.
+    private CheckRequestContext? _resolvingFor;
+    private TaskCompletionSource<CheckRequestContext>? _resolved;
+
     public void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
     {
+        if (ctx.ResolveLatestSnapToken)
+        {
+            // The request's first wave resolves the token inside its own batch — even a single-op
+            // wave: two commands in one round trip still beat the dedicated token round trip they
+            // replace. Waves submitted before that batch returns wait for the token.
+            if (!ReferenceEquals(_resolvingFor, ctx))
+            {
+                _resolvingFor = ctx;
+                _resolved = new TaskCompletionSource<CheckRequestContext>(TaskCreationOptions.RunContinuationsAsynchronously);
+                _ = RunBatchAsync(ops.ToArray(), ctx, sink, batchOps!, ct, _resolved);
+                return;
+            }
+
+            var resolved = _resolved!.Task;
+            if (!resolved.IsCompletedSuccessfully)
+            {
+                _ = SubmitWhenResolvedAsync(ops.ToArray(), resolved, sink, ct);
+                return;
+            }
+            ctx = resolved.Result;
+        }
+
         // A wave of 0-1 ops has nothing to gain from batching — one command is one round trip
         // either way, and building a DbBatch/DbBatchCommand object graph for it costs more than
         // the plain single-command path.
@@ -35,7 +67,24 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
 
         // A ReadOnlySpan can't be captured across an await, so the wave is materialized into an
         // array before handing off to the async continuation.
-        _ = RunBatchAsync(ops.ToArray(), ctx, sink, batchOps, ct);
+        _ = RunBatchAsync(ops.ToArray(), ctx, sink, batchOps, ct, resolving: null);
+    }
+
+    private async Task SubmitWhenResolvedAsync(PendingOp[] ops, Task<CheckRequestContext> resolved,
+        IOpCompletionSink sink, CancellationToken ct)
+    {
+        CheckRequestContext ctx;
+        try
+        {
+            ctx = await resolved.ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            foreach (var op in ops)
+                sink.Fail(op.Token, e);
+            return;
+        }
+        Submit(ops, ctx, sink, ct);
     }
 
     private void SubmitAllIndividually(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct)
@@ -44,16 +93,32 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
             _ = PhysicalOpRunner.RunAsync(op, Reader, schema, ctx, sink, ct);
     }
 
+    // `resolving` is non-null for the batch that resolves the request's token: it publishes the
+    // context carrying that token there.
     private async Task RunBatchAsync(PendingOp[] ops, CheckRequestContext ctx, IOpCompletionSink sink,
-        IRelationalBatchOps batchOps, CancellationToken ct)
+        IRelationalBatchOps batchOps, CancellationToken ct, TaskCompletionSource<CheckRequestContext>? resolving)
     {
         List<PendingOp>? batchable = null;
+        // Unbatchable ops of the wave that resolves the token: they need it too, so they run once
+        // the batch has resolved it.
+        List<PendingOp>? deferred = null;
         foreach (var op in ops)
         {
+            // Answered without any fetch — never worth a batch slot.
+            if (op.Kind == OpKind.AttributeExpr && !PhysicalOpRunner.IsAttributeExprContextValid(op, ctx))
+            {
+                sink.Complete(op.Token, false);
+                continue;
+            }
+
             if (IsBatchable(op))
             {
                 batchable ??= new List<PendingOp>(ops.Length);
                 batchable.Add(op);
+            }
+            else if (resolving is not null)
+            {
+                (deferred ??= []).Add(op);
             }
             else
             {
@@ -63,51 +128,92 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
             }
         }
 
-        // Nothing to batch (either the wave was entirely unbatchable, or empty) — skip the batch
-        // machinery entirely rather than dispatch an empty DbBatch.
-        if (batchable is null) return;
-
-        // Only one op survived partitioning (the rest of the wave was unbatchable) — same
-        // single-op case Submit's fast path handles, just discovered after partitioning instead
-        // of before it. Same reasoning: a DbBatch of one command costs more than dispatching it
-        // directly.
-        if (batchable.Count == 1)
+        if (resolving is null)
         {
-            _ = PhysicalOpRunner.RunAsync(batchable[0], Reader, schema, ctx, sink, ct);
-            return;
+            // Nothing to batch (either the wave was entirely unbatchable, or empty) — skip the
+            // batch machinery entirely rather than dispatch an empty DbBatch.
+            if (batchable is null) return;
+
+            // Only one op survived partitioning (the rest of the wave was unbatchable) — same
+            // single-op case Submit's fast path handles, just discovered after partitioning
+            // instead of before it. Same reasoning: a DbBatch of one command costs more than
+            // dispatching it directly.
+            if (batchable.Count == 1)
+            {
+                _ = PhysicalOpRunner.RunAsync(batchable[0], Reader, schema, ctx, sink, ct);
+                return;
+            }
         }
 
-        var batch = batchOps.CreateBatch();
-        foreach (var op in batchable)
-            AddToBatch(batch, batchOps, op, ctx);
-
+        var batchCount = batchable?.Count ?? 0;
         // How far into `batchable` a result has already been reported to the sink. A fault at any
-        // point after this — obtaining the reader, advancing to a result set, or reading rows out
-        // of it — corrupts reader positioning for every command still ahead of it, so everything
-        // from this point on (not just the op that threw) must be failed, never left dangling.
+        // point — building the batch, obtaining the reader, advancing to a result set, or reading
+        // rows out of it — corrupts reader positioning for every command still ahead of it, so
+        // everything from this point on (not just the op that threw) must be failed, never left
+        // dangling.
         var reported = 0;
         try
         {
-            await using var reader = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
-            for (var i = 0; i < batchable.Count; i++)
+            var batch = batchOps.CreateBatch();
+            var commandOps = batchOps;
+            var buildCtx = ctx;
+            if (resolving is not null)
             {
-                if (i > 0)
+                // Resolver first; every later command comes from the batch-resolved-token catalog,
+                // which reads the token the resolver parks instead of binding a parameter — so the
+                // context they are built with only needs a placeholder token.
+                batchOps.AddResolveLatestSnapTokenToBatch(batch);
+                commandOps = batchOps.UsingBatchResolvedSnapToken!;
+                buildCtx = WithSnapToken(ctx, SnapToken.MinValue);
+            }
+            if (batchable is not null)
+                foreach (var op in batchable)
+                    AddToBatch(batch, commandOps, op, buildCtx);
+
+            await using var reader = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
+            if (resolving is not null)
+            {
+                // Published before any op result: an op completion can make the engine submit the
+                // next wave, which must find the token resolved.
+                var snapToken = await reader.ReadAsync(ct).ConfigureAwait(false) && !reader.IsDBNull(0)
+                    ? new SnapToken(reader.GetString(0))
+                    : SnapToken.MinValue;
+                ctx = WithSnapToken(ctx, snapToken);
+                resolving.SetResult(ctx);
+                if (deferred is not null)
+                    foreach (var op in deferred)
+                        _ = PhysicalOpRunner.RunAsync(op, Reader, schema, ctx, sink, ct);
+            }
+
+            for (var i = 0; i < batchCount; i++)
+            {
+                if (i > 0 || resolving is not null)
                     await reader.NextResultAsync(ct).ConfigureAwait(false);
-                await ReadResult(reader, batchable[i], sink, ct).ConfigureAwait(false);
+                await ReadResult(reader, batchable![i], ctx, sink, ct).ConfigureAwait(false);
                 reported = i + 1;
             }
         }
         catch (Exception e)
         {
-            for (var i = reported; i < batchable.Count; i++)
-                sink.Fail(batchable[i].Token, e);
+            if (resolving is not null && resolving.TrySetException(e) && deferred is not null)
+                foreach (var op in deferred)
+                    sink.Fail(op.Token, e);
+            for (var i = reported; i < batchCount; i++)
+                sink.Fail(batchable![i].Token, e);
         }
     }
+
+    private static CheckRequestContext WithSnapToken(CheckRequestContext ctx, SnapToken snapToken) => new()
+    {
+        SubjectType = ctx.SubjectType, SubjectId = ctx.SubjectId,
+        SnapToken = snapToken, Context = ctx.Context
+    };
 
     private static bool IsBatchable(in PendingOp op) => op.Kind switch
     {
         OpKind.HasDirectRelation or OpKind.HasTrueBoolAttribute or OpKind.TtuFastPath
-            or OpKind.HasAnyDirectRelation or OpKind.GetRelations or OpKind.GetIndirectRelations => true,
+            or OpKind.HasAnyDirectRelation or OpKind.GetRelations or OpKind.GetIndirectRelations
+            or OpKind.AttributeExpr => true,
         // Opaque to the executor by design (Rewriting.cs's ICheckOp contract) — only a rewriter-
         // installed op that also declares IBatchableCheckOp participates in the shared batch.
         OpKind.CheckOp => op.Op is IBatchableCheckOp,
@@ -138,6 +244,10 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
             case OpKind.GetIndirectRelations:
                 batchOps.AddGetIndirectRelationsToBatch(batch, Filter(op, ctx));
                 break;
+            case OpKind.AttributeExpr:
+                batchOps.AddGetAttributesSingleEntityToBatch(batch, op.EntityType, op.EntityId,
+                    PhysicalOpRunner.AttributeExprArgNames(op), ctx.SnapToken);
+                break;
             case OpKind.CheckOp:
                 ((IBatchableCheckOp)op.Op!).AddToBatch(batch, batchOps, ctx, op.EntityType, op.EntityId);
                 break;
@@ -146,7 +256,8 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         }
     }
 
-    private static async Task ReadResult(DbDataReader reader, PendingOp op, IOpCompletionSink sink, CancellationToken ct)
+    private async Task ReadResult(DbDataReader reader, PendingOp op, CheckRequestContext ctx, IOpCompletionSink sink,
+        CancellationToken ct)
     {
         switch (op.Kind)
         {
@@ -184,6 +295,20 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                 // List<T> is already a reference type — CheckPlanExecutor re-wraps it in a
                 // PooledList<T> on the consuming side (see CheckPlanExecutor.OnOpCompleted).
                 sink.CompleteWithPayload(op.Token, pooled.Transfer());
+                break;
+            }
+            case OpKind.AttributeExpr:
+            {
+                // Same 4-column shape as the providers' GetAttributesSingleEntity; the expression
+                // itself is evaluated in-process, exactly as the non-batched path does.
+                using var attributes = PooledList<AttributeTuple>.Rent();
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    attributes.Add(new AttributeTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2),
+                        JsonNode.Parse(reader.GetString(3)) as JsonValue
+                        ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue.")));
+                }
+                sink.Complete(op.Token, PhysicalOpRunner.EvaluateAttributeExpr(schema, ctx, op, attributes.AsSpan()));
                 break;
             }
             case OpKind.CheckOp:

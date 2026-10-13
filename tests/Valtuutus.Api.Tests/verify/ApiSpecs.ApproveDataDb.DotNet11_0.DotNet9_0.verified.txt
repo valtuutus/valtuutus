@@ -70,6 +70,8 @@ namespace Valtuutus.Data.Db
     }
     public interface IRelationalBatchOps
     {
+        Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
+        void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken);
         void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
         void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
         void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
@@ -80,6 +82,7 @@ namespace Valtuutus.Data.Db
         void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
         void AddHasUsersetJoinRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken);
+        void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch);
         System.Data.Common.DbBatch CreateBatch();
         System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken);
     }
@@ -100,6 +103,8 @@ namespace Valtuutus.Data.Db
     public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
     {
         protected RelationalBatchProviderBase() { }
+        public virtual Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
+        public virtual void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
         public virtual void AddGetRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }
         public virtual void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
@@ -110,6 +115,7 @@ namespace Valtuutus.Data.Db
         public virtual void AddHasTrueBoolAttributeToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasUsersetJoinRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public virtual void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
         public abstract System.Data.Common.DbBatch CreateBatch();
         public abstract System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken);
         protected abstract string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query);
@@ -132,5 +138,6 @@ namespace Valtuutus.Data.Db
         GetRelations = 7,
         GetRelationsWithSubjectFilters = 8,
         GetIndirectRelations = 9,
+        GetAttributesSingleEntity = 10,
     }
 }

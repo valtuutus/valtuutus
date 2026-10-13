@@ -103,6 +103,13 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         => AddParam(cmd, name, snapToken.Value);
 
     /// <inheritdoc />
+    public virtual IRelationalBatchOps? UsingBatchResolvedSnapToken => null;
+
+    /// <inheritdoc />
+    public virtual void AddResolveLatestSnapTokenToBatch(DbBatch batch)
+        => throw new NotSupportedException($"{GetType().Name} cannot resolve the snap token inside a batch.");
+
+    /// <inheritdoc />
     public virtual void AddHasDirectRelationToBatch(DbBatch batch, RelationTupleFilter tupleFilter, string subjectId)
     {
         var cmd = NewCommand(batch, GetSql(RelationalBatchQuery.HasDirectRelation));
@@ -224,5 +231,17 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_id", tupleFilter.EntityId, 64);
         WriteStringParam(cmd, "relation", tupleFilter.Relation, 64);
         WriteSnapTokenParam(cmd, "snap_token", tupleFilter.SnapToken);
+    }
+
+    /// <inheritdoc />
+    public virtual void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
+        string[] attributeNames, SnapToken snapToken)
+    {
+        var cmd = NewCommand(batch, GetSql(RelationalBatchQuery.GetAttributesSingleEntity));
+        WriteStringParam(cmd, "entity_type", entityType, 256);
+        WriteStringParam(cmd, "entity_id", entityId, 64);
+        var arrayFragment = WriteNameArrayParam(cmd, "attributes", attributeNames);
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
+        cmd.CommandText = string.Format(CultureInfo.InvariantCulture, cmd.CommandText, arrayFragment);
     }
 }

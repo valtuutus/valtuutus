@@ -25,6 +25,12 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
     private readonly DbConnectionFactory _connectionFactory;
     private readonly SqlServerDataReaderProvider.ReaderQueries _q;
     private readonly BatchRateLimiter _rateLimiter;
+    // Non-null only for the UsingBatchResolvedSnapToken view: every catalog statement behind the
+    // DeclareBatchResolvedSnapToken prefix, indexed by RelationalBatchQuery, built once. The view
+    // writes no snap-token parameter and shares the owner's connection factory and rate limiter.
+    private readonly string[]? _batchResolvedSql;
+    private readonly string _selectAttributesWithEntityIdPrefix;
+    private readonly SqlServerBatchOps? _batchResolvedSnapTokenView;
 
     public SqlServerBatchOps(DbConnectionFactory connectionFactory,
         ValtuutusDataOptions options,
@@ -33,7 +39,31 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         _connectionFactory = connectionFactory;
         _rateLimiter = new BatchRateLimiter(options);
         _q = SqlServerDataReaderProvider.GetQueries(dbOptions);
+        _selectAttributesWithEntityIdPrefix = _q.SelectAttributesByEntityAttributesWithEntityIdPrefix;
+        _batchResolvedSnapTokenView = new SqlServerBatchOps(this);
     }
+
+    private SqlServerBatchOps(SqlServerBatchOps owner)
+    {
+        _connectionFactory = owner._connectionFactory;
+        _rateLimiter = owner._rateLimiter;
+        _q = owner._q;
+        _selectAttributesWithEntityIdPrefix =
+            SqlServerDataReaderProvider.DeclareBatchResolvedSnapToken + _q.SelectAttributesByEntityAttributesWithEntityIdPrefix;
+        var queries = Enum.GetValues<RelationalBatchQuery>();
+        _batchResolvedSql = new string[queries.Length];
+        foreach (var query in queries)
+            if (query != RelationalBatchQuery.GetAttributesSingleEntity)
+                _batchResolvedSql[(int)query] = SqlServerDataReaderProvider.DeclareBatchResolvedSnapToken + owner.GetSql(query);
+    }
+
+    /// <inheritdoc />
+    public override IRelationalBatchOps UsingBatchResolvedSnapToken => _batchResolvedSnapTokenView ?? this;
+
+    // Session context lives for the connection's session, so every later command of the same
+    // SqlBatch sees it; the pooled-connection reset clears it before the connection is reused.
+    /// <inheritdoc />
+    public override void AddResolveLatestSnapTokenToBatch(DbBatch batch) => NewCommand(batch, _q.ResolveLatestSnapTokenForBatch);
 
     // SqlServer has no NpgsqlDataSource-equivalent pooling object, so unlike Postgres, CreateBatch
     // cannot open a connection itself (it's a synchronous interface member with no
@@ -88,7 +118,10 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
     // from the reader's cached SQL text — because BatchedPhysicalExecutor's result reader calls
     // DbDataReader.GetBoolean(0), which requires an actual bit-typed column, not SqlServer's
     // implicit int.
-    protected override string GetSql(RelationalBatchQuery query) => query switch
+    protected override string GetSql(RelationalBatchQuery query)
+        => _batchResolvedSql?[(int)query] ?? GetParameterSql(query);
+
+    private string GetParameterSql(RelationalBatchQuery query) => query switch
     {
         RelationalBatchQuery.HasDirectRelation => _q.HasDirectRelation,
         RelationalBatchQuery.HasTrueBoolAttribute => _q.HasTrueBoolAttribute,
@@ -124,7 +157,10 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         => SqlServerDataReaderProvider.AddNullableStringParameter(Parameters(cmd), MapParamName(name), value, size);
 
     protected override void WriteSnapTokenParam(DbBatchCommand cmd, string name, SnapToken snapToken)
-        => SqlServerDataReaderProvider.AddFixedCharParameter(Parameters(cmd), MapParamName(name), snapToken.Value, 26);
+    {
+        if (_batchResolvedSql is null)
+            SqlServerDataReaderProvider.AddFixedCharParameter(Parameters(cmd), MapParamName(name), snapToken.Value, 26);
+    }
 
     // RelationalBatchProviderBase passes fixed snake_case parameter names (its own naming
     // convention, shared by every provider's Add*ToBatch override). The reader's cached SQL text
@@ -153,16 +189,32 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
     public override void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
-        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
+            batchResolvedSnapToken: _batchResolvedSql is not null);
         var cmd = NewCommand(batch, sql);
         var parameters = Parameters(cmd);
         SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityType", entityType, 256);
         SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityId", entityId, 64);
         if (subjectType is not null) SqlServerDataReaderProvider.AddStringParameter(parameters, "@SubjectType", subjectType, 256);
         if (subjectId is not null) SqlServerDataReaderProvider.AddStringParameter(parameters, "@SubjectId", subjectId, 64);
-        SqlServerDataReaderProvider.AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
         for (var i = 0; i < leaves.Count; i++)
             FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i, _q.TvpListIdsTypeName);
+    }
+
+    // Same inlined (@Attr0..@AttrN) list the reader's GetAttributesSingleEntity dispatches, not a
+    // TVP — keeps the two paths on one cached SQL text per attribute count.
+    /// <inheritdoc />
+    public override void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
+        string[] attributeNames, SnapToken snapToken)
+    {
+        var cmd = NewCommand(batch, SqlServerDataReaderProvider.GetAttributeInQuery(
+            _selectAttributesWithEntityIdPrefix, attributeNames.Length));
+        var parameters = Parameters(cmd);
+        SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityId", entityId, 64);
+        SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityType", entityType, 256);
+        SqlServerDataReaderProvider.AddAttributeInParameters(parameters, attributeNames);
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
     }
 
     // DbBatchCommand's declared type is the ADO-abstract one, but every batch this class hands out

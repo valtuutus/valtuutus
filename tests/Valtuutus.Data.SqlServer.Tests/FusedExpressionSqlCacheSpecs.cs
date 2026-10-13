@@ -22,8 +22,8 @@ public class FusedExpressionSqlCacheSpecs
             new FusedCheckLeaf(FusedLeafKind.TupleToUserSet, false, ["org"], TtuSubEntityType: "organization", TtuComputedRelation: "admin"),
         ];
 
-        var first = FusedExpressionSql.BuildCommandSql(leaves, requireAll: false, "relations", "attributes");
-        var second = FusedExpressionSql.BuildCommandSql(leaves, requireAll: false, "relations", "attributes");
+        var first = FusedExpressionSql.BuildCommandSql(leaves, requireAll: false, "relations", "attributes", batchResolvedSnapToken: false);
+        var second = FusedExpressionSql.BuildCommandSql(leaves, requireAll: false, "relations", "attributes", batchResolvedSnapToken: false);
 
         ReferenceEquals(first, second).Should().BeTrue(
             "the second call for the same leaves reference must hit the cache instead of rebuilding the SQL text");
@@ -35,8 +35,8 @@ public class FusedExpressionSqlCacheSpecs
         IReadOnlyList<FusedCheckLeaf> leavesA = [new FusedCheckLeaf(FusedLeafKind.Direct, false, ["owner"])];
         IReadOnlyList<FusedCheckLeaf> leavesB = [new FusedCheckLeaf(FusedLeafKind.Direct, false, ["owner"])];
 
-        var exprA = FusedExpressionSql.BuildCommandSql(leavesA, requireAll: false, "relations", "attributes");
-        var exprB = FusedExpressionSql.BuildCommandSql(leavesB, requireAll: false, "relations", "attributes");
+        var exprA = FusedExpressionSql.BuildCommandSql(leavesA, requireAll: false, "relations", "attributes", batchResolvedSnapToken: false);
+        var exprB = FusedExpressionSql.BuildCommandSql(leavesB, requireAll: false, "relations", "attributes", batchResolvedSnapToken: false);
 
         // Equal-content leaves that are NOT the same list reference get their own cache entry
         // (identity-keyed, not value-keyed) — the text still comes out equal, just not the same

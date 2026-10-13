@@ -198,6 +198,7 @@ namespace Valtuutus.Core.Engines.Check
     {
         public CheckRequestContext() { }
         public required System.Collections.Generic.IDictionary<string, object> Context { get; init; }
+        public bool ResolveLatestSnapToken { get; init; }
         public required Valtuutus.Core.Data.SnapToken SnapToken { get; init; }
         public required string? SubjectId { get; init; }
         public required string? SubjectType { get; init; }
@@ -273,6 +274,7 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public interface IPhysicalExecutor
     {
+        bool CanResolveSnapTokenInFirstRoundTrip { get; }
         Valtuutus.Core.Data.IDataReaderProvider Reader { set; }
         void Submit(System.ReadOnlySpan<Valtuutus.Core.Engines.Check.V2.PendingOp> ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct);
     }
@@ -327,6 +329,9 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public static class PhysicalOpRunner
     {
+        public static string[] AttributeExprArgNames(in Valtuutus.Core.Engines.Check.V2.PendingOp op) { }
+        public static bool EvaluateAttributeExpr(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, in Valtuutus.Core.Engines.Check.V2.PendingOp op, System.ReadOnlySpan<Valtuutus.Core.AttributeTuple> attributes) { }
+        public static bool IsAttributeExprContextValid(in Valtuutus.Core.Engines.Check.V2.PendingOp op, Valtuutus.Core.Engines.Check.CheckRequestContext ctx) { }
         public static System.Threading.Tasks.Task RunAsync(Valtuutus.Core.Engines.Check.V2.PendingOp op, Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct) { }
     }
     public abstract class PlanNode : System.IEquatable<Valtuutus.Core.Engines.Check.V2.PlanNode>
