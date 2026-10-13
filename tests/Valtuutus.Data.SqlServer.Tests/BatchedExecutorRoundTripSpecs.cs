@@ -35,7 +35,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// directly — it's internal to Valtuutus.Core with no InternalsVisibleTo grant to this test
 /// assembly. Instead this toggles whether an IRelationalBatchOps is registered at all:
 /// BatchedPhysicalExecutor now receives its batch capability injected (constructed once per
-/// Schema by AddSqlServer's Func&lt;Schema, IPhysicalExecutor&gt; factory, which resolves
+/// Schema by the Func&lt;Schema, IPhysicalExecutor&gt; factory AddDbSetup registers, which resolves
 /// IRelationalBatchOps via IServiceProvider.GetService — optional, not required), so removing
 /// the registration entirely reproduces the exact same SubmitAllIndividually fallback
 /// BatchedPhysicalExecutor takes when a provider has no batch implementation. Same code path,

@@ -9,10 +9,10 @@ using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Data.Db;
 
-// A wave's ops packed into one physical DbBatch round trip when the provider injected an
-// IRelationalBatchOps (a provider's DI extension registers its batch-ops implementation and
-// constructs this executor with it — the capability is injected, no longer discovered by
-// type-testing the reader), instead of DefaultPhysicalExecutor's one-round-trip-per-op. A null
+// A wave's ops packed into one physical DbBatch round trip when the provider registered an
+// IRelationalBatchOps (AddDbSetup constructs this executor with whatever IRelationalBatchOps is
+// registered — the capability is injected, not discovered by type-testing the reader), instead
+// of DefaultPhysicalExecutor's one-round-trip-per-op. A null
 // batchOps means the provider has no batch implementation (or opted out) — every wave then takes
 // the individual path below. Ops this class can't batch (null batchOps, or an op kind/ICheckOp
 // with no batch seam) fall back to the exact same individual-execution path

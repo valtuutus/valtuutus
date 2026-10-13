@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Valtuutus.Core.Engines.Check.V2;
+using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Data.Db;
 
@@ -24,6 +25,13 @@ public static class DependencyInjectionExtensions
         // idempotent. Requires the registered IDataReaderProvider to implement
         // IRelationalCheckOps — both in-repo relational providers do.
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPlanRewriter, RelationalPlanRewriter>());
+        // V2 physical executor for relational providers: packs each wave into one DbBatch through
+        // the provider's IRelationalBatchOps registration, resolved lazily (at the first executor
+        // creation during a check, never at startup); a provider without one gets individual
+        // dispatch. Replace (not TryAdd) so it wins whether AddValtuutusCore() ran before or after.
+        // Harmless when the legacy CheckV1 is selected (nothing resolves CheckPlanExecutorPool then).
+        services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
+            sp => schema => new BatchedPhysicalExecutor(schema, sp.GetService<IRelationalBatchOps>())));
         return services;
     }
 }
