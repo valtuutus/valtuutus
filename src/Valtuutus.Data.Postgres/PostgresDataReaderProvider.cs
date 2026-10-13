@@ -34,7 +34,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
     // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
     // exact same snap-token predicate text those queries use.
+    internal const string BatchResolvedSnapTokenSetting = "valtuutus.snap_token";
+    // Same char(26) type as the @snap_token parameter, so predicates keep their index usage. A
+    // scalar subquery, so it is evaluated once per statement (an InitPlan compared like a
+    // parameter) instead of once per filtered row like a bare function call.
+    internal const string BatchResolvedSnapTokenExpression = $"(SELECT current_setting('{BatchResolvedSnapTokenSetting}')::char(26))";
     internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
+    internal static string SnapTokenPredicateFor(string snap) =>
+        $"created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})";
 
     // Internal (not private): PostgresBatchOps' dialect catalog serves the exact same SQL text as
     // these single-op queries — one definition, shared through GetQueries, so the two paths can
@@ -46,6 +53,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string SelectAttributes { get; init; }
         public required string SelectRelations { get; init; }
         public required string GetLatestSnapToken { get; init; }
+        // Batch form of GetLatestSnapToken for PostgresBatchOps: parks the latest token in a
+        // session setting (read back through BatchResolvedSnapTokenExpression) and returns it.
+        public required string ResolveLatestSnapTokenForBatch { get; init; }
+        public required string ResolveLatestSnapTokenForBatchWithGenericPlans { get; init; }
         public required string Select1Attribute { get; init; }
         public required string ExistsRelation { get; init; }
         public required string HasDirectRelation { get; init; }
@@ -85,11 +96,15 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string SelectRelationsWithEntityIds { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
         public required string SelectAttributesByEntityAttributesFilter { get; init; }
+        // {0} = attribute-name array; single-entity form (entity id always bound), for
+        // PostgresBatchOps' dialect catalog.
+        public required string SelectAttributesSingleEntityBatchTemplate { get; init; }
         public required string SelectAttributesWithEntityIdsByAttributeFilter { get; init; }
         public required string SelectAttributesWithEntityIdsByEntityAttributesFilter { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> QueryCache = new();
+    private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> BatchResolvedSnapTokenQueryCache = new();
     private readonly ReaderQueries _q;
 
     private readonly DbConnectionFactory _connectionFactory;
@@ -178,10 +193,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // Internal so PostgresBatchOps resolves the same cached ReaderQueries instance this provider
     // uses — the dialect catalog and the single-op path reference one set of SQL strings.
     internal static ReaderQueries GetQueries(ValtuutusPostgresOptions dbOptions) =>
-        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key, "@snap_token"));
 
-    private static ReaderQueries BuildQueries(DbQueryCacheKey key)
+    // Same queries, with every snap-token predicate reading the token resolved earlier in the same batch
+    // (see PostgresBatchOps.UsingBatchResolvedSnapToken) instead of the @snap_token parameter.
+    internal static ReaderQueries GetBatchResolvedSnapTokenQueries(ValtuutusPostgresOptions dbOptions) =>
+        BatchResolvedSnapTokenQueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key, BatchResolvedSnapTokenExpression));
+
+    // `snap` is the SQL expression every snap-token predicate compares against: the {snap}
+    // parameter, or BatchResolvedSnapTokenExpression for the batch-resolved-token catalog.
+    private static ReaderQueries BuildQueries(DbQueryCacheKey key, string snap)
     {
+        var snapPredicate = SnapTokenPredicateFor(snap);
         var relationsTable = $"{key.Schema}.{key.RelationsTable}";
         var attributesTable = $"{key.Schema}.{key.AttributesTable}";
 
@@ -192,11 +215,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         // strings below are derived from them with the fixed array parameter names, so both paths
         // execute byte-identical SQL text.
         var hasAnyDirectRelationBatchTemplate =
-            $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = ANY({{0}}) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
+            $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = ANY({{0}}) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')";
         var hasAnyOfDirectRelationsBatchTemplate =
-            $"SELECT DISTINCT relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY({{0}}) AND subject_id = @subject_id AND subject_relation = ''";
+            $"SELECT DISTINCT relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY({{0}}) AND subject_id = @subject_id AND subject_relation = ''";
         var hasAnyOfAttributesBatchTemplate =
-            $"SELECT DISTINCT attribute FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY({{0}}) AND value = 'true'::jsonb";
+            $"SELECT DISTINCT attribute FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY({{0}}) AND value = 'true'::jsonb";
 
         return new ReaderQueries
         {
@@ -205,10 +228,21 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectAttributes = selectAttributes,
             SelectRelations = selectRelations,
             GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
+            ResolveLatestSnapTokenForBatch =
+                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false)",
+            // Also pins generic plans for the rest of this batch only (is_local: the batch's implicit
+            // transaction). The batch's snap-token predicates read a session setting the planner
+            // can't see, so custom and generic plans cost about the same, and depending on table
+            // statistics the plan cache can settle on re-planning every execution; the
+            // parameter-bound catalog's statements settle on their generic plan instead. Only for
+            // auto-prepared statements: an unprepared statement is planned on every execution
+            // anyway, and a generic plan there just loses the parameter values.
+            ResolveLatestSnapTokenForBatchWithGenericPlans =
+                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false), set_config('plan_cache_mode', 'force_generic_plan', true)",
             Select1Attribute = $"{selectAttributes} LIMIT 1",
             ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             HasDirectRelation =
-                $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
+                $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
             HasAnyDirectRelation = string.Format(hasAnyDirectRelationBatchTemplate, "@entity_ids"),
             HasAnyOfDirectRelations = string.Format(hasAnyOfDirectRelationsBatchTemplate, "@relations"),
             HasAnyOfAttributes = string.Format(hasAnyOfAttributesBatchTemplate, "@attributes"),
@@ -216,19 +250,19 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             HasAnyOfDirectRelationsBatchTemplate = hasAnyOfDirectRelationsBatchTemplate,
             HasAnyOfAttributesBatchTemplate = hasAnyOfAttributesBatchTemplate,
             GetIndirectRelations =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_relation <> ''",
             GetRelationsWithSingleSubjectSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = @subject_id",
             GetRelationsWithMultiSubjectSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND relation = @relation AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
             GetRelationsWithSingleSubjectMultiRelationSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = @subject_id",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = @subject_id",
             GetRelationsWithMultiSubjectMultiRelationSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND relation = ANY(@relations) AND subject_type = @subject_type AND subject_id = ANY(@subject_ids)",
             GetRelationsWithEntityIdsMultiRelationSnap = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND relation = ANY(@relations)
                   AND subject_type = @subject_type
@@ -238,13 +272,13 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
                   AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
-                      WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                      WHERE created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
@@ -254,12 +288,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             GetRelationsJoinedByEntityIds = $"""
                 SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
                 FROM {relationsTable} AS r_dep
-                WHERE r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                WHERE r_dep.created_tx_id <= {snap} AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > {snap})
                   AND r_dep.entity_type = @sub_entity_type
                   AND r_dep.relation = @sub_relation
                   AND r_dep.entity_id = ANY(ARRAY(
                       SELECT subject_id FROM {relationsTable}
-                      WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                      WHERE created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})
                         AND entity_type = @entity_type
                         AND entity_id = ANY(@entity_ids)
                         AND relation = @relation
@@ -271,12 +305,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     SELECT 1 FROM {relationsTable} r_main
                     INNER JOIN {relationsTable} r_dep
                         ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                    WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                       AND r_main.entity_type = @entity_type
                       AND r_main.entity_id = @entity_id
                       AND r_main.relation = @tuple_set_relation
                       AND r_main.subject_relation = ''
-                      AND r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                      AND r_dep.created_tx_id <= {snap} AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > {snap})
                       AND r_dep.relation = @computed_relation
                       AND r_dep.subject_type = @subject_type
                       AND r_dep.subject_id = @subject_id
@@ -287,7 +321,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 SELECT (
                     EXISTS(
                         SELECT 1 FROM {relationsTable}
-                        WHERE {SnapTokenPredicate}
+                        WHERE {snapPredicate}
                           AND entity_type = @entity_type
                           AND entity_id = @entity_id
                           AND relation = @relation
@@ -298,12 +332,12 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                         SELECT 1 FROM {relationsTable} r_main
                         INNER JOIN {relationsTable} r_dep
                             ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                        WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                        WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                           AND r_main.entity_type = @entity_type
                           AND r_main.entity_id = @entity_id
                           AND r_main.relation = @relation
                           AND r_main.subject_relation = @computed_relation
-                          AND r_dep.created_tx_id <= @snap_token AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @snap_token)
+                          AND r_dep.created_tx_id <= {snap} AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > {snap})
                           AND r_dep.relation = @computed_relation
                           AND r_dep.subject_type = @subject_type
                           AND r_dep.subject_id = @subject_id
@@ -312,11 +346,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 )
                 """,
             GetAttribute =
-                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1",
+                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1",
             GetAttributeWithEntityId =
-                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1",
+                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1",
             HasTrueBoolAttribute =
-                $"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {SnapTokenPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)",
+                $"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)",
             GetRelationsWithSingleSubjectScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} r_main
@@ -326,8 +360,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @subject_type
@@ -342,8 +376,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @subject_type
@@ -358,8 +392,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = ANY(@relations)
                   AND r_main.subject_type = @subject_type
@@ -374,8 +408,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = ANY(@relations)
                   AND r_main.subject_type = @subject_type
@@ -390,14 +424,14 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE r_main.created_tx_id <= @snap_token AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
                   AND r_main.entity_type = @entity_type
                   AND r_main.relation = @relation
                   AND r_main.subject_type = @sub_entity_type
                   AND r_main.subject_id = ANY(ARRAY(
                       SELECT entity_id FROM {relationsTable}
-                      WHERE created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)
+                      WHERE created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})
                         AND entity_type = @sub_entity_type
                         AND relation = @sub_relation
                         AND subject_type = @subject_type
@@ -413,8 +447,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     AND r_scope.relation = @scope_relation
                     AND r_scope.subject_type = @scope_subject_type
                     AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.created_tx_id <= @snap_token AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @snap_token)
-                WHERE a.created_tx_id <= @snap_token AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > @snap_token)
+                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                WHERE a.created_tx_id <= {snap} AND (a.deleted_tx_id IS NULL OR a.deleted_tx_id > {snap})
                   AND a.entity_type = @entity_type
                   AND a.attribute = ANY(@attributes)
                 """,
@@ -422,17 +456,17 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 SELECT DISTINCT entity_id
                 FROM (
                     SELECT entity_id FROM {relationsTable}
-                    WHERE {SnapTokenPredicate} AND entity_type = @entity_type
+                    WHERE {snapPredicate} AND entity_type = @entity_type
                     UNION
                     SELECT entity_id FROM {attributesTable}
-                    WHERE {SnapTokenPredicate} AND entity_type = @entity_type
+                    WHERE {snapPredicate} AND entity_type = @entity_type
                 ) universe
                 WHERE entity_id <> ALL(@exclude_ids)
                 """,
             GetSubjectIdsExcluding = $"""
                 SELECT DISTINCT subject_id
                 FROM {relationsTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND subject_type = @subject_type
                   AND subject_relation = ''
                   AND subject_id <> ALL(@exclude_ids)
@@ -440,7 +474,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectRelationsByTupleFilter = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND entity_id = @entity_id
                   AND relation = @relation
@@ -451,7 +485,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectRelationsByTupleFilterNoSubject = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND entity_id = @entity_id
                   AND relation = @relation
@@ -459,7 +493,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectRelationsWithEntityIds = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND (@subject_type IS NULL OR subject_type = @subject_type)
                   AND (@entity_type IS NULL OR entity_type = @entity_type)
                   AND (@relation IS NULL OR relation = @relation)
@@ -469,15 +503,23 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectAttributesByEntityAttributeFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND attribute = @attribute
                   AND (@entity_id IS NULL OR entity_id = @entity_id)
                 """,
+            SelectAttributesSingleEntityBatchTemplate = $$"""
+                SELECT entity_type, entity_id, attribute, value
+                FROM {{attributesTable}}
+                WHERE {{snapPredicate}}
+                  AND entity_type = @entity_type
+                  AND entity_id = @entity_id
+                  AND attribute = ANY({0})
+                """,
             SelectAttributesByEntityAttributesFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND (@entity_id IS NULL OR entity_id = @entity_id)
                   AND entity_type = @entity_type
                   AND attribute = ANY(@attributes)
@@ -485,7 +527,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectAttributesWithEntityIdsByAttributeFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND attribute = @attribute
                   AND entity_id = ANY(@entity_ids)
@@ -493,7 +535,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             SelectAttributesWithEntityIdsByEntityAttributesFilter = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
-                WHERE {SnapTokenPredicate}
+                WHERE {snapPredicate}
                   AND entity_type = @entity_type
                   AND attribute = ANY(@attributes)
                   AND entity_id = ANY(@entity_ids)
@@ -1178,7 +1220,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+            var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable, batchResolvedSnapToken: false);
             await using var command = _hotPathDataSource.CreateCommand(sql);
             AddStringParameter(command.Parameters, "entity_type", entityType, 256);
             AddStringParameter(command.Parameters, "entity_id", entityId, 64);

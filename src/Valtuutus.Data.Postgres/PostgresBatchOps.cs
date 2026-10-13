@@ -23,6 +23,11 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
     private readonly PostgresDataReaderProvider.ReaderQueries _q;
     private readonly NpgsqlDataSource _dataSource;
     private readonly BatchRateLimiter _rateLimiter;
+    // True for the UsingBatchResolvedSnapToken view: built on the batch-resolved-token catalog,
+    // writes no snap-token parameter. Shares the owner's data source and rate limiter.
+    private readonly bool _usesBatchResolvedSnapToken;
+    private readonly string _resolveLatestSnapTokenSql;
+    private readonly PostgresBatchOps? _batchResolvedSnapTokenView;
 
     public PostgresBatchOps(DbConnectionFactory connectionFactory,
         ValtuutusDataOptions options,
@@ -35,7 +40,32 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         // NpgsqlDataSource — the same instance the reader's hot path uses.
         using var probeConnection = (NpgsqlConnection)connectionFactory();
         _dataSource = PostgresDataReaderProvider.GetOrCreateDataSource(probeConnection.ConnectionString, dbOptions);
+        _resolveLatestSnapTokenSql = dbOptions.MaxAutoPrepare > 0
+            ? _q.ResolveLatestSnapTokenForBatchWithGenericPlans
+            : _q.ResolveLatestSnapTokenForBatch;
+        _batchResolvedSnapTokenView = new PostgresBatchOps(
+            PostgresDataReaderProvider.GetBatchResolvedSnapTokenQueries(dbOptions), _dataSource, _rateLimiter);
     }
+
+    private PostgresBatchOps(PostgresDataReaderProvider.ReaderQueries batchResolvedSnapTokenQueries,
+        NpgsqlDataSource dataSource, BatchRateLimiter rateLimiter)
+    {
+        _q = batchResolvedSnapTokenQueries;
+        _dataSource = dataSource;
+        _rateLimiter = rateLimiter;
+        _usesBatchResolvedSnapToken = true;
+        // Never used: the resolver always comes from the owning instance.
+        _resolveLatestSnapTokenSql = batchResolvedSnapTokenQueries.ResolveLatestSnapTokenForBatch;
+    }
+
+    /// <inheritdoc />
+    public override IRelationalBatchOps UsingBatchResolvedSnapToken => _batchResolvedSnapTokenView ?? this;
+
+    // set_config(..., is_local: false) takes effect immediately for every later statement on the
+    // session, whatever transaction scope the batch runs in; the next batch that resolves a token
+    // overwrites it.
+    /// <inheritdoc />
+    public override void AddResolveLatestSnapTokenToBatch(DbBatch batch) => NewCommand(batch, _resolveLatestSnapTokenSql);
 
     public override DbBatch CreateBatch() => _dataSource.CreateBatch();
 
@@ -68,6 +98,7 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         RelationalBatchQuery.GetRelations => _q.SelectRelationsByTupleFilterNoSubject,
         RelationalBatchQuery.GetRelationsWithSubjectFilters => _q.SelectRelationsByTupleFilter,
         RelationalBatchQuery.GetIndirectRelations => _q.GetIndirectRelations,
+        RelationalBatchQuery.GetAttributesSingleEntity => _q.SelectAttributesSingleEntityBatchTemplate,
         _ => throw new ArgumentOutOfRangeException(nameof(query), query, null),
     };
 
@@ -89,20 +120,24 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         => PostgresDataReaderProvider.AddNullableStringParameter(Parameters(cmd), name, value, size);
 
     protected override void WriteSnapTokenParam(DbBatchCommand cmd, string name, SnapToken snapToken)
-        => PostgresDataReaderProvider.AddFixedCharParameter(Parameters(cmd), name, snapToken.Value, 26);
+    {
+        if (!_usesBatchResolvedSnapToken)
+            PostgresDataReaderProvider.AddFixedCharParameter(Parameters(cmd), name, snapToken.Value, 26);
+    }
 
     /// <inheritdoc />
     public override void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
-        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable);
+        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
+            _usesBatchResolvedSnapToken);
         var cmd = NewCommand(batch, sql);
         var parameters = Parameters(cmd);
         PostgresDataReaderProvider.AddStringParameter(parameters, "entity_type", entityType, 256);
         PostgresDataReaderProvider.AddStringParameter(parameters, "entity_id", entityId, 64);
         if (subjectType is not null) PostgresDataReaderProvider.AddStringParameter(parameters, "subject_type", subjectType, 256);
         if (subjectId is not null) PostgresDataReaderProvider.AddStringParameter(parameters, "subject_id", subjectId, 64);
-        PostgresDataReaderProvider.AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
         for (var i = 0; i < leaves.Count; i++)
             FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i);
     }

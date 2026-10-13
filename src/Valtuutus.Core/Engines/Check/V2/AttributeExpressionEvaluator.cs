@@ -28,6 +28,26 @@ internal static class AttributeExpressionEvaluator
                 SnapToken = ctx.SnapToken
             }, ct).ConfigureAwait(false);
 
+        return EvaluateFetched(fn, schema, ctx, entityType, leafExp, attributes.AsSpan());
+    }
+
+    /// <summary>
+    /// Evaluates <paramref name="leafExp"/> against attribute rows the caller already fetched
+    /// (the rows <see cref="IDataReaderProvider.GetAttributesSingleEntity"/> would return for
+    /// <see cref="PermissionNodeLeafExp.AttributeArgNames"/>). Context validity is the caller's
+    /// responsibility — see <see cref="Evaluate"/>.
+    /// </summary>
+    public static bool EvaluateFetched(Schema schema, CheckRequestContext ctx, string entityType,
+        PermissionNodeLeafExp leafExp, ReadOnlySpan<AttributeTuple> attributes)
+    {
+        var fn = schema.Functions[leafExp.FunctionName];
+        if (fn is null) throw new InvalidOperationException();
+        return EvaluateFetched(fn, schema, ctx, entityType, leafExp, attributes);
+    }
+
+    private static bool EvaluateFetched(Function fn, Schema schema, CheckRequestContext ctx, string entityType,
+        PermissionNodeLeafExp leafExp, ReadOnlySpan<AttributeTuple> attributes)
+    {
         // Attribute order/completeness from the reader isn't guaranteed across providers
         // (a WHERE attribute IN (...) filter can return fewer rows than requested, in any
         // order), so index-matching against AttributeArgNames isn't safe. Build a lookup
@@ -35,7 +55,7 @@ internal static class AttributeExpressionEvaluator
         var attributesByName = DictionaryPool<string, AttributeTuple>.Rent();
         try
         {
-            foreach (var a in attributes)
+            foreach (ref readonly var a in attributes)
                 attributesByName[a.Attribute] = a;
 
             using var fnArgs = fn.BuildArgs(

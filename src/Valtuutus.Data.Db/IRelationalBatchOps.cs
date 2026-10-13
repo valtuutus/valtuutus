@@ -38,6 +38,22 @@ public interface IRelationalBatchOps
     Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken);
 
     /// <summary>
+    /// The same batch ops, building every command against a snap token the batch resolves itself
+    /// (see <see cref="AddResolveLatestSnapTokenToBatch"/>) instead of a snap-token parameter — the snap
+    /// token passed to its Add* members is ignored. Null when the provider can't resolve the token
+    /// inside a batch (no connection-scoped variables); its requests then resolve the token upfront.
+    /// </summary>
+    IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
+
+    /// <summary>
+    /// Adds the command that resolves the latest snap token and parks it in connection-scoped state
+    /// for the batch's later commands (those built through <see cref="UsingBatchResolvedSnapToken"/>). Must be
+    /// the batch's first command. Its result set is one row, one string column: the token. Only
+    /// valid when <see cref="UsingBatchResolvedSnapToken"/> is non-null.
+    /// </summary>
+    void AddResolveLatestSnapTokenToBatch(DbBatch batch);
+
+    /// <summary>
     /// Adds a command answering <see cref="IRelationalCheckOps.HasAnyOfDirectRelations"/>'s question to
     /// <paramref name="batch"/> (obtained from <see cref="CreateBatch"/>), instead of running it as its own
     /// round trip. Same SQL text and parameter shape as <see cref="IRelationalCheckOps.HasAnyOfDirectRelations"/>
@@ -108,6 +124,14 @@ public interface IRelationalBatchOps
     /// <paramref name="batch"/> — the batched sibling of that method, same SQL text/params.
     /// </summary>
     void AddGetIndirectRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter);
+
+    /// <summary>
+    /// Adds a command answering <see cref="IDataReaderProvider.GetAttributesSingleEntity"/>'s question
+    /// for one entity to <paramref name="batch"/> — the batched sibling of that method, same row shape
+    /// (entity_type, entity_id, attribute, value-as-JSON-text).
+    /// </summary>
+    void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
+        string[] attributeNames, SnapToken snapToken);
 
     /// <summary>
     /// Adds a command answering <see cref="IRelationalCheckOps.HasFusedExpression"/>'s question to

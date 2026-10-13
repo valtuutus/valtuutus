@@ -146,6 +146,17 @@ public interface IPhysicalExecutor
     /// <summary>Submits one wave of ready ops. Every op's outcome must eventually be reported to
     /// <paramref name="sink"/> under the contract in the type-level remarks.</summary>
     void Submit(ReadOnlySpan<PendingOp> ops, CheckRequestContext ctx, IOpCompletionSink sink, CancellationToken ct);
+
+    /// <summary>
+    /// Whether this instance can resolve the request's latest snap token inside its first round
+    /// trip instead of a dedicated upfront one. When true and the caller supplied no token, the
+    /// engine hands <see cref="Submit"/> a context with
+    /// <see cref="CheckRequestContext.ResolveLatestSnapToken"/> set (and no readable token): the
+    /// implementation resolves the token in the first round trip of the request, runs every op of
+    /// the request against that one token, and runs no op before it is known. When false (the
+    /// default), every context it receives carries a resolved token.
+    /// </summary>
+    bool CanResolveSnapTokenInFirstRoundTrip => false;
 }
 
 /// <summary>The reference <see cref="IPhysicalExecutor"/>: runs each submitted op as its own
@@ -231,6 +242,26 @@ public static class PhysicalOpRunner
         }
     }
 
+    /// <summary>For an <see cref="OpKind.AttributeExpr"/> op: whether the request context carries
+    /// every context argument the expression needs. When false the op's answer is <c>false</c>
+    /// without fetching anything — a batching executor completes it immediately instead of
+    /// adding a fetch to its batch.</summary>
+    public static bool IsAttributeExprContextValid(in PendingOp op, CheckRequestContext ctx)
+        => op.Expr!.IsContextValid(ctx.Context);
+
+    /// <summary>For an <see cref="OpKind.AttributeExpr"/> op: the attribute names a batching
+    /// executor must fetch for <see cref="PendingOp.EntityId"/> before calling
+    /// <see cref="EvaluateAttributeExpr"/>.</summary>
+    public static string[] AttributeExprArgNames(in PendingOp op) => op.Expr!.AttributeArgNames;
+
+    /// <summary>For an <see cref="OpKind.AttributeExpr"/> op: evaluates the expression against
+    /// attribute rows the caller fetched itself (the rows
+    /// <see cref="IDataReaderProvider.GetAttributesSingleEntity"/> returns for
+    /// <see cref="AttributeExprArgNames"/>), with the same semantics as the non-batched path.</summary>
+    public static bool EvaluateAttributeExpr(Schema schema, CheckRequestContext ctx, in PendingOp op,
+        ReadOnlySpan<AttributeTuple> attributes)
+        => AttributeExpressionEvaluator.EvaluateFetched(schema, ctx, op.EntityType, op.Expr!, attributes);
+
     private static RelationTupleFilter Filter(in PendingOp op, string relation, CheckRequestContext ctx) => new()
     {
         EntityType = op.EntityType,
@@ -239,3 +270,4 @@ public static class PhysicalOpRunner
         SnapToken = ctx.SnapToken
     };
 }
+

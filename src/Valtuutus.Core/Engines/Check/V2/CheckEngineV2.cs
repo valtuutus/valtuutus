@@ -11,13 +11,9 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
     public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         ValtuutusMetrics.CheckRequests.Add(1);
-        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
-        var ctx = new CheckRequestContext
-        {
-            SubjectType = req.SubjectType, SubjectId = req.SubjectId,
-            SnapToken = snapToken, Context = req.Context
-        };
         var executor = executorPool.Rent(reader);
+        var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
+            cancellationToken);
         var results = await executor.ExecuteSingleAsync(
             new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
             ctx, cancellationToken, memoizeRoots: false);
@@ -27,6 +23,26 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         // answer we already have — see DrainStragglersAsync for why waiting matters at all.
         _ = DrainAndReturn(executor);
         return results[0];
+    }
+
+    // No caller token + an executor that can fold the "latest token" lookup into its first round
+    // trip: start pending and let it do so, instead of paying a dedicated round trip up front.
+    private async ValueTask<CheckRequestContext> CreateContext(CheckPlanExecutor executor, string? subjectType,
+        string? subjectId, SnapToken? requested, IDictionary<string, object> context, CancellationToken ct)
+    {
+        if (requested is null && executor.Physical.CanResolveSnapTokenInFirstRoundTrip)
+            return new CheckRequestContext
+            {
+                SubjectType = subjectType, SubjectId = subjectId,
+                SnapToken = default, Context = context, ResolveLatestSnapToken = true
+            };
+
+        var snapToken = await SnapTokenUtils.ResolveLatest(reader, requested, ct);
+        return new CheckRequestContext
+        {
+            SubjectType = subjectType, SubjectId = subjectId,
+            SnapToken = snapToken, Context = context
+        };
     }
 
     private async Task DrainAndReturn(CheckPlanExecutor executor)
@@ -47,20 +63,15 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         CancellationToken cancellationToken)
     {
         ValtuutusMetrics.CheckRequests.Add(1);
-        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
-        var ctx = new CheckRequestContext
-        {
-            SubjectType = req.SubjectType, SubjectId = req.SubjectId,
-            SnapToken = snapToken, Context = req.Context
-        };
-
-        var permissions = schema.GetPermissions(req.EntityType);
-
         // Roots buffer is rented from the executor itself (reused across calls on this pooled
         // instance — see CheckPlanExecutor.RentMultiRootBuffer), not a fresh `new
         // CheckRootRequest[permissions.Length]` every call. Rent the executor before filling it:
         // the buffer is owned by the executor instance, so it must be picked first.
         var executor = executorPool.Rent(reader);
+        var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
+            cancellationToken);
+
+        var permissions = schema.GetPermissions(req.EntityType);
         var roots = executor.RentMultiRootBuffer(permissions.Length);
         var rootsSpan = roots.Span;
         var i = 0;
