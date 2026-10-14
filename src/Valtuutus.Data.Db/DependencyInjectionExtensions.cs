@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check.V2;
+using Valtuutus.Core.Engines.LookupSubject.V2;
 using Valtuutus.Core.Schemas;
 
 namespace Valtuutus.Data.Db;
@@ -31,6 +33,16 @@ public static class DependencyInjectionExtensions
         // dispatch. Replace so it wins whether AddValtuutusCore() ran before or after.
         services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
             sp => schema => new BatchedPhysicalExecutor(schema, sp.GetService<IRelationalBatchOps>())));
+        // LookupSubject V2 runner for relational providers: each step as one DbBatch through the
+        // provider's IRelationalBatchOps and ILookupSubjectBatchOps registrations; a provider
+        // without them gets one reader call per query. Harmless when V2 is not opted in (nothing
+        // resolves ILookupSubjectQueryRunner then). Replace so it wins whether
+        // AddValtuutusLookupSubjectV2() ran before or after.
+        services.Replace(ServiceDescriptor.Scoped<ILookupSubjectQueryRunner>(sp =>
+            new BatchedLookupSubjectQueryRunner(
+                sp.GetRequiredService<IDataReaderProvider>(),
+                sp.GetService<IRelationalBatchOps>(),
+                sp.GetService<ILookupSubjectBatchOps>())));
         return services;
     }
 }

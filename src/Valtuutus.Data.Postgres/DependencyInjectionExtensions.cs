@@ -41,6 +41,7 @@ public static class DependencyInjectionExtensions
                 sp.GetRequiredService<ValtuutusDataOptions>(),
                 postgresOptions);
         });
+        builder.Services.AddSingleton<ILookupSubjectBatchOps>(new PostgresLookupSubjectBatchOps(postgresOptions));
         builder.Services.AddSingleton(postgresOptions);
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();
