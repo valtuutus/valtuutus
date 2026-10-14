@@ -136,13 +136,11 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(query), query, null),
     };
 
-    // Unlike Postgres's native array parameter, none of these 3 SQL strings carry a {0}
-    // placeholder — they already reference the TVP parameter by its fixed name inline (e.g.
-    // "entity_id IN (SELECT id FROM @EntityIds)"), the exact same table-valued-parameter strategy
-    // the reader's own non-batch methods use via TvpHelper. So the base class's post-hoc
-    // string.Format(cmd.CommandText, arrayFragment) call is a no-op here (no {0} to substitute):
-    // the TVP parameter just needs to land on the command under the name the SQL text already
-    // hardcodes, which MapParamName supplies.
+    // These SQL strings carry no {0} placeholder: they reference the TVP parameter by its fixed
+    // name inline (e.g. "entity_id IN (SELECT id FROM @EntityIds)"), the same table-valued-parameter
+    // strategy the reader's own non-batch methods use via TvpHelper. The TVP parameter just needs
+    // to land on the command under the name the SQL text already hardcodes, which MapParamName
+    // supplies.
     protected override string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values)
     {
         var paramName = MapParamName(baseName);
