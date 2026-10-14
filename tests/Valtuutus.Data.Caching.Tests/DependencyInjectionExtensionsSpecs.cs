@@ -45,6 +45,19 @@ public class DependencyInjectionExtensionsSpecs
     }
 
     [Fact]
+    public void AddCaching_wraps_the_opted_in_lookup_subject_V2_engine()
+    {
+        var services = new ServiceCollection();
+        services.AddValtuutusCore(Schema);
+        services.AddValtuutusLookupSubjectV2();
+        services.AddValtuutusData().AddCaching();
+
+        GetUnkeyed<ILookupSubjectEngine>(services).ImplementationType.Should().Be(typeof(CachedLookupSubjectEngine));
+        GetKeyed<ILookupSubjectEngine>(services, Consts.InnerLookupSubjectEngineKey).KeyedImplementationType!.Name
+            .Should().Be("LookupSubjectEngineV2");
+    }
+
+    [Fact]
     public void AddCaching_throws_a_clear_error_when_no_engine_is_registered_yet()
     {
         var services = new ServiceCollection();
