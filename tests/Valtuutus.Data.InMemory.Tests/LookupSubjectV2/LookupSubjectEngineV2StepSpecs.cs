@@ -191,6 +191,30 @@ public class LookupSubjectEngineV2StepSpecs
     }
 
     [Fact]
+    public async Task Spent_depth_skips_the_hop_query()
+    {
+        var (engine, runner, _) = await Setup(
+            new RelationTuple("project", "p1", "org", "organization", "o1"),
+            new RelationTuple("organization", "o1", "admin", "user", "u1"));
+
+        var result = await engine.Lookup(new LookupSubjectRequest("project", "manage", "user", "p1", depth: 1), default);
+
+        result.Should().BeEmpty();
+        runner.Steps.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Spent_depth_skips_the_userset_hop_query()
+    {
+        var (engine, runner, _) = await Setup(NestedGroupTuples);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1", depth: 2), default);
+
+        result.Should().BeEmpty();
+        runner.Steps.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Tokenless_lookup_resolves_the_snap_token_once_and_pins_it()
     {
         var (engine, runner, written) = await Setup(NestedGroupTuples);

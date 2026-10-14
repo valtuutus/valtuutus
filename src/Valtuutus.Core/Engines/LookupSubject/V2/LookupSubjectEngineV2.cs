@@ -5,10 +5,12 @@ using Valtuutus.Core.Schemas;
 namespace Valtuutus.Core.Engines.LookupSubject.V2;
 
 /// <summary>
-/// LookupSubject as a graph advanced in steps: the graph builder decides what to query, and each
-/// step hands every query the graph waits on to the query runner at once.
+/// LookupSubject as a graph advanced in steps: compiled plans decide what to query, the graph
+/// builder binds them to the request, and each step hands every query the graph waits on to the
+/// query runner at once.
 /// </summary>
-internal sealed class LookupSubjectEngineV2(Schema schema, ILookupSubjectQueryRunner runner) : ILookupSubjectEngine
+internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCache plans, ILookupSubjectQueryRunner runner)
+    : ILookupSubjectEngine
 {
     public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
@@ -20,17 +22,17 @@ internal sealed class LookupSubjectEngineV2(Schema schema, ILookupSubjectQueryRu
         if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
             return [];
 
-        var root = new LookupSubjectGraphBuilder(schema, req)
+        var root = new LookupSubjectGraphBuilder(plans, req)
             .Build(req.EntityType, req.Permission, [req.EntityId], req.Depth);
 
         var snapToken = req.SnapToken;
-        var pending = new PendingQueries();
+        using var pending = new PendingQueries();
         while (!root.Advance(pending))
         {
             if (pending.Count == 0)
                 throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
             snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
-            pending.Clear();
+            pending.Answered();
         }
 
         HashSet<string> result = root.Result!.IsGate || root.Result.Ids!.Count == 0

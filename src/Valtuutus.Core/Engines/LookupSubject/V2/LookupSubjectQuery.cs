@@ -61,9 +61,18 @@ public sealed class LookupSubjectQuery
     /// <see cref="LookupSubjectQueryKind.Attributes"/>; <c>List&lt;AttributeTuple&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.Attribute"/>; <c>List&lt;string&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.SubjectsExcluding"/>.
+    /// A <c>List&lt;RelationTuple&gt;</c> answer passes to the engine, which returns it to the shared
+    /// list pool once the lookup has read it; a runner keeps no reference to it.
     /// </summary>
     public object? Result { get; set; }
 
     // Set once the query is handed to a step, so a query several nodes share runs once.
     internal bool Queued { get; set; }
+
+    // A plan keeps a query's shape without ids; each request binds its own ids to a fresh copy.
+    internal LookupSubjectQuery For(IReadOnlyCollection<string> ids) => new()
+    {
+        Kind = Kind, EntityType = EntityType, Relation = Relation, Names = Names, SubjectType = SubjectType,
+        SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, Ids = ids,
+    };
 }

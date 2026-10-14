@@ -15,6 +15,7 @@ public static class ConfigureLookupSubjectV2
     /// </summary>
     public static IServiceCollection AddValtuutusLookupSubjectV2(this IServiceCollection services)
     {
+        services.TryAddSingleton<LookupSubjectPlanCache>();
         services.TryAddScoped<ILookupSubjectQueryRunner, DefaultLookupSubjectQueryRunner>();
         services.Replace(ServiceDescriptor.Scoped<ILookupSubjectEngine, LookupSubjectEngineV2>());
         return services;

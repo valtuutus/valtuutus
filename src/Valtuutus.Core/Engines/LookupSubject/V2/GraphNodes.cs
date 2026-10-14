@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Core.Engines.LookupSubject.V2;
 
@@ -9,7 +10,7 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2;
 /// </summary>
 internal sealed class SubjectSet
 {
-    // Shared and never mutated: every combination below builds a new set.
+    // Shared across requests: no union or intersection ever takes it over.
     public static readonly SubjectSet Empty = new(new HashSet<string>(0), isGate: false, matched: false);
     private static readonly SubjectSet MatchedGate = new(null, isGate: true, matched: true);
     private static readonly SubjectSet UnmatchedGate = new(null, isGate: true, matched: false);
@@ -32,7 +33,7 @@ internal sealed class SubjectSet
 
     public static SubjectSet FromTuples(List<RelationTuple> tuples, string? relation = null)
     {
-        var ids = new HashSet<string>();
+        var ids = relation is null ? new HashSet<string>(tuples.Count) : new HashSet<string>();
         foreach (ref readonly var tuple in CollectionsMarshal.AsSpan(tuples))
         {
             if (relation is null || tuple.Relation == relation)
@@ -41,20 +42,34 @@ internal sealed class SubjectSet
         return Of(ids);
     }
 
+    // A done child's set is read only by its parent, so a union or intersection takes one child's
+    // set over and folds the others into it. Empty is shared and never taken: an empty child is
+    // skipped by a union and ends an intersection.
     public static SubjectSet Union(GraphNode[] children)
     {
-        var ids = new HashSet<string>();
+        SubjectSet? largest = null;
         foreach (var child in children)
         {
-            if (!child.Result!.IsGate)
-                ids.UnionWith(child.Result.Ids!);
+            var result = child.Result!;
+            if (!result.IsGate && result.Ids!.Count > (largest?.Ids!.Count ?? 0))
+                largest = result;
         }
-        return Of(ids);
+        if (largest is null) return Empty;
+
+        var ids = largest.Ids!;
+        foreach (var child in children)
+        {
+            var result = child.Result!;
+            if (result.IsGate || result == largest) continue;
+            foreach (var id in result.Ids!)
+                ids.Add(id);
+        }
+        return largest;
     }
 
     public static SubjectSet Intersect(GraphNode[] children)
     {
-        HashSet<string>? ids = null;
+        SubjectSet? taken = null;
         foreach (var child in children)
         {
             var result = child.Result!;
@@ -64,18 +79,26 @@ internal sealed class SubjectSet
                 continue;
             }
 
-            if (ids is null) ids = new HashSet<string>(result.Ids!);
-            else ids.IntersectWith(result.Ids!);
-            if (ids.Count == 0) return Empty;
+            if (result.Ids!.Count == 0) return Empty;
+            if (taken is null) taken = result;
+            else
+            {
+                taken.Ids!.IntersectWith(result.Ids);
+                if (taken.Ids.Count == 0) return Empty;
+            }
         }
-        return ids is null ? Empty : Of(ids);
+        return taken ?? Empty;
     }
 }
 
-/// <summary>The queries of one step, each listed once.</summary>
-internal sealed class PendingQueries
+/// <summary>
+/// The queries of one step, each listed once. A step's answers stay readable through the advance
+/// that follows it, which reads every one of them; their relation-tuple lists then go back to the pool.
+/// </summary>
+internal sealed class PendingQueries : IDisposable
 {
-    private readonly List<LookupSubjectQuery> _queries = [];
+    private List<LookupSubjectQuery> _queries = ListPool<LookupSubjectQuery>.Rent();
+    private List<LookupSubjectQuery> _answered = ListPool<LookupSubjectQuery>.Rent();
 
     public IReadOnlyList<LookupSubjectQuery> Queries => _queries;
     public int Count => _queries.Count;
@@ -87,7 +110,33 @@ internal sealed class PendingQueries
         _queries.Add(query);
     }
 
-    public void Clear() => _queries.Clear();
+    /// <summary>
+    /// Marks the current step answered. The previous step's answers were read by the advance that
+    /// queued this one, so they are released here.
+    /// </summary>
+    public void Answered()
+    {
+        Release(_answered);
+        (_queries, _answered) = (_answered, _queries);
+    }
+
+    public void Dispose()
+    {
+        Release(_answered);
+        Release(_queries);
+        ListPool<LookupSubjectQuery>.Return(_answered);
+        ListPool<LookupSubjectQuery>.Return(_queries);
+    }
+
+    private static void Release(List<LookupSubjectQuery> queries)
+    {
+        foreach (var query in queries)
+        {
+            if (query.Result is List<RelationTuple> tuples)
+                ListPool<RelationTuple>.Return(tuples);
+        }
+        queries.Clear();
+    }
 }
 
 internal abstract class GraphNode
@@ -115,7 +164,7 @@ internal abstract class GraphNode
 /// A node answered by one query. Several nodes may share a query (sibling relations fetched
 /// together); each evaluates its own part of the answer.
 /// </summary>
-internal sealed class QueryNode(LookupSubjectQuery query, Func<object, SubjectSet> evaluate) : GraphNode
+internal sealed class QueryNode(LookupSubjectQuery query, AnswerPlan plan, LookupSubjectRequest request) : GraphNode
 {
     protected override bool TryAdvance(PendingQueries pending)
     {
@@ -124,16 +173,17 @@ internal sealed class QueryNode(LookupSubjectQuery query, Func<object, SubjectSe
             pending.Add(query);
             return false;
         }
-        Result = evaluate(query.Result);
+        Result = plan.Evaluate(query.Result, request);
         return true;
     }
 }
 
 /// <summary>
 /// A dependent hop: the query finds the intermediate subjects, and the lookup continues from
-/// them through the subgraph <c>next</c> builds once their ids are known.
+/// them through the hop's target, built once their ids are known.
 /// </summary>
-internal sealed class ExpandNode(LookupSubjectQuery query, Func<HashSet<string>, GraphNode> next) : GraphNode
+internal sealed class ExpandNode(LookupSubjectQuery query, ExpandPlan plan, int depth, LookupSubjectGraphBuilder builder)
+    : GraphNode
 {
     private GraphNode? _continuation;
 
@@ -147,7 +197,7 @@ internal sealed class ExpandNode(LookupSubjectQuery query, Func<HashSet<string>,
                 return false;
             }
             var ids = SubjectSet.FromTuples((List<RelationTuple>)query.Result).Ids!;
-            _continuation = ids.Count == 0 ? None : next(ids);
+            _continuation = builder.Build(plan.EntityType, plan.Name, ids, depth);
         }
 
         if (!_continuation.Advance(pending)) return false;
@@ -172,7 +222,7 @@ internal sealed class SetNode(GraphNode[] children, bool union) : GraphNode
 }
 
 /// <summary>Subjects the child does not grant: once the child is known, one more query lists the rest.</summary>
-internal sealed class NegateNode(GraphNode child, Func<HashSet<string>, LookupSubjectQuery> complement) : GraphNode
+internal sealed class NegateNode(GraphNode child, string subjectType) : GraphNode
 {
     private LookupSubjectQuery? _complement;
 
@@ -180,7 +230,11 @@ internal sealed class NegateNode(GraphNode child, Func<HashSet<string>, LookupSu
     {
         if (!child.Advance(pending)) return false;
 
-        _complement ??= complement(child.Result!.IsGate ? new HashSet<string>() : child.Result.Ids!);
+        _complement ??= new LookupSubjectQuery
+        {
+            Kind = LookupSubjectQueryKind.SubjectsExcluding, SubjectType = subjectType,
+            Ids = child.Result!.IsGate ? new HashSet<string>() : child.Result.Ids!,
+        };
         if (_complement.Result is null)
         {
             pending.Add(_complement);
