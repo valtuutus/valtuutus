@@ -12,25 +12,25 @@ internal static class FusedExpressionSql
 {
     // Keyed by the leaves list's own reference identity — stable for a FusedExpressionOp's whole
     // lifetime (constructed once per compiled plan, reused across every Check against that plan) —
-    // so the full command text is built once per distinct fused shape instead of being
+    // so the full statement is built and compiled once per distinct fused shape instead of being
     // re-interpolated from scratch on every request. ConditionalWeakTable ties each cached entry's
     // lifetime to the leaves list's own (no manual eviction needed when a plan is GC'd).
     // One cache per snap-token flavor: the batch-resolved-token catalog's text differs only in what the
     // snap-token predicates compare against.
-    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, string> CommandSqlCache = new();
-    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, string> BatchResolvedSnapTokenCommandSqlCache = new();
+    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, PgStatement> StatementCache = new();
+    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, PgStatement> BatchResolvedSnapTokenStatementCache = new();
 
-    internal static string BuildCommandSql(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll,
+    internal static PgStatement BuildStatement(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll,
         string relationsTable, string attributesTable, bool batchResolvedSnapToken)
     {
-        var cache = batchResolvedSnapToken ? BatchResolvedSnapTokenCommandSqlCache : CommandSqlCache;
+        var cache = batchResolvedSnapToken ? BatchResolvedSnapTokenStatementCache : StatementCache;
         if (cache.TryGetValue(leaves, out var cached)) return cached;
         var snap = batchResolvedSnapToken ? PostgresDataReaderProvider.BatchResolvedSnapTokenExpression : "@snap_token";
         var expr = FusedExpressionSqlBuilder.BuildBooleanExpression(leaves, requireAll,
             (leaf, i) => LeafFragment(leaf, i, relationsTable, attributesTable, snap));
-        var sql = $"SELECT {expr}";
-        cache.AddOrUpdate(leaves, sql);
-        return sql;
+        var statement = PgStatement.Compile($"SELECT {expr}");
+        cache.AddOrUpdate(leaves, statement);
+        return statement;
     }
 
     internal static string LeafFragment(FusedCheckLeaf leaf, int i, string relationsTable, string attributesTable,

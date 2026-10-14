@@ -12,7 +12,7 @@ namespace Valtuutus.Data.Postgres;
 /// <see cref="IRelationalBatchOps"/> implementation AddPostgres registers for
 /// BatchedPhysicalExecutor. Holds no batch-building logic of its own: the base class writes every
 /// command generically, and this class supplies only the dialect — the SQL catalog (the same
-/// cached <see cref="PostgresDataReaderProvider.ReaderQueries"/> strings the single-op reader
+/// cached <see cref="PostgresDataReaderProvider.ReaderQueries"/> statements the single-op reader
 /// dispatches, so both paths share one definition and one server-side prepared statement), the
 /// NpgsqlParameter construction (same helpers, same NpgsqlDbType/Size as the single-op path), the
 /// native <c>text[]</c>-style array parameter strategy, and batch creation/execution against the
@@ -86,24 +86,29 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         }
     }
 
-    protected override string GetSql(RelationalBatchQuery query) => query switch
+    protected override string GetSql(RelationalBatchQuery query) => Statement(query).Sql;
+
+    // The base class adds parameters by name; the catalog statements take them positionally.
+    protected override void CompleteCommand(DbBatchCommand cmd, RelationalBatchQuery query)
+        => Statement(query).Bind(Parameters(cmd));
+
+    private PgStatement Statement(RelationalBatchQuery query) => query switch
     {
         RelationalBatchQuery.HasDirectRelation => _q.HasDirectRelation,
         RelationalBatchQuery.HasTrueBoolAttribute => _q.HasTrueBoolAttribute,
         RelationalBatchQuery.HasTupleToUserSetRelation => _q.HasTupleToUserSetRelation,
         RelationalBatchQuery.HasUsersetJoinRelation => _q.HasUsersetJoinRelation,
-        RelationalBatchQuery.HasAnyDirectRelation => _q.HasAnyDirectRelationBatchTemplate,
-        RelationalBatchQuery.HasAnyOfDirectRelations => _q.HasAnyOfDirectRelationsBatchTemplate,
-        RelationalBatchQuery.HasAnyOfAttributes => _q.HasAnyOfAttributesBatchTemplate,
+        RelationalBatchQuery.HasAnyDirectRelation => _q.HasAnyDirectRelation,
+        RelationalBatchQuery.HasAnyOfDirectRelations => _q.HasAnyOfDirectRelations,
+        RelationalBatchQuery.HasAnyOfAttributes => _q.HasAnyOfAttributes,
         RelationalBatchQuery.GetRelations => _q.SelectRelationsByTupleFilterNoSubject,
         RelationalBatchQuery.GetRelationsWithSubjectFilters => _q.SelectRelationsByTupleFilter,
         RelationalBatchQuery.GetIndirectRelations => _q.GetIndirectRelations,
-        RelationalBatchQuery.GetAttributesSingleEntity => _q.SelectAttributesSingleEntityBatchTemplate,
+        RelationalBatchQuery.GetAttributesSingleEntity => _q.SelectAttributesSingleEntity,
         _ => throw new ArgumentOutOfRangeException(nameof(query), query, null),
     };
 
-    // One native array parameter, referenced as "@name" — the fragment lands in the catalog
-    // template's {0}, producing the exact SQL text the single-op sibling dispatches.
+    // One native array parameter, under the name the catalog SQL references.
     protected override string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values)
     {
         Parameters(cmd).Add(new NpgsqlParameter<string[]>(baseName, NpgsqlDbType.Array | NpgsqlDbType.Varchar)
@@ -129,9 +134,9 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
     public override void AddHasFusedExpressionToBatch(DbBatch batch, string entityType, string entityId,
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
-        var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
+        var statement = FusedExpressionSql.BuildStatement(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
             _usesBatchResolvedSnapToken);
-        var cmd = NewCommand(batch, sql);
+        var cmd = NewCommand(batch, statement.Sql);
         var parameters = Parameters(cmd);
         PostgresDataReaderProvider.AddStringParameter(parameters, "entity_type", entityType, 256);
         PostgresDataReaderProvider.AddStringParameter(parameters, "entity_id", entityId, 64);
@@ -140,6 +145,7 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
         for (var i = 0; i < leaves.Count; i++)
             FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i);
+        statement.Bind(parameters);
     }
 
     // DbBatchCommand's declared type is the ADO-abstract one, but every batch this class hands out

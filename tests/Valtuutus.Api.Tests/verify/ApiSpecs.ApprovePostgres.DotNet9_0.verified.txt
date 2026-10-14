@@ -13,6 +13,7 @@ namespace Valtuutus.Data.Postgres
         public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
         public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public override void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
+        protected override void CompleteCommand(System.Data.Common.DbBatchCommand cmd, Valtuutus.Data.Db.RelationalBatchQuery query) { }
         public override System.Data.Common.DbBatch CreateBatch() { }
         public void Dispose() { }
         public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }

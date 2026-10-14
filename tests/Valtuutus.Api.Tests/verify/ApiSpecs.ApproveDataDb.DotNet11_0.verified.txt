@@ -116,6 +116,7 @@ namespace Valtuutus.Data.Db
         public virtual void AddHasTupleToUserSetRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddHasUsersetJoinRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string relation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
+        protected virtual void CompleteCommand(System.Data.Common.DbBatchCommand cmd, Valtuutus.Data.Db.RelationalBatchQuery query) { }
         public abstract System.Data.Common.DbBatch CreateBatch();
         public abstract System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken);
         protected abstract string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query);
