@@ -244,3 +244,65 @@ internal sealed class NegateNode(GraphNode child, string subjectType) : GraphNod
         return true;
     }
 }
+
+/// <summary>
+/// Several levels of a userset chain read by one query: its plain subjects are granted, and each
+/// (entity type, relation) among the last level's usersets continues as a lookup with the depth
+/// left after those levels.
+/// </summary>
+internal sealed class UsersetLevelsNode(LookupSubjectQuery query, int continuationDepth, LookupSubjectGraphBuilder builder)
+    : GraphNode
+{
+    private HashSet<string>? _subjects;
+    private GraphNode[]? _continuations;
+
+    protected override bool TryAdvance(PendingQueries pending)
+    {
+        if (_continuations is null)
+        {
+            if (query.Result is null)
+            {
+                pending.Add(query);
+                return false;
+            }
+
+            // The answer list goes back to the pool after this advance, so only copied ids are kept.
+            _subjects = new HashSet<string>();
+            Dictionary<(string EntityType, string Relation), HashSet<string>>? usersets = null;
+            foreach (ref readonly var tuple in CollectionsMarshal.AsSpan((List<RelationTuple>)query.Result))
+            {
+                if (tuple.SubjectRelation.Length == 0)
+                {
+                    _subjects.Add(tuple.SubjectId);
+                    continue;
+                }
+                usersets ??= new Dictionary<(string EntityType, string Relation), HashSet<string>>();
+                var key = (tuple.SubjectType, tuple.SubjectRelation);
+                if (!usersets.TryGetValue(key, out var ids))
+                    usersets[key] = ids = new HashSet<string>();
+                ids.Add(tuple.SubjectId);
+            }
+
+            _continuations = new GraphNode[usersets?.Count ?? 0];
+            if (usersets is not null)
+            {
+                var i = 0;
+                foreach (var (key, ids) in usersets)
+                    _continuations[i++] = builder.Build(key.EntityType, key.Relation, ids, continuationDepth);
+            }
+        }
+
+        var done = true;
+        foreach (var continuation in _continuations)
+            done &= continuation.Advance(pending);
+        if (!done) return false;
+
+        foreach (var continuation in _continuations)
+        {
+            if (!continuation.Result!.IsGate)
+                _subjects!.UnionWith(continuation.Result.Ids!);
+        }
+        Result = SubjectSet.Of(_subjects!);
+        return true;
+    }
+}

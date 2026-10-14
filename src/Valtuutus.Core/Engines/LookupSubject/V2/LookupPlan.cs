@@ -6,11 +6,15 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2;
 /// <summary>
 /// The compiled shape of a lookup from one entity type's permission, relation or attribute to one
 /// subject type: which queries to ask and how their answers combine. Holds no entity ids, depth or
-/// request context, so every request with the same key walks the same plan.
+/// request context, so every request with the same key walks the same plan. Built by Core;
+/// <see cref="ILookupSubjectPlanRewriter"/> implementations read it and may substitute
+/// <see cref="UsersetLevelsPlan"/>.
 /// </summary>
-internal abstract class LookupPlan
+public abstract class LookupPlan
 {
-    public static readonly LookupPlan Empty = new EmptyPlan();
+    internal static readonly LookupPlan Empty = new EmptyPlan();
+
+    private protected LookupPlan() { }
 
     private sealed class EmptyPlan : LookupPlan;
 }
@@ -81,11 +85,18 @@ internal sealed class AttributePlan(LookupSubjectQuery template) : QueryPlan(tem
 /// A dependent hop: <see cref="Template"/> finds the intermediate subjects, and the lookup continues
 /// from them through <see cref="Name"/> on <see cref="EntityType"/>, spending a level of depth.
 /// </summary>
-internal sealed class ExpandPlan(LookupSubjectQuery template, string entityType, string name) : LookupPlan
+public sealed class ExpandPlan : LookupPlan
 {
-    public LookupSubjectQuery Template { get; } = template;
-    public string EntityType { get; } = entityType;
-    public string Name { get; } = name;
+    internal ExpandPlan(LookupSubjectQuery template, string entityType, string name)
+    {
+        Template = template;
+        EntityType = entityType;
+        Name = name;
+    }
+
+    public LookupSubjectQuery Template { get; }
+    public string EntityType { get; }
+    public string Name { get; }
 }
 
 /// <summary>Another permission, relation or attribute of the same entities, spending a level of depth.</summary>
@@ -97,17 +108,53 @@ internal sealed class RefPlan(string entityType, string name) : LookupPlan
 
 /// <summary>
 /// A union or intersection. <see cref="Shared"/> is the multi-relation query that the
-/// <see cref="SlicePlan"/> children read their relation from.
+/// sibling-relation children read their relation from.
 /// </summary>
-internal sealed class SetPlan(LookupPlan[] children, bool union, LookupSubjectQuery? shared) : LookupPlan
+public sealed class SetPlan : LookupPlan
 {
-    public LookupPlan[] Children { get; } = children;
-    public bool Union { get; } = union;
-    public LookupSubjectQuery? Shared { get; } = shared;
+    internal SetPlan(LookupPlan[] children, bool union, LookupSubjectQuery? shared)
+    {
+        Children = children;
+        Union = union;
+        Shared = shared;
+    }
+
+    public IReadOnlyList<LookupPlan> Children { get; }
+    public bool Union { get; }
+    public LookupSubjectQuery? Shared { get; }
 }
 
 /// <summary>Every subject of the request's subject type the child does not grant.</summary>
 internal sealed class NegatePlan(LookupPlan child) : LookupPlan
 {
     public LookupPlan Child { get; } = child;
+}
+
+/// <summary>
+/// A direct relation whose userset subjects are followed for up to <see cref="Levels"/> levels in
+/// one query, each level spending a level of depth; usersets on the last level read continue as
+/// their own lookups. A data provider's <see cref="ILookupSubjectPlanRewriter"/> installs it in
+/// place of <see cref="OneLevel"/>, the relation's compiled plan, which still runs when the request
+/// has depth left for one level only.
+/// </summary>
+public sealed class UsersetLevelsPlan : LookupPlan
+{
+    /// <param name="template">A <see cref="LookupSubjectQueryKind.UsersetLevels"/> query with
+    /// <see cref="LookupSubjectQuery.EntityType"/>, <see cref="LookupSubjectQuery.Relation"/> and
+    /// <see cref="LookupSubjectQuery.SubjectType"/> set and no ids.</param>
+    /// <param name="levels">Most levels one query follows; at least 2.</param>
+    /// <param name="oneLevel">The plan being replaced.</param>
+    public UsersetLevelsPlan(LookupSubjectQuery template, int levels, LookupPlan oneLevel)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(levels, 2);
+        if (template.Kind != LookupSubjectQueryKind.UsersetLevels)
+            throw new ArgumentException($"The template must be a {nameof(LookupSubjectQueryKind.UsersetLevels)} query.", nameof(template));
+        Template = template;
+        Levels = levels;
+        OneLevel = oneLevel;
+    }
+
+    public LookupSubjectQuery Template { get; }
+    public int Levels { get; }
+    public LookupPlan OneLevel { get; }
 }

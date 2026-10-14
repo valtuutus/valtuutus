@@ -28,13 +28,18 @@ internal sealed class LookupSubjectGraphBuilder(LookupSubjectPlanCache plans, Lo
         RefPlan reference => Build(reference.EntityType, reference.Name, entityIds, depth),
         SetPlan set => Set(set, entityIds, depth),
         NegatePlan negate => new NegateNode(Instantiate(negate.Child, entityIds, depth), request.SubjectType),
+        // The relation's own tuples are level 0; each further level is a hop. With depth for one
+        // level only, the relation's plain plan asks exactly what that level needs.
+        UsersetLevelsPlan levels when Math.Min(levels.Levels, depth + 1) is var count && count >= 2 =>
+            new UsersetLevelsNode(levels.Template.For(entityIds, count), depth + 1 - count, this),
+        UsersetLevelsPlan levels => Instantiate(levels.OneLevel, entityIds, depth),
         _ => throw new InvalidOperationException(),
     };
 
     private SetNode Set(SetPlan set, IReadOnlyCollection<string> entityIds, int depth)
     {
         var shared = set.Shared?.For(entityIds);
-        var nodes = new GraphNode[set.Children.Length];
+        var nodes = new GraphNode[set.Children.Count];
         for (var i = 0; i < nodes.Length; i++)
         {
             nodes[i] = set.Children[i] is SlicePlan slice
