@@ -66,4 +66,11 @@ public sealed class LookupSubjectQuery
 
     // Set once the query is handed to a step, so a query several nodes share runs once.
     internal bool Queued { get; set; }
+
+    // A plan keeps a query's shape without ids; each request binds its own ids to a fresh copy.
+    internal LookupSubjectQuery For(IReadOnlyCollection<string> ids) => new()
+    {
+        Kind = Kind, EntityType = EntityType, Relation = Relation, Names = Names, SubjectType = SubjectType,
+        SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, Ids = ids,
+    };
 }

@@ -115,7 +115,7 @@ internal abstract class GraphNode
 /// A node answered by one query. Several nodes may share a query (sibling relations fetched
 /// together); each evaluates its own part of the answer.
 /// </summary>
-internal sealed class QueryNode(LookupSubjectQuery query, Func<object, SubjectSet> evaluate) : GraphNode
+internal sealed class QueryNode(LookupSubjectQuery query, AnswerPlan plan, LookupSubjectRequest request) : GraphNode
 {
     protected override bool TryAdvance(PendingQueries pending)
     {
@@ -124,16 +124,17 @@ internal sealed class QueryNode(LookupSubjectQuery query, Func<object, SubjectSe
             pending.Add(query);
             return false;
         }
-        Result = evaluate(query.Result);
+        Result = plan.Evaluate(query.Result, request);
         return true;
     }
 }
 
 /// <summary>
 /// A dependent hop: the query finds the intermediate subjects, and the lookup continues from
-/// them through the subgraph <c>next</c> builds once their ids are known.
+/// them through the hop's target, built once their ids are known.
 /// </summary>
-internal sealed class ExpandNode(LookupSubjectQuery query, Func<HashSet<string>, GraphNode> next) : GraphNode
+internal sealed class ExpandNode(LookupSubjectQuery query, ExpandPlan plan, int depth, LookupSubjectGraphBuilder builder)
+    : GraphNode
 {
     private GraphNode? _continuation;
 
@@ -147,7 +148,7 @@ internal sealed class ExpandNode(LookupSubjectQuery query, Func<HashSet<string>,
                 return false;
             }
             var ids = SubjectSet.FromTuples((List<RelationTuple>)query.Result).Ids!;
-            _continuation = ids.Count == 0 ? None : next(ids);
+            _continuation = builder.Build(plan.EntityType, plan.Name, ids, depth);
         }
 
         if (!_continuation.Advance(pending)) return false;
@@ -172,7 +173,7 @@ internal sealed class SetNode(GraphNode[] children, bool union) : GraphNode
 }
 
 /// <summary>Subjects the child does not grant: once the child is known, one more query lists the rest.</summary>
-internal sealed class NegateNode(GraphNode child, Func<HashSet<string>, LookupSubjectQuery> complement) : GraphNode
+internal sealed class NegateNode(GraphNode child, string subjectType) : GraphNode
 {
     private LookupSubjectQuery? _complement;
 
@@ -180,7 +181,11 @@ internal sealed class NegateNode(GraphNode child, Func<HashSet<string>, LookupSu
     {
         if (!child.Advance(pending)) return false;
 
-        _complement ??= complement(child.Result!.IsGate ? new HashSet<string>() : child.Result.Ids!);
+        _complement ??= new LookupSubjectQuery
+        {
+            Kind = LookupSubjectQueryKind.SubjectsExcluding, SubjectType = subjectType,
+            Ids = child.Result!.IsGate ? new HashSet<string>() : child.Result.Ids!,
+        };
         if (_complement.Result is null)
         {
             pending.Add(_complement);
