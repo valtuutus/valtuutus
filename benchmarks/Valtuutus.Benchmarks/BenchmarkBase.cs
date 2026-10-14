@@ -16,6 +16,7 @@ public abstract class BenchmarkBase
     private const string FanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
     private const string SiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
     private const string MissUserId = "ffffffff-ffff-ffff-ffff-ffffffffff01"; // never seeded — deterministic miss
+    private const string NestedGroupRootId = "abababab-abab-abab-abab-ababababab00";
 
     protected ICheckEngine _checkEngine = null!;
     protected ILookupEntityEngine _lookupEntityEngine = null!;
@@ -185,6 +186,19 @@ public abstract class BenchmarkBase
         => await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
+            SubjectType = "user"
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// nested_group.member := @user @nested_group#member, seeded four levels deep from a fixed
+    /// root with ten users per level. Every level is a userset that is not terminal, so the lookup
+    /// takes one step per level; the scenario for fusing several levels into one query.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_NestedGroup")]
+    public async Task<HashSet<string>> LookupSubject_NestedGroup()
+        => await _lookupSubjectEngine.Lookup(new()
+        {
+            Permission = "member", EntityType = "nested_group", EntityId = NestedGroupRootId,
             SubjectType = "user"
         }, CancellationToken.None);
 

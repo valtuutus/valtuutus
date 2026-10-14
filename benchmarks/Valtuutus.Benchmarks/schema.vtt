@@ -42,5 +42,9 @@ entity folder {
     permission admin := owner and editor;
 }
 
+entity nested_group {
+    relation member @user @nested_group#member;
+}
+
 fn isActiveStatus(status int) => status == 1;
 fn isActive(active bool) => active == true;

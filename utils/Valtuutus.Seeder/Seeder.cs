@@ -190,6 +190,30 @@ public static class Seeder
         relations.AddRange(lookupSubjectSiblingBatchMembers.Select(u =>
             new RelationTuple("team", lookupSubjectSiblingBatchTeamId, "member", "user", u)));
 
+        // Nested userset benchmark data: root -> ng1 -> ng2 -> ng3 through nested_group#member,
+        // ten users at every level. A lookup of member on the root walks the whole chain, one
+        // level per hop, so it is the scenario where fusing hops into fewer steps shows.
+        string[] nestedGroupIds =
+        [
+            "abababab-abab-abab-abab-ababababab00",
+            "abababab-abab-abab-abab-ababababab01",
+            "abababab-abab-abab-abab-ababababab02",
+            "abababab-abab-abab-abab-ababababab03",
+        ];
+        for (var level = 0; level < nestedGroupIds.Length; level++)
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                relations.Add(new RelationTuple("nested_group", nestedGroupIds[level], "member", "user",
+                    $"abababab-1111-1111-1111-{level:D2}{i:D10}"));
+            }
+            if (level + 1 < nestedGroupIds.Length)
+            {
+                relations.Add(new RelationTuple("nested_group", nestedGroupIds[level], "member", "nested_group",
+                    nestedGroupIds[level + 1], "member"));
+            }
+        }
+
         return (relations, attributes);
     }
 }
