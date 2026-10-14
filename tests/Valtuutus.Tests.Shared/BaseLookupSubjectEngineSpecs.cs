@@ -821,4 +821,42 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             SnapToken snapToken, CancellationToken cancellationToken)
             => inner.GetSubjectIdsExcluding(subjectType, excludeIds, snapToken, cancellationToken);
     }
+
+    private const string RecursiveUsersetSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        entity folder {
+            relation owner @group#member;
+            permission view := owner;
+        }
+        """;
+
+    // g1 contains g2's members, g2 contains alice; g3 and g4 contain each other's members (a
+    // membership cycle) and dave belongs to g4. folder:nested is owned by g1, folder:cyclic by g3.
+    private static readonly RelationTuple[] RecursiveUsersetTuples =
+    [
+        new("group", "g1", "member", "group", "g2", "member"),
+        new("group", "g2", "member", "user", "alice"),
+        new("group", "g3", "member", "group", "g4", "member"),
+        new("group", "g4", "member", "group", "g3", "member"),
+        new("group", "g4", "member", "user", "dave"),
+        new("folder", "nested", "owner", "group", "g1", "member"),
+        new("folder", "cyclic", "owner", "group", "g3", "member"),
+    ];
+
+    [Theory]
+    [InlineData("nested", new[] { "alice" })]
+    [InlineData("cyclic", new[] { "dave" })]
+    public async Task LookupSubject_through_recursive_usersets_terminates_with_the_right_answer(string folder,
+        string[] expected)
+    {
+        var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("folder", "view", "user", folder), default)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.Should().BeEquivalentTo(expected);
+    }
 }

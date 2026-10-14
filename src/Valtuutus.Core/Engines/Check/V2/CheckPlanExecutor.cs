@@ -566,6 +566,16 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 Notify(parent, rootIndex, entry.Value);
                 return;
             }
+            // Still in flight in one of this request's own ancestors: a cycle in the data (a
+            // userset or tuple-to-userset chain leading back to itself). Waiting would wait on
+            // itself forever, so this re-entry is evaluated on its own, unmemoized, and the depth
+            // budget ends the cycle — the same answer an unmemoized evaluation would give.
+            if (IsAncestorMemoEntry(parent, entryIdx))
+            {
+                SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, memoEntry: -1,
+                    selfNode, precompiledRoot, sharedSlots);
+                return;
+            }
             if (_explain && selfNode is not null)
             {
                 selfNode.Detail = "memoized";
@@ -583,6 +593,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
         SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, newEntryIdx, selfNode,
             precompiledRoot, sharedSlots);
+    }
+
+    private bool IsAncestorMemoEntry(int frame, int memoEntry)
+    {
+        for (var i = frame; i != NoParent; i = _frames[i].Parent)
+            if (_frames[i].MemoEntry == memoEntry)
+                return true;
+        return false;
     }
 
     private void SpawnPlan(string entityType, string entityId, string permission, string? subjectRelation,

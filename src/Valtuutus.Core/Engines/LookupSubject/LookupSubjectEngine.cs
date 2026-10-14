@@ -508,14 +508,20 @@ public sealed class LookupSubjectEngine(
                         ct
                     );
 
+                    // This hop recurses into LookupRelation directly rather than through
+                    // LookupInternal, so it applies LookupInternal's depth rule itself: a userset
+                    // chain (or a cycle of usersets in the data) stops once the depth is spent.
                     buffer[count++] = JoinEntities(
-                        static (subjectIds, state) => state.engine.LookupRelation(
-                            state.req with
-                            {
-                                EntityType = state.relationEntity.Type,
-                                Permission = state.relationEntity.Relation!,
-                                EntitiesIds = subjectIds
-                            }, state.subRelation, state.ct),
+                        static (subjectIds, state) => state.req.Depth == 0
+                            ? _failTask
+                            : state.engine.LookupRelation(
+                                state.req with
+                                {
+                                    EntityType = state.relationEntity.Type,
+                                    Permission = state.relationEntity.Relation!,
+                                    EntitiesIds = subjectIds,
+                                    Depth = state.req.Depth - 1
+                                }, state.subRelation, state.ct),
                         (engine: this, req, relationEntity, subRelation, ct),
                         dependentTask);
                 }
