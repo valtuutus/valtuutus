@@ -58,4 +58,9 @@
         <None Include="Valtuutus.Lang.SourceGen.props" Pack="true" PackagePath="build/" />
     </ItemGroup>
 
+    <ItemGroup>
+        <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
+        <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
+    </ItemGroup>
+
 </Project>

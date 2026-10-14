@@ -1,5 +1,5 @@
 using System.Data.Common;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -55,10 +55,12 @@ public class BatchedPhysicalExecutorSpecs
         var batchOps = (IRelationalBatchOps)reader;
         var batch = Substitute.For<DbBatch>();
         batchOps.CreateBatch().Returns(batch);
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [new object[] { true }],
                 [new object[] { false }])));
+        #pragma warning restore CA2000
 
         var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
@@ -91,10 +93,12 @@ public class BatchedPhysicalExecutorSpecs
         var batchOps = (IRelationalBatchOps)reader;
         var batch = Substitute.For<DbBatch>();
         batchOps.CreateBatch().Returns(batch);
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [new object[] { true }],
                 [new object[] { false }])));
+        #pragma warning restore CA2000
 
         // Deliberately NOT IBatchableCheckOp — an opaque op the executor cannot fold into the batch.
         var opaqueOp = new FakeCheckOp(result: true);
@@ -247,10 +251,12 @@ public class BatchedPhysicalExecutorSpecs
     public void Pending_token_single_op_wave_resolves_the_token_in_the_same_batch()
     {
         var (reader, batchOps, batchResolving, batchResolvedView, batch) = BatchResolvingProvider();
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [new object[] { ResolvedToken }],
                 [new object[] { true }])));
+        #pragma warning restore CA2000
 
         var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
@@ -280,10 +286,12 @@ public class BatchedPhysicalExecutorSpecs
     public void Empty_token_result_resolves_to_the_minimum_token()
     {
         var (reader, batchOps, _, _, batch) = BatchResolvingProvider();
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [],
                 [new object[] { false }])));
+        #pragma warning restore CA2000
 
         var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var ctx = PendingCtx();
@@ -315,7 +323,9 @@ public class BatchedPhysicalExecutorSpecs
 
         opaque.SeenToken.Should().BeNull("the opaque op needs the token, which isn't resolved yet");
 
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchResult.SetResult(new FakeMultiResultReader([new object[] { ResolvedToken }], [new object[] { true }]));
+        #pragma warning restore CA2000
         for (var i = 0; i < 100 && sink.Completed.Count < 2; i++) await Task.Delay(10);
 
         opaque.SeenToken.Should().Be(new SnapToken(ResolvedToken));
@@ -341,7 +351,9 @@ public class BatchedPhysicalExecutorSpecs
         second.SeenToken.Should().BeNull();
         batchOps.Received(1).CreateBatch();
 
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchResult.SetResult(new FakeMultiResultReader([new object[] { ResolvedToken }], [new object[] { true }]));
+        #pragma warning restore CA2000
         // The waiting wave resumes on a continuation (the token source never runs them inline).
         for (var i = 0; i < 100 && second.SeenToken is null; i++) await Task.Delay(10);
 

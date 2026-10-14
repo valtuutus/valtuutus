@@ -1,7 +1,7 @@
 ﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 using Valtuutus.Core.Configuration;
@@ -14,6 +14,9 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
 
     protected BaseCheckEngineSpecs(IDatabaseFixture fixture)
     {
@@ -39,7 +42,9 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         var checkEngine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
         if(tuples.Length == 0 && attributes.Length == 0) return checkEngine;
         var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
@@ -52,9 +57,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        return Task.CompletedTask;
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
     }
 
 
@@ -876,7 +884,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         // Act
         var context = new Dictionary<string, object>
         {
-            {key, value}
+            {key, value!}
         };
         var result = await engine.Check(new CheckRequest("account",
             "1", "withdraw", "user", "1", context: context), default);

@@ -28,8 +28,7 @@ public class SqlServerBenchmarks : BenchmarkBase
 
     private static async Task<(ServiceProvider, ICheckEngine, ILookupEntityEngine, ILookupSubjectEngine)> InitializeAsync()
     {
-        var container = new MsSqlBuilder()
-            .WithImage("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
+        var container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
             .WithPassword("Valtuutus123!")
             .WithName($"mssql-benchmarks-{Guid.NewGuid()}")
             .Build();

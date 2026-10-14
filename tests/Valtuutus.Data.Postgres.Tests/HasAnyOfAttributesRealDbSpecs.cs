@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;

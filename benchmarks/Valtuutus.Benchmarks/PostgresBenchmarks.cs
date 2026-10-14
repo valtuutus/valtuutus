@@ -26,7 +26,7 @@ public class PostgresBenchmarks : BenchmarkBase
 
     private static async Task<(ServiceProvider, ICheckEngine, ILookupEntityEngine, ILookupSubjectEngine)> InitializeAsync()
     {
-        var container = new PostgreSqlBuilder()
+        var container = new PostgreSqlBuilder("postgres:15.1")
             .WithUsername("Valtuutus")
             .WithPassword("Valtuutus123")
             .WithDatabase("Valtuutus")

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -42,7 +42,7 @@ public class UsersetJoinOpSpecs
 
         await op.Execute(reader, ctx, "folder", "1", default);
 
-        ((IRelationalCheckOps)reader).Received(1).HasUsersetJoinRelation(
+        _ = ((IRelationalCheckOps)reader).Received(1).HasUsersetJoinRelation(
             "folder", "1", "owner", "group", "member", "user", "u1", ctx.SnapToken, default);
     }
 

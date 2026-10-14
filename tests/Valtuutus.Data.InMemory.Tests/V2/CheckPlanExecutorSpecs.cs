@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
@@ -11,14 +11,32 @@ using Valtuutus.Data.InMemory;
 
 namespace Valtuutus.Data.InMemory.Tests.V2;
 
-public class CheckPlanExecutorSpecs
+public class CheckPlanExecutorSpecs : IAsyncLifetime
 {
-    internal static async Task<(IServiceProvider sp, Schema schema, IDataReaderProvider reader)> Arrange(
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
+    }
+
+
+    internal async Task<(IServiceProvider sp, Schema schema, IDataReaderProvider reader)> Arrange(
         string schemaText, RelationTuple[] tuples, AttributeTuple[]? attributes = null)
     {
         var services = new ServiceCollection().AddValtuutusCore(schemaText);
         services.AddInMemory();
-        var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        var rootProvider = services.BuildServiceProvider();
+        _ownedResources.Add(rootProvider);
+        var asyncScope = rootProvider.CreateAsyncScope();
+        _ownedResources.Add(asyncScope);
+        var sp = asyncScope.ServiceProvider;
         await sp.GetRequiredService<IDataWriterProvider>().Write(tuples, attributes ?? [], default);
         return (sp, sp.GetRequiredService<Schema>(), sp.GetRequiredService<IDataReaderProvider>());
     }
@@ -149,7 +167,8 @@ public class CheckPlanExecutorSpecs
         string entityType, string entityId, string permission, string subjectType = "user", string subjectId = "u1",
         int depth = 10, string? subjectRelation = null)
     {
-        var (sp, schema, reader) = await Arrange(schemaText, tuples, attributes);
+        await using var owner = new CheckPlanExecutorSpecs();
+        var (sp, schema, reader) = await owner.Arrange(schemaText, tuples, attributes);
         var snap = await Valtuutus.Core.Engines.SnapTokenUtils.ResolveLatest(reader, null, default);
         var ctx = new CheckRequestContext
             { SubjectType = subjectType, SubjectId = subjectId, SnapToken = snap, Context = new Dictionary<string, object>() };
@@ -441,7 +460,11 @@ public class CheckPlanExecutorSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(DocSchema);
         services.AddInMemory();
-        var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        var rootProvider = services.BuildServiceProvider();
+        _ownedResources.Add(rootProvider);
+        var asyncScope = rootProvider.CreateAsyncScope();
+        _ownedResources.Add(asyncScope);
+        var sp = asyncScope.ServiceProvider;
         await sp.GetRequiredService<IDataWriterProvider>()
             .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
 
@@ -463,7 +486,11 @@ public class CheckPlanExecutorSpecs
         // CheckExplainResult shape, not just the boolean.
         var services = new ServiceCollection().AddValtuutusCore(DocSchema);
         services.AddInMemory();
-        var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        var rootProvider = services.BuildServiceProvider();
+        _ownedResources.Add(rootProvider);
+        var asyncScope = rootProvider.CreateAsyncScope();
+        _ownedResources.Add(asyncScope);
+        var sp = asyncScope.ServiceProvider;
         await sp.GetRequiredService<IDataWriterProvider>()
             .Write([new RelationTuple("doc", "1", "owner", "user", "u1")], [], default);
 
@@ -501,7 +528,11 @@ public class CheckPlanExecutorSpecs
             """;
         var services = new ServiceCollection().AddValtuutusCore(s);
         services.AddInMemory();
-        var scoped = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        var rootProvider = services.BuildServiceProvider();
+        _ownedResources.Add(rootProvider);
+        var asyncScope = rootProvider.CreateAsyncScope();
+        _ownedResources.Add(asyncScope);
+        var scoped = asyncScope.ServiceProvider;
         await scoped.GetRequiredService<IDataWriterProvider>().Write([
             new RelationTuple("doc", "1", "owner", "user", "alice"),
             new RelationTuple("doc", "2", "editor", "user", "bob"),
@@ -554,7 +585,11 @@ public class CheckPlanExecutorSpecs
 
         var services = new ServiceCollection().AddValtuutusCore(schemaText);
         services.AddInMemory();
-        var scoped = services.BuildServiceProvider().CreateScope().ServiceProvider;
+        var rootProvider = services.BuildServiceProvider();
+        _ownedResources.Add(rootProvider);
+        var asyncScope = rootProvider.CreateAsyncScope();
+        _ownedResources.Add(asyncScope);
+        var scoped = asyncScope.ServiceProvider;
         await scoped.GetRequiredService<IDataWriterProvider>().Write(
             [new RelationTuple("doc", "1", "r0", "user", "u1")], [], default);
         var engine = scoped.GetRequiredService<ICheckEngine>();
@@ -766,7 +801,7 @@ public class CheckPlanExecutorSpecs
         // deliberate characteristic of the scheduler (Union is commutative; order was never
         // observable before wave batching existed). BeEquivalentTo would enforce byte-for-byte
         // positional equality here regardless of source order since OpKind is byte-backed and
-        // FluentAssertions special-cases byte-sized collections like raw byte arrays — Contain +
+        // AwesomeAssertions special-cases byte-sized collections like raw byte arrays — Contain +
         // HaveCount checks the same two distinct kinds are present without asserting an order the
         // wave never promised.
         var kinds = recording.SubmitCalls[0].Select(o => o.Kind).ToArray();

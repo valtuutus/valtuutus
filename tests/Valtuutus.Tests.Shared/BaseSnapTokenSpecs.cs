@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
@@ -16,6 +16,9 @@ namespace Valtuutus.Tests.Shared;
 /// </summary>
 public abstract class BaseSnapTokenSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
     protected BaseSnapTokenSpecs(IDatabaseFixture fixture)
     {
         Fixture = fixture;
@@ -39,7 +42,9 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     private (IDataReaderProvider reader, IDataWriterProvider writer) CreateProviders()
     {
         var serviceProvider = CreateServiceProvider();
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         return (scope.ServiceProvider.GetRequiredService<IDataReaderProvider>(),
             scope.ServiceProvider.GetRequiredService<IDataWriterProvider>());
     }
@@ -887,8 +892,11 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        return Task.CompletedTask;
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
     }
 }

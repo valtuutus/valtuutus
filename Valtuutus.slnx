@@ -7,9 +7,6 @@
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Valtuutus.Benchmarks/Valtuutus.Benchmarks.csproj" />
   </Folder>
-  <Folder Name="/samples/">
-    <Project Path="samples/Valtuutus.Playground/Valtuutus.Playground.csproj" />
-  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path="build.cake" />

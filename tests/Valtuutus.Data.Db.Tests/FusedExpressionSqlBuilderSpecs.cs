@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Db.Tests;

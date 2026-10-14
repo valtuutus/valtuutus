@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -70,7 +70,7 @@ public class TombstoneReaperHostedServiceSpecs
     public async Task ExecuteAsync_ticks_repeatedly_and_resolves_a_fresh_scope_each_tick()
     {
         var reapCallCount = 0;
-        var tickSignal = new SemaphoreSlim(0);
+        using var tickSignal = new SemaphoreSlim(0);
         var reaper = Substitute.For<ITombstoneReaper>();
         reaper.ReapAsync(Arg.Any<CancellationToken>()).Returns(_ =>
         {
@@ -94,7 +94,7 @@ public class TombstoneReaperHostedServiceSpecs
 
         var timeProvider = new SignalingTimeProvider();
         var options = new ValtuutusReaperOptions { SweepInterval = TimeSpan.FromMinutes(1) };
-        var hostedService = new TombstoneReaperHostedService(
+        using var hostedService = new TombstoneReaperHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             options,
             timeProvider,
@@ -129,7 +129,7 @@ public class TombstoneReaperHostedServiceSpecs
     [Fact]
     public async Task ExecuteAsync_does_not_throw_the_host_down_when_a_sweep_fails()
     {
-        var tickSignal = new SemaphoreSlim(0);
+        using var tickSignal = new SemaphoreSlim(0);
         var reaper = Substitute.For<ITombstoneReaper>();
         reaper.ReapAsync(Arg.Any<CancellationToken>()).Returns<Task<ReapResult>>(_ =>
         {
@@ -143,7 +143,7 @@ public class TombstoneReaperHostedServiceSpecs
 
         var timeProvider = new SignalingTimeProvider();
         var options = new ValtuutusReaperOptions { SweepInterval = TimeSpan.FromMinutes(1) };
-        var hostedService = new TombstoneReaperHostedService(
+        using var hostedService = new TombstoneReaperHostedService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             options,
             timeProvider,

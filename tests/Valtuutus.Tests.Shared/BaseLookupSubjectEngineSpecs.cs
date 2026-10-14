@@ -1,7 +1,7 @@
 ﻿using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -16,6 +16,9 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
     protected BaseLookupSubjectEngineSpecs(IDatabaseFixture fixture)
     {
         Fixture = fixture;
@@ -60,7 +63,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     {
         var captures = new List<List<string>>();
         var serviceProvider = CreateServiceProvider(schema, captures);
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         var lookupSubjectEngine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
         var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
         await provider.Write(tuples, attributes, default);
@@ -97,7 +102,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         if (tuples.Length != 0 || attributes.Length != 0)
         {
             var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
@@ -113,9 +120,12 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        return Task.CompletedTask;
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupSubjectRequest, HashSet<string>>
@@ -355,7 +365,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var context = new Dictionary<string, object> {{key, value}};
+        var context = new Dictionary<string, object> {{key, value!}};
         var result = await engine.Lookup(new LookupSubjectRequest("account",
             "withdraw", "user", reqAcc, context: context), default);
 

@@ -10,6 +10,9 @@
     
     <ItemGroup>
       <PackageReference Include="Microsoft.Data.SqlClient" />
+      <!-- Microsoft.Data.SqlClient 6.x depends on System.Security.Cryptography.Pkcs versions with a known
+           vulnerability (GHSA-846f-f764-76mx); this lifts the transitive dependency to a patched one. -->
+      <PackageReference Include="System.Security.Cryptography.Pkcs" />
     </ItemGroup>
 
     <ItemGroup>

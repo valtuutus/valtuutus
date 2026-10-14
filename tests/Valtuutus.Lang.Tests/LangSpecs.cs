@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.VisualStudio.TestPlatform.CommunicationUtilities;
 using System.Reflection;
 using Valtuutus.Core.Lang;
