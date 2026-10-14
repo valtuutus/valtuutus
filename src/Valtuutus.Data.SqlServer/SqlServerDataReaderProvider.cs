@@ -245,12 +245,11 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
                 WHERE {snapPredicate}
-                  AND (@SubjectType IS NULL OR subject_type = @SubjectType)
-                  AND (@EntityType IS NULL OR entity_type = @EntityType)
-                  AND (@Relation IS NULL OR relation = @Relation)
+                  AND subject_type = @SubjectType
+                  AND entity_type = @EntityType
+                  AND relation = @Relation
                   AND entity_id IN (SELECT id FROM @EntityIds)
                   AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
-                OPTION (RECOMPILE)
                 """,
             GetRelationsWithSingleSubjectSnap =
                 $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId",
@@ -283,7 +282,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND subject_type = @SubjectType
                   AND entity_id IN (SELECT id FROM @EntityIds)
                   AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
-                OPTION (RECOMPILE)
                 """,
             GetRelationsJoined = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
