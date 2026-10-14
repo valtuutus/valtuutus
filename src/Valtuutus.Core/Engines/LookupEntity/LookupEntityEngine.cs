@@ -185,7 +185,7 @@ public sealed class LookupEntityEngine(
     // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
     // no sub-relation paths and reachable by req.FinalSubjectType, can be resolved via
     // GetRelationsWithSubjectsIdsMultiRelation alongside its siblings instead of its own
-    // per-child LookupRelationLeaf round trip. Mirrors CheckEngine.IsBatchableDirectRelation.
+    // per-child LookupRelationLeaf round trip.
     private bool IsBatchableDirectRelation(LookupEntityRequestInternal req, PermissionNode child, out string relationName)
     {
         relationName = "";
@@ -665,11 +665,17 @@ public sealed class LookupEntityEngine(
                         continue;
                     }
 
-                    var dependent = LookupRelation(req with
-                    {
-                        EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
-                        Scope = null,  // clear scope — sub-relation traversal is not scoped
-                    }, subRelation, ct);
+                    // This hop recurses into LookupRelation directly rather than through
+                    // LookupEntityInternal, so it applies that method's depth rule itself: a
+                    // userset chain (or a cycle of usersets in the data) stops once the depth is spent.
+                    var dependent = req.Depth == 0
+                        ? EmptyPooledListTask()
+                        : LookupRelation(req with
+                        {
+                            EntityType = relationEntity.Type, Permission = relationEntity.Relation!,
+                            Scope = null,  // clear scope — sub-relation traversal is not scoped
+                            Depth = req.Depth - 1
+                        }, subRelation, ct);
 
                     buffer[count++] = JoinEntities(
                         static (relatedTuples, s) =>

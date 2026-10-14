@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+﻿using AwesomeAssertions;
 using Valtuutus.Core.Lang.SchemaReaders;
 
 namespace Valtuutus.Lang.Tests;
@@ -607,5 +607,42 @@ public class LangSemanticValidationsSpecs
         schema.AsT1.Should().BeEquivalentTo([
             new { Message = "Undefined relation, attribute or permission with name: member for entity organization", }
         ]);
+    }
+
+    [Fact]
+    public void Schema_with_self_referencing_userset_parses()
+    {
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity group {
+                relation member @user @group#member;
+            }
+            entity folder {
+                relation owner @group#member;
+            }
+        ");
+
+        schema.IsT0.Should().BeTrue(schema.IsT1 ? string.Join("; ", schema.AsT1.Select(e => e.Message)) : "");
+    }
+
+    [Fact]
+    public void Schema_with_userset_targets_of_one_entity_resolving_to_different_entities_should_return_error()
+    {
+        // team#member resolves to user, team#bot to service_account: both userset targets are on the
+        // same entity, so each must still be expanded for the inconsistency to be seen.
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity service_account {}
+            entity team {
+                relation member @user;
+                relation bot @service_account;
+            }
+            entity doc {
+                relation viewer @team#member @team#bot;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+        schema.AsT1.Should().ContainSingle(e => e.Message == "Entity 'doc' 'viewer' has inconsistent final entity references.");
     }
 }

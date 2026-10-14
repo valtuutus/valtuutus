@@ -18,8 +18,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
     private Respawner _respawner = default!;
 
     
-    private readonly MsSqlContainer _dbContainer = new MsSqlBuilder()
-	    .WithImage("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
+    private readonly MsSqlContainer _dbContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
 	    .WithPassword("Valtuutus123!")
 	    .WithName($"mssql-integration-tests-{Guid.NewGuid()}")
 	    .Build();
@@ -40,12 +39,16 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
     
     public async Task ResetDatabaseAsync()
     {
-	    await _respawner.ResetAsync(_dbContainer.GetConnectionString());
+	    await using var connection = new SqlConnection(_dbContainer.GetConnectionString());
+	    await connection.OpenAsync();
+	    await _respawner.ResetAsync(connection);
     }
     
     private async Task SetupRespawnerAsync()
     {
-	    _respawner = await Respawner.CreateAsync(_dbContainer.GetConnectionString(), new RespawnerOptions
+	    await using var connection = new SqlConnection(_dbContainer.GetConnectionString());
+	    await connection.OpenAsync();
+	    _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
 	    {
 		    DbAdapter = DbAdapter.SqlServer,
 	    });

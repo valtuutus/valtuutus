@@ -1,5 +1,5 @@
 using Valtuutus.Data;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace Valtuutus.Data.InMemory.Tests;
 

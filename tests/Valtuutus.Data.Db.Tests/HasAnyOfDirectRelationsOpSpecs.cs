@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;

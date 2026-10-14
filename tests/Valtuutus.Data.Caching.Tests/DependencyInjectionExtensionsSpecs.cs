@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.Check;
@@ -28,32 +28,6 @@ public class DependencyInjectionExtensionsSpecs
         GetUnkeyed<ICheckEngine>(services).ImplementationType.Should().Be(typeof(CachedCheckEngine));
         var innerType = GetKeyed<ICheckEngine>(services, Consts.InnerCheckEngineKey).KeyedImplementationType;
         innerType!.Name.Should().Be("CheckEngineV2");
-    }
-
-    [Fact]
-    public void AddCaching_after_CheckV1_wraps_the_legacy_engine()
-    {
-        var services = new ServiceCollection();
-        services.AddValtuutusCore(Schema);
-        services.AddValtuutusCheckV1();
-        services.AddValtuutusData().AddCaching();
-
-        GetUnkeyed<ICheckEngine>(services).ImplementationType.Should().Be(typeof(CachedCheckEngine));
-
-        GetKeyed<ICheckEngine>(services, Consts.InnerCheckEngineKey).KeyedImplementationType.Should().Be(typeof(CheckEngine));
-    }
-
-    [Fact]
-    public void AddCaching_before_engine_selection_loses_caching_documenting_the_required_order()
-    {
-        // Engine-selection methods replace the unkeyed ICheckEngine descriptor outright, so calling one after
-        // AddCaching wipes CachedCheckEngine. AddCaching must be the last call in the chain.
-        var services = new ServiceCollection();
-        services.AddValtuutusCore(Schema);
-        services.AddValtuutusData().AddCaching();
-        services.AddValtuutusCheckV1();
-
-        GetUnkeyed<ICheckEngine>(services).ImplementationType.Should().NotBe(typeof(CachedCheckEngine));
     }
 
     [Fact]

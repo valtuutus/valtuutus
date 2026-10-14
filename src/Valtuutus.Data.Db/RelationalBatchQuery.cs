@@ -3,11 +3,10 @@ namespace Valtuutus.Data.Db;
 /// <summary>
 /// Keys for <see cref="RelationalBatchProviderBase"/>'s dialect catalog (its
 /// <c>GetSql</c> hook) — one per batchable query shape. Members whose query takes a
-/// name/id array contain a <c>{0}</c> placeholder in their SQL where the fragment returned by
-/// <c>RelationalBatchProviderBase.WriteNameArrayParam</c> lands (a native array parameter
-/// reference on Postgres; on SqlServer the SQL text hardcodes a table-valued-parameter subquery
-/// instead, so the placeholder is a no-op there; an expanded parameter list on providers with
-/// neither).
+/// name/id array may contain a <c>{0}</c> placeholder in their SQL where the fragment returned by
+/// <c>RelationalBatchProviderBase.WriteNameArrayParam</c> lands (an expanded parameter list on
+/// providers without array or table-valued parameters; Postgres and SqlServer reference their
+/// array parameter by name instead).
 /// </summary>
 public enum RelationalBatchQuery
 {
@@ -58,4 +57,10 @@ public enum RelationalBatchQuery
 
     /// <summary>Batched sibling of <see cref="Valtuutus.Core.Data.IDataReaderProvider.GetIndirectRelations"/>.</summary>
     GetIndirectRelations,
+
+    /// <summary>
+    /// Batched sibling of <see cref="Valtuutus.Core.Data.IDataReaderProvider.GetAttributesSingleEntity"/>
+    /// with a non-null entity id. <c>{0}</c> = attribute-name array.
+    /// </summary>
+    GetAttributesSingleEntity,
 }

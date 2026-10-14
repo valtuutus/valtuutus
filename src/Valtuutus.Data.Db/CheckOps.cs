@@ -5,8 +5,8 @@ using Valtuutus.Core.Engines.Check.V2;
 
 namespace Valtuutus.Data.Db;
 
-// Physical op for a fused sibling direct-relation batch — the declarative form of V1's runtime
-// check-then-batch: one round trip answers what would otherwise be N sibling children.
+// Physical op for a fused sibling direct-relation batch: one round trip answers what would
+// otherwise be N sibling children.
 internal sealed class HasAnyOfDirectRelationsOp(string[] relations, bool requireAll) : ICheckOp, IBatchableCheckOp
 {
     internal string[] Relations => relations;

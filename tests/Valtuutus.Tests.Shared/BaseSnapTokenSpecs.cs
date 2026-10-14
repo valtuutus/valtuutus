@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
@@ -16,6 +16,9 @@ namespace Valtuutus.Tests.Shared;
 /// </summary>
 public abstract class BaseSnapTokenSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
     protected BaseSnapTokenSpecs(IDatabaseFixture fixture)
     {
         Fixture = fixture;
@@ -39,7 +42,9 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     private (IDataReaderProvider reader, IDataWriterProvider writer) CreateProviders()
     {
         var serviceProvider = CreateServiceProvider();
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         return (scope.ServiceProvider.GetRequiredService<IDataReaderProvider>(),
             scope.ServiceProvider.GetRequiredService<IDataWriterProvider>());
     }
@@ -622,23 +627,19 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetAttribute_Should_Respect_SnapToken()
+    public async Task GetAttributes_With_EntityId_Should_Respect_SnapToken()
     {
         var providers = CreateProviders();
 
-        var seed = new List<AttributeTuple>
-        {
-            new("workspace", "maneirinho", "public", JsonValue.Create(false)),
-        };
-
-        var initialSnapToken = await providers.writer.Write([], seed, default);
+        var initialSnapToken = await providers.writer.Write([],
+            [new AttributeTuple("workspace", "maneirinho", "public", JsonValue.Create(false))], default);
 
         var newSnapToken = await providers.writer.Write(
             [], [new AttributeTuple("workspace", "daora", "public", JsonValue.Create(false))],
             default);
 
         // Assert that using an older token does not bring new data
-        var attrWithOldToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+        var attrsWithOldToken = await providers.reader.GetAttributes(new EntityAttributeFilter
             {
                 EntityType = "workspace",
                 Attribute = "public",
@@ -648,10 +649,10 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             default
         );
 
-        attrWithOldToken.Should().BeNull();
+        attrsWithOldToken.Should().BeEmpty();
 
         // Assert that the newer token returns the inserted data
-        var attrWithNewToken = await providers.reader.GetAttribute(new EntityAttributeFilter
+        var attrsWithNewToken = await providers.reader.GetAttributes(new EntityAttributeFilter
             {
                 EntityType = "workspace",
                 Attribute = "public",
@@ -660,43 +661,20 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             },
             default
         );
-        new
-        {
-            attrWithNewToken!.EntityType,
-            attrWithNewToken!.EntityId,
-            attrWithNewToken!.Attribute,
-            Value = attrWithNewToken!.Value.ToJsonString()
-        }.Should().BeEquivalentTo(new
-        {
-            EntityType = "workspace",
-            EntityId = "daora",
-            Attribute = "public",
-            Value = JsonValue.Create(false).ToJsonString()
-        });
+        attrsWithNewToken.Select(a => new { a.EntityType, a.EntityId, a.Attribute, Value = a.Value.ToJsonString() })
+            .Should().BeEquivalentTo([
+                new
+                {
+                    EntityType = "workspace",
+                    EntityId = "daora",
+                    Attribute = "public",
+                    Value = JsonValue.Create(false).ToJsonString()
+                }
+            ]);
     }
 
     [Fact]
-    public async Task GetAttribute_Should_Return_Null_When_Missing()
-    {
-        var providers = CreateProviders();
-
-        await providers.writer.Write([], [
-            new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
-        ], default);
-
-        var attribute = await providers.reader.GetAttribute(new EntityAttributeFilter
-        {
-            EntityType = "workspace",
-            EntityId = "missing",
-            Attribute = "status",
-            SnapToken = SnapToken.MinValue
-        }, default);
-
-        attribute.Should().BeNull();
-    }
-
-    [Fact]
-    public async Task GetAttribute_Should_Work_Without_EntityId()
+    public async Task GetAttributes_Should_Return_Empty_When_Entity_Missing()
     {
         var providers = CreateProviders();
 
@@ -704,59 +682,15 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
             new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
         ], default);
 
-        var attribute = await providers.reader.GetAttribute(new EntityAttributeFilter
+        var attributes = await providers.reader.GetAttributes(new EntityAttributeFilter
         {
             EntityType = "workspace",
+            EntityId = "missing",
             Attribute = "status",
             SnapToken = snapToken
         }, default);
 
-        new
-        {
-            attribute!.EntityType,
-            attribute.EntityId,
-            attribute.Attribute,
-            Value = attribute.Value.ToJsonString()
-        }.Should().BeEquivalentTo(new
-        {
-            EntityType = "workspace",
-            EntityId = "public",
-            Attribute = "status",
-            Value = JsonValue.Create("active")!.ToJsonString()
-        });
-    }
-
-    [Fact]
-    public async Task GetAttribute_Should_Respect_SnapToken_Without_EntityId()
-    {
-        var providers = CreateProviders();
-
-        var firstSnapToken = await providers.writer.Write([], [
-            new AttributeTuple("workspace", "public", "status", JsonValue.Create("active")!)
-        ], default);
-
-        var secondSnapToken = await providers.writer.Write([], [
-            new AttributeTuple("workspace", "private", "status", JsonValue.Create("inactive")!)
-        ], default);
-
-        var attributeWithOldToken = await providers.reader.GetAttribute(new EntityAttributeFilter
-        {
-            EntityType = "workspace",
-            Attribute = "status",
-            SnapToken = firstSnapToken
-        }, default);
-
-        var attributeWithNewToken = await providers.reader.GetAttribute(new EntityAttributeFilter
-        {
-            EntityType = "workspace",
-            Attribute = "status",
-            SnapToken = secondSnapToken
-        }, default);
-
-        attributeWithOldToken.Should().NotBeNull();
-        attributeWithNewToken.Should().NotBeNull();
-        attributeWithOldToken!.EntityId.Should().Be("public");
-        attributeWithNewToken!.Attribute.Should().Be("status");
+        attributes.Should().BeEmpty();
     }
 
     [Fact]
@@ -958,8 +892,11 @@ public abstract class BaseSnapTokenSpecs : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        return Task.CompletedTask;
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
     }
 }

@@ -12,13 +12,11 @@ namespace Valtuutus.Data.Db;
 //
 // Two fusion passes run here, both over the post-hash-consing plan:
 //
-// Direct-relation sibling fusion (plan-time form of V1's runtime check-then-batch,
-// CheckEngine.cs:559-577): >= 2 sibling Union/Intersect children that are plain same-entity
-// direct-relation refs collapse into one HasAnyOfDirectRelationsOp — a single round trip. Only
-// fires when the subject type is known (V1 parity: CheckEngine.cs:564; plans are keyed per
-// subjectType, so that runtime condition is a rewrite-time one here). V1's memo exclusion has
-// no plan-time equivalent — the fused batch may re-fetch a relation the dynamic memo already
-// knows, which costs no extra round trip; deliberate divergence.
+// Direct-relation sibling fusion: >= 2 sibling Union/Intersect children that are plain
+// same-entity direct-relation refs collapse into one HasAnyOfDirectRelationsOp — a single round
+// trip. Only fires when the subject type is known (plans are keyed per subjectType, so that is a
+// rewrite-time condition here). The fused batch may re-fetch a relation the dynamic memo already
+// knows; that costs no extra round trip.
 //
 // Attribute sibling fusion: symmetric for >= 2 sibling same-entity bool-attribute refs —
 // HasAnyOfAttributesOp. No subjectType gate: attributes don't depend on subject at all.
@@ -149,10 +147,10 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
             // attribute sibling groups fuse (each needs >= 2 members — one batchable child alone
             // saves nothing); everything else, including TTU/negated/nested leaves recognized
             // above, survives as its own walked child. Note this rebuild loop still checks
-            // IsBatchableDirectRef/IsBatchableAttributeRef against the RAW child (not `walked`) —
-            // identical result for the cases that matter here (a raw direct/attribute PlanRefNode
-            // walks to itself), and Walk(child) below is a memoized re-fetch of what the
-            // classification loop above already computed, not new work.
+            // IsBatchableDirectRef/IsBatchableAttributeRef against the RAW child, which gives the
+            // same result as the walked one for the cases that matter here (a raw direct/attribute
+            // PlanRefNode walks to itself), and Walk(child) below is a memoized re-fetch of what
+            // the classification loop above already computed.
             var fuseRelations = relations is { Count: >= 2 };
             var fuseAttributes = attributes is { Count: >= 2 };
             if (!fuseRelations && !fuseAttributes)
@@ -190,8 +188,8 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
         // attribute refs are handled by IsBatchableDirectRef/IsBatchableAttributeRef above (they
         // feed the sibling-group lists, not this method) — this method only covers what those two
         // do not. A nested PhysicalCheckNode { Op: FusedExpressionOp } is NOT handled here:
-        // it needs to contribute MULTIPLE leaves to the outer fusion (not one opaque leaf), which
-        // this method's single-leaf-out signature can't express — GroupChildren's classification
+        // it contributes MULTIPLE leaves to the outer fusion, more than this method's
+        // single-leaf-out signature expresses — GroupChildren's classification
         // loop checks for and flattens that case itself, before ever calling this method.
         private bool TryRecognizeSingleLeaf(PlanNode node, out FusedCheckLeaf leaf)
         {
@@ -246,7 +244,7 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
             return isUnion ? new UnionNode(arr) : new IntersectNode(arr);
         }
 
-        // Mirror of V1 IsBatchableDirectRelation (CheckEngine.cs:411-423) over the compiled IR.
+        // A plain same-entity direct-relation ref with no userset sub-paths: fusable into one batch.
         private bool IsBatchableDirectRef(PlanNode node, out string relation)
         {
             relation = "";

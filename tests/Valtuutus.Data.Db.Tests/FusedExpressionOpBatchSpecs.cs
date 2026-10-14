@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 using System.Data.Common;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -45,9 +45,12 @@ public class FusedExpressionOpBatchSpecs
         var op = new FusedExpressionOp(Leaves, requireAll: false);
         var sink = new RecordingSink();
 
-        await op.ReadResultAsync(new FakeBoolResultReader(true), token: 7, sink, default);
-        await op.ReadResultAsync(new FakeBoolResultReader(false), token: 9, sink, default);
-        await op.ReadResultAsync(new FakeBoolResultReader(null), token: 11, sink, default); // no rows
+        using var reader1 = new FakeBoolResultReader(true);
+        await op.ReadResultAsync(reader1, token: 7, sink, default);
+        using var reader2 = new FakeBoolResultReader(false);
+        await op.ReadResultAsync(reader2, token: 9, sink, default);
+        using var reader3 = new FakeBoolResultReader(null);
+        await op.ReadResultAsync(reader3, token: 11, sink, default); // no rows
 
         sink.Completed.Should().ContainSingle(c => c.Token == 7 && c.Result);
         sink.Completed.Should().ContainSingle(c => c.Token == 9 && !c.Result);

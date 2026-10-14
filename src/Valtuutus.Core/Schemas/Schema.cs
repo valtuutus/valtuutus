@@ -12,7 +12,7 @@ public record Schema
 
     // null value = universal (any subject type can reach — e.g., attribute/fn leaves, cycles)
     // non-null = only the listed subject types can reach
-    // missing key = attribute check (not subject-type-dependent, so the guard skips it)
+    // missing key = attribute check (independent of subject type, so the guard skips it)
     private readonly FrozenDictionary<(string EntityType, string Name), FrozenSet<string>?> _reachableSubjectTypes;
 
     public Schema(IDictionary<string, Entity> entities, IDictionary<string, Function> functions)
@@ -53,10 +53,10 @@ public record Schema
         return Entities[entityType].Attributes[attribute];
     }
 
-    // Concrete return type (not IReadOnlyCollection<Permission>) so `var`-typed callers get
-    // ImmutableArray<Permission>'s own struct enumerator via foreach's pattern-based binding,
-    // instead of boxing through IEnumerator<Permission> — this is on the SubjectPermission hot
-    // path (CheckEngineV2.SubjectPermission, V1 CheckEngine.SubjectPermission). Callers use
+    // Concrete ImmutableArray return type so `var`-typed callers get its own struct enumerator via
+    // foreach's pattern-based binding, with no boxing through IEnumerator<Permission> — this is on
+    // the SubjectPermission hot
+    // path (CheckEngineV2.SubjectPermission). Callers use
     // .Length, not .Count (ImmutableArray<T> only exposes Count via explicit interface impl).
     internal ImmutableArray<Permission> GetPermissions(string entityType)
     {
@@ -83,7 +83,7 @@ public record Schema
 
     /// <summary>
     /// Returns true when the given subject type can possibly satisfy <c>entityType#permOrRelation</c>
-    /// anywhere in the schema graph. Returns true for attributes (not subject-type-constrained)
+    /// anywhere in the schema graph. Returns true for attributes, which no subject type constrains,
     /// and for any cycle that could not be statically resolved.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

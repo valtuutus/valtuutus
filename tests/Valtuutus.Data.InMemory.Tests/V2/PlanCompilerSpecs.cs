@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.Check.V2;

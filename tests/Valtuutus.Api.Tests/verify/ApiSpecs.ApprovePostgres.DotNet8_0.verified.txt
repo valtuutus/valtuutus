@@ -10,7 +10,10 @@ namespace Valtuutus.Data.Postgres
     public sealed class PostgresBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase, System.IDisposable
     {
         public PostgresBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
+        public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
         public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
+        protected override void CompleteCommand(System.Data.Common.DbBatchCommand cmd, Valtuutus.Data.Db.RelationalBatchQuery query) { }
         public override System.Data.Common.DbBatch CreateBatch() { }
         public void Dispose() { }
         public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
@@ -23,7 +26,6 @@ namespace Valtuutus.Data.Postgres
     public class PostgresDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalCheckOps
     {
         public PostgresDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
                 "AttributeName",

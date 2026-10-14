@@ -27,17 +27,16 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
     /// The provider's dialect catalog: the exact SQL text for each batchable query shape — the
     /// same text the provider's non-batch sibling method dispatches (identical text keeps
     /// server-side prepared-statement caches shared between the two paths). Members documented
-    /// as array-taking on <see cref="RelationalBatchQuery"/> contain a <c>{0}</c> placeholder
-    /// that this class fills with <see cref="WriteNameArrayParam"/>'s returned fragment.
+    /// as array-taking on <see cref="RelationalBatchQuery"/> may contain a <c>{0}</c> placeholder,
+    /// which this class fills with <see cref="WriteNameArrayParam"/>'s returned fragment.
     /// </summary>
     protected abstract string GetSql(RelationalBatchQuery query);
 
     /// <summary>
     /// Writes a name/id array argument onto <paramref name="cmd"/> and returns the SQL fragment
     /// that references it — the text substituted into the catalog SQL's <c>{0}</c> placeholder.
-    /// Postgres adds one native array parameter and returns <c>@baseName</c>; SqlServer adds one
-    /// table-valued parameter and returns its parameter name (the catalog SQL text already
-    /// hardcodes the containing subquery, so the <c>{0}</c> substitution is a no-op there); a
+    /// Postgres adds one native array parameter and SqlServer one table-valued parameter, under
+    /// the name their catalog SQL already references, so neither catalog carries a <c>{0}</c>; a
     /// provider with neither adds one parameter per value and returns the expanded list.
     /// </summary>
     protected abstract string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values);
@@ -95,12 +94,36 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         => AddParam(cmd, name, string.IsNullOrWhiteSpace(value) ? DBNull.Value : value);
 
     /// <summary>
-    /// Appends the snapshot-token parameter. Its own hook (not <see cref="WriteStringParam"/>)
-    /// because providers type it differently from ordinary varchar columns (fixed-width char on
+    /// Appends the snapshot-token parameter. A dedicated hook because providers type it
+    /// differently from ordinary varchar columns (fixed-width char on
     /// Postgres).
     /// </summary>
     protected virtual void WriteSnapTokenParam(DbBatchCommand cmd, string name, SnapToken snapToken)
         => AddParam(cmd, name, snapToken.Value);
+
+    /// <summary>
+    /// Called once an Add* member has written every parameter of the <paramref name="query"/>
+    /// catalog command <paramref name="cmd"/>, so a provider can put the parameters into the form
+    /// its catalog SQL expects (Postgres binds them positionally). The default does nothing.
+    /// </summary>
+    protected virtual void CompleteCommand(DbBatchCommand cmd, RelationalBatchQuery query)
+    {
+    }
+
+    // Only a catalog entry that splices the array reference into its text carries {0}; formatting
+    // one that does not would copy the statement text on every call.
+    private static void SpliceArrayFragment(DbBatchCommand cmd, string arrayFragment)
+    {
+        if (cmd.CommandText.Contains("{0}", StringComparison.Ordinal))
+            cmd.CommandText = string.Format(CultureInfo.InvariantCulture, cmd.CommandText, arrayFragment);
+    }
+
+    /// <inheritdoc />
+    public virtual IRelationalBatchOps? UsingBatchResolvedSnapToken => null;
+
+    /// <inheritdoc />
+    public virtual void AddResolveLatestSnapTokenToBatch(DbBatch batch)
+        => throw new NotSupportedException($"{GetType().Name} cannot resolve the snap token inside a batch.");
 
     /// <inheritdoc />
     public virtual void AddHasDirectRelationToBatch(DbBatch batch, RelationTupleFilter tupleFilter, string subjectId)
@@ -111,6 +134,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "relation", tupleFilter.Relation, 64);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
         WriteSnapTokenParam(cmd, "snap_token", tupleFilter.SnapToken);
+        CompleteCommand(cmd, RelationalBatchQuery.HasDirectRelation);
     }
 
     /// <inheritdoc />
@@ -122,6 +146,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_id", entityId, 64);
         WriteStringParam(cmd, "attribute", attribute, 64);
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
+        CompleteCommand(cmd, RelationalBatchQuery.HasTrueBoolAttribute);
     }
 
     /// <inheritdoc />
@@ -137,6 +162,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "computed_relation", computedRelation, 64);
         WriteStringParam(cmd, "subject_type", subjectType, 256);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
+        CompleteCommand(cmd, RelationalBatchQuery.HasTupleToUserSetRelation);
     }
 
     /// <inheritdoc />
@@ -152,6 +178,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "computed_relation", computedRelation, 64);
         WriteStringParam(cmd, "subject_type", subjectType, 256);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
+        CompleteCommand(cmd, RelationalBatchQuery.HasUsersetJoinRelation);
     }
 
     /// <inheritdoc />
@@ -164,7 +191,8 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "relation", relation, 64);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
-        cmd.CommandText = string.Format(CultureInfo.InvariantCulture, cmd.CommandText, arrayFragment);
+        SpliceArrayFragment(cmd, arrayFragment);
+        CompleteCommand(cmd, RelationalBatchQuery.HasAnyDirectRelation);
     }
 
     /// <inheritdoc />
@@ -177,7 +205,8 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         var arrayFragment = WriteNameArrayParam(cmd, "relations", relationNames);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
-        cmd.CommandText = string.Format(CultureInfo.InvariantCulture, cmd.CommandText, arrayFragment);
+        SpliceArrayFragment(cmd, arrayFragment);
+        CompleteCommand(cmd, RelationalBatchQuery.HasAnyOfDirectRelations);
     }
 
     /// <inheritdoc />
@@ -189,7 +218,8 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_id", entityId, 64);
         var arrayFragment = WriteNameArrayParam(cmd, "attributes", attributeNames);
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
-        cmd.CommandText = string.Format(CultureInfo.InvariantCulture, cmd.CommandText, arrayFragment);
+        SpliceArrayFragment(cmd, arrayFragment);
+        CompleteCommand(cmd, RelationalBatchQuery.HasAnyOfAttributes);
     }
 
     /// <inheritdoc />
@@ -201,9 +231,10 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
             && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
             && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
 
-        var cmd = NewCommand(batch, GetSql(noSubjectFilters
+        var query = noSubjectFilters
             ? RelationalBatchQuery.GetRelations
-            : RelationalBatchQuery.GetRelationsWithSubjectFilters));
+            : RelationalBatchQuery.GetRelationsWithSubjectFilters;
+        var cmd = NewCommand(batch, GetSql(query));
         WriteStringParam(cmd, "entity_type", tupleFilter.EntityType, 256);
         WriteStringParam(cmd, "entity_id", tupleFilter.EntityId, 64);
         WriteStringParam(cmd, "relation", tupleFilter.Relation, 64);
@@ -214,6 +245,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
             WriteNullableStringParam(cmd, "subject_type", tupleFilter.SubjectType, 256);
         }
         WriteSnapTokenParam(cmd, "snap_token", tupleFilter.SnapToken);
+        CompleteCommand(cmd, query);
     }
 
     /// <inheritdoc />
@@ -224,5 +256,19 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_id", tupleFilter.EntityId, 64);
         WriteStringParam(cmd, "relation", tupleFilter.Relation, 64);
         WriteSnapTokenParam(cmd, "snap_token", tupleFilter.SnapToken);
+        CompleteCommand(cmd, RelationalBatchQuery.GetIndirectRelations);
+    }
+
+    /// <inheritdoc />
+    public virtual void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
+        string[] attributeNames, SnapToken snapToken)
+    {
+        var cmd = NewCommand(batch, GetSql(RelationalBatchQuery.GetAttributesSingleEntity));
+        WriteStringParam(cmd, "entity_type", entityType, 256);
+        WriteStringParam(cmd, "entity_id", entityId, 64);
+        var arrayFragment = WriteNameArrayParam(cmd, "attributes", attributeNames);
+        WriteSnapTokenParam(cmd, "snap_token", snapToken);
+        SpliceArrayFragment(cmd, arrayFragment);
+        CompleteCommand(cmd, RelationalBatchQuery.GetAttributesSingleEntity);
     }
 }

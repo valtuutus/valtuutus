@@ -1,13 +1,11 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
 
 namespace Valtuutus.Tests.Shared;
 
-// V2-only Explain facts: fusion (no V1 equivalent — V1 never rewrites its plan), shared-subtree
-// dedup (no V1 equivalent — V1 has no hash-consed plan), and the skipped-sibling wording on a
-// short-circuit. These do not belong on BaseCheckEngineExplainSpecs because they don't hold for
-// V1 (it never fuses, and has no MemoNode-style shared-subtree concept).
+// Explain facts about plan compilation: fusion, shared-subtree dedup (hash-consed plans), and
+// the skipped-sibling wording on a short-circuit.
 public abstract class BaseCheckEngineV2ExplainSpecs : BaseCheckEngineExplainSpecs
 {
     protected BaseCheckEngineV2ExplainSpecs(IDatabaseFixture fixture) : base(fixture) { }
@@ -16,9 +14,9 @@ public abstract class BaseCheckEngineV2ExplainSpecs : BaseCheckEngineExplainSpec
     {
         // edit := (owner and flag) or (owner and not(flag))
         // PlanCompiler.HashCons operates within ONE compiled plan: "owner" must appear twice in
-        // edit's OWN tree to be interned into a shared MemoNode slot (unlike V1's cross-call memo,
-        // which spans separate CheckInternal calls — e.g. a permission and a sub-permission it
-        // references, each compiled as its own plan). The first "owner" reference actually
+        // edit's OWN tree to be interned into a shared MemoNode slot (unlike the request's dynamic
+        // memo, which spans separately compiled plans — e.g. a permission and a sub-permission it
+        // references). The first "owner" reference actually
         // executes; the second hits the already-in-flight/-done slot and renders as a childless
         // leaf with this distinct detail.
         const string memoSchema = """
@@ -43,7 +41,7 @@ public abstract class BaseCheckEngineV2ExplainSpecs : BaseCheckEngineExplainSpec
 
         result.Result.Should().BeTrue();
         var memoizedNode = FindNode(result.Root, n => n.Detail == "memoized (shared subtree)");
-        memoizedNode.Should().NotBeNull("a shared subtree reference should be recorded distinctly from V1's cross-call memo");
+        memoizedNode.Should().NotBeNull("a shared subtree reference should be recorded distinctly from the dynamic memo");
         memoizedNode!.Children.Should().BeEmpty("a memoized shared-subtree reference is a leaf");
     }
 

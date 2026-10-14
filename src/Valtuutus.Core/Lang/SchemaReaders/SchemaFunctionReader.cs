@@ -146,6 +146,8 @@ internal class SchemaFunctionReader(
                 Left = ParseLiteralExpression(args, lteCtx.functionExpression(0)),
                 Right = ParseLiteralExpression(args, lteCtx.functionExpression(1))
             },
+            _ => throw new LangException("Unsupported comparison expression type", ctx.Start.Line,
+                ctx.Start.Column),
         };
 
         if (node.Left.TypeContext != node.Right.TypeContext)

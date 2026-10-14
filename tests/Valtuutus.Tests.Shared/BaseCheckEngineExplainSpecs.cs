@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
@@ -10,10 +10,12 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
     protected BaseCheckEngineExplainSpecs(IDatabaseFixture fixture) { Fixture = fixture; }
     protected IDatabaseFixture Fixture { get; }
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    protected virtual bool UseCheckV1 => false;
 
     protected async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         string? schema = null)
@@ -21,10 +23,10 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         var services = new ServiceCollection()
             .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services).AddConcurrentQueryLimit(3);
-        if (UseCheckV1)
-            services.AddValtuutusCheckV1();
         var sp = services.BuildServiceProvider();
-        var scope = sp.CreateScope();
+        _ownedResources.Add(sp);
+        var scope = sp.CreateAsyncScope();
+        _ownedResources.Add(scope);
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
         if (tuples.Length == 0 && attributes.Length == 0) return engine;
         var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
@@ -33,7 +35,13 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
     }
 
     public async Task InitializeAsync() => await Fixture.ResetDatabaseAsync();
-    public Task DisposeAsync() => Task.CompletedTask;
+    public async Task DisposeAsync()
+    {
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
+    }
 
     [Fact]
     public async Task Explain_DirectRelation_ReturnsTrueWithRelationNode()
@@ -131,7 +139,7 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         result.Result.Should().BeTrue();
         // edit's tree has TWO TupleToUserSet nodes (parent.admin and team.member — no team tuple
         // seeded here, so team.member is false); a union's children attach in completion order,
-        // not declaration order (V1 parity: CheckEngine also attaches per-child on completion),
+        // not declaration order,
         // so an unqualified FindNodeByType could return either one. Match by name, same
         // convention as Explain_TupleToUserSet_SlowPathSingleRelation_RecordsNode/
         // Explain_TupleToUserSet_MultipleRelations_ParallelPath_RecordsNodes below.

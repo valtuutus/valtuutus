@@ -1,8 +1,5 @@
 ﻿using Valtuutus.Core.Data;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Valtuutus.Core.Engines.Check.V2;
-using Valtuutus.Core.Schemas;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
@@ -44,14 +41,6 @@ public static class DependencyInjectionExtensions
                 sp.GetRequiredService<ValtuutusDataOptions>(),
                 postgresOptions);
         });
-        // Harmless when the legacy CheckV1 is selected (nothing resolves CheckPlanExecutorPool then).
-        // Replace (not TryAdd) so this always wins regardless of whether AddValtuutusCore()
-        // ran before or after this call. The batch capability is injected (resolved inside the
-        // inner lambda, i.e. at first executor creation during a check — never at startup), not
-        // discovered by type-testing the reader; GetService (not Required) so removing the
-        // IRelationalBatchOps registration degrades the executor to individual dispatch.
-        builder.Services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
-            sp => schema => new BatchedPhysicalExecutor(schema, sp.GetService<IRelationalBatchOps>())));
         builder.Services.AddSingleton(postgresOptions);
         builder.Services.AddScoped<IDataReaderProvider, PostgresDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, PostgresDataWriterProvider>();

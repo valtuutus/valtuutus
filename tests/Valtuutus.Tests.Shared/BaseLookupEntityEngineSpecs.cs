@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Schemas;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Engines.LookupEntity;
@@ -13,6 +13,9 @@ namespace Valtuutus.Tests.Shared;
 
 public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 {
+    // Scopes and providers created by the helpers live until the test ends.
+    private readonly List<IAsyncDisposable> _ownedResources = [];
+
     protected BaseLookupEntityEngineSpecs(IDatabaseFixture fixture)
     {
         Fixture = fixture;
@@ -36,7 +39,9 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         string? schema = null)
     {
         var serviceProvider = CreateServiceProvider(schema);
-        var scope = serviceProvider.CreateScope();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
         var lookupEntityEngine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
         if (tuples.Length == 0 && attributes.Length == 0) return lookupEntityEngine;
         var provider = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
@@ -49,9 +54,12 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         await Fixture.ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
-        return Task.CompletedTask;
+        for (var i = _ownedResources.Count - 1; i >= 0; i--)
+        {
+            await _ownedResources[i].DisposeAsync();
+        }
     }
 
     public static TheoryData<RelationTuple[], AttributeTuple[], LookupEntityRequest, IReadOnlyList<string>>
@@ -279,7 +287,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var context = new Dictionary<string, object> { { key, value } };
+        var context = new Dictionary<string, object> { { key, value! } };
         var result = await engine.LookupEntity(new LookupEntityRequest("account",
             "withdraw", "user", "1", context: context), default);
 
@@ -1130,5 +1138,44 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
             CancellationToken.None);
 
         result.EntityIds.Should().BeEmpty();
+    }
+
+    private const string RecursiveUsersetSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        entity folder {
+            relation owner @group#member;
+            permission view := owner;
+        }
+        """;
+
+    // g1 contains g2's members, g2 contains alice; g3 and g4 contain each other's members (a
+    // membership cycle) and dave belongs to g4. folder:nested is owned by g1, folder:cyclic by g3.
+    private static readonly RelationTuple[] RecursiveUsersetTuples =
+    [
+        new("group", "g1", "member", "group", "g2", "member"),
+        new("group", "g2", "member", "user", "alice"),
+        new("group", "g3", "member", "group", "g4", "member"),
+        new("group", "g4", "member", "group", "g3", "member"),
+        new("group", "g4", "member", "user", "dave"),
+        new("folder", "nested", "owner", "group", "g1", "member"),
+        new("folder", "cyclic", "owner", "group", "g3", "member"),
+    ];
+
+    [Theory]
+    [InlineData("alice", new[] { "nested" })]
+    [InlineData("dave", new[] { "cyclic" })]
+    [InlineData("bob", new string[0])]
+    public async Task LookupEntity_through_recursive_usersets_terminates_with_the_right_answer(string user,
+        string[] expected)
+    {
+        var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("folder", "view", "user", user), default)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
     }
 }

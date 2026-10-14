@@ -25,7 +25,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
     private CheckRequestContext _ctx = null!;
     private CancellationToken _ct;
-    // Cleared (not reallocated) at the start of every ExecuteAsync. Safe because this instance
+    // Cleared and reused at the start of every ExecuteAsync. Safe because this instance
     // only ever re-enters ExecuteAsync after DrainStragglersAsync has fully drained it and the
     // pool has handed it out again — see CheckPlanExecutorPool for why that ordering holds.
     private readonly CompletionMailbox _mailbox = new();
@@ -94,8 +94,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _waiterListPool.Push(list);
     }
 
-    // Dynamic memo — the V1 CheckMemo equivalent, allocated lazily on first cross-boundary
-    // resolution beyond the roots. Cleared (not reallocated) at the start of each ExecuteAsync
+    // Dynamic memo — allocated lazily on first cross-boundary
+    // resolution beyond the roots. Cleared at the start of each ExecuteAsync
     // so a pooled instance reuses the same backing Dictionary/List across requests.
     private Dictionary<CheckMemoKey, int>? _memoIndex;
     private List<MemoEntry> _memoEntries = [];
@@ -121,7 +121,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     private bool _explain;
     private CheckNode?[] _explainNodes = [];
     // Parallel to _explainNodes, same index space, same "only when _explain" lifecycle. Holds the
-    // OUTER node for a frame whose plan.Root needed V1's "always wrap, never reuse" treatment
+    // OUTER node for a frame whose plan.Root needed "always wrap, never reuse" treatment
     // (Union/Intersect/Negate at a plan root — see SpawnPlan) — _explainNodes[idx] in that case
     // holds the INNER auto-derived node instead (e.g. the "or"/"and" expression, or the negated
     // child), which becomes a CHILD of _wrapSelfNodes[idx] once this frame completes (see
@@ -164,7 +164,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         public bool Result;
         public string EntityType;
         public string EntityId;
-        public string? SubjectRelation; // binding V1 threads through CheckComputedUserSet
+        public string? SubjectRelation; // the userset relation the subject is checked through
         public int Depth;
         public int MemoEntry;           // -1 = none; else fill on completion + wake waiters
         public MemoSlotState[]? Slots;  // owned by the plan-root frame, inherited by descendants
@@ -189,15 +189,12 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     private readonly record struct CheckMemoKey(
         string EntityType, string EntityId, string Permission, string? SubjectType, string? SubjectId);
 
-    // memoizeRoots: false, ANALOGOUS to V1 CheckInternal's `memoize` parameter — Check()'s
-    // single root can never be re-entered before it exists, so it skips the memo dictionary
-    // entirely (mirrors V1 CheckEngine.Check() passing memoize: false to its one CheckInternal
-    // call). SubjectPermission's N roots keep memoizing (V1 default) since they can
-    // legitimately reference each other.
-    // ReadOnlyMemory<T> (not CheckRootRequest[] or ReadOnlySpan<T>): a Span can't be an async
-    // method parameter, but Memory<T> can — this lets ExecuteSingleAsync/SubjectPermission pass a
-    // slice of a buffer they own (_singleRootBuffer / CheckPlanExecutor's own _multiRootBuffer)
-    // without allocating a fresh array sized to exactly `roots.Length` on every call. A plain
+    // memoizeRoots: false — Check()'s single root can never be re-entered before it exists, so it
+    // skips the memo dictionary entirely. SubjectPermission's N roots keep memoizing since they
+    // can legitimately reference each other.
+    // ReadOnlyMemory<T> works as an async method parameter and lets ExecuteSingleAsync/
+    // SubjectPermission pass a slice of a buffer they own (_singleRootBuffer / CheckPlanExecutor's
+    // own _multiRootBuffer), so no array sized to exactly `roots.Length` is allocated per call. A plain
     // T[] converts to ReadOnlyMemory<T> implicitly, so every existing caller is unaffected.
     public async Task<bool[]> ExecuteAsync(ReadOnlyMemory<CheckRootRequest> roots, CheckRequestContext ctx,
         CancellationToken ct, bool memoizeRoots = true, bool explain = false,
@@ -316,12 +313,10 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         return ExecuteAsync(_singleRootBuffer, ctx, ct, memoizeRoots);
     }
 
-    // Explain always memoizes its (single) root — unlike Check()'s memoizeRoots: false, this
-    // matches V1 CheckEngine.Explain()'s own behavior (it calls the node-taking CheckInternal
-    // overload with its default memoize: true), not V1 Check()'s. There is exactly one root, so
-    // nothing else in the same call could ever re-reference it anyway — this only affects whether
-    // the root's own CheckMemoKey gets registered, which has no observable effect for a single
-    // root, but keeps the two engines' internal behavior aligned.
+    // Explain always memoizes its (single) root, unlike Check()'s memoizeRoots: false. There is
+    // exactly one root, so nothing else in the same call could ever re-reference it anyway — this
+    // only affects whether the root's own CheckMemoKey gets registered, which has no observable
+    // effect for a single root.
     //
     // Unlike Check()/CheckEngineV2's fire-and-forget DrainAndReturn: a short-circuited
     // Union/Intersect can leave stragglers still in flight after ExecuteAsync already answered.
@@ -396,8 +391,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         FlushWave();
     }
 
-    // Maps a compiled PlanNode to the CheckNodeType/Name an explain tree shows for it — the V2
-    // analogue of V1's CheckEngine.GetNodeInfo. `fallbackName` is used only where a PlanNode
+    // Maps a compiled PlanNode to the CheckNodeType/Name an explain tree shows for it.
+    // `fallbackName` is used only where a PlanNode
     // carries no name of its own (ConstNode, and the `_` default for any node kind that should
     // never actually reach here structurally).
     private static (CheckNodeType Type, string Name) DescribeNode(PlanNode node, string fallbackName) => node switch
@@ -499,8 +494,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         };
     }
 
-    // Exact analogue of V1 CheckInternal (CheckEngine.cs:211-276): the ONLY place depth is
-    // charged, guards run, and the dynamic memo is consulted.
+    // The ONLY place depth is charged, guards run, and the dynamic memo is consulted.
     private void ResolveDynamic(string entityType, string entityId, string permission,
         string? subjectRelation, int depth, int parent, int rootIndex, bool memoize = true,
         CheckNode? selfNode = null, PlanNode? precompiledRoot = null, MemoSlotState[]? sharedSlots = null)
@@ -566,6 +560,16 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 Notify(parent, rootIndex, entry.Value);
                 return;
             }
+            // Still in flight in one of this request's own ancestors: a cycle in the data (a
+            // userset or tuple-to-userset chain leading back to itself). Waiting would wait on
+            // itself forever, so this re-entry is evaluated on its own, unmemoized, and the depth
+            // budget ends the cycle — the same answer an unmemoized evaluation would give.
+            if (IsAncestorMemoEntry(parent, entryIdx))
+            {
+                SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, memoEntry: -1,
+                    selfNode, precompiledRoot, sharedSlots);
+                return;
+            }
             if (_explain && selfNode is not null)
             {
                 selfNode.Detail = "memoized";
@@ -583,6 +587,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
         SpawnPlan(entityType, entityId, permission, subjectRelation, depth, parent, rootIndex, newEntryIdx, selfNode,
             precompiledRoot, sharedSlots);
+    }
+
+    private bool IsAncestorMemoEntry(int frame, int memoEntry)
+    {
+        for (var i = frame; i != NoParent; i = _frames[i].Parent)
+            if (_frames[i].MemoEntry == memoEntry)
+                return true;
+        return false;
     }
 
     private void SpawnPlan(string entityType, string entityId, string permission, string? subjectRelation,
@@ -606,8 +618,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         int newIdx;
         if (_explain && selfNode is not null && root is UnionNode or IntersectNode)
         {
-            // V1 parity (CheckEngine.CheckExpressionWithWrapper): when the permission's own tree
-            // IS a union/intersect, that combinator gets a separate "and"/"or" wrapper node as
+            // When the permission's own tree IS a union/intersect, that combinator gets a separate "and"/"or" wrapper node as
             // selfNode's child — selfNode (the permission-level node) keeps its own Type/Name
             // untouched. Let SpawnFrame auto-derive the inner node normally (explainNode: null,
             // same auto-derive path every other spawn uses) and remember to wrap it into
@@ -620,15 +631,14 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         }
         else
         {
-            // Negate (V1's NegateCheck) and every leaf shape (relation/attribute/function/TTU):
+            // Negate and every leaf shape (relation/attribute/function/TTU):
             // selfNode is reused directly as this frame's own explain node — no separate wrapper
             // frame needed, since AttachOrSetRoot already lands the negated child (or the leaf's
-            // own detail) straight onto it. V1 parity split: leaf shapes DO get their Type
-            // overwritten to describe themselves (CheckRelation/CheckAttribute/etc. all set
-            // node.Type before doing their own work); NegateCheck is the one exception that
-            // NEVER touches the passed node's Type at all — it only ever adds the negated
-            // child as a plain child, so selfNode must keep whatever Type/Name its own caller
-            // gave it (e.g. Type=Permission, Name="view").
+            // own detail) straight onto it. Leaf shapes DO get their Type overwritten to
+            // describe themselves; Negate is the one exception that NEVER touches the passed
+            // node's Type at all — it only ever adds the negated child as a plain child, so
+            // selfNode must keep whatever Type/Name its own caller gave it (e.g.
+            // Type=Permission, Name="view").
             if (_explain && selfNode is not null && root is not NegateNode)
                 selfNode.Type = DescribeNode(root, permission).Type;
             newIdx = SpawnFrame(root, entityType, entityId, subjectRelation, depth - 1, parent, rootIndex, memoEntry,
@@ -650,9 +660,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
     // Called only when explain is on, right before a Union/Intersect short-circuits. Any sibling
     // already spawned under this parent (StartExpression spawns all children immediately) but not
-    // yet Completed loses its chance to report a real Detail — mirrors V1's CheckExpressionChild,
-    // which labels a sibling based on whether it had already completed at the exact instant the
-    // combinator decided, not after waiting further.
+    // yet Completed loses its chance to report a real Detail: a sibling is labeled by whether it
+    // had already completed at the exact instant the combinator decided, not after waiting further.
     private void MarkSiblingsSkipped(int parentIdx, string detail)
     {
         // A direct Frame.Parent == parentIdx check is not enough: a union/intersect child that's
@@ -690,11 +699,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             case UnionNode:
                 if (childResult)
                 {
-                    // V1 parity (BoolTaskCombinator.cs:81, CheckEngine.cs:602): short-circuit
-                    // counts only when a sibling was still unresolved; first-child counts when
-                    // the deciding value came from child index 0. Expression frames only —
-                    // deliberate divergence from V1, which also counted TTU fan-out
-                    // short-circuits; V2 has no equivalent counter for that path.
+                    // Short-circuit counts only when a sibling was still unresolved; first-child
+                    // counts when the deciding value came from child index 0. Expression frames
+                    // only — TTU fan-out short-circuits are not counted.
                     if (parent.Pending > 1) ValtuutusMetrics.ShortCircuits.Add(1);
                     if (childIndex == 0) ValtuutusMetrics.FirstChildDecided.Add(1);
                     if (_explain) MarkSiblingsSkipped(parentIdx, "skipped (evaluation stopped after a success)");
@@ -846,8 +853,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     var existing = _explainNodes[idx];
                     if (existing is not null && existing.Name == p.Permission)
                     {
-                        // V1 parity (CheckComputedUserSet's "same name -> reuse" branch): this
-                        // frame's own node was auto-derived at spawn time (SpawnFrame's
+                        // Same name -> reuse: this frame's own node was auto-derived at spawn time (SpawnFrame's
                         // MakeExplainNode/DescribeNode) and already has the right name — reuse it
                         // directly instead of wrapping it in a redundant child. Transfer it into a
                         // pass-through (same convention as MemoNode's 1st reference, see
@@ -863,8 +869,8 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                     {
                         // Different name (e.g. a bare top-level alias like
                         // `permission view := owner;`, where this frame's own node is Name="view"
-                        // but the re-entry targets "owner") — V1's "different name -> create
-                        // child" branch: a genuinely fresh node, attached as ONE child of this
+                        // but the re-entry targets "owner") — different name -> create a child:
+                        // a genuinely fresh node, attached as ONE child of this
                         // frame's own (unchanged) node once it resolves.
                         reentryNode = new CheckNode
                         {
@@ -889,8 +895,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 ResolveDynamic(frame.EntityType, frame.EntityId, p.Permission,
                     frame.SubjectRelation, frame.Depth + 1, idx, frame.RootIndex, selfNode: reentryNode);
                 // +1: this frame's Depth was already charged by the ResolveDynamic that spawned
-                // this plan; the re-entry must charge exactly one more (V1: nested CheckInternal
-                // receives the parent's nextDepth and decrements again).
+                // this plan; the re-entry must charge exactly one more.
                 break;
             }
 
@@ -1045,7 +1050,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
         if (relations.Count > 1)
         {
-            // Batch fast path — CheckEngine.cs:798-819.
+            // Batch fast path: when every fanned-out subject has the same type and the computed
+            // relation is a plain direct relation there, one HasAnyDirectRelation over their ids
+            // answers the whole fan-out.
             var firstSubjectType = relations.AsSpan()[0].SubjectType;
             var allSame = true;
             foreach (ref readonly var r in relations.AsSpan())
@@ -1077,7 +1084,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         var depth = frame.Depth;
         var rootIndex = frame.RootIndex;
         var explainParent = idx;
-        // Fan-out children behave as a Union (V1 shortCircuitOn: true).
+        // Fan-out children behave as a Union: the first true answer decides.
         foreach (ref readonly var rel in relations.AsSpan())
         {
             CheckNode? childNode = _explain
@@ -1106,7 +1113,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _frames[idx].Pending = relations.Count;
         var depth = _frames[idx].Depth;
         var rootIndex = _frames[idx].RootIndex;
-        // Re-indexes _frames[idx] each iteration (not a held `ref`), so this is safe even if
+        // Re-indexes _frames[idx] each iteration, so this stays correct even if
         // ResolveDynamic spawns a frame that grows/replaces the array mid-loop.
         foreach (ref readonly var rel in relations.AsSpan())
         {
@@ -1136,7 +1143,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         var rootIndex = frame.RootIndex;
         var slots = frame.Slots;
         ValtuutusMetrics.ExpressionNodes.Add(1);
-        // All children spawn immediately — V1 parity (parallel siblings). SequentialFirst is a
+        // All children spawn immediately (parallel siblings). SequentialFirst is a
         // later, metrics-gated policy applied here per plan annotation.
         for (var i = 0; i < children.Length; i++)
             SpawnFrame(children[i], entityType, entityId, subjectRelation, depth, idx, rootIndex,
@@ -1210,10 +1217,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         ref var frame = ref _frames[idx];
         if (frame.Completed)
         {
-            // Payload travels as the raw List<RelationTuple> (not a PooledList<RelationTuple>) to
-            // avoid boxing the struct through this `object` field — see PhysicalOpRunner/
-            // BatchedPhysicalExecutor's .Transfer() calls. Return it to the pool directly instead
-            // of via PooledList<T>.Dispose(), which this payload shape no longer offers.
+            // Payload travels as the raw List<RelationTuple>, a reference type that passes through
+            // this `object` field unboxed — see PhysicalOpRunner/BatchedPhysicalExecutor's
+            // .Transfer() calls — so it goes back to the pool directly through ListPool.
             if (completion.Payload is List<RelationTuple> staleList) ListPool<RelationTuple>.Return(staleList);
             return; // stale — most commonly a short-circuit straggler (see DrainStragglersAsync)
         }
@@ -1223,7 +1229,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             case DirectRelationNode d:
                 if (completion.Payload is List<RelationTuple> indirectList)
                 {
-                    // Re-wrap into a PooledList<T> here (not further down the call chain) so
+                    // Re-wrap into a PooledList<T> right here so
                     // OnIndirectRelationsFetched's `using var _ = relations;` still returns it to
                     // the pool exactly once, same as before this payload shape changed.
                     OnIndirectRelationsFetched(idx, new PooledList<RelationTuple>(indirectList));

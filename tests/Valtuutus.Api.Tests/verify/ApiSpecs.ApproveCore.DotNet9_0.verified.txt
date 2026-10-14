@@ -26,10 +26,6 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
-    public static class ConfigureCheckV1
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCheckV1(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
-    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
@@ -87,7 +83,6 @@ namespace Valtuutus.Core.Data
     }
     public interface IDataReaderProvider
     {
-        System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken);
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
                 "AttributeName",
@@ -111,8 +106,6 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
@@ -142,13 +135,6 @@ namespace Valtuutus.Core.Data
 }
 namespace Valtuutus.Core.Engines.Check
 {
-    public sealed class CheckEngine : Valtuutus.Core.Engines.Check.ICheckEngine
-    {
-        public CheckEngine(Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema) { }
-        public System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Engines.Check.CheckExplainResult> Explain(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken) { }
-    }
     public sealed class CheckExplainResult
     {
         public CheckExplainResult() { }
@@ -197,6 +183,7 @@ namespace Valtuutus.Core.Engines.Check
     {
         public CheckRequestContext() { }
         public required System.Collections.Generic.IDictionary<string, object> Context { get; init; }
+        public bool ResolveLatestSnapToken { get; init; }
         public required Valtuutus.Core.Data.SnapToken SnapToken { get; init; }
         public required string? SubjectId { get; init; }
         public required string? SubjectType { get; init; }
@@ -272,6 +259,7 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public interface IPhysicalExecutor
     {
+        bool CanResolveSnapTokenInFirstRoundTrip { get; }
         Valtuutus.Core.Data.IDataReaderProvider Reader { set; }
         void Submit(System.ReadOnlySpan<Valtuutus.Core.Engines.Check.V2.PendingOp> ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct);
     }
@@ -326,6 +314,9 @@ namespace Valtuutus.Core.Engines.Check.V2
     }
     public static class PhysicalOpRunner
     {
+        public static string[] AttributeExprArgNames(in Valtuutus.Core.Engines.Check.V2.PendingOp op) { }
+        public static bool EvaluateAttributeExpr(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, in Valtuutus.Core.Engines.Check.V2.PendingOp op, System.ReadOnlySpan<Valtuutus.Core.AttributeTuple> attributes) { }
+        public static bool IsAttributeExprContextValid(in Valtuutus.Core.Engines.Check.V2.PendingOp op, Valtuutus.Core.Engines.Check.CheckRequestContext ctx) { }
         public static System.Threading.Tasks.Task RunAsync(Valtuutus.Core.Engines.Check.V2.PendingOp op, Valtuutus.Core.Data.IDataReaderProvider reader, Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct) { }
     }
     public abstract class PlanNode : System.IEquatable<Valtuutus.Core.Engines.Check.V2.PlanNode>

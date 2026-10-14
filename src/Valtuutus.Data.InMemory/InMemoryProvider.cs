@@ -77,21 +77,6 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
-    public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
-        string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
-    {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            return _relations.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
@@ -218,20 +203,6 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         }
     }
 
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            return _attributes.GetAttribute(filter);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
@@ -240,21 +211,6 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         try
         {
             return _attributes.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
-        SnapToken snapToken, CancellationToken cancellationToken)
-    {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            return _attributes.HasAnyOfAttributes(entityType, entityId, attributeNames, snapToken);
         }
         finally
         {

@@ -23,6 +23,17 @@ internal sealed class RoundTripCounter
     public int Count => Volatile.Read(ref _roundTrips);
 
     public void Increment() => Interlocked.Increment(ref _roundTrips);
+
+    /// <summary>Runs before every counted round trip is dispatched, with that round trip's
+    /// 1-based number — lets a spec act at a precise point between round trips.</summary>
+    public Func<int, Task>? BeforeRoundTrip { get; set; }
+
+    public async Task CountAsync()
+    {
+        var roundTrip = Interlocked.Increment(ref _roundTrips);
+        if (BeforeRoundTrip is { } hook)
+            await hook(roundTrip);
+    }
 }
 
 /// <summary>
@@ -39,40 +50,40 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetLatestSnapToken(cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelations(tupleFilter, cancellationToken);
     }
 
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasDirectRelation(tupleFilter, subjectId, cancellationToken);
     }
 
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken, cancellationToken);
     }
 
     public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken, cancellationToken);
     }
 
     public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasAnyOfAttributes(entityType, entityId, attributeNames, snapToken, cancellationToken);
     }
 
@@ -80,7 +91,7 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
         string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken,
         CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasTupleToUserSetRelation(entityType, entityId, tupleSetRelation, subEntityType,
             computedRelation, subjectType, subjectId, snapToken, cancellationToken);
     }
@@ -89,7 +100,7 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
         string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken,
         CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasUsersetJoinRelation(entityType, entityId, relation, subEntityType, computedRelation,
             subjectType, subjectId, snapToken, cancellationToken);
     }
@@ -97,28 +108,28 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
     public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
         bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasFusedExpression(entityType, entityId, leaves, requireAll, subjectType, subjectId,
             snapToken, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetIndirectRelations(tupleFilter, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter,
         string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
         string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, scope, cancellationToken);
     }
 
@@ -126,7 +137,7 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
         string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
         CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsWithSubjectsIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType,
             snapToken, scope, cancellationToken);
     }
@@ -135,7 +146,7 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
         string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsWithEntityIdsMultiRelation(entityType, relationNames, subjectType, entityIds,
             subjectRelation, snapToken, cancellationToken);
     }
@@ -143,74 +154,68 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(EntityRelationFilter mainFilter, string subEntityType,
         string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(EntityRelationFilter mainFilter,
         IEnumerable<string> entityIds, string subEntityType, string subRelation, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation, cancellationToken);
-    }
-
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        counter.Increment();
-        return await inner.GetAttribute(filter, cancellationToken);
     }
 
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, SnapToken snapToken,
         CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken, cancellationToken);
     }
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetAttributes(filter, cancellationToken);
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(
         EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetAttributes(filter, scope, cancellationToken);
     }
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetAttributesWithEntityIds(filter, entitiesIds, cancellationToken);
     }
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(
         EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetAttributesWithEntityIds(filter, entitiesIds, cancellationToken);
     }
 
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetAttributesSingleEntity(filter, cancellationToken);
     }
 
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetEntityIdsExcluding(entityType, excludeIds, snapToken, cancellationToken);
     }
 
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.GetSubjectIdsExcluding(subjectType, excludeIds, snapToken, cancellationToken);
     }
 }
@@ -221,8 +226,15 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
 /// whole batch costs regardless of how many commands it carries. CreateBatch/Add* never touch the
 /// network, so they are NOT counted, per <see cref="IRelationalBatchOps"/>'s own doc comments.
 /// </summary>
-internal sealed class CountingBatchOps(IRelationalBatchOps inner, RoundTripCounter counter) : IRelationalBatchOps
+internal sealed class CountingBatchOps(IRelationalBatchOps inner, RoundTripCounter counter)
+    : IRelationalBatchOps
 {
+    // Forwarded as-is: that view only builds commands, and every batch built through it is
+    // still executed (and counted) through this wrapper's ExecuteBatchAsync.
+    public IRelationalBatchOps? UsingBatchResolvedSnapToken => inner.UsingBatchResolvedSnapToken;
+
+    public void AddResolveLatestSnapTokenToBatch(DbBatch batch) => inner.AddResolveLatestSnapTokenToBatch(batch);
+
     public DbBatch CreateBatch() => inner.CreateBatch();
 
     public void AddHasAnyOfDirectRelationsToBatch(DbBatch batch, string entityType, string entityId,
@@ -265,10 +277,14 @@ internal sealed class CountingBatchOps(IRelationalBatchOps inner, RoundTripCount
     public void AddGetIndirectRelationsToBatch(DbBatch batch, RelationTupleFilter tupleFilter)
         => inner.AddGetIndirectRelationsToBatch(batch, tupleFilter);
 
+    public void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
+        string[] attributeNames, SnapToken snapToken)
+        => inner.AddGetAttributesSingleEntityToBatch(batch, entityType, entityId, attributeNames, snapToken);
+
     public async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
     {
         // One physical round trip regardless of how many commands `batch` carries.
-        counter.Increment();
+        await counter.CountAsync();
         return await inner.ExecuteBatchAsync(batch, cancellationToken);
     }
 }

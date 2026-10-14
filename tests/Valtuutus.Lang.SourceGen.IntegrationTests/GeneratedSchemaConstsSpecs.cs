@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace Valtuutus.Lang.SourceGen.IntegrationTests;
 

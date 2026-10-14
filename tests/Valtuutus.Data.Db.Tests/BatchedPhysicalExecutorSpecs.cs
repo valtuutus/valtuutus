@@ -1,5 +1,5 @@
 using System.Data.Common;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -55,10 +55,12 @@ public class BatchedPhysicalExecutorSpecs
         var batchOps = (IRelationalBatchOps)reader;
         var batch = Substitute.For<DbBatch>();
         batchOps.CreateBatch().Returns(batch);
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [new object[] { true }],
                 [new object[] { false }])));
+        #pragma warning restore CA2000
 
         var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
         var sink = new RecordingSink();
@@ -91,10 +93,12 @@ public class BatchedPhysicalExecutorSpecs
         var batchOps = (IRelationalBatchOps)reader;
         var batch = Substitute.For<DbBatch>();
         batchOps.CreateBatch().Returns(batch);
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
         batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
                 [new object[] { true }],
                 [new object[] { false }])));
+        #pragma warning restore CA2000
 
         // Deliberately NOT IBatchableCheckOp — an opaque op the executor cannot fold into the batch.
         var opaqueOp = new FakeCheckOp(result: true);
@@ -191,5 +195,201 @@ public class BatchedPhysicalExecutorSpecs
 
         sink.Completed.Should().BeEmpty();
         sink.Failed.Select(f => f.Token).Should().BeEquivalentTo([1, 2]);
+    }
+
+    // ── snap token resolved in the first round trip ─────────────────────────────────────────────────
+
+    private const string ResolvedToken = "01JZZZZZZZZZZZZZZZZZZZZZZZ";
+
+    // Records the token visible through the context at the moment the op actually runs.
+    private sealed class TokenCapturingCheckOp : ICheckOp
+    {
+        public SnapToken? SeenToken { get; private set; }
+
+        public ValueTask<bool> Execute(IDataReaderProvider reader, CheckRequestContext ctx, string entityType,
+            string entityId, CancellationToken ct)
+        {
+            SeenToken = ctx.SnapToken;
+            return new ValueTask<bool>(true);
+        }
+
+        public string Describe() => "TokenCapturingCheckOp";
+    }
+
+    private static CheckRequestContext PendingCtx() => new()
+    {
+        SubjectType = "user", SubjectId = "u1", SnapToken = default,
+        Context = new Dictionary<string, object>(), ResolveLatestSnapToken = true
+    };
+
+    private static PendingOp CapturingOp(int token, TokenCapturingCheckOp op) =>
+        new() { Token = token, Kind = OpKind.CheckOp, EntityType = "doc", EntityId = "9", Op = op };
+
+    private static (IDataReaderProvider Reader, IRelationalBatchOps BatchOps, IRelationalBatchOps BatchResolving,
+        IRelationalBatchOps BatchResolvedView, DbBatch Batch) BatchResolvingProvider()
+    {
+        var reader = Substitute.For<IDataReaderProvider, IRelationalBatchOps>();
+        var batchOps = (IRelationalBatchOps)reader;
+        var batchResolvedView = Substitute.For<IRelationalBatchOps>();
+        var batch = Substitute.For<DbBatch>();
+        batchOps.CreateBatch().Returns(batch);
+        batchOps.UsingBatchResolvedSnapToken.Returns(batchResolvedView);
+        return (reader, batchOps, batchOps, batchResolvedView, batch);
+    }
+
+    [Fact]
+    public void Executor_can_resolve_in_band_only_when_its_batch_ops_can()
+    {
+        var plain = Substitute.For<IRelationalBatchOps>();
+        plain.UsingBatchResolvedSnapToken.Returns((IRelationalBatchOps?)null);
+        new BatchedPhysicalExecutor(EmptySchema, plain).CanResolveSnapTokenInFirstRoundTrip.Should().BeFalse();
+        new BatchedPhysicalExecutor(EmptySchema, null).CanResolveSnapTokenInFirstRoundTrip.Should().BeFalse();
+        new BatchedPhysicalExecutor(EmptySchema, BatchResolvingProvider().BatchOps).CanResolveSnapTokenInFirstRoundTrip.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Pending_token_single_op_wave_resolves_the_token_in_the_same_batch()
+    {
+        var (reader, batchOps, batchResolving, batchResolvedView, batch) = BatchResolvingProvider();
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
+        batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
+                [new object[] { ResolvedToken }],
+                [new object[] { true }])));
+        #pragma warning restore CA2000
+
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
+        var sink = new RecordingSink();
+        var ctx = PendingCtx();
+
+        executor.Submit([HasDirectRelationOp(1, "household", "1", "owner")], ctx, sink, default);
+
+        Received.InOrder(() =>
+        {
+            batchResolving.AddResolveLatestSnapTokenToBatch(batch);
+            batchResolvedView.AddHasDirectRelationToBatch(batch, Arg.Is<RelationTupleFilter>(f => f.Relation == "owner"), "u1");
+        });
+        // Commands never go through the parameter-bound catalog while the token is resolved inside the batch, and
+        // no separate token round trip is made.
+        batchOps.DidNotReceiveWithAnyArgs().AddHasDirectRelationToBatch(default!, default, default!);
+        reader.DidNotReceive().GetLatestSnapToken(Arg.Any<CancellationToken>());
+        batchOps.Received(1).ExecuteBatchAsync(batch, Arg.Any<CancellationToken>());
+        sink.Completed.Should().ContainSingle(c => c.Token == 1 && c.Result);
+
+        // A later wave of the same request runs against the token the first batch resolved.
+        var later = new TokenCapturingCheckOp();
+        executor.Submit([CapturingOp(2, later)], ctx, sink, default);
+        later.SeenToken.Should().Be(new SnapToken(ResolvedToken));
+    }
+
+    [Fact]
+    public void Empty_token_result_resolves_to_the_minimum_token()
+    {
+        var (reader, batchOps, _, _, batch) = BatchResolvingProvider();
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
+        batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<DbDataReader>(new FakeMultiResultReader(
+                [],
+                [new object[] { false }])));
+        #pragma warning restore CA2000
+
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
+        var ctx = PendingCtx();
+
+        executor.Submit([HasDirectRelationOp(1, "household", "1", "owner")], ctx, new RecordingSink(), default);
+
+        var later = new TokenCapturingCheckOp();
+        executor.Submit([CapturingOp(2, later)], ctx, new RecordingSink(), default);
+        later.SeenToken.Should().Be(SnapToken.MinValue);
+    }
+
+    [Fact]
+    public async Task Unbatchable_op_in_the_resolving_wave_runs_only_after_the_token_is_published()
+    {
+        var (reader, batchOps, _, _, batch) = BatchResolvingProvider();
+        var batchResult = new TaskCompletionSource<DbDataReader>();
+        batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>()).Returns(batchResult.Task);
+
+        var opaque = new TokenCapturingCheckOp();
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
+        var sink = new RecordingSink();
+        var ctx = PendingCtx();
+
+        executor.Submit(
+        [
+            HasDirectRelationOp(1, "household", "1", "owner"),
+            CapturingOp(2, opaque),
+        ], ctx, sink, default);
+
+        opaque.SeenToken.Should().BeNull("the opaque op needs the token, which isn't resolved yet");
+
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
+        batchResult.SetResult(new FakeMultiResultReader([new object[] { ResolvedToken }], [new object[] { true }]));
+        #pragma warning restore CA2000
+        for (var i = 0; i < 100 && sink.Completed.Count < 2; i++) await Task.Delay(10);
+
+        opaque.SeenToken.Should().Be(new SnapToken(ResolvedToken));
+        sink.Completed.Should().Contain(c => c.Token == 1 && c.Result);
+        sink.Completed.Should().Contain(c => c.Token == 2 && c.Result);
+    }
+
+    [Fact]
+    public async Task Wave_submitted_while_the_token_is_still_resolving_waits_and_uses_that_token()
+    {
+        var (reader, batchOps, _, _, batch) = BatchResolvingProvider();
+        var batchResult = new TaskCompletionSource<DbDataReader>();
+        batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>()).Returns(batchResult.Task);
+
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
+        var sink = new RecordingSink();
+        var ctx = PendingCtx();
+        var second = new TokenCapturingCheckOp();
+
+        executor.Submit([HasDirectRelationOp(1, "household", "1", "owner")], ctx, sink, default);
+        executor.Submit([CapturingOp(2, second)], ctx, sink, default);
+
+        second.SeenToken.Should().BeNull();
+        batchOps.Received(1).CreateBatch();
+
+        #pragma warning disable CA2000 // The executor owns and disposes the batch reader.
+        batchResult.SetResult(new FakeMultiResultReader([new object[] { ResolvedToken }], [new object[] { true }]));
+        #pragma warning restore CA2000
+        // The waiting wave resumes on a continuation (the token source never runs them inline).
+        for (var i = 0; i < 100 && second.SeenToken is null; i++) await Task.Delay(10);
+
+        second.SeenToken.Should().Be(new SnapToken(ResolvedToken));
+        sink.Completed.Should().Contain(c => c.Token == 2 && c.Result);
+    }
+
+    [Fact]
+    public async Task Resolving_batch_fault_fails_the_token_and_every_op_waiting_on_it()
+    {
+        var (reader, batchOps, _, _, batch) = BatchResolvingProvider();
+        var batchResult = new TaskCompletionSource<DbDataReader>();
+        batchOps.ExecuteBatchAsync(batch, Arg.Any<CancellationToken>()).Returns(batchResult.Task);
+
+        var executor = new BatchedPhysicalExecutor(EmptySchema, batchOps) { Reader = reader };
+        var sink = new RecordingSink();
+        var ctx = PendingCtx();
+
+        executor.Submit(
+        [
+            HasDirectRelationOp(1, "household", "1", "owner"),
+            CapturingOp(2, new TokenCapturingCheckOp()),
+        ], ctx, sink, default);
+        executor.Submit([HasDirectRelationOp(3, "household", "1", "admin")], ctx, sink, default);
+
+        batchResult.SetException(new InvalidOperationException("boom"));
+        for (var i = 0; i < 100 && sink.Failed.Count < 3; i++) await Task.Delay(10);
+
+        sink.Completed.Should().BeEmpty();
+        sink.Failed.Select(f => f.Token).Should().BeEquivalentTo([1, 2, 3]);
+    }
+
+    [Fact]
+    public void Context_that_asks_the_executor_to_resolve_the_token_has_no_token_to_hand_out()
+    {
+        FluentActions.Invoking(() => PendingCtx().SnapToken).Should().Throw<InvalidOperationException>();
+        Ctx().SnapToken.Should().Be(new SnapToken("00000000000000000000000001"));
     }
 }

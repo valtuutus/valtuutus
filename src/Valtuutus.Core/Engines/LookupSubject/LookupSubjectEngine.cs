@@ -331,7 +331,7 @@ public sealed class LookupSubjectEngine(
         var attributes = await reader.GetAttributesWithEntityIds(
             new EntityAttributesFilter
             {
-                Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                Attributes = attributeArguments, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
             }, req.EntitiesIds, ct);
 
         return new RelationOrAttributeTuples(EvaluateExpressionMatches(attributes, req, fn, node.Args));
@@ -394,7 +394,7 @@ public sealed class LookupSubjectEngine(
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter
                             {
-                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                             },
                             req.EntitiesIds, entity.Type, computedUserSetRelation, ct);
                         continue;
@@ -404,7 +404,7 @@ public sealed class LookupSubjectEngine(
                 var dependentTask = reader.GetRelationsWithEntityIds(
                     new EntityRelationFilter
                     {
-                        Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                        Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                     },
                     entity.Type,
                     req.EntitiesIds,
@@ -445,7 +445,7 @@ public sealed class LookupSubjectEngine(
         var res = (await reader.GetAttributesWithEntityIds(
                     new AttributeFilter
                     {
-                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                        Attribute = attribute.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                     }, req.EntitiesIds, ct))
                 .Where(x => x.Value.TryGetValue<bool>(out var b) && b)
                 .ToList();
@@ -491,7 +491,7 @@ public sealed class LookupSubjectEngine(
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter
                             {
-                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                                Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                             },
                             req.EntitiesIds, relationEntity.Type, relationEntity.Relation!, ct);
                         continue;
@@ -500,7 +500,7 @@ public sealed class LookupSubjectEngine(
                     var dependentTask = reader.GetRelationsWithEntityIds(
                         new EntityRelationFilter
                         {
-                            Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                            Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                         },
                         relationEntity.Type,
                         req.EntitiesIds,
@@ -508,14 +508,20 @@ public sealed class LookupSubjectEngine(
                         ct
                     );
 
+                    // This hop recurses into LookupRelation directly rather than through
+                    // LookupInternal, so it applies LookupInternal's depth rule itself: a userset
+                    // chain (or a cycle of usersets in the data) stops once the depth is spent.
                     buffer[count++] = JoinEntities(
-                        static (subjectIds, state) => state.engine.LookupRelation(
-                            state.req with
-                            {
-                                EntityType = state.relationEntity.Type,
-                                Permission = state.relationEntity.Relation!,
-                                EntitiesIds = subjectIds
-                            }, state.subRelation, state.ct),
+                        static (subjectIds, state) => state.req.Depth == 0
+                            ? _failTask
+                            : state.engine.LookupRelation(
+                                state.req with
+                                {
+                                    EntityType = state.relationEntity.Type,
+                                    Permission = state.relationEntity.Relation!,
+                                    EntitiesIds = subjectIds,
+                                    Depth = state.req.Depth - 1
+                                }, state.subRelation, state.ct),
                         (engine: this, req, relationEntity, subRelation, ct),
                         dependentTask);
                 }
@@ -535,7 +541,7 @@ public sealed class LookupSubjectEngine(
         var pooled = await reader.GetRelationsWithEntityIds(
             new EntityRelationFilter
             {
-                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken.Value
+                Relation = req.Permission, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
             },
             req.SubjectType,
             req.EntitiesIds,

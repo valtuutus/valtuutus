@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Data.Db;
 using Valtuutus.Tests.Shared;
