@@ -215,10 +215,9 @@ public static class PhysicalOpRunner
                         op.EntityType, op.EntityIds!, op.Relation!, ctx.SubjectId!, ctx.SnapToken, ct).ConfigureAwait(false));
                     break;
                 case OpKind.GetRelations:
-                    // .Transfer() (not the PooledList<T> struct itself): CompleteWithPayload
-                    // takes `object`, and boxing a struct there is a real per-op heap allocation.
-                    // The underlying List<T> is already a reference type — pass it directly and
-                    // let CheckPlanExecutor re-wrap it in a PooledList<T> on the consuming side
+                    // .Transfer() hands CompleteWithPayload (which takes `object`) the underlying
+                    // List<T>, a reference type, so the payload costs no per-op boxing allocation;
+                    // CheckPlanExecutor re-wraps it in a PooledList<T> on the consuming side
                     // (see CheckPlanExecutor.OnOpCompleted).
                     sink.CompleteWithPayload(op.Token, (await reader.GetRelations(
                         Filter(op, op.Relation!, ctx), ct).ConfigureAwait(false)).Transfer());

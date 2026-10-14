@@ -14,9 +14,9 @@ namespace Valtuutus.Data.SqlServer;
 
 public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
-    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
-    // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, and needs the
-    // exact same snap-token predicate text those queries use.
+    // Internal so FusedExpressionSql, which builds the fused-expression fragments for both this
+    // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, uses the
+    // exact snap-token predicate text those queries use.
     internal const string SnapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
 
     private readonly DbConnectionFactory _connectionFactory;
@@ -46,9 +46,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     internal static ReaderQueries GetQueries(IValtuutusDbOptions dbOptions) =>
         QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
 
-    // Internal (not private): SqlServerBatchOps' dialect hooks construct byte-identical
-    // SqlParameters (same SqlDbType, same size) through these exact helpers instead of
-    // re-deriving them.
+    // Internal so SqlServerBatchOps' dialect hooks build their SqlParameters through these
+    // helpers, and batched commands carry byte-identical parameters (same SqlDbType, same size).
     internal static void AddStringParameter(SqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, size) { Value = value });
@@ -485,9 +484,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         };
     }
 
-    // Internal (not private): SqlServerBatchOps' dialect catalog serves the exact same SQL text
-    // as these single-op queries — one definition, shared through GetQueries, so the two paths
-    // can never drift apart.
+    // Internal so SqlServerBatchOps' dialect catalog serves the exact SQL text of these single-op
+    // queries: one definition, shared through GetQueries, keeps the two paths identical.
     internal sealed record ReaderQueries
     {
         public required string RelationsTable { get; init; }

@@ -147,10 +147,10 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
             // attribute sibling groups fuse (each needs >= 2 members — one batchable child alone
             // saves nothing); everything else, including TTU/negated/nested leaves recognized
             // above, survives as its own walked child. Note this rebuild loop still checks
-            // IsBatchableDirectRef/IsBatchableAttributeRef against the RAW child (not `walked`) —
-            // identical result for the cases that matter here (a raw direct/attribute PlanRefNode
-            // walks to itself), and Walk(child) below is a memoized re-fetch of what the
-            // classification loop above already computed, not new work.
+            // IsBatchableDirectRef/IsBatchableAttributeRef against the RAW child, which gives the
+            // same result as the walked one for the cases that matter here (a raw direct/attribute
+            // PlanRefNode walks to itself), and Walk(child) below is a memoized re-fetch of what
+            // the classification loop above already computed.
             var fuseRelations = relations is { Count: >= 2 };
             var fuseAttributes = attributes is { Count: >= 2 };
             if (!fuseRelations && !fuseAttributes)
@@ -188,8 +188,8 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
         // attribute refs are handled by IsBatchableDirectRef/IsBatchableAttributeRef above (they
         // feed the sibling-group lists, not this method) — this method only covers what those two
         // do not. A nested PhysicalCheckNode { Op: FusedExpressionOp } is NOT handled here:
-        // it needs to contribute MULTIPLE leaves to the outer fusion (not one opaque leaf), which
-        // this method's single-leaf-out signature can't express — GroupChildren's classification
+        // it contributes MULTIPLE leaves to the outer fusion, more than this method's
+        // single-leaf-out signature expresses — GroupChildren's classification
         // loop checks for and flattens that case itself, before ever calling this method.
         private bool TryRecognizeSingleLeaf(PlanNode node, out FusedCheckLeaf leaf)
         {

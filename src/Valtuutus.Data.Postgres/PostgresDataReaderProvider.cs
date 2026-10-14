@@ -19,16 +19,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // scalar subquery, so it is evaluated once per statement (an InitPlan compared like a
     // parameter) instead of once per filtered row like a bare function call.
     internal const string BatchResolvedSnapTokenExpression = $"(SELECT current_setting('{BatchResolvedSnapTokenSetting}')::char(26))";
-    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
-    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
-    // exact same snap-token predicate text those queries use.
+    // Internal so FusedExpressionSql, which builds the fused-expression fragments for both this
+    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, uses the
+    // exact snap-token predicate text those queries use.
     internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
     internal static string SnapTokenPredicateFor(string snap) =>
         $"created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})";
 
-    // Internal (not private): PostgresBatchOps' dialect catalog serves the exact same SQL text as
-    // these single-op queries — one definition, shared through GetQueries, so the two paths can
-    // never drift apart (and the server's prepared-statement cache sees one statement, not two).
+    // Internal so PostgresBatchOps' dialect catalog serves the exact SQL text of these single-op
+    // queries: one definition, shared through GetQueries, keeps the two paths identical and lets
+    // the server's prepared-statement cache hold a single statement for both.
     internal sealed record ReaderQueries
     {
         public required string RelationsTable { get; init; }
@@ -89,9 +89,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     private static readonly ConcurrentDictionary<DataSourceCacheKey, NpgsqlDataSource> DataSourceCache = new();
     private readonly record struct DataSourceCacheKey(string ConnectionString, int MaxAutoPrepare, int AutoPrepareMinUsages);
 
-    // The three parameter helpers below are internal (not private) for the same reason as
-    // ReaderQueries: PostgresBatchOps' parameter hooks construct byte-identical NpgsqlParameters
-    // (same NpgsqlDbType, same Size) through these exact helpers instead of re-deriving them.
+    // The three parameter helpers below are internal for the same reason as ReaderQueries:
+    // PostgresBatchOps' parameter hooks build their NpgsqlParameters through them, so batched
+    // commands carry byte-identical parameters (same NpgsqlDbType, same Size).
     internal static void AddStringParameter(NpgsqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Varchar)

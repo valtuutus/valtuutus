@@ -25,7 +25,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
 
     private CheckRequestContext _ctx = null!;
     private CancellationToken _ct;
-    // Cleared (not reallocated) at the start of every ExecuteAsync. Safe because this instance
+    // Cleared and reused at the start of every ExecuteAsync. Safe because this instance
     // only ever re-enters ExecuteAsync after DrainStragglersAsync has fully drained it and the
     // pool has handed it out again — see CheckPlanExecutorPool for why that ordering holds.
     private readonly CompletionMailbox _mailbox = new();
@@ -95,7 +95,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     }
 
     // Dynamic memo — allocated lazily on first cross-boundary
-    // resolution beyond the roots. Cleared (not reallocated) at the start of each ExecuteAsync
+    // resolution beyond the roots. Cleared at the start of each ExecuteAsync
     // so a pooled instance reuses the same backing Dictionary/List across requests.
     private Dictionary<CheckMemoKey, int>? _memoIndex;
     private List<MemoEntry> _memoEntries = [];
@@ -192,10 +192,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
     // memoizeRoots: false — Check()'s single root can never be re-entered before it exists, so it
     // skips the memo dictionary entirely. SubjectPermission's N roots keep memoizing since they
     // can legitimately reference each other.
-    // ReadOnlyMemory<T> (not CheckRootRequest[] or ReadOnlySpan<T>): a Span can't be an async
-    // method parameter, but Memory<T> can — this lets ExecuteSingleAsync/SubjectPermission pass a
-    // slice of a buffer they own (_singleRootBuffer / CheckPlanExecutor's own _multiRootBuffer)
-    // without allocating a fresh array sized to exactly `roots.Length` on every call. A plain
+    // ReadOnlyMemory<T> works as an async method parameter and lets ExecuteSingleAsync/
+    // SubjectPermission pass a slice of a buffer they own (_singleRootBuffer / CheckPlanExecutor's
+    // own _multiRootBuffer), so no array sized to exactly `roots.Length` is allocated per call. A plain
     // T[] converts to ReadOnlyMemory<T> implicitly, so every existing caller is unaffected.
     public async Task<bool[]> ExecuteAsync(ReadOnlyMemory<CheckRootRequest> roots, CheckRequestContext ctx,
         CancellationToken ct, bool memoizeRoots = true, bool explain = false,
@@ -1096,7 +1095,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         _frames[idx].Pending = relations.Count;
         var depth = _frames[idx].Depth;
         var rootIndex = _frames[idx].RootIndex;
-        // Re-indexes _frames[idx] each iteration (not a held `ref`), so this is safe even if
+        // Re-indexes _frames[idx] each iteration, so this stays correct even if
         // ResolveDynamic spawns a frame that grows/replaces the array mid-loop.
         foreach (ref readonly var rel in relations.AsSpan())
         {
@@ -1200,10 +1199,9 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
         ref var frame = ref _frames[idx];
         if (frame.Completed)
         {
-            // Payload travels as the raw List<RelationTuple> (not a PooledList<RelationTuple>) to
-            // avoid boxing the struct through this `object` field — see PhysicalOpRunner/
-            // BatchedPhysicalExecutor's .Transfer() calls. Return it to the pool directly instead
-            // of via PooledList<T>.Dispose(), which this payload shape no longer offers.
+            // Payload travels as the raw List<RelationTuple>, a reference type that passes through
+            // this `object` field unboxed — see PhysicalOpRunner/BatchedPhysicalExecutor's
+            // .Transfer() calls — so it goes back to the pool directly through ListPool.
             if (completion.Payload is List<RelationTuple> staleList) ListPool<RelationTuple>.Return(staleList);
             return; // stale — most commonly a short-circuit straggler (see DrainStragglersAsync)
         }
@@ -1213,7 +1211,7 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
             case DirectRelationNode d:
                 if (completion.Payload is List<RelationTuple> indirectList)
                 {
-                    // Re-wrap into a PooledList<T> here (not further down the call chain) so
+                    // Re-wrap into a PooledList<T> right here so
                     // OnIndirectRelationsFetched's `using var _ = relations;` still returns it to
                     // the pool exactly once, same as before this payload shape changed.
                     OnIndirectRelationsFetched(idx, new PooledList<RelationTuple>(indirectList));

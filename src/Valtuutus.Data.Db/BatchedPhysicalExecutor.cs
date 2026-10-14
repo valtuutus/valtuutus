@@ -149,7 +149,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         // How far into `batchable` a result has already been reported to the sink. A fault at any
         // point — building the batch, obtaining the reader, advancing to a result set, or reading
         // rows out of it — corrupts reader positioning for every command still ahead of it, so
-        // everything from this point on (not just the op that threw) must be failed, never left
+        // every op from this point on, the one that threw included, is failed and none is left
         // dangling.
         var reported = 0;
         try
@@ -290,10 +290,10 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                     pooled.Dispose();
                     throw;
                 }
-                // .Transfer() (not pooled itself): CompleteWithPayload takes `object`, and boxing
-                // the PooledList<T> struct there is a real per-op heap allocation. The underlying
-                // List<T> is already a reference type — CheckPlanExecutor re-wraps it in a
-                // PooledList<T> on the consuming side (see CheckPlanExecutor.OnOpCompleted).
+                // .Transfer() hands CompleteWithPayload (which takes `object`) the underlying
+                // List<T>, a reference type, so the payload costs no per-op boxing allocation;
+                // CheckPlanExecutor re-wraps it in a PooledList<T> on the consuming side
+                // (see CheckPlanExecutor.OnOpCompleted).
                 sink.CompleteWithPayload(op.Token, pooled.Transfer());
                 break;
             }

@@ -79,8 +79,8 @@ public interface IDataReaderProvider
     Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES
-    /// (not entity/subject IDs): widens the single <c>relation = @relation</c> filter to
+    /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES:
+    /// widens the single <c>relation = @relation</c> filter to
     /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
     /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
     /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
