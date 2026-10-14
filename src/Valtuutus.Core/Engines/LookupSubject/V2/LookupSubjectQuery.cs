@@ -61,6 +61,8 @@ public sealed class LookupSubjectQuery
     /// <see cref="LookupSubjectQueryKind.Attributes"/>; <c>List&lt;AttributeTuple&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.Attribute"/>; <c>List&lt;string&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.SubjectsExcluding"/>.
+    /// A <c>List&lt;RelationTuple&gt;</c> answer passes to the engine, which returns it to the shared
+    /// list pool once the lookup has read it; a runner keeps no reference to it.
     /// </summary>
     public object? Result { get; set; }
 

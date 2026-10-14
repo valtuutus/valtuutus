@@ -31,10 +31,18 @@ public sealed class DefaultLookupSubjectQueryRunner(IDataReaderProvider reader) 
             return token;
         }
 
-        var running = new Task[queries.Count];
+        // Only the queries still running are awaited together; a reader that answers synchronously
+        // leaves nothing to wait on.
+        Task[]? running = null;
+        var count = 0;
         for (var i = 0; i < queries.Count; i++)
-            running[i] = RunOneAsync(queries[i], token, cancellationToken);
-        await Task.WhenAll(running);
+        {
+            var task = RunOneAsync(queries[i], token, cancellationToken);
+            if (!task.IsCompletedSuccessfully)
+                (running ??= new Task[queries.Count - i])[count++] = task;
+        }
+        if (running is not null)
+            await Task.WhenAll(count == running.Length ? running : running[..count]);
         return token;
     }
 

@@ -26,13 +26,13 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
             .Build(req.EntityType, req.Permission, [req.EntityId], req.Depth);
 
         var snapToken = req.SnapToken;
-        var pending = new PendingQueries();
+        using var pending = new PendingQueries();
         while (!root.Advance(pending))
         {
             if (pending.Count == 0)
                 throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
             snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
-            pending.Clear();
+            pending.Answered();
         }
 
         HashSet<string> result = root.Result!.IsGate || root.Result.Ids!.Count == 0
