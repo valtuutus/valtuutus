@@ -1307,4 +1307,79 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         result.Should().ContainKey("withdraw").WhoseValue.Should().BeFalse();
     }
+
+    private const string RecursiveUsersetSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        entity folder {
+            relation owner @group#member;
+            permission view := owner;
+        }
+        """;
+
+    // g1 contains g2's members, g2 contains alice; g3 and g4 contain each other's members (a
+    // membership cycle) and dave belongs to g4. folder:nested is owned by g1, folder:cyclic by g3.
+    private static readonly RelationTuple[] RecursiveUsersetTuples =
+    [
+        new("group", "g1", "member", "group", "g2", "member"),
+        new("group", "g2", "member", "user", "alice"),
+        new("group", "g3", "member", "group", "g4", "member"),
+        new("group", "g4", "member", "group", "g3", "member"),
+        new("group", "g4", "member", "user", "dave"),
+        new("folder", "nested", "owner", "group", "g1", "member"),
+        new("folder", "cyclic", "owner", "group", "g3", "member"),
+    ];
+
+    [Theory]
+    [InlineData("nested", "alice", true)]
+    [InlineData("nested", "bob", false)]
+    [InlineData("cyclic", "dave", true)]
+    [InlineData("cyclic", "bob", false)]
+    public async Task Check_through_recursive_usersets_terminates_with_the_right_answer(string folder, string user,
+        bool expected)
+    {
+        var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
+
+        var result = await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.Should().Be(expected);
+    }
+
+    private const string RecursivePermissionSchema = """
+        entity user {}
+        entity folder {
+            relation parent @folder;
+            relation owner @user;
+            permission view := owner or parent.view;
+        }
+        """;
+
+    // folder:a and folder:b are each other's parent (a cycle); alice owns b; folder:child sits
+    // under a. Checks walk parent.view upward until an owner is found or the depth runs out.
+    private static readonly RelationTuple[] RecursivePermissionTuples =
+    [
+        new("folder", "a", "parent", "folder", "b"),
+        new("folder", "b", "parent", "folder", "a"),
+        new("folder", "child", "parent", "folder", "a"),
+        new("folder", "b", "owner", "user", "alice"),
+    ];
+
+    [Theory]
+    [InlineData("a", "alice", true)]
+    [InlineData("child", "alice", true)]
+    [InlineData("a", "bob", false)]
+    [InlineData("child", "bob", false)]
+    public async Task Check_through_recursive_permission_over_cyclic_parents_terminates_with_the_right_answer(
+        string folder, string user, bool expected)
+    {
+        var engine = await CreateEngine(RecursivePermissionTuples, [], RecursivePermissionSchema);
+
+        var result = await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
+            .WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.Should().Be(expected);
+    }
 }
