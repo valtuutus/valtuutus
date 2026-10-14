@@ -7,7 +7,7 @@ internal static class PlanCompiler
 {
     public static CheckPlan Compile(Schema schema, string entityType, string permission, string? subjectType)
     {
-        // Top-level guard, mirrors CheckInternal's CanSubjectTypeReach check.
+        // Top-level guard: a subject type that can never reach this permission answers false.
         if (subjectType is not null && !schema.CanSubjectTypeReach(entityType, permission, subjectType))
             return new CheckPlan(ConstNode.False, SlotCount: 0);
 
@@ -214,7 +214,8 @@ internal static class PlanCompiler
             }
             kept.Add(folded);
         }
-        if (kept.Count == 0) return isUnion ? ConstNode.False : ConstNode.True; // V1: `return !isUnion`
+        // Every child folded away: an empty union is false, an empty intersection is true.
+        if (kept.Count == 0) return isUnion ? ConstNode.False : ConstNode.True;
         if (kept.Count == 1) return kept[0];
         return isUnion ? new UnionNode(kept.ToImmutable()) : new IntersectNode(kept.ToImmutable());
     }

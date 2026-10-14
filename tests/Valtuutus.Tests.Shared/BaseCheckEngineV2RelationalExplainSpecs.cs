@@ -20,7 +20,7 @@ public abstract class BaseCheckEngineV2RelationalExplainSpecs : BaseCheckEngineV
         // here has no FusedCheckLeaf representation, so GroupChildren's fullyRecognized flag goes
         // false for the outer "and" and the fusion stays partial). A bare
         // "view := owner or admin or member" fuses the ENTIRE permission body into one
-        // PhysicalCheckNode at the plan ROOT; SpawnPlan's leaf-shape branch (V1 parity: root
+        // PhysicalCheckNode at the plan ROOT; SpawnPlan's leaf-shape branch (the root
         // keeps the caller's requested permission name) then overwrites only the root node's
         // Type, not its Name, so the fused node would surface with Name="view" instead of its
         // own Describe() text — indistinguishable from a coincidence rather than proof of fusion.

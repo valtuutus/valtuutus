@@ -165,12 +165,6 @@ internal sealed class CountingReaderProvider(SqlServerDataReaderProvider inner, 
         return await inner.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation, cancellationToken);
     }
 
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        await counter.CountAsync();
-        return await inner.GetAttribute(filter, cancellationToken);
-    }
-
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, SnapToken snapToken,
         CancellationToken cancellationToken)
     {

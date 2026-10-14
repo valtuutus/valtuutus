@@ -56,7 +56,7 @@ public record Schema
     // Concrete return type (not IReadOnlyCollection<Permission>) so `var`-typed callers get
     // ImmutableArray<Permission>'s own struct enumerator via foreach's pattern-based binding,
     // instead of boxing through IEnumerator<Permission> — this is on the SubjectPermission hot
-    // path (CheckEngineV2.SubjectPermission, V1 CheckEngine.SubjectPermission). Callers use
+    // path (CheckEngineV2.SubjectPermission). Callers use
     // .Length, not .Count (ImmutableArray<T> only exposes Count via explicit interface impl).
     internal ImmutableArray<Permission> GetPermissions(string entityType)
     {

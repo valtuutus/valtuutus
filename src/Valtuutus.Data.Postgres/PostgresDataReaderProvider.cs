@@ -14,31 +14,14 @@ namespace Valtuutus.Data.Postgres;
 
 public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
-    private const string UnformattedSelectAttributes = @"SELECT
-                    entity_type,
-                    entity_id,
-                    attribute,
-                    value
-                FROM {0}.{1} /**where**/";
-
-    private const string UnformattedSelectRelations = @"SELECT
-                    entity_type,
-                    entity_id,
-                    relation,
-                    subject_type,
-                    subject_id,
-                    subject_relation
-                FROM {0}.{1} /**where**/";
-
-    private const string UnformattedExistsRelation = "SELECT EXISTS(SELECT 1 FROM {0}.{1} /**where**/)";
-    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
-    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
-    // exact same snap-token predicate text those queries use.
     internal const string BatchResolvedSnapTokenSetting = "valtuutus.snap_token";
     // Same char(26) type as the @snap_token parameter, so predicates keep their index usage. A
     // scalar subquery, so it is evaluated once per statement (an InitPlan compared like a
     // parameter) instead of once per filtered row like a bare function call.
     internal const string BatchResolvedSnapTokenExpression = $"(SELECT current_setting('{BatchResolvedSnapTokenSetting}')::char(26))";
+    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
+    // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, and needs the
+    // exact same snap-token predicate text those queries use.
     internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
     internal static string SnapTokenPredicateFor(string snap) =>
         $"created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})";
@@ -50,15 +33,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     {
         public required string RelationsTable { get; init; }
         public required string AttributesTable { get; init; }
-        public required string SelectAttributes { get; init; }
-        public required string SelectRelations { get; init; }
         public required string GetLatestSnapToken { get; init; }
         // Batch form of GetLatestSnapToken for PostgresBatchOps: parks the latest token in a
         // session setting (read back through BatchResolvedSnapTokenExpression) and returns it.
         public required string ResolveLatestSnapTokenForBatch { get; init; }
         public required string ResolveLatestSnapTokenForBatchWithGenericPlans { get; init; }
-        public required string Select1Attribute { get; init; }
-        public required string ExistsRelation { get; init; }
         public required string HasDirectRelation { get; init; }
         public required string HasAnyDirectRelation { get; init; }
         public required string HasAnyOfDirectRelations { get; init; }
@@ -80,8 +59,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required string GetRelationsJoinedByEntityIds { get; init; }
         public required string HasTupleToUserSetRelation { get; init; }
         public required string HasUsersetJoinRelation { get; init; }
-        public required string GetAttribute { get; init; }
-        public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
         public required string GetRelationsWithSingleSubjectScoped { get; init; }
         public required string GetRelationsWithMultiSubjectScoped { get; init; }
@@ -208,9 +185,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         var relationsTable = $"{key.Schema}.{key.RelationsTable}";
         var attributesTable = $"{key.Schema}.{key.AttributesTable}";
 
-        var selectAttributes = string.Format(UnformattedSelectAttributes, key.Schema, key.AttributesTable);
-        var selectRelations = string.Format(UnformattedSelectRelations, key.Schema, key.RelationsTable);
-
         // {0}-placeholder templates the batched path's dialect catalog serves as-is; the single-op
         // strings below are derived from them with the fixed array parameter names, so both paths
         // execute byte-identical SQL text.
@@ -225,8 +199,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
-            SelectAttributes = selectAttributes,
-            SelectRelations = selectRelations,
             GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
             ResolveLatestSnapTokenForBatch =
                 $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false)",
@@ -239,8 +211,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             // anyway, and a generic plan there just loses the parameter values.
             ResolveLatestSnapTokenForBatchWithGenericPlans =
                 $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false), set_config('plan_cache_mode', 'force_generic_plan', true)",
-            Select1Attribute = $"{selectAttributes} LIMIT 1",
-            ExistsRelation = string.Format(UnformattedExistsRelation, key.Schema, key.RelationsTable),
             HasDirectRelation =
                 $"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')",
             HasAnyDirectRelation = string.Format(hasAnyDirectRelationBatchTemplate, "@entity_ids"),
@@ -345,10 +315,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                     )
                 )
                 """,
-            GetAttribute =
-                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND attribute = @attribute LIMIT 1",
-            GetAttributeWithEntityId =
-                $"SELECT entity_type, entity_id, attribute, value FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND attribute = @attribute AND entity_id = @entity_id LIMIT 1",
             HasTrueBoolAttribute =
                 $"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)",
             GetRelationsWithSingleSubjectScoped = $"""
@@ -1232,33 +1198,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             return await reader.ReadAsync(cancellationToken) && reader.GetBoolean(0);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
-    }
-
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
-            await using var command = _hotPathDataSource.CreateCommand(hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute);
-
-            AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
-            AddStringParameter(command.Parameters, "attribute", filter.Attribute, 64);
-            if (hasEntityId)
-                AddStringParameter(command.Parameters, "entity_id", filter.EntityId!, 64);
-            AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
-
-            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow, cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-                return null;
-
-            return ReadAttributeTuple(reader);
         }
         finally
         {

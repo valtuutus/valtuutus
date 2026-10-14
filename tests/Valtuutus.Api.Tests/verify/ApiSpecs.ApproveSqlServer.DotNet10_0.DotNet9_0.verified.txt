@@ -27,7 +27,6 @@ namespace Valtuutus.Data.SqlServer
     public class SqlServerDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalCheckOps
     {
         public SqlServerDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Db.IValtuutusDbOptions dbOptions) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
                 "AttributeName",

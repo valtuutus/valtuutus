@@ -130,21 +130,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 EXEC sp_set_session_context @key = N'{BatchResolvedSnapTokenKey}', @value = @LatestSnapToken;
                 SELECT @LatestSnapToken;
                 """,
-            GetAttribute = $"""
-                SELECT TOP 1 entity_type, entity_id, attribute, value
-                FROM {attributesTable}
-                WHERE {snapPredicate}
-                  AND entity_type = @EntityType
-                  AND attribute = @Attribute
-                """,
-            GetAttributeWithEntityId = $"""
-                SELECT TOP 1 entity_type, entity_id, attribute, value
-                FROM {attributesTable}
-                WHERE {snapPredicate}
-                  AND entity_type = @EntityType
-                  AND attribute = @Attribute
-                  AND entity_id = @EntityId
-                """,
             HasTrueBoolAttribute = $"""
                 SELECT CASE WHEN EXISTS(
                     SELECT 1 FROM {attributesTable}
@@ -512,8 +497,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         // Batch form of GetLatestSnapToken for SqlServerBatchOps: parks the latest token in the
         // session context (read back through DeclareBatchResolvedSnapToken) and returns it.
         public required string ResolveLatestSnapTokenForBatch { get; init; }
-        public required string GetAttribute { get; init; }
-        public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
         public required string HasAnyOfAttributes { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
@@ -546,35 +529,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetAttributesDictScopedPrefix { get; init; }
         public required string GetEntityIdsExcluding { get; init; }
         public required string GetSubjectIdsExcluding { get; init; }
-    }
-
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            await using var connection = (SqlConnection)_connectionFactory();
-            await connection.OpenAsync(cancellationToken);
-            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
-
-            await using var command = CreateCommand(connection, hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute);
-            AddStringParameter(command.Parameters, "@EntityType", filter.EntityType, 256);
-            AddStringParameter(command.Parameters, "@Attribute", filter.Attribute, 64);
-            if (hasEntityId)
-                AddStringParameter(command.Parameters, "@EntityId", filter.EntityId!, 64);
-            AddFixedCharParameter(command.Parameters, "@SnapToken", filter.SnapToken.Value, 26);
-
-            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-                return null;
-
-            return ReadAttributeTuple(reader);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
     }
 
     private static void PopulateHasTrueBoolAttributeCommand(SqlParameterCollection parameters, string entityType,

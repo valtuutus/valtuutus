@@ -29,7 +29,6 @@ public static class DependencyInjectionExtensions
         // the provider's IRelationalBatchOps registration, resolved lazily (at the first executor
         // creation during a check, never at startup); a provider without one gets individual
         // dispatch. Replace (not TryAdd) so it wins whether AddValtuutusCore() ran before or after.
-        // Harmless when the legacy CheckV1 is selected (nothing resolves CheckPlanExecutorPool then).
         services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
             sp => schema => new BatchedPhysicalExecutor(schema, sp.GetService<IRelationalBatchOps>())));
         return services;

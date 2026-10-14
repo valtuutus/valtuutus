@@ -12,13 +12,11 @@ namespace Valtuutus.Data.Db;
 //
 // Two fusion passes run here, both over the post-hash-consing plan:
 //
-// Direct-relation sibling fusion (plan-time form of V1's runtime check-then-batch,
-// CheckEngine.cs:559-577): >= 2 sibling Union/Intersect children that are plain same-entity
-// direct-relation refs collapse into one HasAnyOfDirectRelationsOp — a single round trip. Only
-// fires when the subject type is known (V1 parity: CheckEngine.cs:564; plans are keyed per
-// subjectType, so that runtime condition is a rewrite-time one here). V1's memo exclusion has
-// no plan-time equivalent — the fused batch may re-fetch a relation the dynamic memo already
-// knows, which costs no extra round trip; deliberate divergence.
+// Direct-relation sibling fusion: >= 2 sibling Union/Intersect children that are plain
+// same-entity direct-relation refs collapse into one HasAnyOfDirectRelationsOp — a single round
+// trip. Only fires when the subject type is known (plans are keyed per subjectType, so that is a
+// rewrite-time condition here). The fused batch may re-fetch a relation the dynamic memo already
+// knows; that costs no extra round trip.
 //
 // Attribute sibling fusion: symmetric for >= 2 sibling same-entity bool-attribute refs —
 // HasAnyOfAttributesOp. No subjectType gate: attributes don't depend on subject at all.
@@ -246,7 +244,7 @@ internal sealed class RelationalPlanRewriter : IPlanRewriter
             return isUnion ? new UnionNode(arr) : new IntersectNode(arr);
         }
 
-        // Mirror of V1 IsBatchableDirectRelation (CheckEngine.cs:411-423) over the compiled IR.
+        // A plain same-entity direct-relation ref with no userset sub-paths: fusable into one batch.
         private bool IsBatchableDirectRef(PlanNode node, out string relation)
         {
             relation = "";
