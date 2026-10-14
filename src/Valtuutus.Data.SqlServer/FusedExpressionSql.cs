@@ -46,15 +46,15 @@ internal static class FusedExpressionSql
         FusedLeafKind.Direct =>
             $"EXISTS(SELECT 1 FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation = @Relation_{i} AND subject_id = @SubjectId AND subject_relation = '')",
         FusedLeafKind.MultiDirect when !leaf.RequireAll =>
-            $"EXISTS(SELECT 1 FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN (SELECT id FROM @Relations_{i}) AND subject_id = @SubjectId AND subject_relation = '')",
+            $"EXISTS(SELECT 1 FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '')",
         FusedLeafKind.MultiDirect =>
-            $"(SELECT COUNT(DISTINCT relation) FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN (SELECT id FROM @Relations_{i}) AND subject_id = @SubjectId AND subject_relation = '') = {leaf.Names.Length}",
+            $"(SELECT COUNT(DISTINCT relation) FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '') = {leaf.Names.Length}",
         FusedLeafKind.Attribute =>
             $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute = @Attribute_{i} AND value = 'true')",
         FusedLeafKind.MultiAttribute when !leaf.RequireAll =>
-            $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN (SELECT id FROM @Attributes_{i}) AND value = 'true')",
+            $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN ({IdList.From($"@Attributes_{i}")}) AND value = 'true')",
         FusedLeafKind.MultiAttribute =>
-            $"(SELECT COUNT(DISTINCT attribute) FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN (SELECT id FROM @Attributes_{i}) AND value = 'true') = {leaf.Names.Length}",
+            $"(SELECT COUNT(DISTINCT attribute) FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN ({IdList.From($"@Attributes_{i}")}) AND value = 'true') = {leaf.Names.Length}",
         FusedLeafKind.TupleToUserSet => $"""
             EXISTS(
                 SELECT 1 FROM {relationsTable} r_main_{i}
@@ -75,7 +75,7 @@ internal static class FusedExpressionSql
         _ => throw new ArgumentOutOfRangeException(nameof(leaf.Kind), leaf.Kind, null),
     };
 
-    internal static void WriteLeafParameters(SqlParameterCollection parameters, FusedCheckLeaf leaf, int i, string tvpListIdsTypeName)
+    internal static void WriteLeafParameters(SqlParameterCollection parameters, FusedCheckLeaf leaf, int i)
     {
         switch (leaf.Kind)
         {
@@ -83,13 +83,13 @@ internal static class FusedExpressionSql
                 SqlServerDataReaderProvider.AddStringParameter(parameters, $"@Relation_{i}", leaf.Names[0], 64);
                 break;
             case FusedLeafKind.MultiDirect:
-                TvpHelper.AsTvpParameter(leaf.Names, tvpListIdsTypeName).AddParameter(parameters, $"@Relations_{i}");
+                IdList.AddParameter(parameters, $"@Relations_{i}", leaf.Names);
                 break;
             case FusedLeafKind.Attribute:
                 SqlServerDataReaderProvider.AddStringParameter(parameters, $"@Attribute_{i}", leaf.Names[0], 64);
                 break;
             case FusedLeafKind.MultiAttribute:
-                TvpHelper.AsTvpParameter(leaf.Names, tvpListIdsTypeName).AddParameter(parameters, $"@Attributes_{i}");
+                IdList.AddParameter(parameters, $"@Attributes_{i}", leaf.Names);
                 break;
             case FusedLeafKind.TupleToUserSet:
                 SqlServerDataReaderProvider.AddStringParameter(parameters, $"@TupleSetRelation_{i}", leaf.Names[0], 64);

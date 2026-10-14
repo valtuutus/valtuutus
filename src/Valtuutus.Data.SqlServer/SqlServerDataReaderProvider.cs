@@ -66,11 +66,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         parameters.Add(new SqlParameter(name, SqlDbType.NChar, size) { Value = value });
     }
 
-    private void AddTvpParameter(SqlParameterCollection parameters, string name, IEnumerable<string> values)
-    {
-        TvpHelper.AsTvpParameter(values, _q.TvpListIdsTypeName).AddParameter(parameters, name);
-    }
-
     // Attribute-name lists come from the schema, so counts are small and bounded: inlined
     // @Attr0..@AttrN parameters keep plan-cache entries bounded by the schema.
     private static readonly ConcurrentDictionary<(string Prefix, int Count), string> AttributeInQueryCache = new();
@@ -88,68 +83,68 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     // Parameters of the LookupSubject statements, written by the single-command methods below and
     // by SqlServerLookupSubjectBatchOps alike. A null snap token writes none: the batch-resolved
     // statements declare @SnapToken themselves.
-    internal static void AddRelationsWithEntityIdsParameters(SqlParameterCollection parameters, string tvpTypeName,
+    internal static void AddRelationsWithEntityIdsParameters(SqlParameterCollection parameters,
         string entityType, string relation, string subjectType, IEnumerable<string> entityIds,
         string? subjectRelation, SnapToken? snapToken)
     {
         AddNullableStringParameter(parameters, "@SubjectType", subjectType, 256);
         AddNullableStringParameter(parameters, "@EntityType", entityType, 256);
         AddNullableStringParameter(parameters, "@Relation", relation, 64);
-        TvpHelper.AsTvpParameter(entityIds, tvpTypeName).AddParameter(parameters, "@EntityIds");
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddNullableStringParameter(parameters, "@SubjectRelation", subjectRelation, 64);
         AddSnapTokenParameter(parameters, snapToken);
     }
 
     internal static void AddRelationsWithEntityIdsMultiRelationParameters(SqlParameterCollection parameters,
-        string tvpTypeName, string entityType, string[] relationNames, string subjectType,
+        string entityType, string[] relationNames, string subjectType,
         IEnumerable<string> entityIds, string? subjectRelation, SnapToken? snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
-        TvpHelper.AsTvpParameter(relationNames, tvpTypeName).AddParameter(parameters, "@Relations");
+        IdList.AddParameter(parameters, "@Relations", relationNames);
         AddStringParameter(parameters, "@SubjectType", subjectType, 256);
-        TvpHelper.AsTvpParameter(entityIds, tvpTypeName).AddParameter(parameters, "@EntityIds");
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddNullableStringParameter(parameters, "@SubjectRelation", subjectRelation, 64);
         AddSnapTokenParameter(parameters, snapToken);
     }
 
     internal static void AddRelationsJoinedByEntityIdsParameters(SqlParameterCollection parameters,
-        string tvpTypeName, string entityType, string relation, IEnumerable<string> entityIds, string subEntityType,
+        string entityType, string relation, IEnumerable<string> entityIds, string subEntityType,
         string subRelation, SnapToken? snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@Relation", relation, 64);
-        TvpHelper.AsTvpParameter(entityIds, tvpTypeName).AddParameter(parameters, "@EntityIds");
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddStringParameter(parameters, "@SubEntityType", subEntityType, 256);
         AddStringParameter(parameters, "@SubRelation", subRelation, 64);
         AddSnapTokenParameter(parameters, snapToken);
     }
 
-    internal static void AddAttributeWithEntityIdsParameters(SqlParameterCollection parameters, string tvpTypeName,
+    internal static void AddAttributeWithEntityIdsParameters(SqlParameterCollection parameters,
         string entityType, string attribute, IEnumerable<string> entityIds, SnapToken? snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@Attribute", attribute, 64);
-        TvpHelper.AsTvpParameter(entityIds, tvpTypeName).AddParameter(parameters, "@EntityIds");
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddSnapTokenParameter(parameters, snapToken);
     }
 
     // The statement is GetAttributeInQuery(SelectAttributesWithEntityIdsByEntityAttributesPrefix,
     // attributes.Length): the attribute names are inlined @Attr0..@AttrN parameters.
-    internal static void AddAttributesWithEntityIdsParameters(SqlParameterCollection parameters, string tvpTypeName,
+    internal static void AddAttributesWithEntityIdsParameters(SqlParameterCollection parameters,
         string entityType, string[] attributes, IEnumerable<string> entityIds, SnapToken? snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddAttributeInParameters(parameters, attributes);
-        TvpHelper.AsTvpParameter(entityIds, tvpTypeName).AddParameter(parameters, "@EntityIds");
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddSnapTokenParameter(parameters, snapToken);
     }
 
-    internal static void AddSubjectIdsExcludingParameters(SqlParameterCollection parameters, string tvpTypeName,
+    internal static void AddSubjectIdsExcludingParameters(SqlParameterCollection parameters,
         string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken? snapToken)
     {
         AddStringParameter(parameters, "@SubjectType", subjectType, 256);
         AddSnapTokenParameter(parameters, snapToken);
-        TvpHelper.AsTvpParameter(excludeIds, tvpTypeName).AddParameter(parameters, "@ExcludeIds");
+        IdList.AddParameter(parameters, "@ExcludeIds", excludeIds);
     }
 
     private static void AddSnapTokenParameter(SqlParameterCollection parameters, SnapToken? snapToken)
@@ -194,7 +189,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
-            TvpListIdsTypeName = SqlBuilderExtensions.FormatTvpListIdsName(key.Schema),
             GetLatestSnapToken = string.Format(
                 "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY id DESC", key.Schema, key.TransactionsTable),
             ResolveLatestSnapTokenForBatch = $"""
@@ -250,14 +244,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
                   AND attribute = @Attribute
-                  AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND entity_id IN ({IdList.From("@EntityIds")})
                 """,
             SelectAttributesWithEntityIdsByEntityAttributesPrefix = $"""
                 SELECT entity_type, entity_id, attribute, value
                 FROM {attributesTable}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
-                  AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND entity_id IN ({IdList.From("@EntityIds")})
                   AND attribute IN
                 """,
             SelectRelationsByTupleFilter = $"""
@@ -298,20 +292,20 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 SELECT CASE WHEN EXISTS(
                     SELECT 1 FROM {relationsTable}
                     WHERE {snapPredicate}
-                      AND entity_type = @EntityType AND entity_id IN (SELECT id FROM @EntityIds) AND relation = @Relation
+                      AND entity_type = @EntityType AND entity_id IN ({IdList.From("@EntityIds")}) AND relation = @Relation
                       AND subject_id = @SubjectId AND subject_relation = ''
                 ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
                 """,
             HasAnyOfDirectRelations = $"""
                 SELECT DISTINCT relation FROM {relationsTable}
                 WHERE {snapPredicate}
-                  AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN (SELECT id FROM @Relations)
+                  AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From("@Relations")})
                   AND subject_id = @SubjectId AND subject_relation = ''
                 """,
             HasAnyOfAttributes = $"""
                 SELECT DISTINCT attribute FROM {attributesTable}
                 WHERE {snapPredicate}
-                  AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN (SELECT id FROM @Attributes)
+                  AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN ({IdList.From("@Attributes")})
                   AND value = 'true'
                 """,
             SelectRelationsWithEntityIds = $"""
@@ -321,7 +315,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND subject_type = @SubjectType
                   AND entity_type = @EntityType
                   AND relation = @Relation
-                  AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND entity_id IN ({IdList.From("@EntityIds")})
                   AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
                 """,
             GetRelationsWithSingleSubjectSnap =
@@ -333,27 +327,27 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND (@EntityType IS NULL OR entity_type = @EntityType)
                   AND (@Relation IS NULL OR relation = @Relation)
                   AND subject_type = @SubjectType
-                  AND subject_id IN (SELECT id FROM @SubjectIds)
+                  AND subject_id IN ({IdList.From("@SubjectIds")})
                 """,
             GetRelationsWithSingleSubjectMultiRelationSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation IN (SELECT id FROM @Relations) AND subject_type = @SubjectType AND subject_id = @SubjectId",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation IN ({IdList.From("@Relations")}) AND subject_type = @SubjectType AND subject_id = @SubjectId",
             GetRelationsWithMultiSubjectMultiRelationSnap = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
-                  AND relation IN (SELECT id FROM @Relations)
+                  AND relation IN ({IdList.From("@Relations")})
                   AND subject_type = @SubjectType
-                  AND subject_id IN (SELECT id FROM @SubjectIds)
+                  AND subject_id IN ({IdList.From("@SubjectIds")})
                 """,
             GetRelationsWithEntityIdsMultiRelationSnap = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType
-                  AND relation IN (SELECT id FROM @Relations)
+                  AND relation IN ({IdList.From("@Relations")})
                   AND subject_type = @SubjectType
-                  AND entity_id IN (SELECT id FROM @EntityIds)
+                  AND entity_id IN ({IdList.From("@EntityIds")})
                   AND (@SubjectRelation IS NULL OR subject_relation = @SubjectRelation)
                 """,
             GetRelationsJoined = $"""
@@ -372,6 +366,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                         AND subject_id = @SubjectId
                   )
                 """,
+            // The listed entity ids bound the inner rows whatever the other parameters are, so the
+            // inner lookup seeks by them. One cached plan serves every caller of this text, including
+            // callers whose (entity_type, relation, subject_type) matches many tuples.
             GetRelationsJoinedByEntityIds = $"""
                 SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
                 FROM {relationsTable} AS r_dep
@@ -379,10 +376,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND r_dep.entity_type = @SubEntityType
                   AND r_dep.relation = @SubRelation
                   AND r_dep.entity_id IN (
-                      SELECT subject_id FROM {relationsTable}
+                      SELECT subject_id FROM {relationsTable} WITH (FORCESEEK (idx_relationtuples_entitytype_entityid_relation_createdtxid_deletedtxid_id (entity_type, entity_id)))
                       WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
                         AND entity_type = @EntityType
-                        AND entity_id IN (SELECT id FROM @EntityIds)
+                        AND entity_id IN ({IdList.From("@EntityIds")})
                         AND relation = @Relation
                         AND subject_type = @SubEntityType
                   )
@@ -462,7 +459,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND r_main.entity_type = @EntityType
                   AND r_main.relation = @Relation
                   AND r_main.subject_type = @SubjectType
-                  AND r_main.subject_id IN (SELECT id FROM @SubjectIds)
+                  AND r_main.subject_id IN ({IdList.From("@SubjectIds")})
                 """,
             GetRelationsWithSingleSubjectMultiRelationScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
@@ -476,7 +473,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
                 WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
                   AND r_main.entity_type = @EntityType
-                  AND r_main.relation IN (SELECT id FROM @Relations)
+                  AND r_main.relation IN ({IdList.From("@Relations")})
                   AND r_main.subject_type = @SubjectType
                   AND r_main.subject_id = @SubjectId
                 """,
@@ -492,9 +489,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AND r_scope.created_tx_id <= @SnapToken AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > @SnapToken)
                 WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
                   AND r_main.entity_type = @EntityType
-                  AND r_main.relation IN (SELECT id FROM @Relations)
+                  AND r_main.relation IN ({IdList.From("@Relations")})
                   AND r_main.subject_type = @SubjectType
-                  AND r_main.subject_id IN (SELECT id FROM @SubjectIds)
+                  AND r_main.subject_id IN ({IdList.From("@SubjectIds")})
                 """,
             GetRelationsJoinedScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
@@ -542,7 +539,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     SELECT entity_id FROM {attributesTable}
                     WHERE {snapPredicate} AND entity_type = @EntityType
                 ) universe
-                WHERE entity_id NOT IN (SELECT id FROM @ExcludeIds)
+                WHERE entity_id NOT IN ({IdList.From("@ExcludeIds")})
                 """,
             GetSubjectIdsExcluding = $"""
                 SELECT DISTINCT subject_id
@@ -550,7 +547,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 WHERE {snapPredicate}
                   AND subject_type = @SubjectType
                   AND subject_relation = ''
-                  AND subject_id NOT IN (SELECT id FROM @ExcludeIds)
+                  AND subject_id NOT IN ({IdList.From("@ExcludeIds")})
                 """,
         };
     }
@@ -561,7 +558,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     {
         public required string RelationsTable { get; init; }
         public required string AttributesTable { get; init; }
-        public required string TvpListIdsTypeName { get; init; }
         public required string GetLatestSnapToken { get; init; }
         // Batch form of GetLatestSnapToken for SqlServerBatchOps: parks the latest token in the
         // session context (read back through DeclareBatchResolvedSnapToken) and returns it.
@@ -633,7 +629,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@EntityId", entityId, 64);
-        AddTvpParameter(parameters, "@Attributes", attributeNames);
+        IdList.AddParameter(parameters, "@Attributes", attributeNames);
         AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
     }
 
@@ -796,7 +792,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await connection.OpenAsync(cancellationToken);
 
             await using var command = CreateCommand(connection, _q.SelectAttributesWithEntityIdsByAttributeFilter);
-            AddAttributeWithEntityIdsParameters(command.Parameters, _q.TvpListIdsTypeName, filter.EntityType,
+            AddAttributeWithEntityIdsParameters(command.Parameters, filter.EntityType,
                 filter.Attribute, entitiesIds, filter.SnapToken);
 
             var rows = new List<AttributeTuple>();
@@ -823,7 +819,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             await using var command = CreateCommand(connection,
                 GetAttributeInQuery(_q.SelectAttributesWithEntityIdsByEntityAttributesPrefix, filter.Attributes.Length));
-            AddAttributesWithEntityIdsParameters(command.Parameters, _q.TvpListIdsTypeName, filter.EntityType,
+            AddAttributesWithEntityIdsParameters(command.Parameters, filter.EntityType,
                 filter.Attributes, entitiesIds, filter.SnapToken);
 
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
@@ -985,7 +981,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string[] entityIds, string relation, string subjectId, SnapToken snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
-        AddTvpParameter(parameters, "@EntityIds", entityIds);
+        IdList.AddParameter(parameters, "@EntityIds", entityIds);
         AddStringParameter(parameters, "@Relation", relation, 64);
         AddStringParameter(parameters, "@SubjectId", subjectId, 64);
         AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
@@ -1017,7 +1013,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@EntityId", entityId, 64);
-        AddTvpParameter(parameters, "@Relations", relationNames);
+        IdList.AddParameter(parameters, "@Relations", relationNames);
         AddStringParameter(parameters, "@SubjectId", subjectId, 64);
         AddFixedCharParameter(parameters, "@SnapToken", snapToken.Value, 26);
     }
@@ -1057,7 +1053,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await connection.OpenAsync(cancellationToken);
 
             await using var command = CreateCommand(connection, _q.SelectRelationsWithEntityIds);
-            AddRelationsWithEntityIdsParameters(command.Parameters, _q.TvpListIdsTypeName,
+            AddRelationsWithEntityIdsParameters(command.Parameters,
                 entityRelationFilter.EntityType, entityRelationFilter.Relation, subjectType, entityIds, subjectRelation,
                 entityRelationFilter.SnapToken);
 
@@ -1142,7 +1138,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AddStringParameter(command.Parameters, "@EntityType", entityFilter.EntityType, 256);
                     AddStringParameter(command.Parameters, "@Relation", entityFilter.Relation, 64);
                     AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
-                    AddTvpParameter(command.Parameters, "@SubjectIds", subjectsIds);
+                    IdList.AddParameter(command.Parameters, "@SubjectIds", subjectsIds);
                     AddFixedCharParameter(command.Parameters, "@SnapToken", entityFilter.SnapToken.Value, 26);
                     AddStringParameter(command.Parameters, "@ScopeRelation", ms.Relation, 64);
                     AddStringParameter(command.Parameters, "@ScopeSubjectType", ms.SubjectType, 256);
@@ -1158,7 +1154,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     AddStringParameter(command.Parameters, "@EntityType", entityFilter.EntityType, 256);
                     AddStringParameter(command.Parameters, "@Relation", entityFilter.Relation, 64);
                     AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
-                    AddTvpParameter(command.Parameters, "@SubjectIds", subjectsIds);
+                    IdList.AddParameter(command.Parameters, "@SubjectIds", subjectsIds);
                     AddFixedCharParameter(command.Parameters, "@SnapToken", entityFilter.SnapToken.Value, 26);
 
                     await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
@@ -1199,7 +1195,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     {
                         await using var command = CreateCommand(connection, _q.GetRelationsWithSingleSubjectMultiRelationScoped);
                         AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
-                        AddTvpParameter(command.Parameters, "@Relations", relationNames);
+                        IdList.AddParameter(command.Parameters, "@Relations", relationNames);
                         AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
                         AddStringParameter(command.Parameters, "@SubjectId", subjectsIds[0], 64);
                         AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
@@ -1215,7 +1211,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     {
                         await using var command = CreateCommand(connection, _q.GetRelationsWithSingleSubjectMultiRelationSnap);
                         AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
-                        AddTvpParameter(command.Parameters, "@Relations", relationNames);
+                        IdList.AddParameter(command.Parameters, "@Relations", relationNames);
                         AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
                         AddStringParameter(command.Parameters, "@SubjectId", subjectsIds[0], 64);
                         AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
@@ -1240,9 +1236,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 {
                     await using var command = CreateCommand(connection, _q.GetRelationsWithMultiSubjectMultiRelationScoped);
                     AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
-                    AddTvpParameter(command.Parameters, "@Relations", relationNames);
+                    IdList.AddParameter(command.Parameters, "@Relations", relationNames);
                     AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
-                    AddTvpParameter(command.Parameters, "@SubjectIds", subjectsIds);
+                    IdList.AddParameter(command.Parameters, "@SubjectIds", subjectsIds);
                     AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
                     AddStringParameter(command.Parameters, "@ScopeRelation", ms.Relation, 64);
                     AddStringParameter(command.Parameters, "@ScopeSubjectType", ms.SubjectType, 256);
@@ -1256,9 +1252,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 {
                     await using var command = CreateCommand(connection, _q.GetRelationsWithMultiSubjectMultiRelationSnap);
                     AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
-                    AddTvpParameter(command.Parameters, "@Relations", relationNames);
+                    IdList.AddParameter(command.Parameters, "@Relations", relationNames);
                     AddStringParameter(command.Parameters, "@SubjectType", subjectType, 256);
-                    AddTvpParameter(command.Parameters, "@SubjectIds", subjectsIds);
+                    IdList.AddParameter(command.Parameters, "@SubjectIds", subjectsIds);
                     AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
 
                     await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
@@ -1291,7 +1287,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await connection.OpenAsync(cancellationToken);
 
             await using var command = CreateCommand(connection, _q.GetRelationsWithEntityIdsMultiRelationSnap);
-            AddRelationsWithEntityIdsMultiRelationParameters(command.Parameters, _q.TvpListIdsTypeName, entityType,
+            AddRelationsWithEntityIdsMultiRelationParameters(command.Parameters, entityType,
                 relationNames, subjectType, entityIds, subjectRelation, snapToken);
 
             var pooled = PooledList<RelationTuple>.Rent();
@@ -1390,7 +1386,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var command = CreateCommand(connection, _q.GetRelationsJoinedByEntityIds);
-                AddRelationsJoinedByEntityIdsParameters(command.Parameters, _q.TvpListIdsTypeName, mainFilter.EntityType,
+                AddRelationsJoinedByEntityIdsParameters(command.Parameters, mainFilter.EntityType,
                     mainFilter.Relation, entityIds, subEntityType, subRelation, mainFilter.SnapToken);
 
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
@@ -1503,7 +1499,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             if (subjectId is not null) AddStringParameter(command.Parameters, "@SubjectId", subjectId, 64);
             AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
             for (var i = 0; i < leaves.Count; i++)
-                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i, _q.TvpListIdsTypeName);
+                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
@@ -1525,7 +1521,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await using var command = CreateCommand(connection, _q.GetEntityIdsExcluding);
             AddStringParameter(command.Parameters, "@EntityType", entityType, 256);
             AddFixedCharParameter(command.Parameters, "@SnapToken", snapToken.Value, 26);
-            AddTvpParameter(command.Parameters, "@ExcludeIds", excludeIds);
+            IdList.AddParameter(command.Parameters, "@ExcludeIds", excludeIds);
 
             var result = new List<string>();
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
@@ -1549,7 +1545,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             await connection.OpenAsync(cancellationToken);
 
             await using var command = CreateCommand(connection, _q.GetSubjectIdsExcluding);
-            AddSubjectIdsExcludingParameters(command.Parameters, _q.TvpListIdsTypeName, subjectType, excludeIds,
+            AddSubjectIdsExcludingParameters(command.Parameters, subjectType, excludeIds,
                 snapToken);
 
             var result = new List<string>();

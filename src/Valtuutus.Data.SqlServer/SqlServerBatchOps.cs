@@ -15,9 +15,9 @@ namespace Valtuutus.Data.SqlServer;
 /// command generically, and this class supplies only the dialect — the SQL catalog (the same
 /// cached <see cref="SqlServerDataReaderProvider.ReaderQueries"/> strings the single-op reader
 /// dispatches, so both paths share one definition), the SqlParameter construction (same helpers,
-/// same SqlDbType/size as the single-op path), the table-valued-parameter array strategy (unlike
-/// Postgres's native array type, SqlServer has no array parameter — <see cref="TvpHelper"/>
-/// streams the values as a TVP), and batch creation/execution against a fresh SqlConnection (no
+/// same SqlDbType/size as the single-op path), the list strategy (<see cref="IdList"/> writes
+/// the values as one JSON-array parameter that the SQL reads with OPENJSON), and batch
+/// creation/execution against a fresh SqlConnection (no
 /// SqlServer equivalent of NpgsqlDataSource's pooled data source object to share).
 /// </summary>
 public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
@@ -136,15 +136,15 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         _ => throw new ArgumentOutOfRangeException(nameof(query), query, null),
     };
 
-    // These SQL strings carry no {0} placeholder: they reference the TVP parameter by its fixed
-    // name inline (e.g. "entity_id IN (SELECT id FROM @EntityIds)"), the same table-valued-parameter
-    // strategy the reader's own non-batch methods use via TvpHelper. The TVP parameter just needs
-    // to land on the command under the name the SQL text already hardcodes, which MapParamName
-    // supplies.
+    // These SQL strings carry no {0} placeholder: they reference the list parameter by its fixed
+    // name inline (e.g. "entity_id IN (SELECT id FROM OPENJSON(@EntityIds) WITH (id nvarchar(64) '$'))"),
+    // the same JSON-array strategy the reader's own non-batch methods use via IdList. The JSON
+    // parameter lands on the command under the name the SQL text already hardcodes, which
+    // MapParamName supplies.
     protected override string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values)
     {
         var paramName = MapParamName(baseName);
-        TvpHelper.AsTvpParameter(values, _q.TvpListIdsTypeName).AddParameter(Parameters(cmd), paramName);
+        IdList.AddParameter(Parameters(cmd), paramName, values);
         return paramName;
     }
 
@@ -197,11 +197,11 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
         if (subjectId is not null) SqlServerDataReaderProvider.AddStringParameter(parameters, "@SubjectId", subjectId, 64);
         WriteSnapTokenParam(cmd, "snap_token", snapToken);
         for (var i = 0; i < leaves.Count; i++)
-            FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i, _q.TvpListIdsTypeName);
+            FusedExpressionSql.WriteLeafParameters(parameters, leaves[i], i);
     }
 
-    // Same inlined (@Attr0..@AttrN) list the reader's GetAttributesSingleEntity dispatches, not a
-    // TVP — keeps the two paths on one cached SQL text per attribute count.
+    // Same inlined (@Attr0..@AttrN) list the reader's GetAttributesSingleEntity dispatches,
+    // which keeps the two paths on one cached SQL text per attribute count.
     /// <inheritdoc />
     public override void AddGetAttributesSingleEntityToBatch(DbBatch batch, string entityType, string entityId,
         string[] attributeNames, SnapToken snapToken)

@@ -1178,4 +1178,32 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEquivalentTo(expected);
     }
+
+    [Fact]
+    public async Task LookupEntity_WithIdsNeedingEscaping_ForwardsThemUnchanged()
+    {
+        // alice's groups reach the database as one subject-id list when the engine looks for
+        // docs whose viewer is one of them.
+        string[] groups = ["g\"1", "g\\2", "g,3", "g'4", "gé5", "[\"g6\"]"];
+        const string schema = """
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity doc {
+                relation viewer @group#member;
+                permission view := viewer;
+            }
+            """;
+        var tuples = groups.SelectMany(g => new[]
+        {
+            new RelationTuple("group", g, "member", "user", "alice"),
+            new RelationTuple("doc", "d" + g, "viewer", "group", g, "member"),
+        }).ToArray();
+        var engine = await CreateEngine(tuples, [], schema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("doc", "view", "user", "alice"), default);
+
+        result.EntityIds.Should().BeEquivalentTo(groups.Select(g => "d" + g));
+    }
 }

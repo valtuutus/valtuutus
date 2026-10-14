@@ -10,8 +10,8 @@ namespace Valtuutus.Data.Db;
 /// provider supplies only its dialect: <see cref="CreateBatch"/>,
 /// <see cref="ExecuteBatchAsync"/>, the SQL catalog (<see cref="GetSql"/>), and the
 /// name-array parameter strategy (<see cref="WriteNameArrayParam"/> — native array
-/// parameter on Postgres, a table-valued parameter on SqlServer; a provider with neither
-/// falls back to per-value parameter-list expansion). Adding a new batchable
+/// parameter on Postgres, a JSON-array parameter read with OPENJSON on SqlServer; a provider
+/// with neither falls back to per-value parameter-list expansion). Adding a new batchable
 /// primitive costs a provider one catalog entry, not a new public member. Members are
 /// virtual: extending a shipped provider means overriding a named hook, not shadowing.
 /// </summary>
@@ -35,7 +35,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
     /// <summary>
     /// Writes a name/id array argument onto <paramref name="cmd"/> and returns the SQL fragment
     /// that references it — the text substituted into the catalog SQL's <c>{0}</c> placeholder.
-    /// Postgres adds one native array parameter and SqlServer one table-valued parameter, under
+    /// Postgres adds one native array parameter and SqlServer one JSON-array parameter, under
     /// the name their catalog SQL already references, so neither catalog carries a <c>{0}</c>; a
     /// provider with neither adds one parameter per value and returns the expanded list.
     /// </summary>

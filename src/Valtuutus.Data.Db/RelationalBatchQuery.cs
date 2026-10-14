@@ -5,8 +5,8 @@ namespace Valtuutus.Data.Db;
 /// <c>GetSql</c> hook) — one per batchable query shape. Members whose query takes a
 /// name/id array may contain a <c>{0}</c> placeholder in their SQL where the fragment returned by
 /// <c>RelationalBatchProviderBase.WriteNameArrayParam</c> lands (an expanded parameter list on
-/// providers without array or table-valued parameters; Postgres and SqlServer reference their
-/// array parameter by name instead).
+/// providers without a list parameter; Postgres and SqlServer reference their list parameter by
+/// name instead).
 /// </summary>
 public enum RelationalBatchQuery
 {
