@@ -543,6 +543,37 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         result.Should().BeEquivalentTo("alice");
     }
 
+    // Quote, backslash, comma, apostrophe, non-ASCII, and a JSON-looking id.
+    private static readonly string[] IdsNeedingEscaping = ["g\"1", "g\\2", "g,3", "g'4", "gé5", "[\"g6\"]"];
+
+    private const string EscapingSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        entity doc {
+            relation viewer @group#member;
+            permission view := viewer;
+        }
+        """;
+
+    [Fact]
+    public async Task Lookup_WithIdsNeedingEscaping_ForwardsThemUnchanged()
+    {
+        // The group ids reach the database as one list (group.member is non-terminal, so the
+        // groups found on doc d1 are forwarded as entity ids), and so do the user ids returned.
+        var tuples = IdsNeedingEscaping.SelectMany(g => new[]
+        {
+            new RelationTuple("doc", "d1", "viewer", "group", g, "member"),
+            new RelationTuple("group", g, "member", "user", "u" + g),
+        }).ToArray();
+        var engine = await CreateEngine(tuples, [], EscapingSchema);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("doc", "view", "user", "d1"), default);
+
+        result.Should().BeEquivalentTo(IdsNeedingEscaping.Select(g => "u" + g));
+    }
+
     [Fact]
     public async Task LookupSubject_UnionWithHeterogeneousSubjectType_PrunesDeadBranchCorrectly()
     {

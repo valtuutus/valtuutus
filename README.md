@@ -117,6 +117,8 @@ dotnet add package Valtuutus.Data.Postgres
 dotnet add package Valtuutus.Data.SqlServer
 ```
 
+Requires SQL Server 2016 or later (database compatibility level 130+), Azure SQL Database or Azure SQL Managed Instance.
+
 ### If you prefer using an InMemory provider:
 ```shell
 dotnet add package Valtuutus.Data.InMemory

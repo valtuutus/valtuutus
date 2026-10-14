@@ -14,14 +14,12 @@ namespace Valtuutus.Data.SqlServer;
 /// </summary>
 internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
 {
-    private readonly string _tvpTypeName;
     private readonly Statements _withParameter;
     private readonly Statements _batchResolved;
 
     public SqlServerLookupSubjectBatchOps(IValtuutusDbOptions dbOptions)
     {
         var q = SqlServerDataReaderProvider.GetQueries(dbOptions);
-        _tvpTypeName = q.TvpListIdsTypeName;
         _withParameter = new Statements(q, "");
         _batchResolved = new Statements(q, SqlServerDataReaderProvider.DeclareBatchResolvedSnapToken);
     }
@@ -37,33 +35,33 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
         {
             case LookupSubjectQueryKind.Relations:
                 cmd.CommandText = statements.RelationsWithEntityIds;
-                SqlServerDataReaderProvider.AddRelationsWithEntityIdsParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddRelationsWithEntityIdsParameters(parameters,
                     query.EntityType, query.Relation, query.SubjectType, query.Ids, query.SubjectRelation, snapToken);
                 break;
             case LookupSubjectQueryKind.RelationsMulti:
                 cmd.CommandText = statements.RelationsWithEntityIdsMultiRelation;
-                SqlServerDataReaderProvider.AddRelationsWithEntityIdsMultiRelationParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddRelationsWithEntityIdsMultiRelationParameters(parameters,
                     query.EntityType, query.Names, query.SubjectType, query.Ids, query.SubjectRelation, snapToken);
                 break;
             case LookupSubjectQueryKind.Joined:
                 cmd.CommandText = statements.RelationsJoinedByEntityIds;
-                SqlServerDataReaderProvider.AddRelationsJoinedByEntityIdsParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddRelationsJoinedByEntityIdsParameters(parameters,
                     query.EntityType, query.Relation, query.Ids, query.SubEntityType, query.SubjectRelation!, snapToken);
                 break;
             case LookupSubjectQueryKind.Attributes:
                 cmd.CommandText = SqlServerDataReaderProvider.GetAttributeInQuery(
                     statements.AttributesWithEntityIdsPrefix, query.Names.Length);
-                SqlServerDataReaderProvider.AddAttributesWithEntityIdsParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddAttributesWithEntityIdsParameters(parameters,
                     query.EntityType, query.Names, query.Ids, snapToken);
                 break;
             case LookupSubjectQueryKind.Attribute:
                 cmd.CommandText = statements.AttributeWithEntityIds;
-                SqlServerDataReaderProvider.AddAttributeWithEntityIdsParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddAttributeWithEntityIdsParameters(parameters,
                     query.EntityType, query.Names[0], query.Ids, snapToken);
                 break;
             case LookupSubjectQueryKind.SubjectsExcluding:
                 cmd.CommandText = statements.SubjectIdsExcluding;
-                SqlServerDataReaderProvider.AddSubjectIdsExcludingParameters(parameters, _tvpTypeName,
+                SqlServerDataReaderProvider.AddSubjectIdsExcludingParameters(parameters,
                     query.SubjectType, query.Ids, snapToken);
                 break;
             default:
