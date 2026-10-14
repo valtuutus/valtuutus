@@ -1,5 +1,5 @@
 using System.Collections.Immutable;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -49,7 +49,7 @@ public class FusedExpressionOpSpecs
 
         await op.Execute(reader, ctx, "team", "1", default);
 
-        ((IRelationalCheckOps)reader).Received(1).HasFusedExpression(
+        _ = ((IRelationalCheckOps)reader).Received(1).HasFusedExpression(
             "team", "1", Leaves, false, "user", "u1", ctx.SnapToken, default);
     }
 

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core;
 using Valtuutus.Core.Engines.Check;
 

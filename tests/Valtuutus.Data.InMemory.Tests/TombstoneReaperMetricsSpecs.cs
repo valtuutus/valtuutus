@@ -1,5 +1,5 @@
 using System.Diagnostics.Metrics;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Data;

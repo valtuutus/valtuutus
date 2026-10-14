@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core.Engines.Check.V2;
 
 namespace Valtuutus.Data.InMemory.Tests.V2;

@@ -1,5 +1,5 @@
 using System.Text.Json.Nodes;
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 

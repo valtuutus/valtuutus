@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Data.Common;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Data.SqlClient;
 
 namespace Valtuutus.Data.SqlServer.Utils;
@@ -59,6 +60,7 @@ internal sealed class CommandBehaviorCloseConnectionWorkaroundReader(DbDataReade
     public override DateTime GetDateTime(int ordinal) => inner.GetDateTime(ordinal);
     public override decimal GetDecimal(int ordinal) => inner.GetDecimal(ordinal);
     public override double GetDouble(int ordinal) => inner.GetDouble(ordinal);
+    [return: DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.PublicProperties)]
     public override Type GetFieldType(int ordinal) => inner.GetFieldType(ordinal);
     public override float GetFloat(int ordinal) => inner.GetFloat(ordinal);
     public override Guid GetGuid(int ordinal) => inner.GetGuid(ordinal);

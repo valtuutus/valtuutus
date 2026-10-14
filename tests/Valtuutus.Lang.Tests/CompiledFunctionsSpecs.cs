@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
 

@@ -20,7 +20,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
     private Respawner _respawner = default!;
 
     
-    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder()
+    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:15.1")
         .WithUsername("Valtuutus")
         .WithPassword("Valtuutus123")
         .WithDatabase("Valtuutus")

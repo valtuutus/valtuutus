@@ -1,5 +1,5 @@
 using System.Data.Common;
-using FluentAssertions;
+using AwesomeAssertions;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
@@ -39,8 +39,10 @@ public class HasAnyOfDirectRelationsOpBatchSpecs
         var op = new HasAnyOfDirectRelationsOp(["owner", "admin"], requireAll: false);
         var sink = new RecordingSink();
 
-        await op.ReadResultAsync(new FakeStringResultReader(["admin"]), token: 7, sink, default);
-        await op.ReadResultAsync(new FakeStringResultReader([]), token: 9, sink, default);
+        using var reader1 = new FakeStringResultReader(["admin"]);
+        await op.ReadResultAsync(reader1, token: 7, sink, default);
+        using var reader2 = new FakeStringResultReader([]);
+        await op.ReadResultAsync(reader2, token: 9, sink, default);
 
         sink.Completed.Should().ContainSingle(c => c.Token == 7 && c.Result);
         sink.Completed.Should().ContainSingle(c => c.Token == 9 && !c.Result);
@@ -52,8 +54,10 @@ public class HasAnyOfDirectRelationsOpBatchSpecs
         var op = new HasAnyOfDirectRelationsOp(["owner", "admin"], requireAll: true);
         var sink = new RecordingSink();
 
-        await op.ReadResultAsync(new FakeStringResultReader(["owner", "admin"]), token: 1, sink, default);
-        await op.ReadResultAsync(new FakeStringResultReader(["owner"]), token: 2, sink, default);
+        using var reader3 = new FakeStringResultReader(["owner", "admin"]);
+        await op.ReadResultAsync(reader3, token: 1, sink, default);
+        using var reader4 = new FakeStringResultReader(["owner"]);
+        await op.ReadResultAsync(reader4, token: 2, sink, default);
 
         sink.Completed.Should().ContainSingle(c => c.Token == 1 && c.Result);
         sink.Completed.Should().ContainSingle(c => c.Token == 2 && !c.Result);

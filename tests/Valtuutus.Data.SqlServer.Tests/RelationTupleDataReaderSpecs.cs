@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Valtuutus.Core;
 
 namespace Valtuutus.Data.SqlServer.Tests;
