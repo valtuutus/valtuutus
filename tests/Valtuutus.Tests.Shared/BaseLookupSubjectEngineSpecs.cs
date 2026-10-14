@@ -740,10 +740,6 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             SnapToken snapToken, CancellationToken cancellationToken)
             => inner.HasAnyDirectRelation(entityType, entityIds, relation, subjectId, snapToken, cancellationToken);
 
-        public Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
-            string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
-            => inner.HasAnyOfDirectRelations(entityType, entityId, relationNames, subjectId, snapToken, cancellationToken);
-
         public Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation,
             string subEntityType, string computedRelation, string subjectType, string subjectId, SnapToken snapToken,
             CancellationToken cancellationToken)
@@ -784,16 +780,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             return inner.GetRelationsJoinedByEntityIds(mainFilter, materialized, subEntityType, subRelation, cancellationToken);
         }
 
-        public Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-            => inner.GetAttribute(filter, cancellationToken);
-
         public Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
             SnapToken snapToken, CancellationToken cancellationToken)
             => inner.HasTrueBoolAttribute(entityType, entityId, attribute, snapToken, cancellationToken);
-
-        public Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
-            SnapToken snapToken, CancellationToken cancellationToken)
-            => inner.HasAnyOfAttributes(entityType, entityId, attributeNames, snapToken, cancellationToken);
 
         public Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
             => inner.GetAttributes(filter, cancellationToken);

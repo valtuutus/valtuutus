@@ -499,7 +499,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         // referencing the SAME org.admin subtree, inlined (not factored into a shared named
         // permission) — exactly the benchmarks/Valtuutus.Benchmarks/schema.vtt team entity shape.
         // Correctness must be identical regardless of whether the engine evaluates org.admin
-        // once (V2 combined path) or twice (V1, and V2 before this change).
+        // once (combined path) or twice.
         const string schema = """
             entity user {}
             entity organization {

@@ -87,7 +87,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         var combined = combinedPlans.GetOrCompile(req.EntityType, ctx.SubjectType);
 
         // One driver loop, N roots: all permissions evaluate concurrently and share the
-        // request's dynamic memo — the V2 equivalent of V1's shared CheckMemo here.
+        // request's dynamic memo, so a subtree two permissions share is evaluated once.
         var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
             precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
         _ = DrainAndReturn(executor);

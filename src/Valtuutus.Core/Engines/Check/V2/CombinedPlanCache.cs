@@ -31,8 +31,8 @@ internal sealed class CombinedPlanCache(Schema schema, IEnumerable<IPlanRewriter
                 foreach (var perm in permissions)
                 {
                     // Mirrors PlanCompiler.Compile's own top-level guard, applied per permission
-                    // instead of once — a permission unreachable by subjectType still needs a
-                    // ConstNode.False ROOT (not to be omitted), so combined.Roots stays index-
+                    // instead of once — a permission unreachable by subjectType still gets a
+                    // ConstNode.False ROOT of its own, so combined.Roots stays index-
                     // aligned with schema.GetPermissions(entityType) for CheckEngineV2 to zip
                     // against its own names[] array.
                     pruned[i++] = key.SubjectType is not null

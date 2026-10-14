@@ -31,32 +31,6 @@ public class DependencyInjectionExtensionsSpecs
     }
 
     [Fact]
-    public void AddCaching_after_CheckV1_wraps_the_legacy_engine()
-    {
-        var services = new ServiceCollection();
-        services.AddValtuutusCore(Schema);
-        services.AddValtuutusCheckV1();
-        services.AddValtuutusData().AddCaching();
-
-        GetUnkeyed<ICheckEngine>(services).ImplementationType.Should().Be(typeof(CachedCheckEngine));
-
-        GetKeyed<ICheckEngine>(services, Consts.InnerCheckEngineKey).KeyedImplementationType.Should().Be(typeof(CheckEngine));
-    }
-
-    [Fact]
-    public void AddCaching_before_engine_selection_loses_caching_documenting_the_required_order()
-    {
-        // Engine-selection methods replace the unkeyed ICheckEngine descriptor outright, so calling one after
-        // AddCaching wipes CachedCheckEngine. AddCaching must be the last call in the chain.
-        var services = new ServiceCollection();
-        services.AddValtuutusCore(Schema);
-        services.AddValtuutusData().AddCaching();
-        services.AddValtuutusCheckV1();
-
-        GetUnkeyed<ICheckEngine>(services).ImplementationType.Should().NotBe(typeof(CachedCheckEngine));
-    }
-
-    [Fact]
     public void AddCaching_wraps_lookup_entity_and_lookup_subject_engines()
     {
         var services = new ServiceCollection();

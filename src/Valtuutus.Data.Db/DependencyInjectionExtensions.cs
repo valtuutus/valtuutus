@@ -28,8 +28,7 @@ public static class DependencyInjectionExtensions
         // V2 physical executor for relational providers: packs each wave into one DbBatch through
         // the provider's IRelationalBatchOps registration, resolved lazily (at the first executor
         // creation during a check, never at startup); a provider without one gets individual
-        // dispatch. Replace (not TryAdd) so it wins whether AddValtuutusCore() ran before or after.
-        // Harmless when the legacy CheckV1 is selected (nothing resolves CheckPlanExecutorPool then).
+        // dispatch. Replace so it wins whether AddValtuutusCore() ran before or after.
         services.Replace(ServiceDescriptor.Singleton<Func<Schema, IPhysicalExecutor>>(
             sp => schema => new BatchedPhysicalExecutor(schema, sp.GetService<IRelationalBatchOps>())));
         return services;

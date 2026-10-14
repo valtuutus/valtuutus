@@ -16,7 +16,6 @@ namespace Valtuutus.Data.InMemory
         public System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple> GetByNames(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.HashSet<string>? scopedEntityIds = null) { }
         public Valtuutus.Core.Pools.PooledList<Valtuutus.Core.AttributeTuple> GetByNamesSingleEntity(Valtuutus.Core.Data.EntityAttributesFilter filter) { }
         public System.Collections.Generic.Dictionary<System.ValueTuple<string, string>, Valtuutus.Core.AttributeTuple> GetByNamesWithEntityIds(Valtuutus.Core.Data.EntityAttributesFilter filter, System.Collections.Generic.IEnumerable<string> entityIds) { }
-        public System.Collections.Generic.HashSet<string> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snap) { }
         public bool HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snap) { }
         public int ReapTombstones(System.Ulid watermark) { }
         public void Write(System.Ulid transactId, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes) { }
@@ -29,7 +28,6 @@ namespace Valtuutus.Data.InMemory
     {
         public InMemoryProvider(Valtuutus.Data.InMemory.RelationsStore relations, Valtuutus.Data.InMemory.AttributesStore attributes, Valtuutus.Data.ValtuutusDataOptions options, System.IServiceProvider provider) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.AttributeTuple?> GetAttribute(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<Valtuutus.Core.AttributeTuple>> GetAttributes(Valtuutus.Core.Data.EntityAttributeFilter filter, System.Threading.CancellationToken cancellationToken) { }
         [return: System.Runtime.CompilerServices.TupleElementNames(new string[] {
                 "AttributeName",
@@ -53,8 +51,6 @@ namespace Valtuutus.Data.InMemory
         public System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
         public System.Threading.Tasks.Task<bool> HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken) { }
@@ -77,7 +73,6 @@ namespace Valtuutus.Data.InMemory
         public Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple> GetRelationsWithSubjectIds(Valtuutus.Core.Data.EntityRelationFilter filter, string[] subjectIds, string subjectType, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope = default) { }
         public Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple> GetRelationsWithSubjectIdsMultiRelation(string entityType, string[] relationNames, string[] subjectIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope = default) { }
         public bool HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
-        public System.Collections.Generic.HashSet<string> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public bool HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter filter, string subjectId) { }
         public bool HasTupleToUserSetRelation(string entityType, string entityId, string tupleSetRelation, string subEntityType, string computedRelation, string subjectType, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public int ReapTombstones(System.Ulid watermark) { }

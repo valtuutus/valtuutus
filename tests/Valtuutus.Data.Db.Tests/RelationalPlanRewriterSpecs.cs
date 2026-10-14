@@ -66,8 +66,7 @@ public class RelationalPlanRewriterSpecs
     [Fact]
     public void Does_not_fuse_when_subject_type_unknown()
     {
-        // Mirror of V1's subjectTypeKnown gate (formerly compile-time in PlanCompiler): without
-        // a subject type, direct-relation refs stay plain — and nothing changed, so the rewriter
+        // Without a subject type, direct-relation refs stay plain — and nothing changed, so the rewriter
         // must hand back the same instance.
         var rewritten = Rewrite(Parse(HouseholdSchema), "household", "view", null, out var compiledRoot);
         rewritten.Should().BeSameAs(compiledRoot);
@@ -197,8 +196,8 @@ public class RelationalPlanRewriterSpecs
     [Fact]
     public void Sub_relation_path_refs_are_not_fused()
     {
-        // V1 parity: IsBatchableDirectRelation excludes HasSubRelationPaths — those leaves
-        // still need the GetIndirectRelations fan-out.
+        // Relations with userset sub-paths are not fusable — those leaves still need the
+        // GetIndirectRelations fan-out.
         const string s = """
             entity user {}
             entity team { relation member @user; }

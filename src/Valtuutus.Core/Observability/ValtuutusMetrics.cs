@@ -20,25 +20,21 @@ public static class ValtuutusMetrics
     internal static readonly Counter<long> ExpressionNodes =
         Meter.CreateCounter<long>("valtuutus.check.expression_nodes");
 
-    /// <summary>Expression nodes decided by the short-circuit value before all children finished.
-    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
-    /// only (V1 also counts TTU fan-out short-circuits).</summary>
+    /// <summary>Union/Intersect expression nodes decided by the short-circuit value before all
+    /// children finished.</summary>
     internal static readonly Counter<long> ShortCircuits =
         Meter.CreateCounter<long>("valtuutus.check.short_circuits");
 
-    /// <summary>Expression nodes where child index 0 alone would have decided the node
-    /// (sequential-first scheduling would have saved the sibling queries).
-    /// Emitted by both engines; under CheckEngineV2, counts Union/Intersect expression frames
-    /// only (V1 also counts TTU fan-out short-circuits).</summary>
+    /// <summary>Union/Intersect expression nodes where child index 0 alone would have decided the
+    /// node (sequential-first scheduling would have saved the sibling queries).</summary>
     internal static readonly Counter<long> FirstChildDecided =
         Meter.CreateCounter<long>("valtuutus.check.first_child_decided");
 
-    /// <summary>Request-scoped memo hits inside CheckEngine.</summary>
+    /// <summary>Request-scoped memo hits inside the check engine.</summary>
     internal static readonly Counter<long> MemoHits =
         Meter.CreateCounter<long>("valtuutus.check.memo_hits");
 
-    /// <summary>Ops submitted per DrainReady wave (one Physical.Submit call). V2 only — V1 has
-    /// no wave concept. The ops-per-Submit half of the batching-headroom signal: how many ops
+    /// <summary>Ops submitted per DrainReady wave (one Physical.Submit call). The ops-per-Submit half of the batching-headroom signal: how many ops
     /// land in the same wave and could in principle be coalesced into fewer round trips.</summary>
     internal static readonly Histogram<long> WaveOps =
         Meter.CreateHistogram<long>("valtuutus.check.wave_ops");

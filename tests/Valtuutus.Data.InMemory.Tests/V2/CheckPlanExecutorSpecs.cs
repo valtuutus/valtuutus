@@ -279,7 +279,7 @@ public class CheckPlanExecutorSpecs
     [Fact]
     public async Task SubjectRelation_self_reference_short_circuits_true()
     {
-        // Mirrors CheckEngine.cs:220-224.
+        // Checking an entity's relation against the same entity#relation as subject is trivially true.
         (await RunCheck(DocSchema, [], null, "doc", "1", "owner",
             subjectType: "doc", subjectId: "1", subjectRelation: "owner")).Should().BeTrue();
     }
@@ -456,24 +456,11 @@ public class CheckPlanExecutorSpecs
     }
 
     [Fact]
-    public void AddValtuutusCheckV1_replaces_the_default_engine()
-    {
-        var services = new ServiceCollection().AddValtuutusCore(DocSchema);
-        services.AddValtuutusCheckV1();
-        services.AddInMemory();
-
-        using var scope = services.BuildServiceProvider().CreateScope();
-        scope.ServiceProvider.GetRequiredService<ICheckEngine>().Should().BeOfType<CheckEngine>();
-    }
-
-    [Fact]
     public async Task AddValtuutusCore_wires_ICheckEngine_Explain_through_the_V2_executor()
     {
-        // Task 5: CheckEngineV2.Explain() no longer delegates to a throwaway V1 CheckEngine —
-        // it must run through the same DI-resolved V2 executor pool as Check()/SubjectPermission.
-        // This resolves ICheckEngine exactly as a real caller would (no direct reference to the
-        // V1 CheckEngine type anywhere in this test) and asserts on the full CheckExplainResult
-        // shape, not just the boolean.
+        // Explain() runs through the same DI-resolved executor pool as Check()/SubjectPermission.
+        // This resolves ICheckEngine exactly as a real caller would and asserts on the full
+        // CheckExplainResult shape, not just the boolean.
         var services = new ServiceCollection().AddValtuutusCore(DocSchema);
         services.AddInMemory();
         var sp = services.BuildServiceProvider().CreateScope().ServiceProvider;

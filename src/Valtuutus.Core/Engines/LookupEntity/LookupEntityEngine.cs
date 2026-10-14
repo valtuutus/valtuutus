@@ -185,7 +185,7 @@ public sealed class LookupEntityEngine(
     // A live Union/Intersect child that is a plain direct-relation leaf on req.EntityType, with
     // no sub-relation paths and reachable by req.FinalSubjectType, can be resolved via
     // GetRelationsWithSubjectsIdsMultiRelation alongside its siblings instead of its own
-    // per-child LookupRelationLeaf round trip. Mirrors CheckEngine.IsBatchableDirectRelation.
+    // per-child LookupRelationLeaf round trip.
     private bool IsBatchableDirectRelation(LookupEntityRequestInternal req, PermissionNode child, out string relationName)
     {
         relationName = "";

@@ -14,9 +14,9 @@ namespace Valtuutus.Data.SqlServer;
 
 public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
-    // Internal (not private): FusedExpressionSql builds fused-expression fragments for both this
-    // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, and needs the
-    // exact same snap-token predicate text those queries use.
+    // Internal so FusedExpressionSql, which builds the fused-expression fragments for both this
+    // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, uses the
+    // exact snap-token predicate text those queries use.
     internal const string SnapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
 
     private readonly DbConnectionFactory _connectionFactory;
@@ -46,9 +46,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     internal static ReaderQueries GetQueries(IValtuutusDbOptions dbOptions) =>
         QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
 
-    // Internal (not private): SqlServerBatchOps' dialect hooks construct byte-identical
-    // SqlParameters (same SqlDbType, same size) through these exact helpers instead of
-    // re-deriving them.
+    // Internal so SqlServerBatchOps' dialect hooks build their SqlParameters through these
+    // helpers, and batched commands carry byte-identical parameters (same SqlDbType, same size).
     internal static void AddStringParameter(SqlParameterCollection parameters, string name, string value, int size)
     {
         parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, size) { Value = value });
@@ -129,21 +128,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 DECLARE @LatestSnapToken nchar(26) = COALESCE((SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] ORDER BY id DESC), '{SnapToken.MinValue.Value}');
                 EXEC sp_set_session_context @key = N'{BatchResolvedSnapTokenKey}', @value = @LatestSnapToken;
                 SELECT @LatestSnapToken;
-                """,
-            GetAttribute = $"""
-                SELECT TOP 1 entity_type, entity_id, attribute, value
-                FROM {attributesTable}
-                WHERE {snapPredicate}
-                  AND entity_type = @EntityType
-                  AND attribute = @Attribute
-                """,
-            GetAttributeWithEntityId = $"""
-                SELECT TOP 1 entity_type, entity_id, attribute, value
-                FROM {attributesTable}
-                WHERE {snapPredicate}
-                  AND entity_type = @EntityType
-                  AND attribute = @Attribute
-                  AND entity_id = @EntityId
                 """,
             HasTrueBoolAttribute = $"""
                 SELECT CASE WHEN EXISTS(
@@ -500,9 +484,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         };
     }
 
-    // Internal (not private): SqlServerBatchOps' dialect catalog serves the exact same SQL text
-    // as these single-op queries — one definition, shared through GetQueries, so the two paths
-    // can never drift apart.
+    // Internal so SqlServerBatchOps' dialect catalog serves the exact SQL text of these single-op
+    // queries: one definition, shared through GetQueries, keeps the two paths identical.
     internal sealed record ReaderQueries
     {
         public required string RelationsTable { get; init; }
@@ -512,8 +495,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         // Batch form of GetLatestSnapToken for SqlServerBatchOps: parks the latest token in the
         // session context (read back through DeclareBatchResolvedSnapToken) and returns it.
         public required string ResolveLatestSnapTokenForBatch { get; init; }
-        public required string GetAttribute { get; init; }
-        public required string GetAttributeWithEntityId { get; init; }
         public required string HasTrueBoolAttribute { get; init; }
         public required string HasAnyOfAttributes { get; init; }
         public required string SelectAttributesByEntityAttributeFilter { get; init; }
@@ -546,35 +527,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required string GetAttributesDictScopedPrefix { get; init; }
         public required string GetEntityIdsExcluding { get; init; }
         public required string GetSubjectIdsExcluding { get; init; }
-    }
-
-    public async Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken)
-    {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
-        await EnterQuery(cancellationToken);
-        try
-        {
-            await using var connection = (SqlConnection)_connectionFactory();
-            await connection.OpenAsync(cancellationToken);
-            var hasEntityId = !string.IsNullOrWhiteSpace(filter.EntityId);
-
-            await using var command = CreateCommand(connection, hasEntityId ? _q.GetAttributeWithEntityId : _q.GetAttribute);
-            AddStringParameter(command.Parameters, "@EntityType", filter.EntityType, 256);
-            AddStringParameter(command.Parameters, "@Attribute", filter.Attribute, 64);
-            if (hasEntityId)
-                AddStringParameter(command.Parameters, "@EntityId", filter.EntityId!, 64);
-            AddFixedCharParameter(command.Parameters, "@SnapToken", filter.SnapToken.Value, 26);
-
-            await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SingleRow | CommandBehavior.SequentialAccess, cancellationToken);
-            if (!await reader.ReadAsync(cancellationToken))
-                return null;
-
-            return ReadAttributeTuple(reader);
-        }
-        finally
-        {
-            Semaphore.Release();
-        }
     }
 
     private static void PopulateHasTrueBoolAttributeCommand(SqlParameterCollection parameters, string entityType,

@@ -7,10 +7,9 @@ namespace Valtuutus.Data.Db;
 /// Opt-in capability for relational providers that support ADO.NET DbBatch: package multiple
 /// statements into one physical round trip. Separate from <see cref="IRelationalCheckOps"/>
 /// deliberately — that interface's members are mandatory for every relational provider;
-/// this one is optional, so a provider without batch support (not yet ported) simply doesn't
-/// register an implementation, and the consumer (BatchedPhysicalExecutor, which receives it by
-/// injection — or null when absent) degrades gracefully to individual dispatch rather than this
-/// being a breaking interface addition. <see cref="RelationalBatchProviderBase"/> implements the
+/// this one is optional: a provider without batch support registers no implementation, and the
+/// consumer (BatchedPhysicalExecutor, which receives it by injection — null when absent) falls
+/// back to individual dispatch. <see cref="RelationalBatchProviderBase"/> implements the
 /// Add* family once, generically; a provider supplies only its dialect hooks.
 /// </summary>
 public interface IRelationalBatchOps

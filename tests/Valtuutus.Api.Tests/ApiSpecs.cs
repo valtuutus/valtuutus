@@ -14,7 +14,7 @@ public class ApiSpecs
     [Fact]
     public Task ApproveCore()
     {
-        return ApiSpecExtensions.VerifyAssembly<CheckEngine>();
+        return ApiSpecExtensions.VerifyAssembly<ICheckEngine>();
     }
 
     [Fact]

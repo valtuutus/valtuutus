@@ -35,32 +35,6 @@ public interface IDataReaderProvider
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Batch variant of <see cref="HasDirectRelation"/> across sibling relation NAMES (not entity
-    /// IDs): returns the subset of <paramref name="relationNames"/> that have a direct tuple from
-    /// (<paramref name="entityType"/>, <paramref name="entityId"/>) to <paramref name="subjectId"/>.
-    /// Collapses N individual HasDirectRelation queries — for sibling Union/Intersect children on
-    /// the same entity — into a single DB round-trip.
-    /// The <see cref="HashSet{T}"/> return type is deliberate: relation tuples carry no uniqueness
-    /// constraint, so a duplicate tuple for the same relation must not be able to inflate a
-    /// caller's Intersect-superset check. Deduplication is a property of the return type, not of
-    /// the SQL — implementations may add <c>DISTINCT</c> as a wire-efficiency nicety, but callers
-    /// must not rely on that; only the set semantics of the return value are guaranteed.
-    /// </summary>
-    Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
-        string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Analogue of <see cref="HasAnyOfDirectRelations"/> for bool attributes: which of
-    /// <paramref name="attributeNames"/> are true for (<paramref name="entityType"/>,
-    /// <paramref name="entityId"/>). Collapses N individual HasTrueBoolAttribute queries — for
-    /// sibling Union/Intersect children on the same entity — into a single DB round-trip.
-    /// Deduplication is a property of the HashSet return type, not the SQL (same contract as
-    /// HasAnyOfDirectRelations).
-    /// </summary>
-    Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
-        SnapToken snapToken, CancellationToken cancellationToken);
-
-    /// <summary>
     /// Checks whether the subject has access through a tuple-to-user-set relation:
     /// returns true if there exists an intermediate entity X such that
     /// (entityType, entityId) has [tupleSetRelation] to X, and X has [computedRelation] to (subjectType, subjectId).
@@ -105,13 +79,12 @@ public interface IDataReaderProvider
     Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES
-    /// (not entity/subject IDs): widens the single <c>relation = @relation</c> filter to
+    /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES:
+    /// widens the single <c>relation = @relation</c> filter to
     /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
     /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
     /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
-    /// direct-relation Union/Intersect children in LookupEntityEngine into one DB round trip,
-    /// the LookupEntity analogue of <see cref="HasAnyOfDirectRelations"/> for CheckEngine.
+    /// direct-relation Union/Intersect children in LookupEntityEngine into one DB round trip.
     /// When <paramref name="scope"/> is provided, only entities that also have the scope relation
     /// to the scope subject are returned (same semantics as <see cref="GetRelationsWithSubjectsIds"/>).
     /// </summary>
@@ -161,14 +134,6 @@ public interface IDataReaderProvider
         string subEntityType,
         string subRelation,
         CancellationToken cancellationToken);
-
-    /// <summary>
-    /// Retrieves a single AttributeTuple based on the provided filter.
-    /// </summary>
-    /// <param name="filter">The filter criteria for retrieving the AttributeTuple.</param>
-    /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>The AttributeTuple matching the filter criteria, or null if not found.</returns>
-    Task<AttributeTuple?> GetAttribute(EntityAttributeFilter filter, CancellationToken cancellationToken);
 
     /// <summary>
     /// Existence-only fast path for boolean attribute permission leaves: returns true when

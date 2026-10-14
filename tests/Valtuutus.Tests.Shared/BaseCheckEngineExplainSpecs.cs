@@ -13,7 +13,6 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
     protected BaseCheckEngineExplainSpecs(IDatabaseFixture fixture) { Fixture = fixture; }
     protected IDatabaseFixture Fixture { get; }
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
-    protected virtual bool UseCheckV1 => false;
 
     protected async ValueTask<ICheckEngine> CreateEngine(RelationTuple[] tuples, AttributeTuple[] attributes,
         string? schema = null)
@@ -21,8 +20,6 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         var services = new ServiceCollection()
             .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services).AddConcurrentQueryLimit(3);
-        if (UseCheckV1)
-            services.AddValtuutusCheckV1();
         var sp = services.BuildServiceProvider();
         var scope = sp.CreateScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
@@ -131,7 +128,7 @@ public abstract class BaseCheckEngineExplainSpecs : IAsyncLifetime
         result.Result.Should().BeTrue();
         // edit's tree has TWO TupleToUserSet nodes (parent.admin and team.member — no team tuple
         // seeded here, so team.member is false); a union's children attach in completion order,
-        // not declaration order (V1 parity: CheckEngine also attaches per-child on completion),
+        // not declaration order,
         // so an unqualified FindNodeByType could return either one. Match by name, same
         // convention as Explain_TupleToUserSet_SlowPathSingleRelation_RecordsNode/
         // Explain_TupleToUserSet_MultipleRelations_ParallelPath_RecordsNodes below.

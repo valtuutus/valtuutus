@@ -13,11 +13,29 @@ namespace Valtuutus.Data.Db;
 /// </summary>
 public interface IRelationalCheckOps
 {
-    /// <inheritdoc cref="IDataReaderProvider.HasAnyOfDirectRelations"/>
+    /// <summary>
+    /// Batch variant of <see cref="IDataReaderProvider.HasDirectRelation"/> across sibling relation NAMES (not entity
+    /// IDs): returns the subset of <paramref name="relationNames"/> that have a direct tuple from
+    /// (<paramref name="entityType"/>, <paramref name="entityId"/>) to <paramref name="subjectId"/>.
+    /// Collapses N individual <see cref="IDataReaderProvider.HasDirectRelation"/> queries — for sibling Union/Intersect children on
+    /// the same entity — into a single DB round-trip.
+    /// The <see cref="HashSet{T}"/> return type is deliberate: relation tuples carry no uniqueness
+    /// constraint, so a duplicate tuple for the same relation must not be able to inflate a
+    /// caller's Intersect-superset check. Deduplication is a property of the return type, not of
+    /// the SQL — implementations may add <c>DISTINCT</c> as a wire-efficiency nicety, but callers
+    /// must not rely on that; only the set semantics of the return value are guaranteed.
+    /// </summary>
     Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken);
 
-    /// <inheritdoc cref="IDataReaderProvider.HasAnyOfAttributes"/>
+    /// <summary>
+    /// Analogue of <see cref="HasAnyOfDirectRelations"/> for bool attributes: which of
+    /// <paramref name="attributeNames"/> are true for (<paramref name="entityType"/>,
+    /// <paramref name="entityId"/>). Collapses N individual <see cref="IDataReaderProvider.HasTrueBoolAttribute"/> queries — for
+    /// sibling Union/Intersect children on the same entity — into a single DB round-trip.
+    /// Deduplication is a property of the HashSet return type, not the SQL (same contract as
+    /// HasAnyOfDirectRelations).
+    /// </summary>
     Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
         SnapToken snapToken, CancellationToken cancellationToken);
 

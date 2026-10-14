@@ -95,8 +95,8 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         => AddParam(cmd, name, string.IsNullOrWhiteSpace(value) ? DBNull.Value : value);
 
     /// <summary>
-    /// Appends the snapshot-token parameter. Its own hook (not <see cref="WriteStringParam"/>)
-    /// because providers type it differently from ordinary varchar columns (fixed-width char on
+    /// Appends the snapshot-token parameter. A dedicated hook because providers type it
+    /// differently from ordinary varchar columns (fixed-width char on
     /// Postgres).
     /// </summary>
     protected virtual void WriteSnapTokenParam(DbBatchCommand cmd, string name, SnapToken snapToken)
