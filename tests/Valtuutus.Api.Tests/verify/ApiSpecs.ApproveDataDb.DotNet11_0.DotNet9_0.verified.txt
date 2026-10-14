@@ -68,6 +68,10 @@ namespace Valtuutus.Data.Db
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
     }
+    public interface ILookupSubjectBatchOps
+    {
+        void AddToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery query, Valtuutus.Core.Data.SnapToken? snapToken);
+    }
     public interface IRelationalBatchOps
     {
         Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }

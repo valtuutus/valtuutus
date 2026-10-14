@@ -427,6 +427,40 @@ namespace Valtuutus.Core.Engines.LookupSubject
         public required string SubjectType { get; init; }
     }
 }
+namespace Valtuutus.Core.Engines.LookupSubject.V2
+{
+    public sealed class DefaultLookupSubjectQueryRunner : Valtuutus.Core.Engines.LookupSubject.V2.ILookupSubjectQueryRunner
+    {
+        public DefaultLookupSubjectQueryRunner(Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public interface ILookupSubjectQueryRunner
+    {
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken);
+    }
+    public sealed class LookupSubjectQuery
+    {
+        public LookupSubjectQuery() { }
+        public string EntityType { get; init; }
+        public System.Collections.Generic.IReadOnlyCollection<string> Ids { get; init; }
+        public required Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQueryKind Kind { get; init; }
+        public string[] Names { get; init; }
+        public string Relation { get; init; }
+        public object? Result { get; set; }
+        public string SubEntityType { get; init; }
+        public string? SubjectRelation { get; init; }
+        public string SubjectType { get; init; }
+    }
+    public enum LookupSubjectQueryKind
+    {
+        Relations = 0,
+        RelationsMulti = 1,
+        Joined = 2,
+        Attributes = 3,
+        Attribute = 4,
+        SubjectsExcluding = 5,
+    }
+}
 namespace Valtuutus.Core.Lang
 {
     public delegate bool FunctionExecutor(System.ReadOnlySpan<Valtuutus.Core.Lang.LiteralValueUnion> args);

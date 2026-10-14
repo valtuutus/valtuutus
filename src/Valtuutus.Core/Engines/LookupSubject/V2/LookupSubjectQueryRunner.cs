@@ -6,7 +6,7 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2;
 /// Runs the queries of one lookup step. A step's queries never depend on each other, so a runner
 /// may run them concurrently or together in one round trip.
 /// </summary>
-internal interface ILookupSubjectQueryRunner
+public interface ILookupSubjectQueryRunner
 {
     /// <summary>
     /// Runs <paramref name="queries"/>, storing each answer in <see cref="LookupSubjectQuery.Result"/>,
@@ -19,7 +19,7 @@ internal interface ILookupSubjectQueryRunner
 }
 
 /// <summary>Runs each query as its own <see cref="IDataReaderProvider"/> call, a step's calls concurrently.</summary>
-internal sealed class DefaultLookupSubjectQueryRunner(IDataReaderProvider reader) : ILookupSubjectQueryRunner
+public sealed class DefaultLookupSubjectQueryRunner(IDataReaderProvider reader) : ILookupSubjectQueryRunner
 {
     public async ValueTask<SnapToken> RunAsync(IReadOnlyList<LookupSubjectQuery> queries, SnapToken? snapToken,
         CancellationToken cancellationToken)

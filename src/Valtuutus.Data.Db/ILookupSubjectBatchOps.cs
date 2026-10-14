@@ -1,0 +1,28 @@
+using System.Data.Common;
+using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.LookupSubject.V2;
+
+namespace Valtuutus.Data.Db;
+
+/// <summary>
+/// Writes LookupSubject V2 queries as commands of a <see cref="DbBatch"/>, so a relational provider
+/// runs a whole lookup step in one round trip. The batch itself is created and executed through
+/// the provider's <see cref="IRelationalBatchOps"/>. A provider without an implementation runs
+/// each query as its own reader call.
+/// </summary>
+public interface ILookupSubjectBatchOps
+{
+    /// <summary>
+    /// Adds the command answering <paramref name="query"/> to <paramref name="batch"/>, on the same
+    /// SQL text the provider's single-command reader method runs. A null <paramref name="snapToken"/>
+    /// reads the token resolved by an earlier command of the same batch
+    /// (<see cref="IRelationalBatchOps.AddResolveLatestSnapTokenToBatch"/>).
+    /// <para>
+    /// Result set shapes: entity_type, entity_id, relation, subject_type, subject_id,
+    /// subject_relation for the relation kinds; entity_type, entity_id, attribute, value (JSON
+    /// text) for the attribute kinds; subject_id for
+    /// <see cref="LookupSubjectQueryKind.SubjectsExcluding"/>.
+    /// </para>
+    /// </summary>
+    void AddToBatch(DbBatch batch, LookupSubjectQuery query, SnapToken? snapToken);
+}
