@@ -509,13 +509,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND entity_id = @entity_id
                   AND relation = @relation
                 """),
+            // The columns the userset index leads with are plain equalities: a generic plan, which
+            // batches that resolve their own snap token force, can seek only through those, and
+            // an "@p IS NULL OR col = @p" filter on them turns it into a scan of the whole table.
             SelectRelationsWithEntityIds = PgStatement.Compile($"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
                 WHERE {snapPredicate}
-                  AND (@subject_type IS NULL OR subject_type = @subject_type)
-                  AND (@entity_type IS NULL OR entity_type = @entity_type)
-                  AND (@relation IS NULL OR relation = @relation)
+                  AND subject_type = @subject_type
+                  AND entity_type = @entity_type
+                  AND relation = @relation
                   AND entity_id = ANY(@entity_ids)
                   AND (@subject_relation IS NULL OR subject_relation = @subject_relation)
                 """),
