@@ -366,6 +366,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                         AND subject_id = @SubjectId
                   )
                 """,
+            // The listed entity ids bound the inner rows whatever the other parameters are, so the
+            // inner lookup seeks by them. One cached plan serves every caller of this text, including
+            // callers whose (entity_type, relation, subject_type) matches many tuples.
             GetRelationsJoinedByEntityIds = $"""
                 SELECT r_dep.entity_type, r_dep.entity_id, r_dep.relation, r_dep.subject_type, r_dep.subject_id, r_dep.subject_relation
                 FROM {relationsTable} AS r_dep
@@ -373,7 +376,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND r_dep.entity_type = @SubEntityType
                   AND r_dep.relation = @SubRelation
                   AND r_dep.entity_id IN (
-                      SELECT subject_id FROM {relationsTable}
+                      SELECT subject_id FROM {relationsTable} WITH (FORCESEEK (idx_relationtuples_entitytype_entityid_relation_createdtxid_deletedtxid_id (entity_type, entity_id)))
                       WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
                         AND entity_type = @EntityType
                         AND entity_id IN ({IdList.From("@EntityIds")})
