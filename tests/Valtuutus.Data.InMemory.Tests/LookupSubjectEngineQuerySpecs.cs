@@ -173,7 +173,7 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
     private sealed class CapturingReader(IDataReaderProvider inner, List<List<string>> captures) : IDataReaderProvider
     {
         public Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter,
-            string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+            string subjectType, IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
         {
             var materialized = entityIds.ToList();
             captures.Add(materialized);
@@ -204,16 +204,16 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
             => inner.GetIndirectRelations(tupleFilter, cancellationToken);
 
         public Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-            string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
-            => inner.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, scope, cancellationToken);
+            string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
+            => inner.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, subjectRelation, scope, cancellationToken);
 
         public Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType,
-            string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
+            string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation, SnapToken snapToken, EntityScope? scope,
             CancellationToken cancellationToken)
-            => inner.GetRelationsWithSubjectsIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope, cancellationToken);
+            => inner.GetRelationsWithSubjectsIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, subjectRelation, snapToken, scope, cancellationToken);
 
         public Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType,
-            string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
+            string[] relationNames, string subjectType, IEnumerable<string> entityIds, string subjectRelation,
             SnapToken snapToken, CancellationToken cancellationToken)
         {
             var materialized = entityIds.ToList();
@@ -223,15 +223,16 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
         }
 
         public Task<PooledList<RelationTuple>> GetRelationsJoined(EntityRelationFilter mainFilter, string subEntityType,
-            string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
-            => inner.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, cancellationToken);
+            string subjectRelation, string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
+            => inner.GetRelationsJoined(mainFilter, subEntityType, subjectRelation, subRelation, subjectType, subjectId, scope, cancellationToken);
 
         public Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(EntityRelationFilter mainFilter,
-            IEnumerable<string> entityIds, string subEntityType, string subRelation, CancellationToken cancellationToken)
+            IEnumerable<string> entityIds, string subEntityType, string subjectRelation, string subRelation,
+            string subjectType, CancellationToken cancellationToken)
         {
             var materialized = entityIds.ToList();
             captures.Add(materialized);
-            return inner.GetRelationsJoinedByEntityIds(mainFilter, materialized, subEntityType, subRelation, cancellationToken);
+            return inner.GetRelationsJoinedByEntityIds(mainFilter, materialized, subEntityType, subjectRelation, subRelation, subjectType, cancellationToken);
         }
 
         public Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,

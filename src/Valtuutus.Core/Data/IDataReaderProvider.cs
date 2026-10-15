@@ -60,23 +60,26 @@ public interface IDataReaderProvider
     /// <param name="entityRelationFilter">The filter criteria for retrieving RelationTuples.</param>
     /// <param name="subjectType">The type of the subject.</param>
     /// <param name="entityIds">The IDs of the entities.</param>
-    /// <param name="subjectRelation">The relation of the subject.</param>
+    /// <param name="subjectRelation">The relation the subjects carry: empty for a direct subject, otherwise the userset relation. Matched exactly.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and entity IDs.</returns>
     Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
-        IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken);
+        IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken);
 
     /// <summary>
     /// Retrieves a list of RelationTuples with specified subject IDs.
-    /// When <paramref name="scope"/> is provided, only entities that also have the scope relation to the scope subject are returned.
+    /// When <paramref name="scope"/> is provided, only entities that also have the scope relation to the scope subject are returned;
+    /// the scope subject is always a direct subject.
     /// </summary>
     /// <param name="entityFilter">The filter criteria for retrieving RelationTuples.</param>
     /// <param name="subjectsIds">The IDs of the subjects.</param>
     /// <param name="subjectType">The type of the subject.</param>
+    /// <param name="subjectRelation">The relation the subjects carry: empty for a direct subject, otherwise the userset relation. Matched exactly.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <param name="scope">Optional entity scope to filter results.</param>
     /// <returns>A list of RelationTuples matching the filter criteria and subject IDs.</returns>
-    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken);
+    Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds,
+        string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
     /// Batch variant of <see cref="GetRelationsWithSubjectsIds"/> across sibling relation NAMES:
@@ -87,9 +90,10 @@ public interface IDataReaderProvider
     /// direct-relation Union/Intersect children in LookupEntityEngine into one DB round trip.
     /// When <paramref name="scope"/> is provided, only entities that also have the scope relation
     /// to the scope subject are returned (same semantics as <see cref="GetRelationsWithSubjectsIds"/>).
+    /// <paramref name="subjectRelation"/> follows the same contract as in <see cref="GetRelationsWithSubjectsIds"/>.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(
-        string entityType, string[] relationNames, string[] subjectsIds, string subjectType,
+        string entityType, string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation,
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken);
 
     /// <summary>
@@ -101,19 +105,23 @@ public interface IDataReaderProvider
     /// direct-relation Union/Intersect children in LookupSubjectEngine into one DB round trip, the
     /// LookupSubject analogue of <see cref="GetRelationsWithSubjectsIdsMultiRelation"/>. Unlike that
     /// method, there is no <c>EntityScope</c> variant — LookupSubjectEngine has no scope concept.
+    /// <paramref name="subjectRelation"/> follows the same contract as in <see cref="GetRelationsWithEntityIds"/>.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(
         string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
-        string? subjectRelation, SnapToken snapToken, CancellationToken cancellationToken);
+        string subjectRelation, SnapToken snapToken, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Two-hop join: finds main-entity tuples whose subject ID is itself a subject of the
-    /// dependent relation. When <paramref name="scope"/> is provided, only main entities
-    /// that also have the scope relation to the scope subject are returned.
+    /// Two-hop join: returns the <paramref name="mainFilter"/> tuples whose subject is
+    /// <paramref name="subEntityType"/>:X#<paramref name="subjectRelation"/> for some X that has
+    /// <paramref name="subRelation"/> to the direct subject <paramref name="subjectType"/>:<paramref name="subjectId"/>.
+    /// When <paramref name="scope"/> is provided, only main entities that also have the scope
+    /// relation to the direct scope subject are returned.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsJoined(
         EntityRelationFilter mainFilter,
         string subEntityType,
+        string subjectRelation,
         string subRelation,
         string subjectType,
         string subjectId,
@@ -127,12 +135,18 @@ public interface IDataReaderProvider
     /// subquery against a list of starting entity IDs. Used by LookupSubject, which starts from
     /// N entity IDs and has no single final subject to filter to — it's looking for all subjects
     /// reachable from those entities in one query instead of a dependent-query-then-recurse pair.
+    /// The first hop reads the <paramref name="mainFilter"/> tuples of <paramref name="entityIds"/> whose
+    /// subject is <paramref name="subEntityType"/>:X#<paramref name="subjectRelation"/>. The answer is
+    /// the tuples of <paramref name="subRelation"/> on each such X whose subject is a direct
+    /// <paramref name="subjectType"/>.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
         EntityRelationFilter mainFilter,
         IEnumerable<string> entityIds,
         string subEntityType,
+        string subjectRelation,
         string subRelation,
+        string subjectType,
         CancellationToken cancellationToken);
 
     /// <summary>

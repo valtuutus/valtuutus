@@ -92,7 +92,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
-        IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+        IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
@@ -107,13 +107,13 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
+        string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType, scope);
+            return _relations.GetRelationsWithSubjectIds(entityFilter, subjectsIds, subjectType, subjectRelation, scope);
         }
         finally
         {
@@ -122,14 +122,14 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType,
-        string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
+        string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation, SnapToken snapToken, EntityScope? scope,
         CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            return _relations.GetRelationsWithSubjectIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, snapToken, scope);
+            return _relations.GetRelationsWithSubjectIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType, subjectRelation, snapToken, scope);
         }
         finally
         {
@@ -138,7 +138,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType,
-        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
+        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string subjectRelation,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
@@ -172,14 +172,14 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(
-        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            return _relations.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope);
+            return _relations.GetRelationsJoined(mainFilter, subEntityType, subjectRelation, subRelation, subjectType, subjectId, scope);
         }
         finally
         {
@@ -188,14 +188,14 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(
-        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
-        CancellationToken cancellationToken)
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subjectRelation,
+        string subRelation, string subjectType, CancellationToken cancellationToken)
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         await EnterQuery(cancellationToken);
         try
         {
-            return _relations.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation);
+            return _relations.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subjectRelation, subRelation, subjectType);
         }
         finally
         {
@@ -263,7 +263,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
                     Relation = s.Relation,
                     SnapToken = filter.SnapToken
                 };
-                using var scopedRelations = _relations.GetRelationsWithSubjectIds(scopeFilter, [s.SubjectId], s.SubjectType);
+                using var scopedRelations = _relations.GetRelationsWithSubjectIds(scopeFilter, [s.SubjectId], s.SubjectType, "");
                 if (scopedRelations.Count == 0)
                     return new Dictionary<(string, string), AttributeTuple>(0);
                 scopedEntityIds = new HashSet<string>(scopedRelations.Count);

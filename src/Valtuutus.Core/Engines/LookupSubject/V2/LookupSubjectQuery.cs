@@ -6,7 +6,7 @@ public enum LookupSubjectQueryKind
     /// <summary>
     /// Tuples of <see cref="LookupSubjectQuery.Relation"/> on <see cref="LookupSubjectQuery.EntityType"/>
     /// for <see cref="LookupSubjectQuery.Ids"/> whose subject is <see cref="LookupSubjectQuery.SubjectType"/>
-    /// (with <see cref="LookupSubjectQuery.SubjectRelation"/> when set).
+    /// and <see cref="LookupSubjectQuery.SubjectRelation"/>.
     /// </summary>
     Relations,
 
@@ -16,9 +16,10 @@ public enum LookupSubjectQueryKind
     RelationsMulti,
 
     /// <summary>
-    /// Final subjects reached from <see cref="LookupSubjectQuery.Ids"/> through
-    /// <see cref="LookupSubjectQuery.Relation"/> and then <see cref="LookupSubjectQuery.SubjectRelation"/>
-    /// on <see cref="LookupSubjectQuery.SubEntityType"/>.
+    /// Direct <see cref="LookupSubjectQuery.SubjectType"/> subjects reached from <see cref="LookupSubjectQuery.Ids"/>
+    /// through <see cref="LookupSubjectQuery.Relation"/> tuples whose subject is
+    /// <see cref="LookupSubjectQuery.SubEntityType"/>:X#<see cref="LookupSubjectQuery.SubjectRelation"/>, and then
+    /// <see cref="LookupSubjectQuery.SubRelation"/> on each such X.
     /// </summary>
     Joined,
 
@@ -60,7 +61,12 @@ public sealed class LookupSubjectQuery
     public string Relation { get; init; } = "";
     public string[] Names { get; init; } = [];
     public string SubjectType { get; init; } = "";
-    public string? SubjectRelation { get; init; }
+
+    /// <summary>The relation the read tuples' subjects carry; empty for a direct subject.</summary>
+    public string SubjectRelation { get; init; } = "";
+
+    /// <summary>For <see cref="LookupSubjectQueryKind.Joined"/>, the relation on <see cref="SubEntityType"/> whose direct subjects are read.</summary>
+    public string SubRelation { get; init; } = "";
     public string SubEntityType { get; init; } = "";
     public IReadOnlyCollection<string> Ids { get; init; } = [];
 
@@ -87,6 +93,6 @@ public sealed class LookupSubjectQuery
     internal LookupSubjectQuery For(IReadOnlyCollection<string> ids, int? levels = null) => new()
     {
         Kind = Kind, EntityType = EntityType, Relation = Relation, Names = Names, SubjectType = SubjectType,
-        SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, Ids = ids, Levels = levels ?? Levels,
+        SubjectRelation = SubjectRelation, SubRelation = SubRelation, SubEntityType = SubEntityType, Ids = ids, Levels = levels ?? Levels,
     };
 }

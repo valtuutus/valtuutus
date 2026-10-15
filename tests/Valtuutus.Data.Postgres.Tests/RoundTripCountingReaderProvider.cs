@@ -120,30 +120,30 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter,
-        string subjectType, IEnumerable<string> entityIds, string? subjectRelation, CancellationToken cancellationToken)
+        string subjectType, IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
     {
         await counter.CountAsync();
         return await inner.GetRelationsWithEntityIds(entityRelationFilter, subjectType, entityIds, subjectRelation, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
-        string[] subjectsIds, string subjectType, EntityScope? scope, CancellationToken cancellationToken)
+        string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
     {
         await counter.CountAsync();
-        return await inner.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, scope, cancellationToken);
+        return await inner.GetRelationsWithSubjectsIds(entityFilter, subjectsIds, subjectType, subjectRelation, scope, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType,
-        string[] relationNames, string[] subjectsIds, string subjectType, SnapToken snapToken, EntityScope? scope,
+        string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation, SnapToken snapToken, EntityScope? scope,
         CancellationToken cancellationToken)
     {
         await counter.CountAsync();
         return await inner.GetRelationsWithSubjectsIdsMultiRelation(entityType, relationNames, subjectsIds, subjectType,
-            snapToken, scope, cancellationToken);
+            subjectRelation, snapToken, scope, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType,
-        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string? subjectRelation,
+        string[] relationNames, string subjectType, IEnumerable<string> entityIds, string subjectRelation,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
         await counter.CountAsync();
@@ -152,17 +152,18 @@ internal sealed class CountingReaderProvider(PostgresDataReaderProvider inner, R
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoined(EntityRelationFilter mainFilter, string subEntityType,
-        string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
+        string subjectRelation, string subRelation, string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
         await counter.CountAsync();
-        return await inner.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, cancellationToken);
+        return await inner.GetRelationsJoined(mainFilter, subEntityType, subjectRelation, subRelation, subjectType, subjectId, scope, cancellationToken);
     }
 
     public async Task<PooledList<RelationTuple>> GetRelationsJoinedByEntityIds(EntityRelationFilter mainFilter,
-        IEnumerable<string> entityIds, string subEntityType, string subRelation, CancellationToken cancellationToken)
+        IEnumerable<string> entityIds, string subEntityType, string subjectRelation, string subRelation,
+        string subjectType, CancellationToken cancellationToken)
     {
         await counter.CountAsync();
-        return await inner.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation, cancellationToken);
+        return await inner.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subjectRelation, subRelation, subjectType, cancellationToken);
     }
 
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute, SnapToken snapToken,

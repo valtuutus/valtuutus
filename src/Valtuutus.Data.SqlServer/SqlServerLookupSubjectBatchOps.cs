@@ -54,7 +54,8 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
             case LookupSubjectQueryKind.Joined:
                 cmd.CommandText = statements.RelationsJoinedByEntityIds;
                 SqlServerDataReaderProvider.AddRelationsJoinedByEntityIdsParameters(parameters,
-                    query.EntityType, query.Relation, query.Ids, query.SubEntityType, query.SubjectRelation!, snapToken);
+                    query.EntityType, query.Relation, query.Ids, query.SubEntityType, query.SubjectRelation, query.SubRelation,
+                    query.SubjectType, snapToken);
                 break;
             case LookupSubjectQueryKind.UsersetLevels:
                 cmd.CommandText = (snapToken is null ? _usersetLevelsBatchResolved : _usersetLevels)[query.Levels];

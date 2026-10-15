@@ -45,7 +45,8 @@ internal sealed class PostgresLookupSubjectBatchOps(ValtuutusPostgresOptions dbO
             case LookupSubjectQueryKind.Joined:
                 statement = q.GetRelationsJoinedByEntityIds;
                 PostgresDataReaderProvider.AddRelationsJoinedByEntityIdsParameters(parameters, query.EntityType,
-                    query.Relation, query.Ids, query.SubEntityType, query.SubjectRelation!, snapToken);
+                    query.Relation, query.Ids, query.SubEntityType, query.SubjectRelation, query.SubRelation, query.SubjectType,
+                    snapToken);
                 break;
             case LookupSubjectQueryKind.UsersetLevels:
                 statement = (snapToken is null ? _usersetLevelsBatchResolved : _usersetLevels)[query.Levels];
