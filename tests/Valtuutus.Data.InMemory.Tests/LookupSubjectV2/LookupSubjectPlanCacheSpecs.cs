@@ -57,4 +57,30 @@ public class LookupSubjectPlanCacheSpecs
         hop.EntityType.Should().Be("group");
         hop.Name.Should().Be("member");
     }
+
+    private sealed class RecordingRewriter(List<string> calls, string tag) : ILookupSubjectPlanRewriter
+    {
+        public LookupPlan Rewrite(LookupPlan root, Valtuutus.Core.Schemas.Schema schema, string entityType, string name, string subjectType)
+        {
+            calls.Add($"{tag}:{entityType}.{name}:{subjectType}");
+            return root;
+        }
+    }
+
+    [Fact]
+    public void Rewriters_run_in_registration_order_once_per_key()
+    {
+        var calls = new List<string>();
+        var services = new ServiceCollection().AddValtuutusCore(Schema);
+        services.AddInMemory();
+        services.AddValtuutusLookupSubjectV2();
+        services.AddSingleton<ILookupSubjectPlanRewriter>(new RecordingRewriter(calls, "a"));
+        services.AddSingleton<ILookupSubjectPlanRewriter>(new RecordingRewriter(calls, "b"));
+        var cache = services.BuildServiceProvider().GetRequiredService<LookupSubjectPlanCache>();
+
+        cache.GetOrCompile("project", "automate", "user");
+        cache.GetOrCompile("project", "automate", "user");
+
+        calls.Should().Equal("a:project.automate:user", "b:project.automate:user");
+    }
 }

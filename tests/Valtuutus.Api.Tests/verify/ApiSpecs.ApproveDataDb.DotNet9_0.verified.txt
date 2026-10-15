@@ -99,6 +99,7 @@ namespace Valtuutus.Data.Db
     public interface IValtuutusDbOptions
     {
         string AttributesTableName { get; }
+        int LookupHopsPerQuery { get; }
         string RelationsTableName { get; }
         string Schema { get; }
         string TransactionsTableName { get; }

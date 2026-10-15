@@ -19,7 +19,8 @@ public interface ILookupSubjectBatchOps
     /// (<see cref="IRelationalBatchOps.AddResolveLatestSnapTokenToBatch"/>).
     /// <para>
     /// Result set shapes: entity_type, entity_id, relation, subject_type, subject_id,
-    /// subject_relation for the relation kinds; entity_type, entity_id, attribute, value (JSON
+    /// subject_relation for the relation kinds (for <see cref="LookupSubjectQueryKind.UsersetLevels"/>,
+    /// only the subject columns carry data); entity_type, entity_id, attribute, value (JSON
     /// text) for the attribute kinds; subject_id for
     /// <see cref="LookupSubjectQueryKind.SubjectsExcluding"/>.
     /// </para>

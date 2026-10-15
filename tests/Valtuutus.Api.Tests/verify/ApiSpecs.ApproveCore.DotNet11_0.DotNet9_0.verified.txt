@@ -435,16 +435,28 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2
         public DefaultLookupSubjectQueryRunner(Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken) { }
     }
+    public sealed class ExpandPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public string EntityType { get; }
+        public string Name { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery Template { get; }
+    }
+    public interface ILookupSubjectPlanRewriter
+    {
+        Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan Rewrite(Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan root, Valtuutus.Core.Schemas.Schema schema, string entityType, string name, string subjectType);
+    }
     public interface ILookupSubjectQueryRunner
     {
         System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken);
     }
+    public abstract class LookupPlan { }
     public sealed class LookupSubjectQuery
     {
         public LookupSubjectQuery() { }
         public string EntityType { get; init; }
         public System.Collections.Generic.IReadOnlyCollection<string> Ids { get; init; }
         public required Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQueryKind Kind { get; init; }
+        public int Levels { get; init; }
         public string[] Names { get; init; }
         public string Relation { get; init; }
         public object? Result { get; set; }
@@ -460,6 +472,20 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2
         Attributes = 3,
         Attribute = 4,
         SubjectsExcluding = 5,
+        UsersetLevels = 6,
+    }
+    public sealed class SetPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan> Children { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery? Shared { get; }
+        public bool Union { get; }
+    }
+    public sealed class UsersetLevelsPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public UsersetLevelsPlan(Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery template, int levels, Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan oneLevel) { }
+        public int Levels { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan OneLevel { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery Template { get; }
     }
 }
 namespace Valtuutus.Core.Lang

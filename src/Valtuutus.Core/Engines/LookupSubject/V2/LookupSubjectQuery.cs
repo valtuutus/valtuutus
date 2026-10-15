@@ -37,6 +37,16 @@ public enum LookupSubjectQueryKind
 
     /// <summary>Every subject of <see cref="LookupSubjectQuery.SubjectType"/> except <see cref="LookupSubjectQuery.Ids"/>.</summary>
     SubjectsExcluding,
+
+    /// <summary>
+    /// Subjects of <see cref="LookupSubjectQuery.SubjectType"/> reached from <see cref="LookupSubjectQuery.Ids"/>
+    /// through <see cref="LookupSubjectQuery.Relation"/> on <see cref="LookupSubjectQuery.EntityType"/>, following
+    /// userset subjects for <see cref="LookupSubjectQuery.Levels"/> levels: level 0 is the relation's
+    /// own tuples, level i+1 the tuples of the usersets level i lists. The answer holds the plain
+    /// subjects of that type from every level and the userset subjects of the last level only;
+    /// only subject columns are read.
+    /// </summary>
+    UsersetLevels,
 }
 
 /// <summary>
@@ -54,9 +64,12 @@ public sealed class LookupSubjectQuery
     public string SubEntityType { get; init; } = "";
     public IReadOnlyCollection<string> Ids { get; init; } = [];
 
+    /// <summary>Levels a <see cref="LookupSubjectQueryKind.UsersetLevels"/> query follows; 2 or more.</summary>
+    public int Levels { get; init; }
+
     /// <summary>
     /// The answer: <c>List&lt;RelationTuple&gt;</c> for <see cref="LookupSubjectQueryKind.Relations"/>,
-    /// <see cref="LookupSubjectQueryKind.RelationsMulti"/> and <see cref="LookupSubjectQueryKind.Joined"/>;
+    /// <see cref="LookupSubjectQueryKind.RelationsMulti"/>, <see cref="LookupSubjectQueryKind.Joined"/> and <see cref="LookupSubjectQueryKind.UsersetLevels"/>;
     /// <c>Dictionary&lt;(string AttributeName, string EntityId), AttributeTuple&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.Attributes"/>; <c>List&lt;AttributeTuple&gt;</c> for
     /// <see cref="LookupSubjectQueryKind.Attribute"/>; <c>List&lt;string&gt;</c> for
@@ -69,10 +82,11 @@ public sealed class LookupSubjectQuery
     // Set once the query is handed to a step, so a query several nodes share runs once.
     internal bool Queued { get; set; }
 
-    // A plan keeps a query's shape without ids; each request binds its own ids to a fresh copy.
-    internal LookupSubjectQuery For(IReadOnlyCollection<string> ids) => new()
+    // A plan keeps a query's shape without ids; each request binds its own ids (and, for
+    // UsersetLevels, the levels its depth allows) to a fresh copy.
+    internal LookupSubjectQuery For(IReadOnlyCollection<string> ids, int? levels = null) => new()
     {
         Kind = Kind, EntityType = EntityType, Relation = Relation, Names = Names, SubjectType = SubjectType,
-        SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, Ids = ids,
+        SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, Ids = ids, Levels = levels ?? Levels,
     };
 }

@@ -274,7 +274,64 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         // Assert
         result.Should().BeEquivalentTo(expected);
     }
-        
+
+    // group.member mixes a nested userset with a terminal one, so a chain can end in either.
+    private const string UsersetDepthSchema = """
+        entity user {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+        }
+        entity project {
+            relation reviewer @team#member;
+            relation viewer @group#member;
+        }
+        """;
+
+    // project -> team -> user is two hops whether or not the engine reads both in one joined query.
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "alice" })]
+    [InlineData(3, new[] { "alice" })]
+    public async Task Terminal_userset_spends_a_level_of_depth(int depth, string[] expected)
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "p1", "reviewer", "team", "t1", "member"),
+                new RelationTuple("team", "t1", "member", "user", "alice"),
+            ], [], UsersetDepthSchema);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("project", "reviewer", "user", "p1", depth), default);
+
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    // u1 is two hops from p1, u2 three, u3 four (its last hop through the terminal team#member).
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "u1" })]
+    [InlineData(3, new[] { "u1", "u2" })]
+    [InlineData(4, new[] { "u1", "u2", "u3" })]
+    [InlineData(5, new[] { "u1", "u2", "u3" })]
+    public async Task Userset_chain_spends_a_level_of_depth_per_hop(int depth, string[] expected)
+    {
+        var engine = await CreateEngine(
+            [
+                new RelationTuple("project", "p1", "viewer", "group", "g1", "member"),
+                new RelationTuple("group", "g1", "member", "user", "u1"),
+                new RelationTuple("group", "g1", "member", "group", "g2", "member"),
+                new RelationTuple("group", "g2", "member", "user", "u2"),
+                new RelationTuple("group", "g2", "member", "team", "t1", "member"),
+                new RelationTuple("team", "t1", "member", "user", "u3"),
+            ], [], UsersetDepthSchema);
+
+        var result = await engine.Lookup(new LookupSubjectRequest("project", "viewer", "user", "p1", depth), default);
+
+        result.Should().BeEquivalentTo(expected);
+    }
+
     public static TheoryData<string, decimal?, string, HashSet<string>> ContextAccessTheoryData = new()
     {
         {"withdraw_amount", 500.0m, "1", [TestsConsts.Users.Alice]},

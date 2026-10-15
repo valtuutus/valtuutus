@@ -138,7 +138,7 @@ internal sealed class LookupSubjectPlanCompiler(Schema schema, string subjectTyp
             var subRelation = schema.GetRelation(target.Type, target.Relation);
             if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(subjectType))
             {
-                plans.Add(Joined(entityType, relation.Name, target.Type, target.Relation, isHop: false));
+                plans.Add(Joined(entityType, relation.Name, target.Type, target.Relation, isHop: true));
                 continue;
             }
 

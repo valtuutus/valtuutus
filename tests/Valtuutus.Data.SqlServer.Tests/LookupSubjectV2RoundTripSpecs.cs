@@ -103,7 +103,7 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
             // Step 1 already pinned the token; this grant commits after it, before step 2 reads g1.
             await Write(dbFactory, new RelationTuple("group", "g1", "member", "user", "alice"));
             wroteMidRequest = true;
-        });
+        }, hops: 1);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
 
@@ -113,6 +113,32 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         wroteMidRequest.Should().BeTrue("the lookup must have needed a second step for this spec to mean anything");
         duringWrite.Should().BeEquivalentTo(["bob"], "the grant committed after the request's token was resolved");
         afterWrite.Should().BeEquivalentTo(["alice", "bob"], "a new request resolves a new token that includes the grant");
+    }
+
+    [Theory]
+    [InlineData(1, 4)]
+    [InlineData(2, 2)]
+    [InlineData(4, 1)]
+    public async Task Nested_userset_levels_share_round_trips(int hops, int roundTrips)
+    {
+        var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
+        await Write(dbFactory, new RelationTuple("group", "g0", "member", "user", "u0"));
+        await Write(dbFactory, new RelationTuple("group", "g0", "member", "group", "g1", "member"));
+        await Write(dbFactory, new RelationTuple("group", "g1", "member", "user", "u1"));
+        await Write(dbFactory, new RelationTuple("group", "g1", "member", "group", "g2", "member"));
+        await Write(dbFactory, new RelationTuple("group", "g2", "member", "user", "u2"));
+        await Write(dbFactory, new RelationTuple("group", "g2", "member", "group", "g3", "member"));
+        await Write(dbFactory, new RelationTuple("group", "g3", "member", "user", "u3"));
+
+        var counter = new RoundTripCounter();
+        await using var sp = BuildServices(dbFactory, counter, hops: hops);
+        await using var scope = sp.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
+
+        var subjects = await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0"), default);
+
+        subjects.Should().BeEquivalentTo("u0", "u1", "u2", "u3");
+        counter.Count.Should().Be(roundTrips);
     }
 
     [Fact]
@@ -136,11 +162,13 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
     }
 
     private static ServiceProvider BuildServices(DbConnectionFactory dbFactory, RoundTripCounter counter,
-        Func<int, Task>? beforeRoundTrip = null)
+        Func<int, Task>? beforeRoundTrip = null, int? hops = null)
     {
         counter.BeforeRoundTrip = beforeRoundTrip;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        services.AddSqlServer(_ => dbFactory).AddConcurrentQueryLimit(3);
+        var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
+        services.AddSqlServer(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
+            .AddConcurrentQueryLimit(3);
         services.AddValtuutusLookupSubjectV2();
         services.AddSingleton(counter);
         services.Replace(ServiceDescriptor.Scoped<IDataReaderProvider>(sp =>

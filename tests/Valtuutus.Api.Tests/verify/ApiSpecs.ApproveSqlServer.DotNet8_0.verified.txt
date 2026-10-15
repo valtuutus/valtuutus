@@ -73,6 +73,7 @@ namespace Valtuutus.Data.SqlServer
     {
         public ValtuutusSqlServerOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
         public string AttributesTableName { get; }
+        public int LookupHopsPerQuery { get; init; }
         public string RelationsTableName { get; }
         public string Schema { get; }
         public string TransactionsTableName { get; }
