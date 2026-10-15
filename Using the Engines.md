@@ -261,6 +261,46 @@ do
 
 ---
 
+## Lookup engines V2 (opt-in)
+
+`ILookupSubjectEngine` and `ILookupEntityEngine` each have a second implementation. They return the same results as the default engines, and they will become the default in a later release. Opt in per engine after `AddValtuutusCore`, and before `AddCaching` if you use it:
+
+```csharp
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddValtuutusLookupSubjectV2()
+    .AddValtuutusLookupEntityV2()
+    .AddPostgres(_ => () => new NpgsqlConnection(connectionString))
+    .AddCaching();
+```
+
+The request and result types don't change, so callers need no change either.
+
+What the V2 engines do differently:
+
+- **They compile each permission once.** The plan for an (entity type, permission, subject type) is built on first use and reused by every request.
+- **They read in steps.** All the queries a lookup can ask at the same time make up one step. On Postgres and SQL Server, each step is a single database round trip.
+- **They resolve the snap token in the first round trip.** A request without a `SnapToken` reads the latest one in its first round trip and uses it for every later step, so a write committed while the lookup runs stays invisible to it.
+- **They walk recursive relations in fewer steps.** Examples are nested groups (`relation member @user @group#member`) or a userset chain.
+  - On Postgres and SQL Server, one query reads several levels of the chain.
+  - The entity lookup stops as soon as a level finds nothing new, instead of continuing to the request's depth.
+
+The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgresOptions` or `ValtuutusSqlServerOptions`:
+
+```csharp
+.AddPostgres(
+    _ => () => new NpgsqlConnection(connectionString),
+    new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes")
+    {
+        LookupHopsPerQuery = 3 // default 2; 1 reads one level per round trip
+    });
+```
+
+Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
+
+The InMemory provider runs the V2 engines too, without the round-trip batching.
+
+---
+
 ## Depth limit
 
 All engine requests carry a `Depth` property (default: `10`). Each time the engine recurses into a nested relation or permission, it decrements the depth counter. When it reaches zero, the engine **treats that branch as `false`** and stops recursing — it does not throw an exception.

@@ -26,6 +26,14 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
+    public static class ConfigureLookupEntityV2
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupEntityV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
+    public static class ConfigureLookupSubjectV2
+    {
+        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupSubjectV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
@@ -98,12 +106,12 @@ namespace Valtuutus.Core.Data
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetIndirectRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken?> GetLatestSnapToken(System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelations(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoined(Valtuutus.Core.Data.EntityRelationFilter mainFilter, string subEntityType, string subRelation, string subjectType, string subjectId, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoinedByEntityIds(Valtuutus.Core.Data.EntityRelationFilter mainFilter, System.Collections.Generic.IEnumerable<string> entityIds, string subEntityType, string subRelation, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType, string[] relationNames, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string? subjectRelation, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoined(Valtuutus.Core.Data.EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation, string subjectType, string subjectId, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsJoinedByEntityIds(Valtuutus.Core.Data.EntityRelationFilter mainFilter, System.Collections.Generic.IEnumerable<string> entityIds, string subEntityType, string subjectRelation, string subRelation, string subjectType, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIds(Valtuutus.Core.Data.EntityRelationFilter entityRelationFilter, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string subjectRelation, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithEntityIdsMultiRelation(string entityType, string[] relationNames, string subjectType, System.Collections.Generic.IEnumerable<string> entityIds, string subjectRelation, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIds(Valtuutus.Core.Data.EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, string subjectRelation, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.Task<Valtuutus.Core.Pools.PooledList<Valtuutus.Core.RelationTuple>> GetRelationsWithSubjectsIdsMultiRelation(string entityType, string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation, Valtuutus.Core.Data.SnapToken snapToken, Valtuutus.Core.Engines.LookupEntity.EntityScope? scope, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<System.Collections.Generic.List<string>> GetSubjectIdsExcluding(string subjectType, System.Collections.Generic.IReadOnlyCollection<string> excludeIds, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken, System.Threading.CancellationToken cancellationToken);
         System.Threading.Tasks.Task<bool> HasDirectRelation(Valtuutus.Core.Data.RelationTupleFilter tupleFilter, string subjectId, System.Threading.CancellationToken cancellationToken);
@@ -398,6 +406,61 @@ namespace Valtuutus.Core.Engines.LookupEntity
         public required string SubjectType { get; init; }
     }
 }
+namespace Valtuutus.Core.Engines.LookupEntity.V2
+{
+    public sealed class DefaultLookupEntityQueryRunner : Valtuutus.Core.Engines.LookupEntity.V2.ILookupEntityQueryRunner
+    {
+        public DefaultLookupEntityQueryRunner(Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class FixpointLevelsPlan : Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan
+    {
+        public FixpointLevelsPlan(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery template, int levels, Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan oneLevel, Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery? fromSubject = null) { }
+        public Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery? FromSubject { get; }
+        public int Levels { get; }
+        public Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan OneLevel { get; }
+        public Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery Template { get; }
+    }
+    public sealed class FixpointPlan : Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan { }
+    public interface ILookupEntityPlanRewriter
+    {
+        Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan Rewrite(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan root, Valtuutus.Core.Schemas.Schema schema, string entityType, string name, string subjectType);
+    }
+    public interface ILookupEntityQueryRunner
+    {
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken);
+    }
+    public abstract class LookupEntityPlan { }
+    public sealed class LookupEntityQuery
+    {
+        public LookupEntityQuery() { }
+        public string EntityType { get; init; }
+        public System.Collections.Generic.IReadOnlyCollection<string> Ids { get; init; }
+        public required Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQueryKind Kind { get; init; }
+        public System.Collections.Generic.IReadOnlyCollection<string> LevelOneIds { get; init; }
+        public int Levels { get; init; }
+        public string[] Names { get; init; }
+        public string Relation { get; init; }
+        public object? Result { get; set; }
+        public Valtuutus.Core.Engines.LookupEntity.EntityScope? Scope { get; init; }
+        public string SubEntityType { get; init; }
+        public string SubRelation { get; init; }
+        public string SubjectRelation { get; init; }
+        public string SubjectType { get; init; }
+    }
+    public enum LookupEntityQueryKind
+    {
+        Relations = 0,
+        RelationsMulti = 1,
+        Joined = 2,
+        Attributes = 3,
+        AttributesWithIds = 4,
+        Attribute = 5,
+        EntitiesExcluding = 6,
+        RelationsLevels = 7,
+        RelationsLevelsFromSubject = 8,
+    }
+}
 namespace Valtuutus.Core.Engines.LookupSubject
 {
     public interface ILookupSubjectEngine
@@ -421,6 +484,67 @@ namespace Valtuutus.Core.Engines.LookupSubject
         public required string Permission { get; init; }
         public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
         public required string SubjectType { get; init; }
+    }
+}
+namespace Valtuutus.Core.Engines.LookupSubject.V2
+{
+    public sealed class DefaultLookupSubjectQueryRunner : Valtuutus.Core.Engines.LookupSubject.V2.ILookupSubjectQueryRunner
+    {
+        public DefaultLookupSubjectQueryRunner(Valtuutus.Core.Data.IDataReaderProvider reader) { }
+        public System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken) { }
+    }
+    public sealed class ExpandPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public string EntityType { get; }
+        public string Name { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery Template { get; }
+    }
+    public interface ILookupSubjectPlanRewriter
+    {
+        Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan Rewrite(Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan root, Valtuutus.Core.Schemas.Schema schema, string entityType, string name, string subjectType);
+    }
+    public interface ILookupSubjectQueryRunner
+    {
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken);
+    }
+    public abstract class LookupPlan { }
+    public sealed class LookupSubjectQuery
+    {
+        public LookupSubjectQuery() { }
+        public string EntityType { get; init; }
+        public System.Collections.Generic.IReadOnlyCollection<string> Ids { get; init; }
+        public required Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQueryKind Kind { get; init; }
+        public int Levels { get; init; }
+        public string[] Names { get; init; }
+        public string Relation { get; init; }
+        public object? Result { get; set; }
+        public string SubEntityType { get; init; }
+        public string SubRelation { get; init; }
+        public string SubjectRelation { get; init; }
+        public string SubjectType { get; init; }
+    }
+    public enum LookupSubjectQueryKind
+    {
+        Relations = 0,
+        RelationsMulti = 1,
+        Joined = 2,
+        Attributes = 3,
+        Attribute = 4,
+        SubjectsExcluding = 5,
+        UsersetLevels = 6,
+    }
+    public sealed class SetPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan> Children { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery? Shared { get; }
+        public bool Union { get; }
+    }
+    public sealed class UsersetLevelsPlan : Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan
+    {
+        public UsersetLevelsPlan(Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery template, int levels, Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan oneLevel) { }
+        public int Levels { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupPlan OneLevel { get; }
+        public Valtuutus.Core.Engines.LookupSubject.V2.LookupSubjectQuery Template { get; }
     }
 }
 namespace Valtuutus.Core.Lang

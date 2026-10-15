@@ -27,5 +27,11 @@ public record ValtuutusSqlServerOptions : IValtuutusDbOptions
     public string TransactionsTableName { get; } = "transactions";
     public string RelationsTableName { get; } = "relation_tuples";
     public string AttributesTableName { get; } = "attributes";
+
+    /// <summary>
+    /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
+    /// relation's walk one LookupEntity V2 query follows; 1 reads one level per round trip.
+    /// </summary>
+    public int LookupHopsPerQuery { get; init; } = 2;
     
 };

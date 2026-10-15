@@ -44,6 +44,8 @@ public static class DependencyInjectionExtensions
                 sp.GetRequiredService<ValtuutusDataOptions>(),
                 sqlServerOptions);
         });
+        builder.Services.AddSingleton<ILookupSubjectBatchOps>(new SqlServerLookupSubjectBatchOps(sqlServerOptions));
+        builder.Services.AddSingleton<ILookupEntityBatchOps>(new SqlServerLookupEntityBatchOps(sqlServerOptions));
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();

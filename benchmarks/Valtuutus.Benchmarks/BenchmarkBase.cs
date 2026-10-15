@@ -16,6 +16,8 @@ public abstract class BenchmarkBase
     private const string FanoutProjectId = "dddddddd-dddd-dddd-dddd-dddddddddd01";
     private const string SiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";
     private const string MissUserId = "ffffffff-ffff-ffff-ffff-ffffffffff01"; // never seeded — deterministic miss
+    private const string NestedGroupRootId = "abababab-abab-abab-abab-ababababab00";
+    private const string NestedGroupLeafUserId = "abababab-1111-1111-1111-030000000000";
 
     protected ICheckEngine _checkEngine = null!;
     protected ILookupEntityEngine _lookupEntityEngine = null!;
@@ -186,6 +188,33 @@ public abstract class BenchmarkBase
         {
             Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user"
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// nested_group.member := @user @nested_group#member, seeded four levels deep from a fixed
+    /// root with ten users per level. Every level is a userset that is not terminal, so the lookup
+    /// takes one step per level; the scenario for fusing several levels into one query.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_NestedGroup")]
+    public async Task<HashSet<string>> LookupSubject_NestedGroup()
+        => await _lookupSubjectEngine.Lookup(new()
+        {
+            Permission = "member", EntityType = "nested_group", EntityId = NestedGroupRootId,
+            SubjectType = "user"
+        }, CancellationToken.None);
+
+    /// <summary>
+    /// LookupEntity counterpart to LookupSubject_NestedGroup: which nested groups a user on the
+    /// deepest level belongs to. The user is a direct member of the last group only; every group
+    /// above it is reached through nested_group#member, a userset that is not terminal, so the
+    /// lookup walks the chain one dependent hop per level.
+    /// </summary>
+    [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_NestedGroup")]
+    public async Task<LookupEntityPage> LookupEntity_NestedGroup()
+        => await _lookupEntityEngine.LookupEntity(new()
+        {
+            Permission = "member", EntityType = "nested_group",
+            SubjectType = "user", SubjectId = NestedGroupLeafUserId
         }, CancellationToken.None);
 
     /// <summary>

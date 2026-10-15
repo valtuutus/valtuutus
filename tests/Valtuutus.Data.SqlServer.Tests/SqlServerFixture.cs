@@ -159,6 +159,17 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
               INCLUDE ([subject_type], [created_tx_id], [deleted_tx_id])
               WHERE [subject_relation] = ''
 
+       CREATE NONCLUSTERED INDEX [idx_relationtuples_entitytype_entityid_relation_createdtxid_deletedtxid_id] ON [dbo].[relation_tuples]
+              (
+              [entity_type] ASC,
+              [entity_id] ASC,
+              [relation] ASC,
+              [created_tx_id] ASC,
+              [deleted_tx_id] ASC,
+              [id] ASC
+              )
+              INCLUDE ([subject_type], [subject_id], [subject_relation])
+
        CREATE NONCLUSTERED INDEX [idx_relation_tuples_indirect] ON [dbo].[relation_tuples]
               (
               [entity_type] ASC,

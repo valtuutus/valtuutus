@@ -17,6 +17,8 @@ dotnet add package Valtuutus.Data.SqlServer
 dotnet add package Valtuutus.Data.InMemory
 ```
 
+The SQL Server provider requires SQL Server 2016 or later (database compatibility level 130+), Azure SQL Database or Azure SQL Managed Instance.
+
 ## 2. Run database migrations
 
 If you're using a relational provider, create the required tables before starting. Run the SQL script for your database:

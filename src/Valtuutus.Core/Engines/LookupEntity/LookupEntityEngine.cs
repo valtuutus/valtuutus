@@ -275,7 +275,7 @@ public sealed class LookupEntityEngine(
         if (toFetch is { Count: >= 2 })
         {
             using var rows = await reader.GetRelationsWithSubjectsIdsMultiRelation(
-                req.EntityType, toFetch.ToArray(), req.SubjectsIds, req.SubjectType,
+                req.EntityType, toFetch.ToArray(), req.SubjectsIds, req.SubjectType, "",
                 req.SnapToken ?? SnapToken.MinValue, req.Scope, ct);
 
             batchResults = new Dictionary<string, List<LookupEntityResult>>(toFetch.Count);
@@ -532,7 +532,7 @@ public sealed class LookupEntityEngine(
                     {
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter { EntityType = req.EntityType, Relation = tupleSetRelation, SnapToken = req.SnapToken ?? SnapToken.MinValue },
-                            entity.Type, computedUserSetRelation,
+                            entity.Type, "", computedUserSetRelation,
                             req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
                     }
@@ -597,6 +597,7 @@ public sealed class LookupEntityEngine(
                 },
                 [scope.SubjectId],
                 scope.SubjectType,
+                "",
                 null,
                 ct);
             if (scopeRelations.Count == 0)
@@ -639,7 +640,7 @@ public sealed class LookupEntityEngine(
         {
             foreach (var relationEntity in relation.Entities)
             {
-                if (relationEntity.Type == req.FinalSubjectType)
+                if (relationEntity.Type == req.FinalSubjectType && relationEntity.Relation is null)
                 {
                     buffer[count++] = LookupRelationLeaf(req with
                     {
@@ -656,11 +657,13 @@ public sealed class LookupEntityEngine(
                 {
                     // Fast path: terminal sub-relation that directly accepts the final subject
                     // type — collapse two GetRelationsWithSubjectsIds calls into one joined query.
-                    if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
+                    // The join reads the sub-relation's tuples too, a hop that needs the depth the
+                    // dependent leg below would spend.
+                    if (req.Depth > 0 && !subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
                     {
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken ?? SnapToken.MinValue },
-                            relationEntity.Type, relationEntity.Relation!,
+                            relationEntity.Type, relationEntity.Relation!, relationEntity.Relation!,
                             req.FinalSubjectType, req.FinalSubjectId, req.Scope, ct);
                         continue;
                     }
@@ -719,6 +722,7 @@ public sealed class LookupEntityEngine(
             },
             req.SubjectsIds,
             req.SubjectType,
+            req.SubjectRelation ?? "",
             req.Scope,
             ct);
         var result = ListPool<LookupEntityResult>.Rent();
@@ -727,10 +731,10 @@ public sealed class LookupEntityEngine(
     }
 
     private async Task<List<LookupEntityResult>> JoinedLookup(
-        EntityRelationFilter mainFilter, string subEntityType, string subRelation,
+        EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken ct)
     {
-        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subRelation, subjectType, subjectId, scope, ct);
+        using var relations = await reader.GetRelationsJoined(mainFilter, subEntityType, subjectRelation, subRelation, subjectType, subjectId, scope, ct);
         var result = ListPool<LookupEntityResult>.Rent();
         foreach (var x in relations) result.Add(new LookupEntityResult(x.EntityType, x.EntityId, x.SubjectType, x.SubjectId));
         return result;
@@ -800,6 +804,7 @@ public sealed class LookupEntityEngine(
                 },
                 [scope.SubjectId],
                 scope.SubjectType,
+                "",
                 null,
                 ct);
             if (scopeRelations.Count == 0)

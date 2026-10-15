@@ -32,6 +32,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(5);
 
+        ComparingLookupEntityEngine.Register(services);
         return services.BuildServiceProvider();
     }
 
@@ -1175,6 +1176,474 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         var result = await engine.LookupEntity(new LookupEntityRequest("folder", "view", "user", user), default)
             .WaitAsync(TimeSpan.FromSeconds(30));
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task LookupEntity_WithIdsNeedingEscaping_ForwardsThemUnchanged()
+    {
+        // alice's groups reach the database as one subject-id list when the engine looks for
+        // docs whose viewer is one of them.
+        string[] groups = ["g\"1", "g\\2", "g,3", "g'4", "gé5", "[\"g6\"]"];
+        const string schema = """
+            entity user {}
+            entity group {
+                relation member @user;
+            }
+            entity doc {
+                relation viewer @group#member;
+                permission view := viewer;
+            }
+            """;
+        var tuples = groups.SelectMany(g => new[]
+        {
+            new RelationTuple("group", g, "member", "user", "alice"),
+            new RelationTuple("doc", "d" + g, "viewer", "group", g, "member"),
+        }).ToArray();
+        var engine = await CreateEngine(tuples, [], schema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("doc", "view", "user", "alice"), default);
+
+        result.EntityIds.Should().BeEquivalentTo(groups.Select(g => "d" + g));
+    }
+
+    private const string DepthSchema = """
+        entity user {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+        }
+        entity project {
+            relation reviewer @team#member;
+            relation viewer @group#member;
+        }
+        """;
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public async Task Terminal_userset_spends_a_level_of_depth(int depth, bool found)
+    {
+        RelationTuple[] tuples =
+        [
+            new("project", "p1", "reviewer", "team", "t1", "member"),
+            new("team", "t1", "member", "user", "alice"),
+        ];
+        var engine = await CreateEngine(tuples, [], DepthSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "reviewer", "user", "alice", depth: depth), default);
+
+        if (found) result.EntityIds.Should().Contain("p1");
+        else result.EntityIds.Should().NotContain("p1");
+    }
+
+    [Theory]
+    [InlineData("u1", 1, false)]
+    [InlineData("u1", 2, true)]
+    [InlineData("u1", 3, true)]
+    [InlineData("u1", 4, true)]
+    [InlineData("u1", 5, true)]
+    [InlineData("u2", 1, false)]
+    [InlineData("u2", 2, false)]
+    [InlineData("u2", 3, true)]
+    [InlineData("u2", 4, true)]
+    [InlineData("u2", 5, true)]
+    [InlineData("u3", 1, false)]
+    [InlineData("u3", 2, false)]
+    [InlineData("u3", 3, false)]
+    [InlineData("u3", 4, true)]
+    [InlineData("u3", 5, true)]
+    public async Task Userset_chain_spends_a_level_of_depth_per_hop(string subject, int depth, bool found)
+    {
+        RelationTuple[] tuples =
+        [
+            new("project", "p1", "viewer", "group", "g1", "member"),
+            new("group", "g1", "member", "user", "u1"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g2", "member", "user", "u2"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("team", "t1", "member", "user", "u3"),
+        ];
+        var engine = await CreateEngine(tuples, [], DepthSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "viewer", "user", subject, depth: depth), default);
+
+        if (found) result.EntityIds.Should().Contain("p1");
+        else result.EntityIds.Should().NotContain("p1");
+    }
+
+    // A subject's relation is part of what a tuple grants: a direct grant or a tuple-to-userset
+    // hop reads only tuples whose subject has no relation, and a userset @T#R only tuples whose
+    // subject is T#R, so each form of a subject type on one relation is read on its own.
+    private const string SubjectRelationSchema = """
+        entity user {}
+        entity service_account {}
+        entity group {
+            relation member @user;
+            relation admin @user;
+            relation sub @group;
+        }
+        entity team {
+            relation member @user @team#member;
+            relation lead @user @team#member;
+        }
+        entity squad {
+            relation member @user;
+        }
+        entity org {
+            relation member @user;
+        }
+        entity doc {
+            relation viewer @group#member @group#admin;
+            relation reader @team#member @team#lead;
+            relation editor @group @group#sub;
+            relation parent @group;
+            relation team @team;
+            relation squad_viewer @squad#member;
+            relation owner @user;
+            relation manager @user;
+            relation org @org;
+            permission parent_view := parent.member;
+            permission team_view := team.member;
+            permission manage := owner or manager;
+        }
+        """;
+
+    public static TheoryData<string, RelationTuple[], LookupEntityRequest, string[]> SubjectRelationCases => new()
+    {
+        {
+            "joined userset reads only the userset's own relation",
+            [
+                new("doc", "d1", "viewer", "group", "g1", "admin"),
+                new("doc", "d2", "viewer", "group", "g1", "member"),
+                new("group", "g1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "viewer", "user", "u"),
+            ["d2"]
+        },
+        {
+            "joined userset reads only direct final subjects",
+            [
+                new("doc", "d1", "viewer", "group", "g1", "member"),
+                new("group", "g1", "member", "user", "u", "member"),
+            ],
+            new LookupEntityRequest("doc", "viewer", "user", "u"),
+            []
+        },
+        {
+            "nested userset reads only the userset's own relation",
+            [
+                new("doc", "d1", "reader", "team", "t1", "lead"),
+                new("doc", "d2", "reader", "team", "t1", "member"),
+                new("team", "t1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "reader", "user", "u"),
+            ["d2"]
+        },
+        {
+            "direct grant reads only subjects without a relation",
+            [
+                new("doc", "d1", "editor", "group", "g1", "sub"),
+                new("doc", "d2", "editor", "group", "g1"),
+            ],
+            new LookupEntityRequest("doc", "editor", "group", "g1"),
+            ["d2"]
+        },
+        {
+            "a userset of the requested subject type is followed through its own relation",
+            [
+                new("doc", "d1", "editor", "group", "g1", "sub"),
+                new("group", "g1", "sub", "group", "g0"),
+                new("doc", "d2", "editor", "group", "g0"),
+            ],
+            new LookupEntityRequest("doc", "editor", "group", "g0"),
+            ["d1", "d2"]
+        },
+        {
+            "joined tuple-to-userset reads only subjects without a relation",
+            [
+                new("doc", "d1", "parent", "group", "g1", "admin"),
+                new("doc", "d2", "parent", "group", "g1"),
+                new("group", "g1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "parent_view", "user", "u"),
+            ["d2"]
+        },
+        {
+            "nested tuple-to-userset reads only subjects without a relation",
+            [
+                new("doc", "d1", "team", "team", "t1", "lead"),
+                new("doc", "d2", "team", "team", "t1"),
+                new("team", "t1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "team_view", "user", "u"),
+            ["d2"]
+        },
+        {
+            "sibling relations read only subjects without a relation",
+            [
+                new("doc", "d1", "owner", "user", "u"),
+                new("doc", "d2", "manager", "user", "u", "member"),
+            ],
+            new LookupEntityRequest("doc", "manage", "user", "u"),
+            ["d1"]
+        },
+        {
+            "scope reads only subjects without a relation",
+            [
+                new("doc", "d1", "owner", "user", "u"),
+                new("doc", "d2", "owner", "user", "u"),
+                new("doc", "d1", "org", "org", "o1"),
+                new("doc", "d2", "org", "org", "o1", "member"),
+            ],
+            new LookupEntityRequest("doc", "owner", "user", "u") { Scope = new EntityScope("org", "org", "o1") },
+            ["d1"]
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(SubjectRelationCases))]
+    public async Task Lookup_reads_only_tuples_whose_subject_relation_the_schema_path_names(string because,
+        RelationTuple[] tuples, LookupEntityRequest request, string[] expected)
+    {
+        var engine = await CreateEngine(tuples, [], SubjectRelationSchema);
+
+        var result = await engine.LookupEntity(request, default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected, because);
+    }
+
+    // A recursive userset walked within a scope: only the root frame's reads are scoped, so a group
+    // outside the scope still carries membership to the groups above it.
+    private const string ScopedRecursionSchema = """
+        entity user {}
+        entity org {}
+        entity group {
+            relation member @user @group#member;
+            relation org @org;
+            permission view := member;
+        }
+        """;
+
+    [Theory]
+    [InlineData(1, new[] { "g3" })]
+    [InlineData(2, new[] { "g3" })]
+    [InlineData(3, new[] { "g1", "g3" })]
+    [InlineData(4, new[] { "g1", "g3" })]
+    [InlineData(10, new[] { "g1", "g3" })]
+    public async Task Recursive_userset_within_a_scope_keeps_the_scopes_entities(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g3", "member", "user", "u"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g1", "org", "org", "o1"),
+            new("group", "g3", "org", "org", "o1"),
+            new("group", "g0", "org", "org", "o2"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    private static readonly RelationTuple[] ScopedRecursionTuples =
+    [
+        new("group", "g3", "member", "user", "u"),
+        new("group", "g2", "member", "group", "g3", "member"),
+        new("group", "g1", "member", "group", "g2", "member"),
+        new("group", "g0", "member", "group", "g1", "member"),
+        new("group", "g1", "org", "org", "o1"),
+        new("group", "g3", "org", "org", "o1"),
+        new("group", "g0", "org", "org", "o2"),
+    ];
+
+    // A permission over the recursive relation spends one more level than the relation itself.
+    [Theory]
+    [InlineData(2, new[] { "g3" })]
+    [InlineData(3, new[] { "g3" })]
+    [InlineData(4, new[] { "g1", "g3" })]
+    [InlineData(5, new[] { "g1", "g3" })]
+    [InlineData(11, new[] { "g1", "g3" })]
+    public async Task Recursive_userset_under_a_scoped_permission_matches_the_relation(int depth, string[] expected)
+    {
+        var engine = await CreateEngine(ScopedRecursionTuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "view", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    private const string ScopedJoinedRecursionSchema = """
+        entity user {}
+        entity org {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+            relation org @org;
+        }
+        """;
+
+    // g2 is reached through the joined read (one level), g1 by a hop from g2 (two levels).
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "g2" })]
+    [InlineData(3, new[] { "g1", "g2" })]
+    public async Task Recursive_userset_with_a_joined_grant_within_a_scope_at_the_depth_boundary(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "org", "org", "o1"),
+            new("group", "g2", "org", "org", "o1"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedJoinedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task Cycle_of_a_recursive_userset_within_a_scope_keeps_the_scopes_entities()
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g1", "member", "group", "g0", "member"),
+            new("group", "g1", "member", "user", "u"),
+            new("group", "g0", "org", "org", "o1"),
+            new("group", "g1", "org", "org", "o2"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: 10) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(["g0"]);
+    }
+
+    private const string RecursionDepthSchema = """
+        entity user {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+        }
+        """;
+
+    // g5 holds u directly (no level), g4 through team t1 (one level); g3 holds g5, g2 holds g3, g1
+    // holds g2 and g4 (a shortcut), g0 holds g1, g2 holds g0 (a cycle), gx holds g0. Each group is
+    // granted once the depth covers its cheapest path: g5 0, g3 and g4 1, g1 and g2 2, g0 3, gx 4.
+    [Theory]
+    [InlineData(1, new[] { "g5" })]
+    [InlineData(2, new[] { "g3", "g4", "g5" })]
+    [InlineData(3, new[] { "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(4, new[] { "g0", "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(5, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(6, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(10, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    public async Task Recursive_userset_grants_each_group_at_its_cheapest_depth(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g5", "member", "user", "u"),
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g4", "member", "team", "t1", "member"),
+            new("group", "g3", "member", "group", "g5", "member"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "member", "group", "g4", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g2", "member", "group", "g0", "member"),
+            new("group", "gx", "member", "group", "g0", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], RecursionDepthSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    // A user reached only through the joined grant: the walk starts from level one.
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "g2" })]
+    [InlineData(3, new[] { "g1", "g2" })]
+    [InlineData(4, new[] { "g0", "g1", "g2" })]
+    [InlineData(10, new[] { "g0", "g1", "g2" })]
+    public async Task Recursive_userset_reached_through_a_joined_grant_spends_its_level(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], RecursionDepthSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    private const string DirectRecursionSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        """;
+
+    // g5 and g4 hold u directly; g3 holds g5, g2 holds g3, g1 holds g2 and g4 (a shortcut), g0 holds
+    // g1, g2 holds g0 (a cycle), gx holds g0. Cheapest path costs: g4 and g5 0, g1 and g3 1, g0 and
+    // g2 2, gx 3. Request depth D grants the groups costing at most D - 1.
+    [Theory]
+    [InlineData(1, new[] { "g4", "g5" })]
+    [InlineData(2, new[] { "g1", "g3", "g4", "g5" })]
+    [InlineData(3, new[] { "g0", "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(4, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(5, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(10, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    public async Task Recursive_userset_with_only_direct_grants_grants_each_group_at_its_cheapest_depth(int depth,
+        string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g5", "member", "user", "u"),
+            new("group", "g4", "member", "user", "u"),
+            new("group", "g3", "member", "group", "g5", "member"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "member", "group", "g4", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g2", "member", "group", "g0", "member"),
+            new("group", "gx", "member", "group", "g0", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], DirectRecursionSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
 
         result.EntityIds.Should().BeEquivalentTo(expected);
     }

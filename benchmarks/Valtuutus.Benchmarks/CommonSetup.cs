@@ -29,6 +29,10 @@ public static class CommonSetup
             .AddValtuutusCore(schema);
 
         configureProvider(serviceCollection);
+        if (Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_SUBJECT_V2") == "1")
+            serviceCollection.AddValtuutusLookupSubjectV2();
+        if (Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_ENTITY_V2") == "1")
+            serviceCollection.AddValtuutusLookupEntityV2();
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
@@ -73,6 +77,10 @@ public static class CommonSetup
             .AddValtuutusCore(schema);
 
         configureProvider(serviceCollection);
+        if (Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_SUBJECT_V2") == "1")
+            serviceCollection.AddValtuutusLookupSubjectV2();
+        if (Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_ENTITY_V2") == "1")
+            serviceCollection.AddValtuutusLookupEntityV2();
         var serviceProvider = serviceCollection.BuildServiceProvider();
         var checkEngine = serviceProvider.GetRequiredService<ICheckEngine>();
         var lookupEntityEngine = serviceProvider.GetRequiredService<ILookupEntityEngine>();
