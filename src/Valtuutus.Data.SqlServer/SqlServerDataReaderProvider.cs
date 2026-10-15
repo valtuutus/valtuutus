@@ -464,8 +464,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND entity_id IN ({IdList.From("@EntityIds")})
                   AND subject_relation = @SubjectRelation
                 """,
+            // The single-subject reads seek every equality they filter on, so one cached plan serves
+            // every (entity_type, relation), however much denser than the pair it was compiled for.
             GetRelationsWithSingleSubjectSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId AND subject_relation = @SubjectRelation",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WITH (FORCESEEK (idx_relation_tuples_relation_subject_type_subject_id_entity_type (relation, subject_type, subject_id, entity_type))) WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType AND subject_id = @SubjectId AND subject_relation = @SubjectRelation",
             GetRelationsWithMultiSubjectSnap = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
@@ -477,7 +479,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND subject_relation = @SubjectRelation
                 """,
             GetRelationsWithSingleSubjectMultiRelationSnap =
-                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation IN ({IdList.From("@Relations")}) AND subject_type = @SubjectType AND subject_id = @SubjectId AND subject_relation = @SubjectRelation",
+                $"SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation FROM {relationsTable} WITH (FORCESEEK (idx_relation_tuples_relation_subject_type_subject_id_entity_type (relation, subject_type, subject_id, entity_type))) WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken) AND entity_type = @EntityType AND relation IN ({IdList.From("@Relations")}) AND subject_type = @SubjectType AND subject_id = @SubjectId AND subject_relation = @SubjectRelation",
             GetRelationsWithMultiSubjectMultiRelationSnap = $"""
                 SELECT entity_type, entity_id, relation, subject_type, subject_id, subject_relation
                 FROM {relationsTable}
