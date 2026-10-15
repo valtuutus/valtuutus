@@ -62,6 +62,10 @@ public sealed class LookupEntityQuery
     /// <summary>For <see cref="LookupEntityQueryKind.Joined"/>, the relation on <see cref="SubEntityType"/> whose direct subjects are matched.</summary>
     public string SubRelation { get; init; } = "";
 
+    /// <summary>
+    /// The ids the query reads for. A runner reads them only while running the step; the engine may
+    /// reuse the collection once the step's answers have been read.
+    /// </summary>
     public IReadOnlyCollection<string> Ids { get; init; } = [];
     public EntityScope? Scope { get; init; }
 
@@ -79,6 +83,10 @@ public sealed class LookupEntityQuery
 
     // Set once the query is handed to a step, so a query several nodes share runs once.
     internal bool Queued { get; set; }
+
+    // The relation names as one key, computed once per template and shared by every request.
+    internal string NamesKey => _namesKey ??= string.Join('\0', Names);
+    private string? _namesKey;
 
     // A plan keeps a query's shape without ids or scope; each request binds its own to a fresh copy.
     internal LookupEntityQuery For(IReadOnlyCollection<string> ids, EntityScope? scope) => new()

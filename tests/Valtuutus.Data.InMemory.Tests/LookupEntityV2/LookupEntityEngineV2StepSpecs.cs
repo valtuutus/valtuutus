@@ -61,7 +61,8 @@ public class LookupEntityEngineV2StepSpecs
         public ValueTask<SnapToken> RunAsync(IReadOnlyList<LookupEntityQuery> queries, SnapToken? snapToken,
             CancellationToken cancellationToken)
         {
-            Steps.Add((queries.ToArray(), snapToken));
+            // Ids are readable only while the step runs, so each recorded query keeps a copy.
+            Steps.Add((queries.Select(q => q.For(q.Ids.ToArray(), q.Scope)).ToArray(), snapToken));
             return inner.RunAsync(queries, snapToken, cancellationToken);
         }
 
@@ -304,5 +305,59 @@ public class LookupEntityEngineV2StepSpecs
         await engine.LookupEntity(new LookupEntityRequest("project", "view", "user", "u1") { SnapToken = written }, default);
 
         runner.Steps.Should().OnlyContain(s => s.SnapToken == written);
+    }
+
+    [Fact]
+    public async Task Concurrent_lookups_return_the_same_pages()
+    {
+        var services = new ServiceCollection().AddValtuutusCore(Schema);
+        services.AddInMemory();
+        services.AddValtuutusLookupEntityV2();
+        await using var provider = services.BuildServiceProvider();
+        await provider.GetRequiredService<IDataWriterProvider>().Write(
+            [
+                new("project", "p1", "viewer", "group", "g1", "member"),
+                new("group", "g1", "member", "group", "g2", "member"),
+                new("group", "g2", "member", "user", "u1"),
+                new("project", "p2", "owner", "user", "u1"),
+                new("project", "p3", "editor", "user", "u1"),
+                new("project", "p3", "banned", "user", "u1"),
+                new("project", "p4", "org", "organization", "o1"),
+                new("organization", "o1", "admin", "user", "u1"),
+            ],
+            [
+                new AttributeTuple("project", "p2", "status", JsonValue.Create(1)!),
+                new AttributeTuple("project", "p3", "status", JsonValue.Create(1)!),
+            ], default);
+        // Fixed pages, so a pooling fault that repeats on every run still fails. The scoped and
+        // unknown-subject requests cover scope reads and a dependent hop that finds nothing.
+        (string Name, LookupEntityRequest Request, string[] Expected)[] cases =
+        [
+            ("view", new LookupEntityRequest("project", "view", "user", "u1"), ["p1"]),
+            ("edit", new LookupEntityRequest("project", "edit", "user", "u1"), ["p2", "p3"]),
+            ("work", new LookupEntityRequest("project", "work", "user", "u1"), ["p2", "p3"]),
+            ("keep", new LookupEntityRequest("project", "keep", "user", "u1"), ["p2"]),
+            ("manage", new LookupEntityRequest("project", "manage", "user", "u1"), ["p4"]),
+            ("reopen", new LookupEntityRequest("project", "reopen", "user", "u1"), ["p2", "p3"]),
+            ("audit", new LookupEntityRequest("project", "audit", "user", "u1"), ["p1", "p2", "p4"]),
+            ("audit scoped", new LookupEntityRequest("project", "audit", "user", "u1")
+                { Scope = new EntityScope("org", "organization", "o1") }, ["p4"]),
+            ("view unknown subject", new LookupEntityRequest("project", "view", "user", "u2"), []),
+        ];
+
+        // One engine over the provider that holds the written data; the engine and its default
+        // runner keep no per-request state, so concurrent lookups share it.
+        var engine = provider.GetRequiredService<ILookupEntityEngine>();
+        async Task<IReadOnlyList<string>> Lookup(LookupEntityRequest request) =>
+            (await engine.LookupEntity(request, default)).EntityIds;
+
+        var runs = Enumerable.Range(0, 450).Select(i => Task.Run(async () =>
+        {
+            var (name, request, expected) = cases[i % cases.Length];
+            return (name, expected, Ids: await Lookup(request));
+        }));
+
+        foreach (var (name, expected, ids) in await Task.WhenAll(runs))
+            ids.Should().Equal(expected, name);
     }
 }
