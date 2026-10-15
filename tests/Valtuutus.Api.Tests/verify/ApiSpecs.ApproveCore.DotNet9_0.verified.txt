@@ -413,6 +413,14 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2
         public DefaultLookupEntityQueryRunner(Valtuutus.Core.Data.IDataReaderProvider reader) { }
         public System.Threading.Tasks.ValueTask<Valtuutus.Core.Data.SnapToken> RunAsync(System.Collections.Generic.IReadOnlyList<Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery> queries, Valtuutus.Core.Data.SnapToken? snapToken, System.Threading.CancellationToken cancellationToken) { }
     }
+    public sealed class FixpointLevelsPlan : Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan
+    {
+        public FixpointLevelsPlan(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery template, int levels, Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan oneLevel) { }
+        public int Levels { get; }
+        public Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan OneLevel { get; }
+        public Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery Template { get; }
+    }
+    public sealed class FixpointPlan : Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan { }
     public interface ILookupEntityPlanRewriter
     {
         Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan Rewrite(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan root, Valtuutus.Core.Schemas.Schema schema, string entityType, string name, string subjectType);
@@ -428,6 +436,8 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2
         public string EntityType { get; init; }
         public System.Collections.Generic.IReadOnlyCollection<string> Ids { get; init; }
         public required Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQueryKind Kind { get; init; }
+        public System.Collections.Generic.IReadOnlyCollection<string> LevelOneIds { get; init; }
+        public int Levels { get; init; }
         public string[] Names { get; init; }
         public string Relation { get; init; }
         public object? Result { get; set; }
@@ -446,6 +456,7 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2
         AttributesWithIds = 4,
         Attribute = 5,
         EntitiesExcluding = 6,
+        RelationsLevels = 7,
     }
 }
 namespace Valtuutus.Core.Engines.LookupSubject

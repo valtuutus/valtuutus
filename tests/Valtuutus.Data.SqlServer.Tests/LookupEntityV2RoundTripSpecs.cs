@@ -202,12 +202,43 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
             .EntityIds.Should().Equal("p1");
     }
 
+    // Steps: the direct read, then hop queries until one finds nothing new. k=1: g2, g1, g0, then
+    // nothing. k=2: g2 and g1, then g0 and an empty level. k=3: g2 to g0, then nothing. k=4: g2 to
+    // g0 and an empty last level.
+    [Theory]
+    [InlineData(1, 5)]
+    [InlineData(2, 3)]
+    [InlineData(3, 3)]
+    [InlineData(4, 2)]
+    public async Task Nested_group_hops_share_round_trips(int hops, int roundTrips)
+    {
+        var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
+        await Write(dbFactory,
+        [
+            new RelationTuple("group", "g3", "member", "user", "u"),
+            new RelationTuple("group", "g2", "member", "group", "g3", "member"),
+            new RelationTuple("group", "g1", "member", "group", "g2", "member"),
+            new RelationTuple("group", "g0", "member", "group", "g1", "member"),
+        ]);
+
+        var counter = new RoundTripCounter();
+        await using var sp = BuildServices(dbFactory, counter, hops: hops);
+        await using var scope = sp.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
+
+        var page = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u"), default);
+
+        page.EntityIds.Should().Equal("g0", "g1", "g2", "g3");
+        counter.Count.Should().Be(roundTrips);
+    }
+
     private static ServiceProvider BuildServices(DbConnectionFactory dbFactory, RoundTripCounter counter,
-        Func<int, Task>? beforeRoundTrip = null)
+        Func<int, Task>? beforeRoundTrip = null, int? hops = null)
     {
         counter.BeforeRoundTrip = beforeRoundTrip;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        services.AddSqlServer(_ => dbFactory, new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes"))
+        var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
+        services.AddSqlServer(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
         services.AddValtuutusLookupEntityV2();
         services.AddSingleton(counter);

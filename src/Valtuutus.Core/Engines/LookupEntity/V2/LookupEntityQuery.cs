@@ -40,6 +40,16 @@ public enum LookupEntityQueryKind
 
     /// <summary>Every <see cref="LookupEntityQuery.EntityType"/> entity id except <see cref="LookupEntityQuery.Ids"/>.</summary>
     EntitiesExcluding,
+
+    /// <summary>
+    /// Entities of <see cref="LookupEntityQuery.EntityType"/> reached from <see cref="LookupEntityQuery.Ids"/> in
+    /// up to <see cref="LookupEntityQuery.Levels"/> hops through <see cref="LookupEntityQuery.Relation"/>: a level's
+    /// entities are those whose tuples of the relation name <c>EntityType:x#Relation</c> for an x of the level
+    /// before, and <see cref="LookupEntityQuery.LevelOneIds"/> join the first level. One row per entity; its
+    /// relation is <see cref="LookupEntityQuery.Relation"/> when the first level reaching it is the last, and
+    /// empty otherwise.
+    /// </summary>
+    RelationsLevels,
 }
 
 /// <summary>
@@ -69,9 +79,18 @@ public sealed class LookupEntityQuery
     public IReadOnlyCollection<string> Ids { get; init; } = [];
     public EntityScope? Scope { get; init; }
 
+    /// <summary>Hops a <see cref="LookupEntityQueryKind.RelationsLevels"/> query follows; 2 or more.</summary>
+    public int Levels { get; init; }
+
+    /// <summary>
+    /// For <see cref="LookupEntityQueryKind.RelationsLevels"/>, ids that join its first level. A runner reads
+    /// them only while running the step, as it does <see cref="Ids"/>.
+    /// </summary>
+    public IReadOnlyCollection<string> LevelOneIds { get; init; } = [];
+
     /// <summary>
     /// The answer: <c>List&lt;RelationTuple&gt;</c> for <see cref="LookupEntityQueryKind.Relations"/>,
-    /// <see cref="LookupEntityQueryKind.RelationsMulti"/> and <see cref="LookupEntityQueryKind.Joined"/>;
+    /// <see cref="LookupEntityQueryKind.RelationsMulti"/>, <see cref="LookupEntityQueryKind.Joined"/> and <see cref="LookupEntityQueryKind.RelationsLevels"/>;
     /// <c>Dictionary&lt;(string AttributeName, string EntityId), AttributeTuple&gt;</c> for
     /// <see cref="LookupEntityQueryKind.Attributes"/> and <see cref="LookupEntityQueryKind.AttributesWithIds"/>;
     /// <c>List&lt;AttributeTuple&gt;</c> for <see cref="LookupEntityQueryKind.Attribute"/>;
@@ -88,11 +107,13 @@ public sealed class LookupEntityQuery
     internal string NamesKey => _namesKey ??= string.Join('\0', Names);
     private string? _namesKey;
 
-    // A plan keeps a query's shape without ids or scope; each request binds its own to a fresh copy.
-    internal LookupEntityQuery For(IReadOnlyCollection<string> ids, EntityScope? scope) => new()
+    // A plan keeps a query's shape without ids or scope; each request binds its own (and, for
+    // RelationsLevels, the levels its depth allows and the ids joining level one) to a fresh copy.
+    internal LookupEntityQuery For(IReadOnlyCollection<string> ids, EntityScope? scope, int? levels = null,
+        IReadOnlyCollection<string>? levelOneIds = null) => new()
     {
         Kind = Kind, EntityType = EntityType, Relation = Relation, Names = Names, SubjectType = SubjectType,
         SubjectRelation = SubjectRelation, SubEntityType = SubEntityType, SubRelation = SubRelation, Ids = ids,
-        Scope = scope,
+        Scope = scope, Levels = levels ?? Levels, LevelOneIds = levelOneIds ?? LevelOneIds,
     };
 }

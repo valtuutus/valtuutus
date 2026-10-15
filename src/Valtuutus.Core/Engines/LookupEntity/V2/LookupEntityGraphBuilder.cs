@@ -41,7 +41,8 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
             ? EntityNode.None
             : new ExpandNode(Build(expand.EntityType, expand.Name, depth, scoped: false), expand.Main, Scope(scoped)),
         RefPlan reference => Build(reference.EntityType, reference.Name, depth, scoped),
-        FixpointPlan fixpoint => Fixpoint(fixpoint, depth, scoped),
+        FixpointPlan fixpoint => Fixpoint(fixpoint, null, depth, scoped),
+        FixpointLevelsPlan levels => Fixpoint(levels.OneLevel, levels, depth, scoped),
         SetPlan set => new SetNode(Children(set.Children, set.Shared, depth, scoped), set.Union),
         ConstrainedIntersectPlan constrained => new ConstrainedIntersectNode(
             Children(constrained.Others, constrained.Shared, depth, scoped), constrained.Checks, request),
@@ -53,24 +54,24 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
 
     // Within a scope the root level reads scoped, as an unrolled relation does: its direct and
     // joined reads, and the hop over the unscoped walk one level down.
-    private EntityNode Fixpoint(FixpointPlan fixpoint, int depth, bool scoped)
+    private EntityNode Fixpoint(FixpointPlan fixpoint, FixpointLevelsPlan? levels, int depth, bool scoped)
     {
-        if (Scope(scoped) is not { } scope) return Walk(fixpoint, depth);
+        if (Scope(scoped) is not { } scope) return Walk(fixpoint, levels, depth);
 
         var nodes = new List<EntityNode>();
         nodes.AddRange(Instantiate(fixpoint.Direct, depth, scoped: true));
         if (depth > 0)
         {
             nodes.AddRange(Instantiate(fixpoint.Joined, depth, scoped: true));
-            nodes.Add(new ExpandNode(Walk(fixpoint, depth - 1), fixpoint.Hop, scope));
+            nodes.Add(new ExpandNode(Walk(fixpoint, levels, depth - 1), fixpoint.Hop, scope));
         }
         return new SetNode(nodes.ToArray(), union: true);
     }
 
-    private FixpointNode Walk(FixpointPlan fixpoint, int depth) => new(
+    private FixpointNode Walk(FixpointPlan fixpoint, FixpointLevelsPlan? levels, int depth) => new(
         Instantiate(fixpoint.Direct, depth, scoped: false),
         depth == 0 ? [] : Instantiate(fixpoint.Joined, depth, scoped: false),
-        fixpoint.Hop, depth);
+        fixpoint.Hop, depth, levels?.Template, levels?.Levels ?? 1);
 
     private EntityNode[] Instantiate(SubjectBoundPlan[] plans, int depth, bool scoped)
     {

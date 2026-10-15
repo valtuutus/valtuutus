@@ -131,6 +131,16 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         AddSnapTokenParameter(parameters, snapToken);
     }
 
+    internal static void AddRelationsLevelsParameters(SqlParameterCollection parameters, string entityType,
+        string relation, IEnumerable<string> ids, IEnumerable<string> levelOneIds, SnapToken? snapToken)
+    {
+        AddStringParameter(parameters, "@EntityType", entityType, 256);
+        AddStringParameter(parameters, "@Relation", relation, 64);
+        IdList.AddParameter(parameters, "@Ids", ids);
+        IdList.AddParameter(parameters, "@LevelOneIds", levelOneIds);
+        AddSnapTokenParameter(parameters, snapToken);
+    }
+
     internal static void AddAttributeWithEntityIdsParameters(SqlParameterCollection parameters,
         string entityType, string attribute, IEnumerable<string> entityIds, SnapToken? snapToken)
     {

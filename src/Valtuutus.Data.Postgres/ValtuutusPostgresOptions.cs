@@ -30,7 +30,8 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
     public int AutoPrepareMinUsages { get; init; } = 2;
 
     /// <summary>
-    /// Levels of a userset chain one LookupSubject V2 query reads; 1 reads one level per round trip.
+    /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
+    /// relation's walk one LookupEntity V2 query follows; 1 reads one level per round trip.
     /// </summary>
     public int LookupHopsPerQuery { get; init; } = 2;
 }

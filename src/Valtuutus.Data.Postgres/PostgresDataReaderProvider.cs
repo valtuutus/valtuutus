@@ -163,6 +163,16 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         AddSnapTokenParameter(parameters, snapToken);
     }
 
+    internal static void AddRelationsLevelsParameters(NpgsqlParameterCollection parameters, string entityType,
+        string relation, IEnumerable<string> ids, IEnumerable<string> levelOneIds, SnapToken? snapToken)
+    {
+        AddStringParameter(parameters, "entity_type", entityType, 256);
+        AddStringParameter(parameters, "relation", relation, 64);
+        AddStringArrayParameter(parameters, "ids", ids);
+        AddStringArrayParameter(parameters, "level_one_ids", levelOneIds);
+        AddSnapTokenParameter(parameters, snapToken);
+    }
+
     internal static void AddAttributeWithEntityIdsParameters(NpgsqlParameterCollection parameters,
         string entityType, string attribute, IEnumerable<string> entityIds, SnapToken? snapToken)
     {
