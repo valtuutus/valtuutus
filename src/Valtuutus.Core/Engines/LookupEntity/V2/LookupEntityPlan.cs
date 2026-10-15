@@ -1,0 +1,153 @@
+using System.Runtime.InteropServices;
+using Valtuutus.Core.Lang;
+using Valtuutus.Core.Schemas;
+
+namespace Valtuutus.Core.Engines.LookupEntity.V2;
+
+/// <summary>
+/// The compiled shape of a LookupEntity from one entity type's permission, relation or attribute to
+/// one subject type: which queries to ask and how their answers combine. Holds no subject id, depth,
+/// scope or request context, so every request with the same key walks the same plan. Built by Core;
+/// <see cref="ILookupEntityPlanRewriter"/> implementations read it and may substitute parts of it.
+/// </summary>
+public abstract class LookupEntityPlan
+{
+    internal static readonly LookupEntityPlan Empty = new EmptyPlan();
+
+    private protected LookupEntityPlan() { }
+
+    private sealed class EmptyPlan : LookupEntityPlan;
+}
+
+/// <summary>A plan leaf evaluated from one query's answer into the ids of the entities it grants.</summary>
+internal abstract class AnswerPlan : LookupEntityPlan
+{
+    public abstract HashSet<string> Evaluate(object result, LookupEntityRequest request);
+
+    public static HashSet<string> EntityIds(List<RelationTuple> tuples, string? relation = null)
+    {
+        var ids = relation is null ? new HashSet<string>(tuples.Count) : new HashSet<string>();
+        foreach (ref readonly var tuple in CollectionsMarshal.AsSpan(tuples))
+        {
+            if (relation is null || tuple.Relation == relation)
+                ids.Add(tuple.EntityId);
+        }
+        return ids;
+    }
+}
+
+/// <summary>
+/// Entities whose tuples name the request's subject, through a direct relation or a joined two-hop
+/// read. A joined read reaches into another entity type and needs a level of depth, so with no
+/// depth left it asks nothing.
+/// </summary>
+internal sealed class SubjectBoundPlan(LookupEntityQuery template, bool isHop) : AnswerPlan
+{
+    public LookupEntityQuery Template { get; } = template;
+    public bool IsHop { get; } = isHop;
+
+    public override HashSet<string> Evaluate(object result, LookupEntityRequest request) =>
+        EntityIds((List<RelationTuple>)result);
+}
+
+/// <summary>One relation's entities, read from the multi-relation query its parent shares.</summary>
+internal sealed class SlicePlan(string relation) : AnswerPlan
+{
+    public string Relation { get; } = relation;
+
+    public override HashSet<string> Evaluate(object result, LookupEntityRequest request) =>
+        EntityIds((List<RelationTuple>)result, Relation);
+}
+
+/// <summary>A function over every entity's attributes; grants the entities it matches.</summary>
+internal sealed class ExpressionPlan(LookupEntityQuery template, PermissionNodeLeafExp expression,
+    Function function, Schema schema) : AnswerPlan
+{
+    public LookupEntityQuery Template { get; } = template;
+    public PermissionNodeLeafExp Expression { get; } = expression;
+
+    public override HashSet<string> Evaluate(object result, LookupEntityRequest request)
+    {
+        var attributes = (Dictionary<(string AttributeName, string EntityId), AttributeTuple>)result;
+        var matches = new HashSet<string>();
+        foreach (var attribute in attributes.Values)
+        {
+            using var arguments = function.BuildArgs(Expression.Args,
+                static (arg, paramType, state) =>
+                    state.attributes.TryGetValue((arg.AttributeName, state.entityId), out var value)
+                        ? value.GetValue(state.schema.GetAttribute(state.entityType, arg.AttributeName).Type)
+                        : new LiteralValueUnion { LiteralType = paramType },
+                (attributes, entityId: attribute.EntityId, entityType: Template.EntityType, schema),
+                request.Context);
+            if (function.Lambda(arguments.Span)) matches.Add(attribute.EntityId);
+        }
+        return matches;
+    }
+}
+
+/// <summary>A boolean attribute looked up directly; grants the entities where it is true.</summary>
+internal sealed class AttributePlan(LookupEntityQuery template) : LookupEntityPlan
+{
+    public LookupEntityQuery Template { get; } = template;
+}
+
+/// <summary>
+/// A dependent hop: the lookup continues on <see cref="Name"/> of <see cref="EntityType"/> without
+/// scope, spending a level of depth, and <see cref="Main"/> then reads the tuples whose subjects are
+/// the entities it found.
+/// </summary>
+internal sealed class ExpandPlan(LookupEntityQuery main, string entityType, string name) : LookupEntityPlan
+{
+    public LookupEntityQuery Main { get; } = main;
+    public string EntityType { get; } = entityType;
+    public string Name { get; } = name;
+}
+
+/// <summary>Another permission, relation or attribute of the same entities, spending a level of depth.</summary>
+internal sealed class RefPlan(string entityType, string name) : LookupEntityPlan
+{
+    public string EntityType { get; } = entityType;
+    public string Name { get; } = name;
+}
+
+/// <summary>
+/// A union or intersection. <see cref="Shared"/> is the multi-relation query that the
+/// <see cref="SlicePlan"/> children read their relation from.
+/// </summary>
+internal sealed class SetPlan(LookupEntityPlan[] children, bool union, LookupEntityQuery? shared) : LookupEntityPlan
+{
+    public LookupEntityPlan[] Children { get; } = children;
+    public bool Union { get; } = union;
+    public LookupEntityQuery? Shared { get; } = shared;
+}
+
+/// <summary>
+/// An intersection of attribute expressions with other children: the others are resolved first,
+/// and each expression then reads its attributes for their common entities only.
+/// </summary>
+internal sealed class ConstrainedIntersectPlan(LookupEntityPlan[] others, LookupEntityQuery? shared,
+    ExpressionPlan[] checks) : LookupEntityPlan
+{
+    public LookupEntityPlan[] Others { get; } = others;
+    public LookupEntityQuery? Shared { get; } = shared;
+    public ExpressionPlan[] Checks { get; } = checks;
+}
+
+/// <summary>
+/// An intersection with negated children: the positive children's common entities minus every
+/// entity a negated child's inner permission grants.
+/// </summary>
+internal sealed class NegateIntersectPlan(LookupEntityPlan[] positives, LookupEntityQuery? shared,
+    LookupEntityPlan[] negated) : LookupEntityPlan
+{
+    public LookupEntityPlan[] Positives { get; } = positives;
+    public LookupEntityQuery? Shared { get; } = shared;
+    public LookupEntityPlan[] Negated { get; } = negated;
+}
+
+/// <summary>Every <see cref="EntityType"/> entity the child does not grant.</summary>
+internal sealed class NegatePlan(LookupEntityPlan child, string entityType) : LookupEntityPlan
+{
+    public LookupEntityPlan Child { get; } = child;
+    public string EntityType { get; } = entityType;
+}
