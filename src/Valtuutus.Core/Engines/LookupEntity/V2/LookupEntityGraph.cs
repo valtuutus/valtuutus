@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using Valtuutus.Core.Pools;
 
 namespace Valtuutus.Core.Engines.LookupEntity.V2;
@@ -219,12 +221,13 @@ internal sealed class ExpandNode(EntityNode child, LookupEntityQuery main, Entit
 
 /// <summary>
 /// A self-recursive relation walked as a frontier: the entities its direct and joined reads grant,
-/// then, one hop per step, the entities whose tuples name the newly found ones through the
-/// relation, until a hop adds nothing or the depth is spent. A direct grant costs no level, a
-/// joined grant one, and each hop one more.
+/// then the entities whose tuples name the newly found ones through the relation, until a hop adds
+/// nothing or the depth is spent. A direct grant costs no level, a joined grant one, and each hop
+/// one more. With a <paramref name="levels"/> query, up to <paramref name="maxLevels"/> hops run as
+/// one query; the entities it first finds at its last level continue the walk.
 /// </summary>
-internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, LookupEntityQuery hop, int depth)
-    : EntityNode
+internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, LookupEntityQuery hop, int depth,
+    LookupEntityQuery? levels = null, int maxLevels = 1) : EntityNode
 {
     private HashSet<string>? _found;
     private HashSet<string>? _frontier;
@@ -254,33 +257,9 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
 
         while (_hops < depth)
         {
-            HashSet<string> next;
-            if (_frontier!.Count > 0)
-            {
-                // The frontier stays with the hop query until its answer is read.
-                _hop ??= hop.For(_frontier, null);
-                if (_hop.Result is null)
-                {
-                    pending.Add(_hop);
-                    return false;
-                }
-                next = AnswerPlan.EntityIds((List<RelationTuple>)_hop.Result);
-                _hop = null;
-            }
-            else
-            {
-                next = EntitySets.Rent();
-            }
-
-            if (_hops == 0)
-            {
-                next.UnionWith(_joined!);
-                EntitySets.Return(_joined);
-                _joined = null;
-            }
-            _hops++;
-            next.ExceptWith(_found);
-            _found.UnionWith(next);
+            var count = levels is null ? 1 : Math.Min(maxLevels, depth - _hops);
+            HashSet<string>? next;
+            if (!(count >= 2 ? TryLevels(count, pending, out next) : TryHop(pending, out next))) return false;
             EntitySets.Return(_frontier);
             _frontier = next;
             if (next.Count == 0) break;
@@ -297,6 +276,76 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
             return true;
         }
         Result = _found;
+        return true;
+    }
+
+    // One hop: the entities whose tuples name the frontier, with the joined grants on the first.
+    private bool TryHop(PendingQueries pending, [NotNullWhen(true)] out HashSet<string>? next)
+    {
+        if (_frontier!.Count > 0)
+        {
+            // The frontier stays with the hop query until its answer is read.
+            _hop ??= hop.For(_frontier, null);
+            if (_hop.Result is null)
+            {
+                pending.Add(_hop);
+                next = null;
+                return false;
+            }
+            next = AnswerPlan.EntityIds((List<RelationTuple>)_hop.Result);
+            _hop = null;
+        }
+        else
+        {
+            next = EntitySets.Rent();
+        }
+
+        if (_hops == 0)
+        {
+            next.UnionWith(_joined!);
+            EntitySets.Return(_joined);
+            _joined = null;
+        }
+        _hops++;
+        next.ExceptWith(_found!);
+        _found!.UnionWith(next);
+        return true;
+    }
+
+    // Count hops in one query; on the first, the joined grants enter at its first level. Every
+    // entity it finds is granted, and the new ones it marks as first found at its last level are
+    // the next frontier.
+    private bool TryLevels(int count, PendingQueries pending, [NotNullWhen(true)] out HashSet<string>? next)
+    {
+        if (_frontier!.Count > 0 || (_hops == 0 && _joined!.Count > 0))
+        {
+            // The frontier and the joined grants stay with the query until its answer is read.
+            _hop ??= levels!.For(_frontier, null, count, _hops == 0 ? _joined! : EntitySets.None);
+            if (_hop.Result is null)
+            {
+                pending.Add(_hop);
+                next = null;
+                return false;
+            }
+            next = EntitySets.Rent();
+            foreach (ref readonly var tuple in CollectionsMarshal.AsSpan((List<RelationTuple>)_hop.Result))
+            {
+                if (_found!.Add(tuple.EntityId) && tuple.Relation.Length > 0)
+                    next.Add(tuple.EntityId);
+            }
+            _hop = null;
+        }
+        else
+        {
+            next = EntitySets.Rent();
+        }
+
+        if (_hops == 0)
+        {
+            EntitySets.Return(_joined);
+            _joined = null;
+        }
+        _hops += count;
         return true;
     }
 }

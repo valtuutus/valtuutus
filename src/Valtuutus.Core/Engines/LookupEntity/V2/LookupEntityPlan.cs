@@ -108,14 +108,47 @@ internal sealed class ExpandPlan(LookupEntityQuery main, string entityType, stri
 /// A direct relation whose only non-terminal userset is itself, walked hop by hop until a hop finds
 /// no new entity or the depth is spent. <see cref="Direct"/> and <see cref="Joined"/> are the
 /// relation's other targets; <see cref="Hop"/> reads the relation's tuples whose subjects are
-/// entities of the same type through the same relation.
+/// entities of the same type through the same relation. Always the root of its relation's plan.
 /// </summary>
-internal sealed class FixpointPlan(SubjectBoundPlan[] direct, SubjectBoundPlan[] joined, LookupEntityQuery hop)
-    : LookupEntityPlan
+public sealed class FixpointPlan : LookupEntityPlan
 {
-    public SubjectBoundPlan[] Direct { get; } = direct;
-    public SubjectBoundPlan[] Joined { get; } = joined;
-    public LookupEntityQuery Hop { get; } = hop;
+    internal FixpointPlan(SubjectBoundPlan[] direct, SubjectBoundPlan[] joined, LookupEntityQuery hop)
+    {
+        Direct = direct;
+        Joined = joined;
+        Hop = hop;
+    }
+
+    internal SubjectBoundPlan[] Direct { get; }
+    internal SubjectBoundPlan[] Joined { get; }
+    internal LookupEntityQuery Hop { get; }
+}
+
+/// <summary>
+/// A <see cref="FixpointPlan"/> whose hops a data provider answers several at a time: one
+/// <see cref="LookupEntityQueryKind.RelationsLevels"/> query follows up to <see cref="Levels"/> hops
+/// of the walk. Installed by a provider's <see cref="ILookupEntityPlanRewriter"/> in place of
+/// <see cref="OneLevel"/>, whose hop still runs when the depth left allows one level only.
+/// </summary>
+public sealed class FixpointLevelsPlan : LookupEntityPlan
+{
+    /// <param name="template">A <see cref="LookupEntityQueryKind.RelationsLevels"/> query with
+    /// <see cref="LookupEntityQuery.EntityType"/> and <see cref="LookupEntityQuery.Relation"/> set and no ids.</param>
+    /// <param name="levels">Most hops one query follows; at least 2.</param>
+    /// <param name="oneLevel">The plan being replaced.</param>
+    public FixpointLevelsPlan(LookupEntityQuery template, int levels, FixpointPlan oneLevel)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(levels, 2);
+        if (template.Kind != LookupEntityQueryKind.RelationsLevels)
+            throw new ArgumentException($"The template must be a {nameof(LookupEntityQueryKind.RelationsLevels)} query.", nameof(template));
+        Template = template;
+        Levels = levels;
+        OneLevel = oneLevel;
+    }
+
+    public LookupEntityQuery Template { get; }
+    public int Levels { get; }
+    public FixpointPlan OneLevel { get; }
 }
 
 /// <summary>Another permission, relation or attribute of the same entities, spending a level of depth.</summary>

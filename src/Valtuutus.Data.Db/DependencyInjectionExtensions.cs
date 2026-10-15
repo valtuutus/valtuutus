@@ -32,6 +32,10 @@ public static class DependencyInjectionExtensions
         // (nothing resolves LookupSubjectPlanCache then); it reads the registered options and the
         // provider's ILookupSubjectBatchOps, and changes nothing when either says so.
         services.TryAddEnumerable(ServiceDescriptor.Singleton<ILookupSubjectPlanRewriter, UsersetLevelsRewriter>());
+        // LookupEntity V2 plan rewriter for relational providers. Harmless when V2 is not opted in
+        // (nothing resolves LookupEntityPlanCache then); it reads the registered options and the
+        // provider's ILookupEntityBatchOps, and changes nothing when either says so.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ILookupEntityPlanRewriter, FixpointLevelsRewriter>());
         // V2 physical executor for relational providers: packs each wave into one DbBatch through
         // the provider's IRelationalBatchOps registration, resolved lazily (at the first executor
         // creation during a check, never at startup); a provider without one gets individual

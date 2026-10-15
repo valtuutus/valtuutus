@@ -1542,4 +1542,70 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEquivalentTo(["g0"]);
     }
+
+    private const string RecursionDepthSchema = """
+        entity user {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+        }
+        """;
+
+    // g5 holds u directly (no level), g4 through team t1 (one level); g3 holds g5, g2 holds g3, g1
+    // holds g2 and g4 (a shortcut), g0 holds g1, g2 holds g0 (a cycle), gx holds g0. Each group is
+    // granted once the depth covers its cheapest path: g5 0, g3 and g4 1, g1 and g2 2, g0 3, gx 4.
+    [Theory]
+    [InlineData(1, new[] { "g5" })]
+    [InlineData(2, new[] { "g3", "g4", "g5" })]
+    [InlineData(3, new[] { "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(4, new[] { "g0", "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(5, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(6, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(10, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    public async Task Recursive_userset_grants_each_group_at_its_cheapest_depth(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g5", "member", "user", "u"),
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g4", "member", "team", "t1", "member"),
+            new("group", "g3", "member", "group", "g5", "member"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "member", "group", "g4", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g2", "member", "group", "g0", "member"),
+            new("group", "gx", "member", "group", "g0", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], RecursionDepthSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    // A user reached only through the joined grant: the walk starts from level one.
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "g2" })]
+    [InlineData(3, new[] { "g1", "g2" })]
+    [InlineData(4, new[] { "g0", "g1", "g2" })]
+    [InlineData(10, new[] { "g0", "g1", "g2" })]
+    public async Task Recursive_userset_reached_through_a_joined_grant_spends_its_level(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], RecursionDepthSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
 }
