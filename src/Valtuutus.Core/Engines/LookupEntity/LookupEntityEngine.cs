@@ -656,7 +656,9 @@ public sealed class LookupEntityEngine(
                 {
                     // Fast path: terminal sub-relation that directly accepts the final subject
                     // type — collapse two GetRelationsWithSubjectsIds calls into one joined query.
-                    if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
+                    // The join reads the sub-relation's tuples too, a hop that needs the depth the
+                    // dependent leg below would spend.
+                    if (req.Depth > 0 && !subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(req.FinalSubjectType))
                     {
                         buffer[count++] = JoinedLookup(
                             new EntityRelationFilter { EntityType = req.EntityType, Relation = relation.Name, SnapToken = req.SnapToken ?? SnapToken.MinValue },

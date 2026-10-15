@@ -1206,4 +1206,74 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEquivalentTo(groups.Select(g => "d" + g));
     }
+
+    private const string DepthSchema = """
+        entity user {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+        }
+        entity project {
+            relation reviewer @team#member;
+            relation viewer @group#member;
+        }
+        """;
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public async Task Terminal_userset_spends_a_level_of_depth(int depth, bool found)
+    {
+        RelationTuple[] tuples =
+        [
+            new("project", "p1", "reviewer", "team", "t1", "member"),
+            new("team", "t1", "member", "user", "alice"),
+        ];
+        var engine = await CreateEngine(tuples, [], DepthSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "reviewer", "user", "alice", depth: depth), default);
+
+        if (found) result.EntityIds.Should().Contain("p1");
+        else result.EntityIds.Should().NotContain("p1");
+    }
+
+    [Theory]
+    [InlineData("u1", 1, false)]
+    [InlineData("u1", 2, true)]
+    [InlineData("u1", 3, true)]
+    [InlineData("u1", 4, true)]
+    [InlineData("u1", 5, true)]
+    [InlineData("u2", 1, false)]
+    [InlineData("u2", 2, false)]
+    [InlineData("u2", 3, true)]
+    [InlineData("u2", 4, true)]
+    [InlineData("u2", 5, true)]
+    [InlineData("u3", 1, false)]
+    [InlineData("u3", 2, false)]
+    [InlineData("u3", 3, false)]
+    [InlineData("u3", 4, true)]
+    [InlineData("u3", 5, true)]
+    public async Task Userset_chain_spends_a_level_of_depth_per_hop(string subject, int depth, bool found)
+    {
+        RelationTuple[] tuples =
+        [
+            new("project", "p1", "viewer", "group", "g1", "member"),
+            new("group", "g1", "member", "user", "u1"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g2", "member", "user", "u2"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("team", "t1", "member", "user", "u3"),
+        ];
+        var engine = await CreateEngine(tuples, [], DepthSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("project", "viewer", "user", subject, depth: depth), default);
+
+        if (found) result.EntityIds.Should().Contain("p1");
+        else result.EntityIds.Should().NotContain("p1");
+    }
 }
