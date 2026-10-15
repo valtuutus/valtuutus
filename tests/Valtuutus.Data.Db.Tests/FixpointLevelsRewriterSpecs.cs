@@ -54,6 +54,12 @@ public class FixpointLevelsRewriterSpecs
         plan.Template.Kind.Should().Be(LookupEntityQueryKind.RelationsLevels);
         plan.Template.EntityType.Should().Be("group");
         plan.Template.Relation.Should().Be("member");
+        plan.FromSubject.Should().NotBeNull();
+        var fromSubject = plan.FromSubject!;
+        fromSubject.Kind.Should().Be(LookupEntityQueryKind.RelationsLevelsFromSubject);
+        fromSubject.EntityType.Should().Be("group");
+        fromSubject.Relation.Should().Be("member");
+        fromSubject.SubjectType.Should().Be("user");
     }
 
     [Fact]
@@ -86,5 +92,19 @@ public class FixpointLevelsRewriterSpecs
         var (compiled, rewritten) = Rewrite("group", "member", hops: 3, withBatchOps: false);
 
         rewritten.Should().BeSameAs(compiled);
+    }
+
+    [Fact]
+    public void Levels_plan_takes_only_a_from_subject_query_as_its_first_query()
+    {
+        var (compiled, _) = Rewrite("group", "member", hops: 3);
+        var template = new LookupEntityQuery
+        {
+            Kind = LookupEntityQueryKind.RelationsLevels, EntityType = "group", Relation = "member",
+        };
+
+        var act = () => new FixpointLevelsPlan(template, 3, (FixpointPlan)compiled, template);
+
+        act.Should().Throw<ArgumentException>().WithParameterName("fromSubject");
     }
 }

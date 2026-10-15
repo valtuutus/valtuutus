@@ -6,8 +6,9 @@ namespace Valtuutus.Data.Db;
 /// <summary>
 /// Walks self-recursive relations several hops per query: a <see cref="FixpointPlan"/>, always the
 /// root of its relation's plan, becomes a <see cref="FixpointLevelsPlan"/> of
-/// <see cref="IValtuutusDbOptions.LookupHopsPerQuery"/> hops. The new query kind runs only through
-/// the provider's lookup batch commands, so without them nothing changes.
+/// <see cref="IValtuutusDbOptions.LookupHopsPerQuery"/> hops, whose walks with no joined grants read
+/// their direct grants within the first query. The new query kinds run only through the provider's
+/// lookup batch commands, so without them nothing changes.
 /// </summary>
 internal sealed class FixpointLevelsRewriter(IValtuutusDbOptions options, ILookupEntityBatchOps? lookupBatchOps = null)
     : ILookupEntityPlanRewriter
@@ -24,6 +25,11 @@ internal sealed class FixpointLevelsRewriter(IValtuutusDbOptions options, ILooku
             {
                 Kind = LookupEntityQueryKind.RelationsLevels, EntityType = entityType, Relation = name,
             },
-            _levels, fixpoint);
+            _levels, fixpoint,
+            new LookupEntityQuery
+            {
+                Kind = LookupEntityQueryKind.RelationsLevelsFromSubject, EntityType = entityType, Relation = name,
+                SubjectType = subjectType,
+            });
     }
 }

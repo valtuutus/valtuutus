@@ -416,7 +416,8 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2
     }
     public sealed class FixpointLevelsPlan : Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityPlan
     {
-        public FixpointLevelsPlan(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery template, int levels, Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan oneLevel) { }
+        public FixpointLevelsPlan(Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery template, int levels, Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan oneLevel, Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery? fromSubject = null) { }
+        public Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery? FromSubject { get; }
         public int Levels { get; }
         public Valtuutus.Core.Engines.LookupEntity.V2.FixpointPlan OneLevel { get; }
         public Valtuutus.Core.Engines.LookupEntity.V2.LookupEntityQuery Template { get; }
@@ -458,6 +459,7 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2
         Attribute = 5,
         EntitiesExcluding = 6,
         RelationsLevels = 7,
+        RelationsLevelsFromSubject = 8,
     }
 }
 namespace Valtuutus.Core.Engines.LookupSubject

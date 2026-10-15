@@ -1608,4 +1608,43 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEquivalentTo(expected);
     }
+
+    private const string DirectRecursionSchema = """
+        entity user {}
+        entity group {
+            relation member @user @group#member;
+        }
+        """;
+
+    // g5 and g4 hold u directly; g3 holds g5, g2 holds g3, g1 holds g2 and g4 (a shortcut), g0 holds
+    // g1, g2 holds g0 (a cycle), gx holds g0. Cheapest path costs: g4 and g5 0, g1 and g3 1, g0 and
+    // g2 2, gx 3. Request depth D grants the groups costing at most D - 1.
+    [Theory]
+    [InlineData(1, new[] { "g4", "g5" })]
+    [InlineData(2, new[] { "g1", "g3", "g4", "g5" })]
+    [InlineData(3, new[] { "g0", "g1", "g2", "g3", "g4", "g5" })]
+    [InlineData(4, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(5, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    [InlineData(10, new[] { "g0", "g1", "g2", "g3", "g4", "g5", "gx" })]
+    public async Task Recursive_userset_with_only_direct_grants_grants_each_group_at_its_cheapest_depth(int depth,
+        string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g5", "member", "user", "u"),
+            new("group", "g4", "member", "user", "u"),
+            new("group", "g3", "member", "group", "g5", "member"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "member", "group", "g4", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g2", "member", "group", "g0", "member"),
+            new("group", "gx", "member", "group", "g0", "member"),
+        ];
+        var engine = await CreateEngine(tuples, [], DirectRecursionSchema);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
 }

@@ -224,10 +224,12 @@ internal sealed class ExpandNode(EntityNode child, LookupEntityQuery main, Entit
 /// then the entities whose tuples name the newly found ones through the relation, until a hop adds
 /// nothing or the depth is spent. A direct grant costs no level, a joined grant one, and each hop
 /// one more. With a <paramref name="levels"/> query, up to <paramref name="maxLevels"/> hops run as
-/// one query; the entities it first finds at its last level continue the walk.
+/// one query; the entities it first finds at its last level continue the walk. With a
+/// <paramref name="fromSubject"/> query, the direct grants are level 0 of the first levels query and
+/// the walk continues from the entities that query first finds at its last level.
 /// </summary>
 internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, LookupEntityQuery hop, int depth,
-    LookupEntityQuery? levels = null, int maxLevels = 1) : EntityNode
+    LookupEntityQuery? levels = null, int maxLevels = 1, LookupEntityQuery? fromSubject = null) : EntityNode
 {
     private HashSet<string>? _found;
     private HashSet<string>? _frontier;
@@ -239,20 +241,36 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
     {
         if (_found is null)
         {
-            var directDone = AdvanceAll(direct, pending);
-            var joinedDone = AdvanceAll(joined, pending);
-            if (!directDone || !joinedDone) return false;
-
-            var granted = Union(direct);
-            if (depth == 0)
+            if (fromSubject is not null)
             {
-                Result = granted;
-                return true;
+                // The direct grants are level 0 of the first levels query; its last level is the
+                // frontier the hop loop continues from.
+                if (fromSubject.Result is null)
+                {
+                    pending.Add(fromSubject);
+                    return false;
+                }
+                _found = EntitySets.Rent();
+                _frontier = ReadLevels((List<RelationTuple>)fromSubject.Result);
+                _hops = fromSubject.Levels;
             }
-            _found = EntitySets.Rent();
-            _found.UnionWith(granted);
-            _frontier = granted.Count == 0 ? EntitySets.Rent() : granted;
-            _joined = Union(joined);
+            else
+            {
+                var directDone = AdvanceAll(direct, pending);
+                var joinedDone = AdvanceAll(joined, pending);
+                if (!directDone || !joinedDone) return false;
+
+                var granted = Union(direct);
+                if (depth == 0)
+                {
+                    Result = granted;
+                    return true;
+                }
+                _found = EntitySets.Rent();
+                _found.UnionWith(granted);
+                _frontier = granted.Count == 0 ? EntitySets.Rent() : granted;
+                _joined = Union(joined);
+            }
         }
 
         while (_hops < depth)
@@ -312,9 +330,7 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
         return true;
     }
 
-    // Count hops in one query; on the first, the joined grants enter at its first level. Every
-    // entity it finds is granted, and the new ones it marks as first found at its last level are
-    // the next frontier.
+    // Count hops in one query; on the first, the joined grants enter at its first level.
     private bool TryLevels(int count, PendingQueries pending, [NotNullWhen(true)] out HashSet<string>? next)
     {
         if (_frontier!.Count > 0 || (_hops == 0 && _joined!.Count > 0))
@@ -327,12 +343,7 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
                 next = null;
                 return false;
             }
-            next = EntitySets.Rent();
-            foreach (ref readonly var tuple in CollectionsMarshal.AsSpan((List<RelationTuple>)_hop.Result))
-            {
-                if (_found!.Add(tuple.EntityId) && tuple.Relation.Length > 0)
-                    next.Add(tuple.EntityId);
-            }
+            next = ReadLevels((List<RelationTuple>)_hop.Result);
             _hop = null;
         }
         else
@@ -347,6 +358,19 @@ internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, Loo
         }
         _hops += count;
         return true;
+    }
+
+    // Every entity a levels query finds is granted, and the new ones it marks as first found at its
+    // last level are the next frontier.
+    private HashSet<string> ReadLevels(List<RelationTuple> rows)
+    {
+        var next = EntitySets.Rent();
+        foreach (ref readonly var tuple in CollectionsMarshal.AsSpan(rows))
+        {
+            if (_found!.Add(tuple.EntityId) && tuple.Relation.Length > 0)
+                next.Add(tuple.EntityId);
+        }
+        return next;
     }
 }
 

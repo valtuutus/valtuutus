@@ -202,14 +202,14 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
             .EntityIds.Should().Equal("p1");
     }
 
-    // Steps: the direct read, then hop queries until one finds nothing new. k=1: g2, g1, g0, then
-    // nothing. k=2: g2 and g1, then g0 and an empty level. k=3: g2 to g0, then nothing. k=4: g2 to
-    // g0 and an empty last level.
+    // k=1: the direct read, then one hop per step: g2, g1, g0, then nothing. From k=2 the first
+    // query reads the direct grant as level 0. k=2: g3, g2, g1, then g0 and an empty level. k=3:
+    // g3 to g0, then nothing new. k=4: g3 to g0 and an empty last level.
     [Theory]
     [InlineData(1, 5)]
-    [InlineData(2, 3)]
-    [InlineData(3, 3)]
-    [InlineData(4, 2)]
+    [InlineData(2, 2)]
+    [InlineData(3, 2)]
+    [InlineData(4, 1)]
     public async Task Nested_group_hops_share_round_trips(int hops, int roundTrips)
     {
         var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
@@ -230,6 +230,31 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
 
         page.EntityIds.Should().Equal("g0", "g1", "g2", "g3");
         counter.Count.Should().Be(roundTrips);
+    }
+
+    [Fact]
+    public async Task Nested_group_with_an_explicit_token_reads_its_direct_grant_in_the_first_levels_query()
+    {
+        var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
+        var token = await Write(dbFactory,
+        [
+            new RelationTuple("group", "g3", "member", "user", "u"),
+            new RelationTuple("group", "g2", "member", "group", "g3", "member"),
+            new RelationTuple("group", "g1", "member", "group", "g2", "member"),
+            new RelationTuple("group", "g0", "member", "group", "g1", "member"),
+        ]);
+        await Write(dbFactory, [new RelationTuple("group", "g9", "member", "user", "u")]);
+
+        var counter = new RoundTripCounter();
+        await using var sp = BuildServices(dbFactory, counter, hops: 2);
+        await using var scope = sp.CreateAsyncScope();
+        var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
+
+        var page = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u") { SnapToken = token }, default);
+
+        page.EntityIds.Should().Equal("g0", "g1", "g2", "g3");
+        counter.Count.Should().Be(2);
     }
 
     private static ServiceProvider BuildServices(DbConnectionFactory dbFactory, RoundTripCounter counter,
