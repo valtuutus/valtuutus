@@ -217,6 +217,90 @@ internal sealed class ExpandNode(EntityNode child, LookupEntityQuery main, Entit
     }
 }
 
+/// <summary>
+/// A self-recursive relation walked as a frontier: the entities its direct and joined reads grant,
+/// then, one hop per step, the entities whose tuples name the newly found ones through the
+/// relation, until a hop adds nothing or the depth is spent. A direct grant costs no level, a
+/// joined grant one, and each hop one more.
+/// </summary>
+internal sealed class FixpointNode(EntityNode[] direct, EntityNode[] joined, LookupEntityQuery hop, int depth)
+    : EntityNode
+{
+    private HashSet<string>? _found;
+    private HashSet<string>? _frontier;
+    private HashSet<string>? _joined;
+    private LookupEntityQuery? _hop;
+    private int _hops;
+
+    protected override bool TryAdvance(PendingQueries pending)
+    {
+        if (_found is null)
+        {
+            var directDone = AdvanceAll(direct, pending);
+            var joinedDone = AdvanceAll(joined, pending);
+            if (!directDone || !joinedDone) return false;
+
+            var granted = Union(direct);
+            if (depth == 0)
+            {
+                Result = granted;
+                return true;
+            }
+            _found = EntitySets.Rent();
+            _found.UnionWith(granted);
+            _frontier = granted.Count == 0 ? EntitySets.Rent() : granted;
+            _joined = Union(joined);
+        }
+
+        while (_hops < depth)
+        {
+            HashSet<string> next;
+            if (_frontier!.Count > 0)
+            {
+                // The frontier stays with the hop query until its answer is read.
+                _hop ??= hop.For(_frontier, null);
+                if (_hop.Result is null)
+                {
+                    pending.Add(_hop);
+                    return false;
+                }
+                next = AnswerPlan.EntityIds((List<RelationTuple>)_hop.Result);
+                _hop = null;
+            }
+            else
+            {
+                next = EntitySets.Rent();
+            }
+
+            if (_hops == 0)
+            {
+                next.UnionWith(_joined!);
+                EntitySets.Return(_joined);
+                _joined = null;
+            }
+            _hops++;
+            next.ExceptWith(_found);
+            _found.UnionWith(next);
+            EntitySets.Return(_frontier);
+            _frontier = next;
+            if (next.Count == 0) break;
+        }
+
+        EntitySets.Return(_frontier);
+        _frontier = null;
+        EntitySets.Return(_joined);
+        _joined = null;
+        if (_found.Count == 0)
+        {
+            EntitySets.Return(_found);
+            Result = NoEntities;
+            return true;
+        }
+        Result = _found;
+        return true;
+    }
+}
+
 internal sealed class SetNode(EntityNode[] children, bool union) : EntityNode
 {
     protected override bool TryAdvance(PendingQueries pending)

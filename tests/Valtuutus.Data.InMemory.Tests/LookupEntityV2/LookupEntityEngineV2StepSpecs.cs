@@ -23,6 +23,7 @@ public class LookupEntityEngineV2StepSpecs
         }
         entity group {
             relation member @user @group#member;
+            relation org @organization;
         }
         entity folder {
             relation org @organization;
@@ -190,6 +191,37 @@ public class LookupEntityEngineV2StepSpecs
         first.Relation.Should().Be("member");
         first.Ids.Should().Equal("u1");
         runner.All.Count(q => q.Ids.SequenceEqual(["u1"])).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Recursive_userset_stops_at_the_first_hop_that_finds_nothing_new()
+    {
+        var (engine, runner, _) = await Setup(NestedGroupTuples);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("project", "view", "user", "u1"), default);
+
+        // The subject's own groups, a hop finding g1, a hop finding nothing, then the project read.
+        result.EntityIds.Should().Equal("p1");
+        runner.Steps.Should().HaveCount(4);
+    }
+
+    [Fact]
+    public async Task Scoped_recursive_userset_scopes_the_root_level_over_an_unscoped_walk()
+    {
+        var (engine, runner, _) = await Setup(NestedGroupTuples.Concat([
+            new RelationTuple("group", "g1", "org", "organization", "o1"),
+        ]).ToArray());
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u1") { Scope = new EntityScope("org", "organization", "o1") },
+            default);
+
+        // g1 is the only group in the scope. Steps: the direct reads (scoped and unscoped), the walk's
+        // hop to g1, the walk's hop finding nothing, then the scoped root hop over the walk's groups.
+        result.EntityIds.Should().Equal("g1");
+        runner.Steps.Should().HaveCount(4);
+        runner.Steps[3].Queries.Should().ContainSingle().Which.Scope
+            .Should().Be(new EntityScope("org", "organization", "o1"));
     }
 
     [Fact]

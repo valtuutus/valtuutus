@@ -41,6 +41,7 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
             ? EntityNode.None
             : new ExpandNode(Build(expand.EntityType, expand.Name, depth, scoped: false), expand.Main, Scope(scoped)),
         RefPlan reference => Build(reference.EntityType, reference.Name, depth, scoped),
+        FixpointPlan fixpoint => Fixpoint(fixpoint, depth, scoped),
         SetPlan set => new SetNode(Children(set.Children, set.Shared, depth, scoped), set.Union),
         ConstrainedIntersectPlan constrained => new ConstrainedIntersectNode(
             Children(constrained.Others, constrained.Shared, depth, scoped), constrained.Checks, request),
@@ -49,6 +50,35 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
         NegatePlan negate => new NegateNode(Instantiate(negate.Child, depth, scoped), negate.EntityType, ScopeIds(scoped)),
         _ => throw new InvalidOperationException(),
     };
+
+    // Within a scope the root level reads scoped, as an unrolled relation does: its direct and
+    // joined reads, and the hop over the unscoped walk one level down.
+    private EntityNode Fixpoint(FixpointPlan fixpoint, int depth, bool scoped)
+    {
+        if (Scope(scoped) is not { } scope) return Walk(fixpoint, depth);
+
+        var nodes = new List<EntityNode>();
+        nodes.AddRange(Instantiate(fixpoint.Direct, depth, scoped: true));
+        if (depth > 0)
+        {
+            nodes.AddRange(Instantiate(fixpoint.Joined, depth, scoped: true));
+            nodes.Add(new ExpandNode(Walk(fixpoint, depth - 1), fixpoint.Hop, scope));
+        }
+        return new SetNode(nodes.ToArray(), union: true);
+    }
+
+    private FixpointNode Walk(FixpointPlan fixpoint, int depth) => new(
+        Instantiate(fixpoint.Direct, depth, scoped: false),
+        depth == 0 ? [] : Instantiate(fixpoint.Joined, depth, scoped: false),
+        fixpoint.Hop, depth);
+
+    private EntityNode[] Instantiate(SubjectBoundPlan[] plans, int depth, bool scoped)
+    {
+        var nodes = new EntityNode[plans.Length];
+        for (var i = 0; i < nodes.Length; i++)
+            nodes[i] = Instantiate(plans[i], depth, scoped);
+        return nodes;
+    }
 
     private EntityNode[] Children(LookupEntityPlan[] children, LookupEntityQuery? shared, int depth, bool scoped)
     {

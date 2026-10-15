@@ -1418,4 +1418,128 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
 
         result.EntityIds.Should().BeEquivalentTo(expected, because);
     }
+
+    // A recursive userset walked within a scope: only the root frame's reads are scoped, so a group
+    // outside the scope still carries membership to the groups above it.
+    private const string ScopedRecursionSchema = """
+        entity user {}
+        entity org {}
+        entity group {
+            relation member @user @group#member;
+            relation org @org;
+            permission view := member;
+        }
+        """;
+
+    [Theory]
+    [InlineData(1, new[] { "g3" })]
+    [InlineData(2, new[] { "g3" })]
+    [InlineData(3, new[] { "g1", "g3" })]
+    [InlineData(4, new[] { "g1", "g3" })]
+    [InlineData(10, new[] { "g1", "g3" })]
+    public async Task Recursive_userset_within_a_scope_keeps_the_scopes_entities(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g3", "member", "user", "u"),
+            new("group", "g2", "member", "group", "g3", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g1", "org", "org", "o1"),
+            new("group", "g3", "org", "org", "o1"),
+            new("group", "g0", "org", "org", "o2"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    private static readonly RelationTuple[] ScopedRecursionTuples =
+    [
+        new("group", "g3", "member", "user", "u"),
+        new("group", "g2", "member", "group", "g3", "member"),
+        new("group", "g1", "member", "group", "g2", "member"),
+        new("group", "g0", "member", "group", "g1", "member"),
+        new("group", "g1", "org", "org", "o1"),
+        new("group", "g3", "org", "org", "o1"),
+        new("group", "g0", "org", "org", "o2"),
+    ];
+
+    // A permission over the recursive relation spends one more level than the relation itself.
+    [Theory]
+    [InlineData(2, new[] { "g3" })]
+    [InlineData(3, new[] { "g3" })]
+    [InlineData(4, new[] { "g1", "g3" })]
+    [InlineData(5, new[] { "g1", "g3" })]
+    [InlineData(11, new[] { "g1", "g3" })]
+    public async Task Recursive_userset_under_a_scoped_permission_matches_the_relation(int depth, string[] expected)
+    {
+        var engine = await CreateEngine(ScopedRecursionTuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "view", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    private const string ScopedJoinedRecursionSchema = """
+        entity user {}
+        entity org {}
+        entity team {
+            relation member @user;
+        }
+        entity group {
+            relation member @user @group#member @team#member;
+            relation org @org;
+        }
+        """;
+
+    // g2 is reached through the joined read (one level), g1 by a hop from g2 (two levels).
+    [Theory]
+    [InlineData(1, new string[0])]
+    [InlineData(2, new[] { "g2" })]
+    [InlineData(3, new[] { "g1", "g2" })]
+    public async Task Recursive_userset_with_a_joined_grant_within_a_scope_at_the_depth_boundary(int depth, string[] expected)
+    {
+        RelationTuple[] tuples =
+        [
+            new("team", "t1", "member", "user", "u"),
+            new("group", "g2", "member", "team", "t1", "member"),
+            new("group", "g1", "member", "group", "g2", "member"),
+            new("group", "g1", "org", "org", "o1"),
+            new("group", "g2", "org", "org", "o1"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedJoinedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: depth) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task Cycle_of_a_recursive_userset_within_a_scope_keeps_the_scopes_entities()
+    {
+        RelationTuple[] tuples =
+        [
+            new("group", "g0", "member", "group", "g1", "member"),
+            new("group", "g1", "member", "group", "g0", "member"),
+            new("group", "g1", "member", "user", "u"),
+            new("group", "g0", "org", "org", "o1"),
+            new("group", "g1", "org", "org", "o2"),
+        ];
+        var engine = await CreateEngine(tuples, [], ScopedRecursionSchema);
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("group", "member", "user", "u", depth: 10) { Scope = new EntityScope("org", "org", "o1") },
+            default);
+
+        result.EntityIds.Should().BeEquivalentTo(["g0"]);
+    }
 }
