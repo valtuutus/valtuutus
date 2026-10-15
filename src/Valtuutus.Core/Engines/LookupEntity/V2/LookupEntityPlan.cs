@@ -26,7 +26,8 @@ internal abstract class AnswerPlan : LookupEntityPlan
 
     public static HashSet<string> EntityIds(List<RelationTuple> tuples, string? relation = null)
     {
-        var ids = relation is null ? new HashSet<string>(tuples.Count) : new HashSet<string>();
+        var ids = EntitySets.Rent();
+        if (relation is null) ids.EnsureCapacity(tuples.Count);
         foreach (ref readonly var tuple in CollectionsMarshal.AsSpan(tuples))
         {
             if (relation is null || tuple.Relation == relation)
@@ -69,7 +70,7 @@ internal sealed class ExpressionPlan(LookupEntityQuery template, PermissionNodeL
     public override HashSet<string> Evaluate(object result, LookupEntityRequest request)
     {
         var attributes = (Dictionary<(string AttributeName, string EntityId), AttributeTuple>)result;
-        var matches = new HashSet<string>();
+        var matches = EntitySets.Rent();
         foreach (var attribute in attributes.Values)
         {
             using var arguments = function.BuildArgs(Expression.Args,

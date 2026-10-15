@@ -1,3 +1,5 @@
+using Valtuutus.Core.Pools;
+
 namespace Valtuutus.Core.Engines.LookupEntity.V2;
 
 /// <summary>
@@ -16,6 +18,14 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
     {
         if (depth == 0) return EntityNode.None;
         return Instantiate(plans.GetOrCompile(entityType, name, request.SubjectType), depth - 1, scoped);
+    }
+
+    /// <summary>Returns the request's sharing table to the pool; call once the lookup is done.</summary>
+    public void Release()
+    {
+        if (_shared is null) return;
+        DictionaryPool<SharedKey, LookupEntityQuery>.Return(_shared);
+        _shared = null;
     }
 
     private EntityNode Instantiate(LookupEntityPlan plan, int depth, bool scoped) => plan switch
@@ -59,9 +69,9 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
     // reaches it, so one instance per shape serves every node.
     private LookupEntityQuery Shared(LookupEntityQuery template, string[] ids, bool scoped)
     {
-        var key = new SharedKey(template.Kind, template.EntityType, template.Relation, string.Join('\0', template.Names),
+        var key = new SharedKey(template.Kind, template.EntityType, template.Relation, template.NamesKey,
             template.SubjectType, template.SubjectRelation, template.SubEntityType, template.SubRelation, scoped);
-        _shared ??= new Dictionary<SharedKey, LookupEntityQuery>();
+        _shared ??= DictionaryPool<SharedKey, LookupEntityQuery>.Rent();
         if (!_shared.TryGetValue(key, out var query))
             _shared[key] = query = template.For(ids, Scope(scoped));
         return query;

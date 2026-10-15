@@ -12,7 +12,9 @@ public interface ILookupEntityQueryRunner
     /// Runs <paramref name="queries"/>, storing each answer in <see cref="LookupEntityQuery.Result"/>,
     /// and returns the snap token they ran against. A null <paramref name="snapToken"/> stands for the
     /// latest one, which the runner resolves; the engine passes the returned token to every later
-    /// step of the request, so a whole lookup reads one snapshot.
+    /// step of the request, so a whole lookup reads one snapshot. A runner reads each query's
+    /// <see cref="LookupEntityQuery.Ids"/> before the returned task completes; the engine reuses
+    /// those collections afterwards.
     /// </summary>
     ValueTask<SnapToken> RunAsync(IReadOnlyList<LookupEntityQuery> queries, SnapToken? snapToken,
         CancellationToken cancellationToken);

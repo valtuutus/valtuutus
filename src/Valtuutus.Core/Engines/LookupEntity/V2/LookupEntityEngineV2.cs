@@ -27,22 +27,31 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
         if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
             return new LookupEntityPage([], null);
 
-        var root = new LookupEntityGraphBuilder(plans, req)
-            .Build(req.EntityType, req.Permission, req.Depth, scoped: req.Scope is not null);
-
-        var snapToken = req.SnapToken;
-        using (var pending = new PendingQueries())
+        var builder = new LookupEntityGraphBuilder(plans, req);
+        List<string> sorted;
+        try
         {
-            while (!root.Advance(pending))
-            {
-                if (pending.Count == 0)
-                    throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
-                snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
-                pending.Answered();
-            }
-        }
+            var root = builder.Build(req.EntityType, req.Permission, req.Depth, scoped: req.Scope is not null);
 
-        var sorted = new List<string>(root.Result!);
+            var snapToken = req.SnapToken;
+            using (var pending = new PendingQueries())
+            {
+                while (!root.Advance(pending))
+                {
+                    if (pending.Count == 0)
+                        throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
+                    snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
+                    pending.Answered();
+                }
+            }
+
+            sorted = new List<string>(root.Result!);
+            EntitySets.Return(root.Result);
+        }
+        finally
+        {
+            builder.Release();
+        }
         sorted.Sort(StringComparer.Ordinal);
 
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",

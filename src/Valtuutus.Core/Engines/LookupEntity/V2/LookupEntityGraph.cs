@@ -3,6 +3,27 @@ using Valtuutus.Core.Pools;
 namespace Valtuutus.Core.Engines.LookupEntity.V2;
 
 /// <summary>
+/// Entity-id sets rented per request. Each set has one owner at a time, a node, which may lend it
+/// to a query's ids while that query's step runs and returns it once done. <see cref="None"/> is
+/// shared and never returned; sets above <see cref="MaxPooledCount"/> go to the collector, so the
+/// pool keeps only buffers sized for typical results.
+/// </summary>
+internal static class EntitySets
+{
+    public static readonly HashSet<string> None = new(0);
+
+    public const int MaxPooledCount = 1024;
+
+    public static HashSet<string> Rent() => HashSetPool<string>.Rent();
+
+    public static void Return(HashSet<string>? set)
+    {
+        if (set is not null && !ReferenceEquals(set, None) && set.Count <= MaxPooledCount)
+            HashSetPool<string>.Return(set);
+    }
+}
+
+/// <summary>
 /// The queries of one step, each listed once. A step's answers stay readable through the advance
 /// that follows it, which reads every one of them; their relation-tuple lists then go back to the pool.
 /// </summary>
@@ -55,11 +76,10 @@ internal sealed class PendingQueries : IDisposable
 
 internal abstract class EntityNode
 {
-    // Shared across requests: no union or intersection ever takes it over.
-    public static readonly HashSet<string> NoEntities = new(0);
+    public static HashSet<string> NoEntities => EntitySets.None;
     public static readonly EntityNode None = new DoneNode();
 
-    /// <summary>The ids of the entities the node grants; read only by its parent once set.</summary>
+    /// <summary>The ids of the entities the node grants; owned by its parent once set.</summary>
     public HashSet<string>? Result { get; protected set; }
 
     /// <summary>
@@ -79,9 +99,7 @@ internal abstract class EntityNode
         return done;
     }
 
-    // A done child's set is read only by its parent, so a union or intersection takes one child's
-    // set over and folds the others into it. NoEntities is never taken: an empty child is skipped by
-    // a union and ends an intersection.
+    // A union keeps its largest child's set, folds the others into it and returns them.
     protected static HashSet<string> Union(EntityNode[] children)
     {
         HashSet<string>? largest = null;
@@ -90,29 +108,42 @@ internal abstract class EntityNode
             if (child.Result!.Count > (largest?.Count ?? 0))
                 largest = child.Result;
         }
-        if (largest is null) return NoEntities;
         foreach (var child in children)
         {
-            if (child.Result != largest)
-                largest.UnionWith(child.Result!);
+            if (child.Result == largest) continue;
+            largest?.UnionWith(child.Result!);
+            EntitySets.Return(child.Result);
         }
-        return largest;
+        return largest ?? NoEntities;
     }
 
+    // An intersection keeps its first child's set, narrows it by the others and returns them; an
+    // empty child empties it.
     protected static HashSet<string> Intersect(EntityNode[] children)
     {
         HashSet<string>? taken = null;
+        var empty = false;
         foreach (var child in children)
         {
-            if (child.Result!.Count == 0) return NoEntities;
-            if (taken is null) taken = child.Result;
-            else
+            var set = child.Result!;
+            if (empty || set.Count == 0)
             {
-                taken.IntersectWith(child.Result);
-                if (taken.Count == 0) return NoEntities;
+                empty = true;
+                EntitySets.Return(set);
+                continue;
             }
+            if (taken is null)
+            {
+                taken = set;
+                continue;
+            }
+            taken.IntersectWith(set);
+            EntitySets.Return(set);
+            if (taken.Count == 0) empty = true;
         }
-        return taken ?? NoEntities;
+        if (!empty && taken is not null) return taken;
+        EntitySets.Return(taken);
+        return NoEntities;
     }
 
     // Answers are released after the advance that follows them, so a node keeps only copied ids.
@@ -168,10 +199,13 @@ internal sealed class ExpandNode(EntityNode child, LookupEntityQuery main, Entit
             if (!child.Advance(pending)) return false;
             if (child.Result!.Count == 0)
             {
+                EntitySets.Return(child.Result);
                 Result = NoEntities;
                 return true;
             }
+            // The query takes a copy of the ids, so the child's set is done.
             _main = main.For(child.Result.ToArray(), scope);
+            EntitySets.Return(child.Result);
         }
         if (_main.Result is null)
         {
@@ -200,6 +234,7 @@ internal sealed class SetNode(EntityNode[] children, bool union) : EntityNode
 internal sealed class ConstrainedIntersectNode(EntityNode[] others, ExpressionPlan[] checks, LookupEntityRequest request)
     : EntityNode
 {
+    private HashSet<string>? _candidates;
     private LookupEntityQuery[]? _checks;
 
     protected override bool TryAdvance(PendingQueries pending)
@@ -214,21 +249,27 @@ internal sealed class ConstrainedIntersectNode(EntityNode[] others, ExpressionPl
                 return true;
             }
 
+            // An expression whose context is incomplete grants nothing, which empties the intersection.
+            foreach (var check in checks)
+            {
+                if (check.Expression.IsContextValid(request.Context)) continue;
+                EntitySets.Return(candidates);
+                Result = NoEntities;
+                return true;
+            }
+
+            // Every check reads the candidates' attributes; the set stays with the queries until
+            // their answers are read.
             var queries = new LookupEntityQuery[checks.Length];
             for (var i = 0; i < checks.Length; i++)
             {
-                // An expression whose context is incomplete grants nothing, which empties the intersection.
-                if (!checks[i].Expression.IsContextValid(request.Context))
-                {
-                    Result = NoEntities;
-                    return true;
-                }
                 queries[i] = new LookupEntityQuery
                 {
                     Kind = LookupEntityQueryKind.AttributesWithIds, EntityType = checks[i].Template.EntityType,
                     Names = checks[i].Template.Names, Ids = candidates,
                 };
             }
+            _candidates = candidates;
             _checks = queries;
         }
 
@@ -244,8 +285,20 @@ internal sealed class ConstrainedIntersectNode(EntityNode[] others, ExpressionPl
         // Each check reads attributes of the candidates only, so its matches are already candidates.
         var matches = checks[0].Evaluate(_checks[0].Result!, request);
         for (var i = 1; i < _checks.Length && matches.Count > 0; i++)
-            matches.IntersectWith(checks[i].Evaluate(_checks[i].Result!, request));
-        Result = matches.Count == 0 ? NoEntities : matches;
+        {
+            var next = checks[i].Evaluate(_checks[i].Result!, request);
+            matches.IntersectWith(next);
+            EntitySets.Return(next);
+        }
+        EntitySets.Return(_candidates);
+        _candidates = null;
+        if (matches.Count == 0)
+        {
+            EntitySets.Return(matches);
+            Result = NoEntities;
+            return true;
+        }
+        Result = matches;
         return true;
     }
 }
@@ -260,14 +313,18 @@ internal sealed class NegateIntersectNode(EntityNode[] positives, EntityNode[] n
         if (!positivesDone || !negatedDone) return false;
 
         var kept = Intersect(positives);
+        foreach (var node in negated)
+        {
+            if (kept.Count > 0) kept.ExceptWith(node.Result!);
+            EntitySets.Return(node.Result);
+        }
         if (kept.Count == 0)
         {
+            EntitySets.Return(kept);
             Result = NoEntities;
             return true;
         }
-        foreach (var node in negated)
-            kept.ExceptWith(node.Result!);
-        Result = kept.Count == 0 ? NoEntities : kept;
+        Result = kept;
         return true;
     }
 }
@@ -289,12 +346,15 @@ internal sealed class NegateNode(EntityNode child, string entityType, LookupEnti
             if (!TryReadIds(scopeIds, pending, ref _scope)) return false;
             if (_scope!.Count == 0)
             {
+                EntitySets.Return(_scope);
+                if (childDone) EntitySets.Return(child.Result);
                 Result = NoEntities;
                 return true;
             }
         }
         if (!childDone) return false;
 
+        // The child's set stays with the complement query until its answer is read.
         _complement ??= new LookupEntityQuery
         {
             Kind = LookupEntityQueryKind.EntitiesExcluding, EntityType = entityType, Ids = child.Result!,
@@ -305,12 +365,14 @@ internal sealed class NegateNode(EntityNode child, string entityType, LookupEnti
             return false;
         }
 
-        var result = new HashSet<string>();
+        var result = EntitySets.Rent();
         foreach (var id in (List<string>)_complement.Result)
         {
             if (_scope is null || _scope.Contains(id))
                 result.Add(id);
         }
+        EntitySets.Return(child.Result);
+        EntitySets.Return(_scope);
         Result = result;
         return true;
     }
@@ -334,16 +396,18 @@ internal sealed class AttributeNode(LookupEntityQuery query, LookupEntityQuery? 
 
         if (_scope is { Count: 0 })
         {
+            EntitySets.Return(_scope);
             Result = NoEntities;
             return true;
         }
-        var result = new HashSet<string>();
+        var result = EntitySets.Rent();
         foreach (var attribute in (List<AttributeTuple>)query.Result!)
         {
             if ((_scope is null || _scope.Contains(attribute.EntityId))
                 && attribute.Value.TryGetValue(out bool value) && value)
                 result.Add(attribute.EntityId);
         }
+        EntitySets.Return(_scope);
         Result = result;
         return true;
     }
