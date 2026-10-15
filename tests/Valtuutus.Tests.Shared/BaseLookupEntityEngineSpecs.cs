@@ -1276,4 +1276,145 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         if (found) result.EntityIds.Should().Contain("p1");
         else result.EntityIds.Should().NotContain("p1");
     }
+
+    // A subject's relation is part of what a tuple grants: a direct grant or a tuple-to-userset
+    // hop reads only tuples whose subject has no relation, and a userset @T#R only tuples whose
+    // subject is T#R, so each form of a subject type on one relation is read on its own.
+    private const string SubjectRelationSchema = """
+        entity user {}
+        entity service_account {}
+        entity group {
+            relation member @user;
+            relation admin @user;
+            relation sub @group;
+        }
+        entity team {
+            relation member @user @team#member;
+            relation lead @user @team#member;
+        }
+        entity squad {
+            relation member @user;
+        }
+        entity org {
+            relation member @user;
+        }
+        entity doc {
+            relation viewer @group#member @group#admin;
+            relation reader @team#member @team#lead;
+            relation editor @group @group#sub;
+            relation parent @group;
+            relation team @team;
+            relation squad_viewer @squad#member;
+            relation owner @user;
+            relation manager @user;
+            relation org @org;
+            permission parent_view := parent.member;
+            permission team_view := team.member;
+            permission manage := owner or manager;
+        }
+        """;
+
+    public static TheoryData<string, RelationTuple[], LookupEntityRequest, string[]> SubjectRelationCases => new()
+    {
+        {
+            "joined userset reads only the userset's own relation",
+            [
+                new("doc", "d1", "viewer", "group", "g1", "admin"),
+                new("doc", "d2", "viewer", "group", "g1", "member"),
+                new("group", "g1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "viewer", "user", "u"),
+            ["d2"]
+        },
+        {
+            "joined userset reads only direct final subjects",
+            [
+                new("doc", "d1", "viewer", "group", "g1", "member"),
+                new("group", "g1", "member", "user", "u", "member"),
+            ],
+            new LookupEntityRequest("doc", "viewer", "user", "u"),
+            []
+        },
+        {
+            "nested userset reads only the userset's own relation",
+            [
+                new("doc", "d1", "reader", "team", "t1", "lead"),
+                new("doc", "d2", "reader", "team", "t1", "member"),
+                new("team", "t1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "reader", "user", "u"),
+            ["d2"]
+        },
+        {
+            "direct grant reads only subjects without a relation",
+            [
+                new("doc", "d1", "editor", "group", "g1", "sub"),
+                new("doc", "d2", "editor", "group", "g1"),
+            ],
+            new LookupEntityRequest("doc", "editor", "group", "g1"),
+            ["d2"]
+        },
+        {
+            "a userset of the requested subject type is followed through its own relation",
+            [
+                new("doc", "d1", "editor", "group", "g1", "sub"),
+                new("group", "g1", "sub", "group", "g0"),
+                new("doc", "d2", "editor", "group", "g0"),
+            ],
+            new LookupEntityRequest("doc", "editor", "group", "g0"),
+            ["d1", "d2"]
+        },
+        {
+            "joined tuple-to-userset reads only subjects without a relation",
+            [
+                new("doc", "d1", "parent", "group", "g1", "admin"),
+                new("doc", "d2", "parent", "group", "g1"),
+                new("group", "g1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "parent_view", "user", "u"),
+            ["d2"]
+        },
+        {
+            "nested tuple-to-userset reads only subjects without a relation",
+            [
+                new("doc", "d1", "team", "team", "t1", "lead"),
+                new("doc", "d2", "team", "team", "t1"),
+                new("team", "t1", "member", "user", "u"),
+            ],
+            new LookupEntityRequest("doc", "team_view", "user", "u"),
+            ["d2"]
+        },
+        {
+            "sibling relations read only subjects without a relation",
+            [
+                new("doc", "d1", "owner", "user", "u"),
+                new("doc", "d2", "manager", "user", "u", "member"),
+            ],
+            new LookupEntityRequest("doc", "manage", "user", "u"),
+            ["d1"]
+        },
+        {
+            "scope reads only subjects without a relation",
+            [
+                new("doc", "d1", "owner", "user", "u"),
+                new("doc", "d2", "owner", "user", "u"),
+                new("doc", "d1", "org", "org", "o1"),
+                new("doc", "d2", "org", "org", "o1", "member"),
+            ],
+            new LookupEntityRequest("doc", "owner", "user", "u") { Scope = new EntityScope("org", "org", "o1") },
+            ["d1"]
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(SubjectRelationCases))]
+    public async Task Lookup_reads_only_tuples_whose_subject_relation_the_schema_path_names(string because,
+        RelationTuple[] tuples, LookupEntityRequest request, string[] expected)
+    {
+        var engine = await CreateEngine(tuples, [], SubjectRelationSchema);
+
+        var result = await engine.LookupEntity(request, default);
+
+        result.EntityIds.Should().BeEquivalentTo(expected, because);
+    }
 }

@@ -126,7 +126,9 @@ public class LookupSubjectEngineV2StepSpecs
         query.Kind.Should().Be(LookupSubjectQueryKind.Joined);
         query.Relation.Should().Be("org");
         query.SubEntityType.Should().Be("organization");
-        query.SubjectRelation.Should().Be("admin");
+        query.SubjectRelation.Should().BeEmpty();
+        query.SubRelation.Should().Be("admin");
+        query.SubjectType.Should().Be("user");
     }
 
     [Fact]

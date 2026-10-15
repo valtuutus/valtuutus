@@ -103,12 +103,12 @@ internal sealed class LookupSubjectPlanCompiler(Schema schema, string subjectTyp
         {
             var target = relation.Entities[i];
             plans[i] = target.Relation is null && IsTerminalFor(target.Type, computedRelation)
-                ? Joined(entityType, relation.Name, target.Type, computedRelation, isHop: true)
+                ? Joined(entityType, relation.Name, target.Type, "", computedRelation, isHop: true)
                 : new ExpandPlan(
                     new LookupSubjectQuery
                     {
                         Kind = LookupSubjectQueryKind.Relations, EntityType = entityType, Relation = relation.Name,
-                        SubjectType = target.Type, SubjectRelation = target.Relation,
+                        SubjectType = target.Type, SubjectRelation = target.Relation ?? "",
                     },
                     target.Type, computedRelation);
         }
@@ -122,7 +122,7 @@ internal sealed class LookupSubjectPlanCompiler(Schema schema, string subjectTyp
         var plans = new List<LookupPlan>(relation.Entities.Count);
         foreach (var target in relation.Entities)
         {
-            if (target.Type == subjectType)
+            if (target.Type == subjectType && target.Relation is null)
             {
                 plans.Add(new SubjectsPlan(
                     new LookupSubjectQuery
@@ -138,7 +138,7 @@ internal sealed class LookupSubjectPlanCompiler(Schema schema, string subjectTyp
             var subRelation = schema.GetRelation(target.Type, target.Relation);
             if (!subRelation.HasSubRelationPaths && subRelation.EntityTypes.Contains(subjectType))
             {
-                plans.Add(Joined(entityType, relation.Name, target.Type, target.Relation, isHop: true));
+                plans.Add(Joined(entityType, relation.Name, target.Type, target.Relation, target.Relation, isHop: true));
                 continue;
             }
 
@@ -155,12 +155,13 @@ internal sealed class LookupSubjectPlanCompiler(Schema schema, string subjectTyp
         return new SetPlan(plans.ToArray(), union: true, shared: null);
     }
 
-    private static SubjectsPlan Joined(string entityType, string relation, string subEntityType, string subRelation,
-        bool isHop) =>
+    private SubjectsPlan Joined(string entityType, string relation, string subEntityType, string subjectRelation,
+        string subRelation, bool isHop) =>
         new(new LookupSubjectQuery
             {
                 Kind = LookupSubjectQueryKind.Joined, EntityType = entityType, Relation = relation,
-                SubEntityType = subEntityType, SubjectRelation = subRelation,
+                SubEntityType = subEntityType, SubjectRelation = subjectRelation, SubRelation = subRelation,
+                SubjectType = subjectType,
             },
             isHop);
 

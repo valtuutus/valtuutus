@@ -57,7 +57,7 @@ public sealed class DefaultLookupSubjectQueryRunner(IDataReaderProvider reader) 
                 query.EntityType, query.Names, query.SubjectType, query.Ids, query.SubjectRelation, token, ct)).Transfer(),
             LookupSubjectQueryKind.Joined => (await reader.GetRelationsJoinedByEntityIds(
                 new EntityRelationFilter { EntityType = query.EntityType, Relation = query.Relation, SnapToken = token },
-                query.Ids, query.SubEntityType, query.SubjectRelation!, ct)).Transfer(),
+                query.Ids, query.SubEntityType, query.SubjectRelation, query.SubRelation, query.SubjectType, ct)).Transfer(),
             LookupSubjectQueryKind.Attributes => await reader.GetAttributesWithEntityIds(
                 new EntityAttributesFilter { EntityType = query.EntityType, Attributes = query.Names, SnapToken = token },
                 query.Ids, ct),

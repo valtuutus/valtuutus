@@ -95,7 +95,7 @@ public sealed class RelationsStoreSpecs
 
         using var result = store.GetRelationsWithSubjectIds(
             new EntityRelationFilter { EntityType = "group", Relation = "member", SnapToken = SnapAt(tx) },
-            new[] { "u1", "u3" }, "user");
+            new[] { "u1", "u3" }, "user", "");
 
         Assert.Equal(
             new HashSet<(string, string)> { ("g1", "u1"), ("g2", "u3") },
@@ -131,7 +131,7 @@ public sealed class RelationsStoreSpecs
         store.GetAllEntityIds("project", preDeleteSnap).Should().BeEmpty();
         using var stillThere = store.GetRelationsWithSubjectIds(
             new EntityRelationFilter { EntityType = "project", Relation = "owner", SnapToken = preDeleteSnap },
-            new[] { "u1" }, "user");
+            new[] { "u1" }, "user", "");
         stillThere.Should().BeEmpty();
     }
 

@@ -264,7 +264,7 @@ public sealed class LookupSubjectEngine(
         if (toFetch is { Count: >= 2 })
         {
             using var rows = await reader.GetRelationsWithEntityIdsMultiRelation(
-                req.EntityType, toFetch.ToArray(), req.FinalSubjectType, req.EntitiesIds, req.SubjectRelation,
+                req.EntityType, toFetch.ToArray(), req.FinalSubjectType, req.EntitiesIds, req.SubjectRelation ?? "",
                 req.SnapToken!.Value, ct);
 
             var buckets = new Dictionary<string, List<RelationTuple>>(toFetch.Count);
@@ -396,7 +396,7 @@ public sealed class LookupSubjectEngine(
                             {
                                 Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                             },
-                            req.EntitiesIds, entity.Type, computedUserSetRelation, ct);
+                            req.EntitiesIds, entity.Type, "", computedUserSetRelation, req.FinalSubjectType, ct);
                         continue;
                     }
                 }
@@ -408,7 +408,7 @@ public sealed class LookupSubjectEngine(
                     },
                     entity.Type,
                     req.EntitiesIds,
-                    entity.Relation,
+                    entity.Relation ?? "",
                     ct
                 );
 
@@ -472,7 +472,7 @@ public sealed class LookupSubjectEngine(
         {
             foreach (var relationEntity in relation.Entities)
             {
-                if (relationEntity.Type == req.FinalSubjectType)
+                if (relationEntity.Type == req.FinalSubjectType && relationEntity.Relation is null)
                 {
                     buffer[count++] = LookupRelationLeaf(req with { SubjectType = relationEntity.Type, }, ct);
                     continue;
@@ -496,7 +496,8 @@ public sealed class LookupSubjectEngine(
                             {
                                 Relation = relation.Name, EntityType = req.EntityType, SnapToken = req.SnapToken!.Value
                             },
-                            req.EntitiesIds, relationEntity.Type, relationEntity.Relation!, ct);
+                            req.EntitiesIds, relationEntity.Type, relationEntity.Relation!, relationEntity.Relation!,
+                            req.FinalSubjectType, ct);
                         continue;
                     }
 
@@ -507,7 +508,7 @@ public sealed class LookupSubjectEngine(
                         },
                         relationEntity.Type,
                         req.EntitiesIds,
-                        subRelation.Name,
+                        relationEntity.Relation!,
                         ct
                     );
 
@@ -548,7 +549,7 @@ public sealed class LookupSubjectEngine(
             },
             req.SubjectType,
             req.EntitiesIds,
-            req.SubjectRelation,
+            req.SubjectRelation ?? "",
             ct
         );
 
@@ -606,10 +607,10 @@ public sealed class LookupSubjectEngine(
     }
 
     private async Task<RelationOrAttributeTuples> JoinedLookup(
-        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subRelation,
-        CancellationToken ct)
+        EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subjectRelation,
+        string subRelation, string subjectType, CancellationToken ct)
     {
-        var relations = await reader.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subRelation, ct);
+        var relations = await reader.GetRelationsJoinedByEntityIds(mainFilter, entityIds, subEntityType, subjectRelation, subRelation, subjectType, ct);
         return new RelationOrAttributeTuples(relations.Transfer());
     }
 
