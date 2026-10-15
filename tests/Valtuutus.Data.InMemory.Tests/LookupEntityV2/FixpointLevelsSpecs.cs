@@ -22,6 +22,10 @@ public class FixpointLevelsSpecs
             relation member @user @group#member @team#member;
             relation org @organization;
         }
+        entity circle {
+            relation member @user @circle#member;
+            relation org @organization;
+        }
         """;
 
     // u is a direct member of g3; g2 holds g3, g1 holds g2, g0 holds g1.
@@ -33,33 +37,44 @@ public class FixpointLevelsSpecs
         new("group", "g0", "member", "group", "g1", "member"),
     ];
 
-    // Same rule the provider rewriter applies: every fixpoint walks several hops per query.
+    // Same rule the provider rewriter applies: every fixpoint walks several hops per query, and a
+    // walk with no joined grants starts from the subject.
     private sealed class LevelsRewriter(int levels) : ILookupEntityPlanRewriter
     {
         public LookupEntityPlan Rewrite(LookupEntityPlan root, Schema schema, string entityType, string name,
             string subjectType) =>
             root is FixpointPlan fixpoint
-                ? new FixpointLevelsPlan(new LookupEntityQuery
+                ? new FixpointLevelsPlan(
+                    new LookupEntityQuery
                     {
                         Kind = LookupEntityQueryKind.RelationsLevels, EntityType = entityType, Relation = name,
-                    }, levels, fixpoint)
+                    },
+                    levels, fixpoint,
+                    new LookupEntityQuery
+                    {
+                        Kind = LookupEntityQueryKind.RelationsLevelsFromSubject, EntityType = entityType,
+                        Relation = name, SubjectType = subjectType,
+                    })
                 : root;
     }
 
-    // Records every step and answers RelationsLevels from the seeded tuples; everything else goes to
-    // the default runner.
+    // Records every step and answers both levels kinds from the test's tuples; everything else goes
+    // to the default runner.
     private sealed class LevelsRunner(ILookupEntityQueryRunner inner, RelationTuple[] tuples) : ILookupEntityQueryRunner
     {
         public List<LookupEntityQuery[]> Steps { get; } = [];
+
+        private static bool IsLevels(LookupEntityQuery q) =>
+            q.Kind is LookupEntityQueryKind.RelationsLevels or LookupEntityQueryKind.RelationsLevelsFromSubject;
 
         public async ValueTask<SnapToken> RunAsync(IReadOnlyList<LookupEntityQuery> queries, SnapToken? snapToken,
             CancellationToken cancellationToken)
         {
             // Ids are readable only while the step runs, so each recorded query keeps a copy.
             Steps.Add(queries.Select(q => q.For(q.Ids.ToArray(), q.Scope, q.Levels, q.LevelOneIds.ToArray())).ToArray());
-            var others = queries.Where(q => q.Kind != LookupEntityQueryKind.RelationsLevels).ToList();
+            var others = queries.Where(q => !IsLevels(q)).ToList();
             var token = await inner.RunAsync(others, snapToken, cancellationToken);
-            foreach (var query in queries.Where(q => q.Kind == LookupEntityQueryKind.RelationsLevels))
+            foreach (var query in queries.Where(IsLevels))
                 query.Result = Answer(query);
             return token;
         }
@@ -69,10 +84,23 @@ public class FixpointLevelsSpecs
             bool IsHop(RelationTuple t) => t.EntityType == query.EntityType && t.Relation == query.Relation
                 && t.SubjectType == query.EntityType && t.SubjectRelation == query.Relation;
 
+            var fromSubject = query.Kind == LookupEntityQueryKind.RelationsLevelsFromSubject;
             var firstLevel = new Dictionary<string, int>();
-            var level = query.LevelOneIds.ToHashSet();
-            level.UnionWith(tuples.Where(t => IsHop(t) && query.Ids.Contains(t.SubjectId)).Select(t => t.EntityId));
-            for (var i = 1; ; i++)
+            HashSet<string> level;
+            if (fromSubject)
+            {
+                level = tuples
+                    .Where(t => t.EntityType == query.EntityType && t.Relation == query.Relation
+                        && t.SubjectType == query.SubjectType && t.SubjectRelation == ""
+                        && query.Ids.Contains(t.SubjectId))
+                    .Select(t => t.EntityId).ToHashSet();
+            }
+            else
+            {
+                level = query.LevelOneIds.ToHashSet();
+                level.UnionWith(tuples.Where(t => IsHop(t) && query.Ids.Contains(t.SubjectId)).Select(t => t.EntityId));
+            }
+            for (var i = fromSubject ? 0 : 1; ; i++)
             {
                 foreach (var id in level) firstLevel.TryAdd(id, i);
                 if (i == query.Levels) break;
@@ -237,6 +265,170 @@ public class FixpointLevelsSpecs
         var (fused, _) = await Setup(levels, Mixed);
         var (plain, _) = await Setup(null, Mixed);
         var request = new LookupEntityRequest("group", "member", "user", "u", depth: depth);
+
+        var expected = await plain.LookupEntity(request, default);
+        var actual = await fused.LookupEntity(request, default);
+
+        actual.EntityIds.Should().Equal(expected.EntityIds);
+    }
+
+    // u is a direct member of c3; c2 holds c3, c1 holds c2, c0 holds c1.
+    private static readonly RelationTuple[] CircleChain =
+    [
+        new("circle", "c3", "member", "user", "u"),
+        new("circle", "c2", "member", "circle", "c3", "member"),
+        new("circle", "c1", "member", "circle", "c2", "member"),
+        new("circle", "c0", "member", "circle", "c1", "member"),
+    ];
+
+    // The first query reads the direct grants as level 0, then k levels. k=2: c3, c2, c1, then c0
+    // and an empty level. k=3: c3 to c0, then nothing new. k=4: c3 to c0 and an empty last level.
+    [Theory]
+    [InlineData(2, 2)]
+    [InlineData(3, 2)]
+    [InlineData(4, 1)]
+    public async Task Walk_without_joined_grants_reads_its_direct_grants_in_its_first_query(int levels, int steps)
+    {
+        var (engine, runner) = await Setup(levels, CircleChain);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u"), default);
+
+        result.EntityIds.Should().Equal("c0", "c1", "c2", "c3");
+        runner.Steps.Should().HaveCount(steps);
+        var first = runner.Steps[0].Should().ContainSingle().Subject;
+        first.Kind.Should().Be(LookupEntityQueryKind.RelationsLevelsFromSubject);
+        first.Levels.Should().Be(levels);
+        first.SubjectType.Should().Be("user");
+        first.Ids.Should().BeEquivalentTo("u");
+    }
+
+    [Fact]
+    public async Task Walk_continues_from_the_entities_the_first_query_found_at_its_last_level()
+    {
+        var (engine, runner) = await Setup(2, CircleChain);
+
+        await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u"), default);
+
+        var next = runner.Steps[1].Should().ContainSingle().Subject;
+        next.Kind.Should().Be(LookupEntityQueryKind.RelationsLevels);
+        next.Ids.Should().BeEquivalentTo("c1");
+        next.LevelOneIds.Should().BeEmpty();
+    }
+
+    // Depth 2 leaves the walk one level: the direct read and one hop in one query.
+    [Fact]
+    public async Task Walk_with_one_level_left_reads_its_direct_grants_and_that_level_in_one_query()
+    {
+        var (engine, runner) = await Setup(2, CircleChain);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u", depth: 2), default);
+
+        result.EntityIds.Should().Equal("c2", "c3");
+        var only = runner.Steps.Should().ContainSingle().Subject.Should().ContainSingle().Subject;
+        only.Kind.Should().Be(LookupEntityQueryKind.RelationsLevelsFromSubject);
+        only.Levels.Should().Be(1);
+    }
+
+    // Depth 1 leaves the walk no level: the plain direct read.
+    [Fact]
+    public async Task Walk_with_no_level_left_runs_the_plain_direct_read()
+    {
+        var (engine, runner) = await Setup(2, CircleChain);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u", depth: 1), default);
+
+        result.EntityIds.Should().Equal("c3");
+        runner.Steps.Should().ContainSingle().Which.Should().ContainSingle()
+            .Which.Kind.Should().Be(LookupEntityQueryKind.Relations);
+    }
+
+    // Depth 4 leaves the walk three levels: the direct read and two levels, then the one-level hop.
+    [Fact]
+    public async Task Depth_left_after_the_first_query_for_one_level_runs_the_plain_hop()
+    {
+        var (engine, runner) = await Setup(2, CircleChain);
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u", depth: 4), default);
+
+        result.EntityIds.Should().Equal("c0", "c1", "c2", "c3");
+        runner.Steps.Should().HaveCount(2);
+        var last = runner.Steps[1].Should().ContainSingle().Subject;
+        last.Kind.Should().Be(LookupEntityQueryKind.Relations);
+        last.Ids.Should().BeEquivalentTo("c1");
+    }
+
+    [Fact]
+    public async Task Direct_grant_with_nothing_above_it_takes_one_step()
+    {
+        var (engine, runner) = await Setup(2, new RelationTuple("circle", "c3", "member", "user", "u"));
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u"), default);
+
+        result.EntityIds.Should().Equal("c3");
+        runner.Steps.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Cycle_found_by_the_first_query_stops_there()
+    {
+        var (engine, runner) = await Setup(3,
+            new RelationTuple("circle", "c1", "member", "user", "u"),
+            new RelationTuple("circle", "c2", "member", "circle", "c1", "member"),
+            new RelationTuple("circle", "c1", "member", "circle", "c2", "member"));
+
+        var result = await engine.LookupEntity(new LookupEntityRequest("circle", "member", "user", "u"), default);
+
+        result.EntityIds.Should().Equal("c1", "c2");
+        runner.Steps.Should().ContainSingle();
+    }
+
+    // Steps: the scoped direct read and the walk's first query together, then the scoped root hop
+    // over the walk's circles.
+    [Fact]
+    public async Task Scoped_root_reads_its_scoped_direct_grants_beside_the_walks_first_query()
+    {
+        var (engine, runner) = await Setup(2,
+            new RelationTuple("circle", "c2", "member", "user", "u"),
+            new RelationTuple("circle", "c1", "member", "circle", "c2", "member"),
+            new RelationTuple("circle", "c1", "org", "organization", "o1"));
+
+        var result = await engine.LookupEntity(
+            new LookupEntityRequest("circle", "member", "user", "u") { Scope = new EntityScope("org", "organization", "o1") },
+            default);
+
+        result.EntityIds.Should().Equal("c1");
+        runner.Steps.Should().HaveCount(2);
+        runner.Steps[0].Select(q => q.Kind).Should().BeEquivalentTo(
+            [LookupEntityQueryKind.Relations, LookupEntityQueryKind.RelationsLevelsFromSubject]);
+        runner.Steps[0].Single(q => q.Kind == LookupEntityQueryKind.Relations).Scope
+            .Should().Be(new EntityScope("org", "organization", "o1"));
+        var root = runner.Steps[1].Should().ContainSingle().Subject;
+        root.Kind.Should().Be(LookupEntityQueryKind.Relations);
+        root.Scope.Should().Be(new EntityScope("org", "organization", "o1"));
+    }
+
+    // c5 and c4 hold u directly; c3 holds c5, c2 holds c3, c1 holds c2 and c4 (a shortcut), c0 holds
+    // c1, c2 holds c0 (a cycle), cx holds c0.
+    private static readonly RelationTuple[] CircleMixed =
+    [
+        new("circle", "c5", "member", "user", "u"),
+        new("circle", "c4", "member", "user", "u"),
+        new("circle", "c3", "member", "circle", "c5", "member"),
+        new("circle", "c2", "member", "circle", "c3", "member"),
+        new("circle", "c1", "member", "circle", "c2", "member"),
+        new("circle", "c1", "member", "circle", "c4", "member"),
+        new("circle", "c0", "member", "circle", "c1", "member"),
+        new("circle", "c2", "member", "circle", "c0", "member"),
+        new("circle", "cx", "member", "circle", "c0", "member"),
+    ];
+
+    [Theory]
+    [MemberData(nameof(LevelsAndDepths))]
+    public async Task Walk_from_the_subject_grants_what_one_hop_per_step_grants(int levels, int depth)
+    {
+        var (fused, _) = await Setup(levels, CircleMixed);
+        var (plain, _) = await Setup(null, CircleMixed);
+        var request = new LookupEntityRequest("circle", "member", "user", "u", depth: depth);
 
         var expected = await plain.LookupEntity(request, default);
         var actual = await fused.LookupEntity(request, default);

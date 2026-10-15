@@ -20,9 +20,10 @@ public interface ILookupEntityBatchOps
     /// <see cref="LookupEntityQuery.Ids"/> before returning.
     /// <para>
     /// Result set shapes: entity_type, entity_id, relation, subject_type, subject_id,
-    /// subject_relation for the relation kinds (for <see cref="LookupEntityQueryKind.RelationsLevels"/>,
-    /// one row per entity with empty subject columns and the relation set only on entities first
-    /// reached at the last level); entity_type, entity_id, attribute, value (JSON text) for the
+    /// subject_relation for the relation kinds (for <see cref="LookupEntityQueryKind.RelationsLevels"/> and
+    /// <see cref="LookupEntityQueryKind.RelationsLevelsFromSubject"/>, one row per entity with empty
+    /// subject columns and the relation set only on entities first reached at the last level);
+    /// entity_type, entity_id, attribute, value (JSON text) for the
     /// attribute kinds; entity_id for <see cref="LookupEntityQueryKind.EntitiesExcluding"/>.
     /// </para>
     /// </summary>

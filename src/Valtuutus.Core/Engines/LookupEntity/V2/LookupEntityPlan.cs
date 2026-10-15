@@ -127,7 +127,9 @@ public sealed class FixpointPlan : LookupEntityPlan
 /// <summary>
 /// A <see cref="FixpointPlan"/> whose hops a data provider answers several at a time: one
 /// <see cref="LookupEntityQueryKind.RelationsLevels"/> query follows up to <see cref="Levels"/> hops
-/// of the walk. Installed by a provider's <see cref="ILookupEntityPlanRewriter"/> in place of
+/// of the walk. With <see cref="FromSubject"/> set, a walk with no joined grants reads its direct
+/// grants and its first hops in one <see cref="LookupEntityQueryKind.RelationsLevelsFromSubject"/>
+/// query. Installed by a provider's <see cref="ILookupEntityPlanRewriter"/> in place of
 /// <see cref="OneLevel"/>, whose hop still runs when the depth left allows one level only.
 /// </summary>
 public sealed class FixpointLevelsPlan : LookupEntityPlan
@@ -136,19 +138,27 @@ public sealed class FixpointLevelsPlan : LookupEntityPlan
     /// <see cref="LookupEntityQuery.EntityType"/> and <see cref="LookupEntityQuery.Relation"/> set and no ids.</param>
     /// <param name="levels">Most hops one query follows; at least 2.</param>
     /// <param name="oneLevel">The plan being replaced.</param>
-    public FixpointLevelsPlan(LookupEntityQuery template, int levels, FixpointPlan oneLevel)
+    /// <param name="fromSubject">A <see cref="LookupEntityQueryKind.RelationsLevelsFromSubject"/> query with
+    /// <see cref="LookupEntityQuery.EntityType"/>, <see cref="LookupEntityQuery.Relation"/> and
+    /// <see cref="LookupEntityQuery.SubjectType"/> set and no ids, when the provider runs that kind.</param>
+    public FixpointLevelsPlan(LookupEntityQuery template, int levels, FixpointPlan oneLevel,
+        LookupEntityQuery? fromSubject = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(levels, 2);
         if (template.Kind != LookupEntityQueryKind.RelationsLevels)
             throw new ArgumentException($"The template must be a {nameof(LookupEntityQueryKind.RelationsLevels)} query.", nameof(template));
+        if (fromSubject is not null && fromSubject.Kind != LookupEntityQueryKind.RelationsLevelsFromSubject)
+            throw new ArgumentException($"The query must be a {nameof(LookupEntityQueryKind.RelationsLevelsFromSubject)} query.", nameof(fromSubject));
         Template = template;
         Levels = levels;
         OneLevel = oneLevel;
+        FromSubject = fromSubject;
     }
 
     public LookupEntityQuery Template { get; }
     public int Levels { get; }
     public FixpointPlan OneLevel { get; }
+    public LookupEntityQuery? FromSubject { get; }
 }
 
 /// <summary>Another permission, relation or attribute of the same entities, spending a level of depth.</summary>

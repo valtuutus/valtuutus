@@ -31,8 +31,9 @@ internal sealed class BatchedLookupEntityQueryRunner(
             return await RunBatchAsync(batchOps, lookupBatchOps, queries, null, cancellationToken);
 
         // One command is one round trip either way, and a plain command costs less to build.
-        // RelationsLevels has no reader method, so it always runs as a batch command.
-        if (queries.Count == 1 && queries[0].Kind != LookupEntityQueryKind.RelationsLevels)
+        // The levels kinds have no reader method, so they always run as batch commands.
+        if (queries.Count == 1
+            && queries[0].Kind is not (LookupEntityQueryKind.RelationsLevels or LookupEntityQueryKind.RelationsLevelsFromSubject))
             return await _individual.RunAsync(queries, snapToken, cancellationToken);
 
         var token = snapToken ?? await reader.GetLatestSnapToken(cancellationToken) ?? SnapToken.MinValue;
@@ -75,6 +76,7 @@ internal sealed class BatchedLookupEntityQueryRunner(
             case LookupEntityQueryKind.RelationsMulti:
             case LookupEntityQueryKind.Joined:
             case LookupEntityQueryKind.RelationsLevels:
+            case LookupEntityQueryKind.RelationsLevelsFromSubject:
             {
                 var pooled = PooledList<RelationTuple>.Rent();
                 try

@@ -68,10 +68,22 @@ internal sealed class LookupEntityGraphBuilder(LookupEntityPlanCache plans, Look
         return new SetNode(nodes.ToArray(), union: true);
     }
 
-    private FixpointNode Walk(FixpointPlan fixpoint, FixpointLevelsPlan? levels, int depth) => new(
-        Instantiate(fixpoint.Direct, depth, scoped: false),
-        depth == 0 ? [] : Instantiate(fixpoint.Joined, depth, scoped: false),
-        fixpoint.Hop, depth, levels?.Template, levels?.Levels ?? 1);
+    // A walk with a direct target, no joined grants and a level to spend reads its direct grants as level 0 of its
+    // first levels query, when the provider runs that query.
+    private FixpointNode Walk(FixpointPlan fixpoint, FixpointLevelsPlan? levels, int depth)
+    {
+        if (levels?.FromSubject is { } fromSubject && depth > 0 && fixpoint.Joined.Length == 0
+            && fixpoint.Direct.Length > 0)
+        {
+            return new FixpointNode([], [], fixpoint.Hop, depth, levels.Template, levels.Levels,
+                fromSubject.For(_subject, null, Math.Min(levels.Levels, depth)));
+        }
+
+        return new FixpointNode(
+            Instantiate(fixpoint.Direct, depth, scoped: false),
+            depth == 0 ? [] : Instantiate(fixpoint.Joined, depth, scoped: false),
+            fixpoint.Hop, depth, levels?.Template, levels?.Levels ?? 1);
+    }
 
     private EntityNode[] Instantiate(SubjectBoundPlan[] plans, int depth, bool scoped)
     {

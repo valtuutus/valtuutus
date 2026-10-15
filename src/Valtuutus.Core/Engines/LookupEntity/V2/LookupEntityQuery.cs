@@ -50,6 +50,16 @@ public enum LookupEntityQueryKind
     /// empty otherwise.
     /// </summary>
     RelationsLevels,
+
+    /// <summary>
+    /// <see cref="RelationsLevels"/> started from the direct subject: level 0 is the
+    /// <see cref="LookupEntityQuery.EntityType"/> entities whose tuples of <see cref="LookupEntityQuery.Relation"/>
+    /// name <see cref="LookupEntityQuery.SubjectType"/>:id with no subject relation, for the single id in
+    /// <see cref="LookupEntityQuery.Ids"/>, and each of the <see cref="LookupEntityQuery.Levels"/> levels after it
+    /// follows the level before as <see cref="RelationsLevels"/> does. One row per entity; its relation is
+    /// <see cref="LookupEntityQuery.Relation"/> when the first level reaching it is the last, and empty otherwise.
+    /// </summary>
+    RelationsLevelsFromSubject,
 }
 
 /// <summary>
@@ -79,7 +89,10 @@ public sealed class LookupEntityQuery
     public IReadOnlyCollection<string> Ids { get; init; } = [];
     public EntityScope? Scope { get; init; }
 
-    /// <summary>Hops a <see cref="LookupEntityQueryKind.RelationsLevels"/> query follows; 2 or more.</summary>
+    /// <summary>
+    /// Hops a <see cref="LookupEntityQueryKind.RelationsLevels"/> query follows, 2 or more; hops a
+    /// <see cref="LookupEntityQueryKind.RelationsLevelsFromSubject"/> query follows after level 0, 1 or more.
+    /// </summary>
     public int Levels { get; init; }
 
     /// <summary>
@@ -90,7 +103,8 @@ public sealed class LookupEntityQuery
 
     /// <summary>
     /// The answer: <c>List&lt;RelationTuple&gt;</c> for <see cref="LookupEntityQueryKind.Relations"/>,
-    /// <see cref="LookupEntityQueryKind.RelationsMulti"/>, <see cref="LookupEntityQueryKind.Joined"/> and <see cref="LookupEntityQueryKind.RelationsLevels"/>;
+    /// <see cref="LookupEntityQueryKind.RelationsMulti"/>, <see cref="LookupEntityQueryKind.Joined"/>,
+    /// <see cref="LookupEntityQueryKind.RelationsLevels"/> and <see cref="LookupEntityQueryKind.RelationsLevelsFromSubject"/>;
     /// <c>Dictionary&lt;(string AttributeName, string EntityId), AttributeTuple&gt;</c> for
     /// <see cref="LookupEntityQueryKind.Attributes"/> and <see cref="LookupEntityQueryKind.AttributesWithIds"/>;
     /// <c>List&lt;AttributeTuple&gt;</c> for <see cref="LookupEntityQueryKind.Attribute"/>;
