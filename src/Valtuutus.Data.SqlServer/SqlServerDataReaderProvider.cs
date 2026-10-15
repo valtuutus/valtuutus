@@ -562,10 +562,11 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     )
                 ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
                 """,
+            // The scope probe seeks by candidate entity through the filtered direct-tuple index both fixtures create.
             GetRelationsWithSingleSubjectScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} r_main
-                INNER JOIN {relationsTable} r_scope
+                INNER JOIN {relationsTable} r_scope WITH (FORCESEEK (idx_relation_tuples_direct (entity_type, entity_id, relation, subject_id)))
                     ON r_scope.entity_type = r_main.entity_type
                     AND r_scope.entity_id = r_main.entity_id
                     AND r_scope.relation = @ScopeRelation
@@ -637,7 +638,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             GetRelationsJoinedScoped = $"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
                 FROM {relationsTable} AS r_main
-                INNER JOIN {relationsTable} r_scope
+                INNER JOIN {relationsTable} r_scope WITH (FORCESEEK (idx_relation_tuples_direct (entity_type, entity_id, relation, subject_id)))
                     ON r_scope.entity_type = r_main.entity_type
                     AND r_scope.entity_id = r_main.entity_id
                     AND r_scope.relation = @ScopeRelation

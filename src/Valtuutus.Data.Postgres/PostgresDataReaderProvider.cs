@@ -494,23 +494,29 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 )
                 """),
             HasTrueBoolAttribute = PgStatement.Compile($"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)"),
+            // Candidates come first from the subject-side index and are then kept when the scope lists them; the CTE keeps that order under generic plans.
             GetRelationsWithSingleSubjectScoped = PgStatement.Compile($"""
-                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
-                FROM {relationsTable} r_main
-                INNER JOIN {relationsTable} r_scope
-                    ON r_scope.entity_type = r_main.entity_type
-                    AND r_scope.entity_id = r_main.entity_id
-                    AND r_scope.relation = @scope_relation
-                    AND r_scope.subject_type = @scope_subject_type
-                    AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.subject_relation = ''
-                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
-                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
-                  AND r_main.entity_type = @entity_type
-                  AND r_main.relation = @relation
-                  AND r_main.subject_type = @subject_type
-                  AND r_main.subject_id = @subject_id
-                  AND r_main.subject_relation = @subject_relation
+                WITH m AS MATERIALIZED (
+                    SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                    FROM {relationsTable} AS r_main
+                    WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
+                      AND r_main.entity_type = @entity_type
+                      AND r_main.relation = @relation
+                      AND r_main.subject_type = @subject_type
+                      AND r_main.subject_id = @subject_id
+                      AND r_main.subject_relation = @subject_relation
+                )
+                SELECT m.entity_type, m.entity_id, m.relation, m.subject_type, m.subject_id, m.subject_relation
+                FROM m
+                WHERE m.entity_id = ANY(ARRAY(
+                    SELECT r_scope.entity_id FROM {relationsTable} r_scope
+                    WHERE r_scope.entity_type = @entity_type
+                      AND r_scope.relation = @scope_relation
+                      AND r_scope.subject_type = @scope_subject_type
+                      AND r_scope.subject_id = @scope_subject_id
+                      AND r_scope.subject_relation = ''
+                      AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                ))
                 """),
             GetRelationsWithMultiSubjectScoped = PgStatement.Compile($"""
                 SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
@@ -567,30 +573,35 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                   AND r_main.subject_relation = @subject_relation
                 """),
             GetRelationsJoinedScoped = PgStatement.Compile($"""
-                SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
-                FROM {relationsTable} AS r_main
-                INNER JOIN {relationsTable} r_scope
-                    ON r_scope.entity_type = r_main.entity_type
-                    AND r_scope.entity_id = r_main.entity_id
-                    AND r_scope.relation = @scope_relation
-                    AND r_scope.subject_type = @scope_subject_type
-                    AND r_scope.subject_id = @scope_subject_id
-                    AND r_scope.subject_relation = ''
-                    AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
-                WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
-                  AND r_main.entity_type = @entity_type
-                  AND r_main.relation = @relation
-                  AND r_main.subject_type = @sub_entity_type
-                  AND r_main.subject_relation = @subject_relation
-                  AND r_main.subject_id = ANY(ARRAY(
-                      SELECT entity_id FROM {relationsTable}
-                      WHERE created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})
-                        AND entity_type = @sub_entity_type
-                        AND relation = @sub_relation
-                        AND subject_type = @subject_type
-                        AND subject_id = @subject_id
-                        AND subject_relation = ''
-                  ))
+                WITH m AS MATERIALIZED (
+                    SELECT r_main.entity_type, r_main.entity_id, r_main.relation, r_main.subject_type, r_main.subject_id, r_main.subject_relation
+                    FROM {relationsTable} AS r_main
+                    WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
+                      AND r_main.entity_type = @entity_type
+                      AND r_main.relation = @relation
+                      AND r_main.subject_type = @sub_entity_type
+                      AND r_main.subject_relation = @subject_relation
+                      AND r_main.subject_id = ANY(ARRAY(
+                          SELECT entity_id FROM {relationsTable}
+                          WHERE created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})
+                            AND entity_type = @sub_entity_type
+                            AND relation = @sub_relation
+                            AND subject_type = @subject_type
+                            AND subject_id = @subject_id
+                            AND subject_relation = ''
+                      ))
+                )
+                SELECT m.entity_type, m.entity_id, m.relation, m.subject_type, m.subject_id, m.subject_relation
+                FROM m
+                WHERE m.entity_id = ANY(ARRAY(
+                    SELECT r_scope.entity_id FROM {relationsTable} r_scope
+                    WHERE r_scope.entity_type = @entity_type
+                      AND r_scope.relation = @scope_relation
+                      AND r_scope.subject_type = @scope_subject_type
+                      AND r_scope.subject_id = @scope_subject_id
+                      AND r_scope.subject_relation = ''
+                      AND r_scope.created_tx_id <= {snap} AND (r_scope.deleted_tx_id IS NULL OR r_scope.deleted_tx_id > {snap})
+                ))
                 """),
             GetAttributesDictScoped = PgStatement.Compile($"""
                 SELECT a.entity_type, a.entity_id, a.attribute, a.value
