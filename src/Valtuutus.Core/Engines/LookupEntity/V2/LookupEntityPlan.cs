@@ -104,6 +104,20 @@ internal sealed class ExpandPlan(LookupEntityQuery main, string entityType, stri
     public string Name { get; } = name;
 }
 
+/// <summary>
+/// A direct relation whose only non-terminal userset is itself, walked hop by hop until a hop finds
+/// no new entity or the depth is spent. <see cref="Direct"/> and <see cref="Joined"/> are the
+/// relation's other targets; <see cref="Hop"/> reads the relation's tuples whose subjects are
+/// entities of the same type through the same relation.
+/// </summary>
+internal sealed class FixpointPlan(SubjectBoundPlan[] direct, SubjectBoundPlan[] joined, LookupEntityQuery hop)
+    : LookupEntityPlan
+{
+    public SubjectBoundPlan[] Direct { get; } = direct;
+    public SubjectBoundPlan[] Joined { get; } = joined;
+    public LookupEntityQuery Hop { get; } = hop;
+}
+
 /// <summary>Another permission, relation or attribute of the same entities, spending a level of depth.</summary>
 internal sealed class RefPlan(string entityType, string name) : LookupEntityPlan
 {

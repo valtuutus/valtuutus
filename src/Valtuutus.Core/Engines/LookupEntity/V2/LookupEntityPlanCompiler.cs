@@ -169,8 +169,8 @@ internal sealed class LookupEntityPlanCompiler(Schema schema, string subjectType
                 continue;
             }
 
-            // A userset chain continues on the target relation's plan, which a recursive userset or a
-            // cycle of usersets in the data re-enters until the request's depth is spent.
+            // A userset chain continues on the target relation's plan; a cycle of usersets across
+            // relations re-enters until the request's depth is spent.
             plans.Add(new ExpandPlan(
                 new LookupEntityQuery
                 {
@@ -179,7 +179,34 @@ internal sealed class LookupEntityPlanCompiler(Schema schema, string subjectType
                 },
                 target.Type, target.Relation));
         }
-        return new SetPlan(plans.ToArray(), union: true, shared: null);
+        return SelfRecursion(entityType, relation.Name, plans) ?? new SetPlan(plans.ToArray(), union: true, shared: null);
+    }
+
+    // A relation whose only userset hop re-enters itself is walked as a fixpoint; any hop into
+    // another relation keeps the unrolled shape.
+    private static LookupEntityPlan? SelfRecursion(string entityType, string relation, List<LookupEntityPlan> plans)
+    {
+        ExpandPlan? self = null;
+        var direct = new List<SubjectBoundPlan>();
+        var joined = new List<SubjectBoundPlan>();
+        foreach (var plan in plans)
+        {
+            switch (plan)
+            {
+                case ExpandPlan expand when expand.EntityType == entityType && expand.Name == relation && self is null:
+                    self = expand;
+                    break;
+                case SubjectBoundPlan { IsHop: false } bound:
+                    direct.Add(bound);
+                    break;
+                case SubjectBoundPlan bound:
+                    joined.Add(bound);
+                    break;
+                default:
+                    return null;
+            }
+        }
+        return self is null ? null : new FixpointPlan(direct.ToArray(), joined.ToArray(), self.Main);
     }
 
     private SubjectBoundPlan Joined(string entityType, string relation, string subEntityType, string subjectRelation,

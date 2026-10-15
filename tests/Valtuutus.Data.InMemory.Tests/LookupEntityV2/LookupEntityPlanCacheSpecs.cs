@@ -21,9 +21,9 @@ public class LookupEntityPlanCacheSpecs
         }
         """;
 
-    private static LookupEntityPlanCache Cache()
+    private static LookupEntityPlanCache Cache(string schema = Schema)
     {
-        var services = new ServiceCollection().AddValtuutusCore(Schema);
+        var services = new ServiceCollection().AddValtuutusCore(schema);
         services.AddInMemory();
         services.AddValtuutusLookupEntityV2();
         return services.BuildServiceProvider().GetRequiredService<LookupEntityPlanCache>();
@@ -48,9 +48,22 @@ public class LookupEntityPlanCacheSpecs
     }
 
     [Fact]
-    public void Recursive_userset_compiles_its_hop_as_a_reference()
+    public void Self_recursive_userset_compiles_to_a_fixpoint()
     {
         var plan = Cache().GetOrCompile("group", "member", "user");
+
+        var fixpoint = plan.Should().BeOfType<FixpointPlan>().Subject;
+        fixpoint.Direct.Should().ContainSingle();
+        fixpoint.Joined.Should().BeEmpty();
+        fixpoint.Hop.Relation.Should().Be("member");
+        fixpoint.Hop.SubjectType.Should().Be("group");
+        fixpoint.Hop.SubjectRelation.Should().Be("member");
+    }
+
+    [Fact]
+    public void Userset_into_another_relation_keeps_its_hop()
+    {
+        var plan = Cache().GetOrCompile("project", "viewer", "user");
 
         var hop = plan.Should().BeOfType<SetPlan>().Subject.Children.OfType<ExpandPlan>()
             .Should().ContainSingle().Subject;
