@@ -87,7 +87,7 @@ public interface IDataReaderProvider
     /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
     /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
     /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
-    /// direct-relation Union/Intersect children in LookupEntityEngine into one DB round trip.
+    /// direct-relation Union/Intersect children of a LookupEntity into one DB round trip.
     /// When <paramref name="scope"/> is provided, only entities that also have the scope relation
     /// to the scope subject are returned (same semantics as <see cref="GetRelationsWithSubjectsIds"/>).
     /// <paramref name="subjectRelation"/> follows the same contract as in <see cref="GetRelationsWithSubjectsIds"/>.
@@ -102,9 +102,9 @@ public interface IDataReaderProvider
     /// <c>relation IN (relationNames)</c>. Each returned <see cref="RelationTuple"/> still carries
     /// its own <see cref="RelationTuple.Relation"/> — callers fold the batched result by grouping
     /// rows by that column, no server-side aggregation is implied. Used to collapse N sibling
-    /// direct-relation Union/Intersect children in LookupSubjectEngine into one DB round trip, the
+    /// direct-relation Union/Intersect children of a LookupSubject into one DB round trip, the
     /// LookupSubject analogue of <see cref="GetRelationsWithSubjectsIdsMultiRelation"/>. Unlike that
-    /// method, there is no <c>EntityScope</c> variant — LookupSubjectEngine has no scope concept.
+    /// method, there is no <c>EntityScope</c> variant — LookupSubject has no scope concept.
     /// <paramref name="subjectRelation"/> follows the same contract as in <see cref="GetRelationsWithEntityIds"/>.
     /// </summary>
     Task<PooledList<RelationTuple>> GetRelationsWithEntityIdsMultiRelation(

@@ -23,15 +23,3 @@ file class HashSetPooledObjectPolicy<T> : PooledObjectPolicy<HashSet<T>>
         return true;
     }
 }
-
-internal readonly ref struct PooledHashSet<T> : IDisposable
-{
-    internal readonly HashSet<T> Set;
-
-    internal PooledHashSet(HashSet<T> set) => Set = set;
-
-    public void Dispose() => HashSetPool<T>.Return(Set);
-
-    public static PooledHashSet<T> Rent() =>
-        new(HashSetPool<T>.Rent());
-}

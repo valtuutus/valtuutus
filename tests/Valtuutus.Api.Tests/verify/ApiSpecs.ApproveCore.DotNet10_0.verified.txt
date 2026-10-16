@@ -27,14 +27,6 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
-    public static class ConfigureLookupEntityV2
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupEntityV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
-    }
-    public static class ConfigureLookupSubjectV2
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupSubjectV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
-    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
@@ -173,7 +165,7 @@ namespace Valtuutus.Core.Engines.Check
         Function = 5,
         FusedOp = 6,
     }
-    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>
     {
         public CheckRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
@@ -210,7 +202,7 @@ namespace Valtuutus.Core.Engines.Check
         Permission = 2,
         Attribute = 3,
     }
-    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>
     {
         public SubjectPermissionRequest() { }
         public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
@@ -355,17 +347,6 @@ namespace Valtuutus.Core.Engines.Check.V2
         public System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children { get; init; }
     }
 }
-namespace Valtuutus.Core.Engines
-{
-    public interface IWithDepth
-    {
-        int Depth { get; set; }
-    }
-    public interface IWithSnapToken
-    {
-        Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
-    }
-}
 namespace Valtuutus.Core.Engines.LookupEntity
 {
     public readonly struct EntityScope : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.EntityScope>
@@ -379,18 +360,13 @@ namespace Valtuutus.Core.Engines.LookupEntity
     {
         System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken);
     }
-    public sealed class LookupEntityEngine : Valtuutus.Core.Engines.LookupEntity.ILookupEntityEngine
-    {
-        public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken) { }
-    }
     public readonly struct LookupEntityPage : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage>
     {
         public LookupEntityPage(System.Collections.Generic.IReadOnlyList<string> EntityIds, string? ContinuationToken) { }
         public string? ContinuationToken { get; init; }
         public System.Collections.Generic.IReadOnlyList<string> EntityIds { get; init; }
     }
-    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>
     {
         public LookupEntityRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
@@ -468,12 +444,7 @@ namespace Valtuutus.Core.Engines.LookupSubject
     {
         System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken);
     }
-    public sealed class LookupSubjectEngine : Valtuutus.Core.Engines.LookupSubject.ILookupSubjectEngine
-    {
-        public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken) { }
-    }
-    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>
     {
         public LookupSubjectRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]

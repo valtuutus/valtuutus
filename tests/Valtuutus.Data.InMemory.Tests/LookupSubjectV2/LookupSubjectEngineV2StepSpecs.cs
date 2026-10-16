@@ -61,7 +61,6 @@ public class LookupSubjectEngineV2StepSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupSubjectV2();
         RecordingRunner? runner = null;
         services.Replace(ServiceDescriptor.Scoped<ILookupSubjectQueryRunner>(sp =>
             runner = new RecordingRunner(new DefaultLookupSubjectQueryRunner(sp.GetRequiredService<IDataReaderProvider>()))));

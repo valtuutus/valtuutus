@@ -261,21 +261,11 @@ do
 
 ---
 
-## Lookup engines V2 (opt-in)
+## How lookups run
 
-`ILookupSubjectEngine` and `ILookupEntityEngine` each have a second implementation. They return the same results as the default engines, and they will become the default in a later release. Opt in per engine after `AddValtuutusCore`, and before `AddCaching` if you use it:
+> **Upgrading from 1.6:** the graph/step lookup engines that 1.6 shipped as an opt-in are now the only lookup engines, and the previous recursive engines are gone. `AddValtuutusLookupSubjectV2()` and `AddValtuutusLookupEntityV2()` were removed, because `AddValtuutusCore` registers these engines itself. Delete those calls; nothing else changes for callers.
 
-```csharp
-builder.Services.AddValtuutusCore(/* schema */)
-    .AddValtuutusLookupSubjectV2()
-    .AddValtuutusLookupEntityV2()
-    .AddPostgres(_ => () => new NpgsqlConnection(connectionString))
-    .AddCaching();
-```
-
-The request and result types don't change, so callers need no change either.
-
-What the V2 engines do differently:
+How the lookup engines work:
 
 - **They compile each permission once.** The plan for an (entity type, permission, subject type) is built on first use and reused by every request.
 - **They read in steps.** All the queries a lookup can ask at the same time make up one step. On Postgres and SQL Server, each step is a single database round trip.
@@ -297,7 +287,7 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
 
 Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
 
-The InMemory provider runs the V2 engines too, without the round-trip batching.
+The InMemory provider runs the same engines, without the round-trip batching.
 
 ---
 

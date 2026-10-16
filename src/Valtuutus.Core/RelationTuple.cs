@@ -21,21 +21,3 @@ public readonly record struct RelationTuple
 
     public bool IsDirectSubject() => SubjectRelation == "";
 }
-
-internal class RelationTupleComparer : IEqualityComparer<RelationTuple>
-{
-    private RelationTupleComparer() { }
-
-    internal static IEqualityComparer<RelationTuple> Instance { get; } = new RelationTupleComparer();
-
-    public bool Equals(RelationTuple x, RelationTuple y) =>
-        x.SubjectType == y.SubjectType && x.SubjectId == y.SubjectId;
-
-    public int GetHashCode(RelationTuple obj)
-    {
-        unchecked
-        {
-            return (obj.SubjectType.GetHashCode() * 397) ^ obj.SubjectId.GetHashCode();
-        }
-    }
-}

@@ -3,7 +3,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.LookupEntity;
 
-public record LookupEntityRequest : IWithDepth, IWithSnapToken
+public record LookupEntityRequest
 {
     private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
 

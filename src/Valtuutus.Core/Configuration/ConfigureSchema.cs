@@ -3,7 +3,9 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.Check.V2;
 using Valtuutus.Core.Engines.LookupEntity;
+using Valtuutus.Core.Engines.LookupEntity.V2;
 using Valtuutus.Core.Engines.LookupSubject;
+using Valtuutus.Core.Engines.LookupSubject.V2;
 using Valtuutus.Core.Lang;
 using Valtuutus.Core.Lang.SchemaReaders;
 using Valtuutus.Core.Schemas;
@@ -39,9 +41,7 @@ public static class ConfigureSchema
         }
         var schema = result.AsT0;
         services.AddSingleton(schema);
-        AddDefaultCheckEngine(services);
-        services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
-        services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
+        AddEngines(services);
 
         return services;
     }
@@ -69,20 +69,26 @@ public static class ConfigureSchema
         }
         var schema = result.AsT0;
         services.AddSingleton(schema);
-        AddDefaultCheckEngine(services);
-        services.AddScoped<ILookupEntityEngine, LookupEntityEngine>();
-        services.AddScoped<ILookupSubjectEngine,LookupSubjectEngine>();
+        AddEngines(services);
 
         return services;
     }
 
-    private static void AddDefaultCheckEngine(IServiceCollection services)
+    private static void AddEngines(IServiceCollection services)
     {
         services.TryAddSingleton<CheckPlanCache>();
         services.TryAddSingleton<CombinedPlanCache>();
         services.TryAddSingleton<Func<Schema, IPhysicalExecutor>>(_ => static schema => new DefaultPhysicalExecutor(schema));
         services.TryAddSingleton<CheckPlanExecutorPool>();
         services.AddScoped<ICheckEngine, CheckEngineV2>();
+
+        services.TryAddSingleton<LookupEntityPlanCache>();
+        services.TryAddScoped<ILookupEntityQueryRunner, DefaultLookupEntityQueryRunner>();
+        services.AddScoped<ILookupEntityEngine, LookupEntityEngineV2>();
+
+        services.TryAddSingleton<LookupSubjectPlanCache>();
+        services.TryAddScoped<ILookupSubjectQueryRunner, DefaultLookupSubjectQueryRunner>();
+        services.AddScoped<ILookupSubjectEngine, LookupSubjectEngineV2>();
     }
 
 }
