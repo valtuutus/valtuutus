@@ -32,7 +32,6 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
-        ComparingLookupSubjectEngine.Register(services);
 
         return services.BuildServiceProvider();
     }

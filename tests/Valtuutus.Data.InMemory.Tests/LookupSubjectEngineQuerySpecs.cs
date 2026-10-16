@@ -11,7 +11,7 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.InMemory.Tests;
 
 /// <summary>
-/// Which reader calls <see cref="LookupSubjectEngine"/> makes: entity ids forwarded into recursive
+/// Which reader calls the <see cref="ILookupSubjectEngine"/> makes: entity ids forwarded into recursive
 /// queries are deduplicated, a terminal userset is one joined query, a non-terminal one forwards
 /// its intermediate ids. Provider-agnostic, so InMemory is enough.
 /// </summary>

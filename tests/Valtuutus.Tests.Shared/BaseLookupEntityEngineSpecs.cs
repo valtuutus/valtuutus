@@ -32,7 +32,6 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(5);
 
-        ComparingLookupEntityEngine.Register(services);
         return services.BuildServiceProvider();
     }
 

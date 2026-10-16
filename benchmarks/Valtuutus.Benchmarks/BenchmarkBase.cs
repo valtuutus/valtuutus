@@ -146,10 +146,9 @@ public abstract class BenchmarkBase
     /// team.invite := org.admin and (owner or member) — LookupSubject counterpart to
     /// LookupEntity_SiblingBatch. The inner Union(owner, member) is 2 live batchable
     /// direct-@user-relation siblings; deterministic seed data (SiblingBatchTeamId) gives
-    /// LookupSubject a fixed EntityId to query "who can invite here". Exercises the
-    /// sibling-batching path added for LookupSubjectEngine (#238): one
-    /// GetRelationsWithEntityIdsMultiRelation call instead of 2 separate LookupRelationLeaf
-    /// round trips for the owner/member branch.
+    /// LookupSubject a fixed EntityId to query "who can invite here". Exercises LookupSubject's
+    /// sibling batching (#238): one multi-relation read instead of 2 separate reads for the
+    /// owner/member branch.
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_SiblingBatch")]
     public async Task<HashSet<string>> LookupSubject_SiblingBatch()
@@ -163,10 +162,8 @@ public abstract class BenchmarkBase
 
     /// <summary>
     /// TTU diamond: folder.view := owner or editor, both @group#member pointing to the
-    /// same group. LookupEntityEngine has no general-purpose memo (only AttributeCache, which
-    /// is attribute-fetch-only) — the speedup here instead comes from GetRelationsJoined/
-    /// JoinedLookup (LookupEntityEngine.cs), which collapses each branch's two-hop
-    /// dependent-then-main traversal into a single joined query.
+    /// same group. The joined relation read collapses each branch's two-hop dependent-then-main
+    /// traversal into a single query.
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity_Diamond")]
     public async Task<LookupEntityPage> LookupEntity_Diamond()
@@ -178,9 +175,7 @@ public abstract class BenchmarkBase
 
     /// <summary>
     /// Same TTU diamond as LookupEntity_Diamond, reverse direction: "who can view folder X"
-    /// instead of "which folders can user Y view". LookupSubjectEngine has no two-hop JOIN
-    /// collapse yet (tracked as a follow-up) — this establishes the baseline that fix will
-    /// improve on.
+    /// instead of "which folders can user Y view".
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_Diamond")]
     public async Task<HashSet<string>> LookupSubject_Diamond()

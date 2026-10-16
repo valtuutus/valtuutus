@@ -93,7 +93,6 @@ public class UsersetLevelsSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupSubjectV2();
         if (levels is { } k)
             services.AddSingleton<ILookupSubjectPlanRewriter>(new LevelsRewriter(k));
         LevelsRunner? runner = null;

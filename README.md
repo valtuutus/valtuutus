@@ -191,7 +191,7 @@ Make sure the migration script targets the same schema and table names you confi
 
 These map directly to [Npgsql's prepared statement feature](https://www.npgsql.org/doc/prepare.html) and can improve performance for repeated queries under load.
 
-Both options types also expose `LookupHopsPerQuery` (default `2`): how many levels of a recursive relation one query reads when the opt-in V2 lookup engines are enabled. See [Lookup engines V2](Using%20the%20Engines.md#lookup-engines-v2-opt-in).
+Both options types also expose `LookupHopsPerQuery` (default `2`): how many levels of a recursive relation one lookup query reads. See [How lookups run](Using%20the%20Engines.md#how-lookups-run).
 
 ## Using query concurrent limiting
 It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:

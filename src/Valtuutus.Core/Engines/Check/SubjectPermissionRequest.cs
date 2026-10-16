@@ -2,7 +2,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.Check;
 
-public record SubjectPermissionRequest : IWithSnapToken
+public record SubjectPermissionRequest
 {
     private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
 

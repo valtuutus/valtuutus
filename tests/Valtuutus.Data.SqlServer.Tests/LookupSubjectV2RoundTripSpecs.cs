@@ -169,7 +169,6 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
         services.AddSqlServer(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
-        services.AddValtuutusLookupSubjectV2();
         services.AddSingleton(counter);
         services.Replace(ServiceDescriptor.Scoped<IDataReaderProvider>(sp =>
             new CountingReaderProvider(ActivatorUtilities.CreateInstance<SqlServerDataReaderProvider>(sp), counter)));

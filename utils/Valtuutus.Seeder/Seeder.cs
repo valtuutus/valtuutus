@@ -171,7 +171,7 @@ public static class Seeder
         // LookupSubject needs one fixed team EntityId to query "who can invite here", so this
         // adds a deterministic org/team (same convention as the diamond/fanout data above), sized
         // similarly to the Faker-driven org/team scale (20 org admins, team owner + 15 members)
-        // so LookupSubjectEngine's Union(owner, member) sibling-batch path (added for #238) is
+        // so LookupSubject's Union(owner, member) sibling batching (added for #238) is
         // exercised against a realistic fan-in instead of a token 1-2 row case.
         const string lookupSubjectSiblingBatchOrgId  = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee03";
         const string lookupSubjectSiblingBatchTeamId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeee04";

@@ -118,7 +118,6 @@ public class FixpointLevelsSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupEntityV2();
         if (levels is { } k)
             services.AddSingleton<ILookupEntityPlanRewriter>(new LevelsRewriter(k));
         LevelsRunner? runner = null;

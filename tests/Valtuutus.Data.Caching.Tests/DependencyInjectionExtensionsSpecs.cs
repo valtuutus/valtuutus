@@ -38,23 +38,10 @@ public class DependencyInjectionExtensionsSpecs
         services.AddValtuutusData().AddCaching();
 
         GetUnkeyed<ILookupEntityEngine>(services).ImplementationType.Should().Be(typeof(CachedLookupEntityEngine));
-        GetKeyed<ILookupEntityEngine>(services, Consts.InnerLookupEntityEngineKey).KeyedImplementationType.Should().Be(typeof(LookupEntityEngine));
+        GetKeyed<ILookupEntityEngine>(services, Consts.InnerLookupEntityEngineKey).KeyedImplementationType!.Name.Should().Be("LookupEntityEngineV2");
 
         GetUnkeyed<ILookupSubjectEngine>(services).ImplementationType.Should().Be(typeof(CachedLookupSubjectEngine));
-        GetKeyed<ILookupSubjectEngine>(services, Consts.InnerLookupSubjectEngineKey).KeyedImplementationType.Should().Be(typeof(LookupSubjectEngine));
-    }
-
-    [Fact]
-    public void AddCaching_wraps_the_opted_in_lookup_subject_V2_engine()
-    {
-        var services = new ServiceCollection();
-        services.AddValtuutusCore(Schema);
-        services.AddValtuutusLookupSubjectV2();
-        services.AddValtuutusData().AddCaching();
-
-        GetUnkeyed<ILookupSubjectEngine>(services).ImplementationType.Should().Be(typeof(CachedLookupSubjectEngine));
-        GetKeyed<ILookupSubjectEngine>(services, Consts.InnerLookupSubjectEngineKey).KeyedImplementationType!.Name
-            .Should().Be("LookupSubjectEngineV2");
+        GetKeyed<ILookupSubjectEngine>(services, Consts.InnerLookupSubjectEngineKey).KeyedImplementationType!.Name.Should().Be("LookupSubjectEngineV2");
     }
 
     [Fact]

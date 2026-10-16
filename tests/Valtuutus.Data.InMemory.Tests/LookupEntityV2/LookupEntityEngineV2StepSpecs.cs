@@ -75,7 +75,6 @@ public class LookupEntityEngineV2StepSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupEntityV2();
         RecordingRunner? runner = null;
         services.Replace(ServiceDescriptor.Scoped<ILookupEntityQueryRunner>(sp =>
             runner = new RecordingRunner(new DefaultLookupEntityQueryRunner(sp.GetRequiredService<IDataReaderProvider>()))));
@@ -344,7 +343,6 @@ public class LookupEntityEngineV2StepSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupEntityV2();
         await using var provider = services.BuildServiceProvider();
         await provider.GetRequiredService<IDataWriterProvider>().Write(
             [
