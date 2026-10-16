@@ -3,7 +3,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.Check;
 
-public record CheckRequest : IWithDepth, IWithSnapToken
+public record CheckRequest
 {
     private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
 
@@ -13,9 +13,9 @@ public record CheckRequest : IWithDepth, IWithSnapToken
     public string? SubjectType { get; init; }
     public string? SubjectId { get; init; }
     public string? SubjectRelation { get; init; }
-    public SnapToken? SnapToken { get; set; }
-    public int Depth { get; set; } = 10;
-    public IDictionary<string, object> Context { get; set; } = EmptyContext;
+    public SnapToken? SnapToken { get; init; }
+    public int Depth { get; init; } = 10;
+    public IDictionary<string, object> Context { get; init; } = EmptyContext;
 
     public CheckRequest() { }
 

@@ -30,6 +30,14 @@ public class MyService(
 { ... }
 ```
 
+## Upgrading from 1.6
+
+- **Engine results carry the snap token they were read at.** `Check` returns a `CheckResult` (`Allowed`, `SnapToken`), `SubjectPermission` a `SubjectPermissionResult` (`Permissions`, `SnapToken`), and `Lookup` a `LookupSubjectResult` (`SubjectIds`, `SnapToken`). `LookupEntityPage` and `CheckExplainResult` gain a `SnapToken` property. Read `.Allowed`, `.Permissions` or `.SubjectIds` where you used the value directly.
+- **Engine methods return `ValueTask`.** Await each call once; call `.AsTask()` when you need a `Task`, for example for `Task.WhenAll`.
+- **Requests are immutable.** `SnapToken`, `Depth` and `Context` are `init`-only; use `with` to derive a request from another.
+- **The previous recursive lookup engines are gone.** `AddValtuutusLookupSubjectV2()` and `AddValtuutusLookupEntityV2()` were removed, because `AddValtuutusCore` registers the graph/step engines itself. Delete those calls. See [How lookups run](#how-lookups-run).
+- **Custom engines** (`ICheckEngine`, `ILookupEntityEngine`, `ILookupSubjectEngine` implementations) should report the token they read at. `AddCaching` caches a result under that token, and does not cache a result without one.
+
 ---
 
 ## Snap Tokens and Read Consistency
@@ -46,18 +54,32 @@ SnapToken token = await writer.Write(
 Pass this token back in engine requests to guarantee **read-after-write consistency** — the engine will only read data at least as recent as the write that produced the token:
 
 ```csharp
-bool canView = await checkEngine.Check(
+bool canView = (await checkEngine.Check(
     new CheckRequest("document", "2", "view", "user", "1", snapToken: token),
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 When you don't need this guarantee (e.g. read-heavy queries where eventual consistency is acceptable), omit the token or pass `null`:
 
 ```csharp
-bool canView = await checkEngine.Check(
+bool canView = (await checkEngine.Check(
+    new CheckRequest("document", "2", "view", "user", "1"),
+    cancellationToken)).Allowed;
+```
+
+Every engine result reports the token it was read at. Pass it to a later request to read the same snapshot, for example to make a check and a lookup agree:
+
+```csharp
+CheckResult result = await checkEngine.Check(
     new CheckRequest("document", "2", "view", "user", "1"),
     cancellationToken);
+
+var editors = await lookupSubjectEngine.Lookup(
+    new LookupSubjectRequest("document", "edit", "user", "2") { SnapToken = result.SnapToken },
+    cancellationToken);
 ```
+
+The token is null only when the request carried none and the answer did not depend on any stored data.
 
 ---
 
@@ -66,14 +88,14 @@ bool canView = await checkEngine.Check(
 ### Check — can entity U perform action Y on resource Z?
 
 ```csharp
-bool canEdit = await checkEngine.Check(
+bool canEdit = (await checkEngine.Check(
     new CheckRequest(
         entityType: "document",
         entityId:   "2",
         permission: "edit",
         subjectType: "user",
         subjectId:   "1"),
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 ### Check with context
@@ -82,7 +104,7 @@ When a permission expression references a function that reads `context.*` values
 
 ```csharp
 // Schema: permission push := owner or maintainer and notArchived(context.archived);
-bool canPush = await checkEngine.Check(
+bool canPush = (await checkEngine.Check(
     new CheckRequest(
         entityType:  "repository",
         entityId:    "42",
@@ -90,7 +112,7 @@ bool canPush = await checkEngine.Check(
         subjectType: "user",
         subjectId:   "1",
         context: new Dictionary<string, object> { ["archived"] = false }),
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 Pass the correct runtime type for each context value (`bool`, `int`, `string`, `decimal`) to avoid runtime errors.
@@ -165,7 +187,7 @@ Example output for `edit := (owner or maintainer or parent.admin) and ...` where
 Returns a dictionary of every permission defined on the entity and whether the subject has it:
 
 ```csharp
-Dictionary<string, bool> permissions = await checkEngine.SubjectPermission(
+Dictionary<string, bool> permissions = (await checkEngine.SubjectPermission(
     new SubjectPermissionRequest
     {
         EntityType  = "document",
@@ -173,7 +195,7 @@ Dictionary<string, bool> permissions = await checkEngine.SubjectPermission(
         SubjectType = "user",
         SubjectId   = "1"
     },
-    cancellationToken);
+    cancellationToken)).Permissions;
 
 // permissions["view"]   => true
 // permissions["edit"]   => true
@@ -187,13 +209,13 @@ Dictionary<string, bool> permissions = await checkEngine.SubjectPermission(
 ### Lookup — which subjects of type T have permission Y on entity X?
 
 ```csharp
-HashSet<string> userIds = await lookupSubjectEngine.Lookup(
+HashSet<string> userIds = (await lookupSubjectEngine.Lookup(
     new LookupSubjectRequest(
         entityType:  "document",
         permission:  "view",
         subjectType: "user",
         entityId:    "2"),
-    cancellationToken);
+    cancellationToken)).SubjectIds;
 
 // userIds => { "1", "7", "42" }
 ```
@@ -238,10 +260,11 @@ LookupEntityPage page = await lookupEntityEngine.LookupEntity(
 
 ### Pagination
 
-Results are ordered lexicographically by entity ID. Use `PageSize` and `ContinuationToken` to page through large result sets. Reuse the same `SnapToken` across pages to ensure consistent results:
+Results are ordered lexicographically by entity ID. Use `PageSize` and `ContinuationToken` to page through large result sets. Pass each page's `SnapToken` to the next request to read every page from the same snapshot; leave it unset to read each page at the latest one:
 
 ```csharp
 string? continuationToken = null;
+SnapToken? snapToken = null;
 do
 {
     var page = await lookupEntityEngine.LookupEntity(
@@ -256,26 +279,14 @@ do
 
     Process(page.EntityIds);
     continuationToken = page.ContinuationToken;
+    snapToken = page.SnapToken;
 } while (continuationToken is not null);
 ```
 
 ---
 
-## Lookup engines V2 (opt-in)
+## How lookups run
 
-`ILookupSubjectEngine` and `ILookupEntityEngine` each have a second implementation. They return the same results as the default engines, and they will become the default in a later release. Opt in per engine after `AddValtuutusCore`, and before `AddCaching` if you use it:
-
-```csharp
-builder.Services.AddValtuutusCore(/* schema */)
-    .AddValtuutusLookupSubjectV2()
-    .AddValtuutusLookupEntityV2()
-    .AddPostgres(_ => () => new NpgsqlConnection(connectionString))
-    .AddCaching();
-```
-
-The request and result types don't change, so callers need no change either.
-
-What the V2 engines do differently:
 
 - **They compile each permission once.** The plan for an (entity type, permission, subject type) is built on first use and reused by every request.
 - **They read in steps.** All the queries a lookup can ask at the same time make up one step. On Postgres and SQL Server, each step is a single database round trip.
@@ -297,7 +308,7 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
 
 Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
 
-The InMemory provider runs the V2 engines too, without the round-trip batching.
+The InMemory provider runs the same engines, without the round-trip batching.
 
 ---
 
@@ -312,12 +323,12 @@ The depth counts traversal steps through the schema graph, not the number of tup
 Increase `Depth` if your schema has deeply nested hierarchies and you observe permissions returning `false` unexpectedly. As a rule of thumb, set it to at least the maximum number of relation hops in your longest permission chain, with some headroom:
 
 ```csharp
-bool canView = await checkEngine.Check(
+bool canView = (await checkEngine.Check(
     new CheckRequest("project", "proj-1", "view", "user", "alice")
     {
         Depth = 20   // increase from default 10 for deep hierarchies
     },
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 **Setting a global default via `AddConcurrentQueryLimit`:**

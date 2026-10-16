@@ -181,8 +181,8 @@ public sealed class FusedExpressionRoundTripSpecs : IAsyncLifetime
         }
 
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
-        var result = await engine.Check(
-            new CheckRequest(entityType, entityId, permission, "user", "alice", snapToken: snapToken), default);
+        var result = (await engine.Check(
+            new CheckRequest(entityType, entityId, permission, "user", "alice", snapToken: snapToken), default)).Allowed;
         return (result, counter.Count);
     }
 }

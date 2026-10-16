@@ -3,7 +3,7 @@ using Valtuutus.Core.Data;
 
 namespace Valtuutus.Core.Engines.LookupSubject;
 
-public record LookupSubjectRequest : IWithDepth, IWithSnapToken
+public record LookupSubjectRequest
 {
     private static readonly IDictionary<string, object> EmptyContext = new Dictionary<string, object>(0);
 
@@ -25,7 +25,7 @@ public record LookupSubjectRequest : IWithDepth, IWithSnapToken
     public required string EntityId { get; init; }
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
-    public SnapToken? SnapToken { get; set; }
-    public int Depth { get; set; } = 10;
-    public IDictionary<string, object> Context { get; set; } = EmptyContext;
+    public SnapToken? SnapToken { get; init; }
+    public int Depth { get; init; } = 10;
+    public IDictionary<string, object> Context { get; init; } = EmptyContext;
 }

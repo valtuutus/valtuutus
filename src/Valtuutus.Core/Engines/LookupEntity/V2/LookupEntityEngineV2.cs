@@ -13,7 +13,7 @@ namespace Valtuutus.Core.Engines.LookupEntity.V2;
 internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache plans, ILookupEntityQueryRunner runner)
     : ILookupEntityEngine
 {
-    public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
+    public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         // Skip the tags iterator allocation entirely when nothing is listening.
         using var activity = DefaultActivitySource.Instance.HasListeners()
@@ -25,15 +25,15 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
                 $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
 
         if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
-            return new LookupEntityPage([], null);
+            return new LookupEntityPage([], null) { SnapToken = req.SnapToken };
 
         var builder = new LookupEntityGraphBuilder(plans, req);
         List<string> sorted;
+        var snapToken = req.SnapToken;
         try
         {
             var root = builder.Build(req.EntityType, req.Permission, req.Depth, scoped: req.Scope is not null);
 
-            var snapToken = req.SnapToken;
             using (var pending = new PendingQueries())
             {
                 while (!root.Advance(pending))
@@ -57,7 +57,7 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
         activity?.AddEvent(new ActivityEvent("LookupEntityResult",
             tags: new ActivityTagsCollection(CreateResultAttributes(sorted.Count))));
 
-        return Page(sorted, req.PageSize, req.ContinuationToken);
+        return Page(sorted, req.PageSize, req.ContinuationToken) with { SnapToken = snapToken };
     }
 
     // Pages are cut from the ordinal-sorted ids; the continuation token is the base64 of the last id served.

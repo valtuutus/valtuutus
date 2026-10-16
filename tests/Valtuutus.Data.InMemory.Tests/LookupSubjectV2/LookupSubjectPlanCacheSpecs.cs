@@ -25,7 +25,6 @@ public class LookupSubjectPlanCacheSpecs
     {
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupSubjectV2();
         return services.BuildServiceProvider().GetRequiredService<LookupSubjectPlanCache>();
     }
 
@@ -73,7 +72,6 @@ public class LookupSubjectPlanCacheSpecs
         var calls = new List<string>();
         var services = new ServiceCollection().AddValtuutusCore(Schema);
         services.AddInMemory();
-        services.AddValtuutusLookupSubjectV2();
         services.AddSingleton<ILookupSubjectPlanRewriter>(new RecordingRewriter(calls, "a"));
         services.AddSingleton<ILookupSubjectPlanRewriter>(new RecordingRewriter(calls, "b"));
         var cache = services.BuildServiceProvider().GetRequiredService<LookupSubjectPlanCache>();

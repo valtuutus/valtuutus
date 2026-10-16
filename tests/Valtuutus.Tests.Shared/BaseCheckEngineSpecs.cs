@@ -114,7 +114,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -138,7 +138,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -162,7 +162,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -186,7 +186,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -210,7 +210,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -237,7 +237,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -266,7 +266,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -294,7 +294,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -323,7 +323,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -348,7 +348,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // Assert
         result.Should().Be(expected);
@@ -363,7 +363,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
 
         // assert
         result.Should().Be(expected);
@@ -379,7 +379,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         // Act
         var result =
-            await engine.Check(
+            (await engine.Check(
                 new CheckRequest
                 {
                     EntityType = "workspace",
@@ -388,7 +388,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
                     SubjectId = "1",
                     SubjectType = "user",
                     SnapToken = null
-                }, default);
+                }, default)).Allowed;
 
 
         // Assert
@@ -416,11 +416,11 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
 
         // Act
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "workspace", EntityId = "1", SubjectType = "user", SubjectId = "1"
-            }, default);
+            }, default)).Permissions;
 
 
         // Assert
@@ -450,11 +450,11 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine([], [], schema.Replace("{replace}", permissionBuilder.ToString()));
 
         // Act
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "workspace", EntityId = "1", SubjectType = "user", SubjectId = "1"
-            }, default);
+            }, default)).Permissions;
 
         // assert
         await Verify(result);
@@ -487,14 +487,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], schema.Replace("{replace}", permissionBuilder.ToString()));
 
         // Act
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = TestsConsts.Workspaces.Identifier,
                 EntityId = TestsConsts.Workspaces.PublicWorkspace,
                 SubjectType = "user",
                 SubjectId = "1"
-            }, default);
+            }, default)).Permissions;
 
         // assert
         await Verify(result);
@@ -528,14 +528,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
                 new RelationTuple("organization", "org1", "admin", "user", "1"),
             ], [], schema);
 
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "team",
                 EntityId = "t1",
                 SubjectType = "user",
                 SubjectId = "1"
-            }, default);
+            }, default)).Permissions;
 
         result["edit"].Should().BeTrue();
         result["delete"].Should().BeTrue();
@@ -576,7 +576,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             SubjectId = TestsConsts.Users.Alice,
             Depth = 1
         };
-        var result = await engine.SubjectPermission(request, default);
+        var result = (await engine.SubjectPermission(request, default)).Permissions;
 
         // Assert
         await Verify(result);
@@ -602,8 +602,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], schema);
 
         // Act
-        var result = await engine.Check(new CheckRequest(TestsConsts.Workspaces.Identifier,
-            TestsConsts.Workspaces.PublicWorkspace, "edit", "user", "1"), default);
+        var result = (await engine.Check(new CheckRequest(TestsConsts.Workspaces.Identifier,
+            TestsConsts.Workspaces.PublicWorkspace, "edit", "user", "1"), default)).Allowed;
 
         // assert
         result.Should().BeTrue();
@@ -634,8 +634,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var result = await engine.Check(new CheckRequest("account",
-            "1", "withdraw", "user", "1"), default);
+        var result = (await engine.Check(new CheckRequest("account",
+            "1", "withdraw", "user", "1"), default)).Allowed;
 
         // assert
         result.Should().BeTrue();
@@ -655,7 +655,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine([], [], schema);
 
         // Act — group:admins#member checking group:admins#member (reflexive)
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "group",
             EntityId = "admins",
@@ -663,7 +663,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             SubjectType = "group",
             SubjectId = "admins",
             SubjectRelation = "member"
-        }, default);
+        }, default)).Allowed;
 
         // Assert
         result.Should().BeTrue();
@@ -687,14 +687,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine([], [], schema);
 
         // Act — subject type "group" is not listed in workspace.owner relation
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "workspace",
             EntityId = "1",
             Permission = "delete",
             SubjectType = "group",
             SubjectId = "admins"
-        }, default);
+        }, default)).Allowed;
 
         // Assert
         result.Should().BeFalse();
@@ -717,14 +717,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             new AttributeTuple("workspace", "1", "public", JsonValue.Create(true))
         ], schema);
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "workspace",
             EntityId = "1",
             Permission = "view",
             SubjectType = "group",
             SubjectId = "admins"
-        }, default);
+        }, default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -745,14 +745,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         var engine = await CreateEngine([], [], schema);
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "workspace",
             EntityId = "1",
             Permission = "view",
             SubjectType = "group",
             SubjectId = "admins"
-        }, default);
+        }, default)).Allowed;
 
         result.Should().BeFalse();
     }
@@ -770,7 +770,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
 
         var engine = await CreateEngine([], [], schema);
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "group",
             EntityId = "admins",
@@ -778,7 +778,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             SubjectType = "group",
             SubjectId = "admins",
             SubjectRelation = "member"
-        }, default);
+        }, default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -803,14 +803,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             new RelationTuple("team", "beta", "member", "user", "alice")
         ], [], schema);
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "project",
             EntityId = "1",
             Permission = "view",
             SubjectType = "user",
             SubjectId = "alice"
-        }, default);
+        }, default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -839,12 +839,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             ],
             [], rbacSchema);
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "resource", EntityId = "api",
             Permission = "read",
             SubjectType = "user", SubjectId = "alice"
-        }, default);
+        }, default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -886,8 +886,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         {
             {key, value!}
         };
-        var result = await engine.Check(new CheckRequest("account",
-            "1", "withdraw", "user", "1", context: context), default);
+        var result = (await engine.Check(new CheckRequest("account",
+            "1", "withdraw", "user", "1", context: context), default)).Allowed;
 
         // assert
         result.Should().Be(shouldPass);
@@ -907,8 +907,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [new RelationTuple("document", "doc1", "owner", "user", "alice")],
             [], schema);
 
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "non_owner", "user", "alice"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "alice"), default)).Allowed;
 
         result.Should().BeFalse();
     }
@@ -927,8 +927,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [new RelationTuple("document", "doc1", "owner", "user", "alice")],
             [], schema);
 
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "non_owner", "user", "bob"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "non_owner", "user", "bob"), default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -951,8 +951,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             ],
             [], schema);
 
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "restricted_view", "user", "alice"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "alice"), default)).Allowed;
 
         result.Should().BeFalse();
     }
@@ -975,8 +975,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             ],
             [], schema);
 
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "restricted_view", "user", "bob"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "restricted_view", "user", "bob"), default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -1000,8 +1000,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [], schema);
 
         // alice is editor → matches inner union → not(union) = false
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "non_contributor", "user", "alice"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "alice"), default)).Allowed;
 
         result.Should().BeFalse();
     }
@@ -1042,7 +1042,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], [], schema);
 
         // alice is org admin → team.manage is true → project.edit is true
-        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "alice"), default))
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "alice"), default)).Allowed
             .Should().BeTrue();
     }
 
@@ -1077,11 +1077,11 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], [], schema);
 
         // bob is org member → team.view is true → project.view is true
-        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "bob"), default))
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "bob"), default)).Allowed
             .Should().BeTrue();
 
         // bob is only an org member, not admin → team.manage is false → project.edit is false
-        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "bob"), default))
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "bob"), default)).Allowed
             .Should().BeFalse();
     }
 
@@ -1116,9 +1116,9 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], [], schema);
 
         // charlie has no relation to anything → both false
-        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "charlie"), default))
+        (await engine.Check(new CheckRequest("project", "proj-1", "edit", "user", "charlie"), default)).Allowed
             .Should().BeFalse();
-        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "charlie"), default))
+        (await engine.Check(new CheckRequest("project", "proj-1", "view", "user", "charlie"), default)).Allowed
             .Should().BeFalse();
     }
 
@@ -1148,19 +1148,19 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
         ], [], schema);
 
         // direct: alice is user_manager at root
-        (await engine.Check(new CheckRequest("organisation", "org-root", "manage_users", "user", "alice"), default))
+        (await engine.Check(new CheckRequest("organisation", "org-root", "manage_users", "user", "alice"), default)).Allowed
             .Should().BeTrue();
 
         // one hop up the parent chain
-        (await engine.Check(new CheckRequest("organisation", "org-child", "manage_users", "user", "alice"), default))
+        (await engine.Check(new CheckRequest("organisation", "org-child", "manage_users", "user", "alice"), default)).Allowed
             .Should().BeTrue();
 
         // two hops up the parent chain (the cascading case)
-        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "alice"), default))
+        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "alice"), default)).Allowed
             .Should().BeTrue();
 
         // negative: bob has no relation anywhere → false at every level
-        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "bob"), default))
+        (await engine.Check(new CheckRequest("organisation", "org-grandchild", "manage_users", "user", "bob"), default)).Allowed
             .Should().BeFalse();
     }
 
@@ -1184,8 +1184,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [], schema);
 
         // charlie has neither relation → not(owner or editor) = true
-        var result = await engine.Check(
-            new CheckRequest("document", "doc1", "non_contributor", "user", "charlie"), default);
+        var result = (await engine.Check(
+            new CheckRequest("document", "doc1", "non_contributor", "user", "charlie"), default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -1214,8 +1214,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
         ], [], DiamondSchema);
 
-        var result = await engine.Check(
-            new CheckRequest("folder", "f1", "admin", "user", "alice"), default);
+        var result = (await engine.Check(
+            new CheckRequest("folder", "f1", "admin", "user", "alice"), default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -1229,8 +1229,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
         ], [], DiamondSchema);
 
-        var result = await engine.Check(
-            new CheckRequest("folder", "f1", "view", "user", "alice"), default);
+        var result = (await engine.Check(
+            new CheckRequest("folder", "f1", "view", "user", "alice"), default)).Allowed;
 
         result.Should().BeTrue();
     }
@@ -1247,12 +1247,12 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             new RelationTuple("folder", "f1", "editor", "group", "g1", "member"),
         ], [], DiamondSchema);
 
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "folder", EntityId = "f1",
                 SubjectType = "user", SubjectId = "alice"
-            }, default);
+            }, default)).Permissions;
 
         result.Should().ContainKey("view").WhoseValue.Should().BeTrue();
         result.Should().ContainKey("admin").WhoseValue.Should().BeTrue();
@@ -1281,7 +1281,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
             ContextFunctionSchema);
 
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "account",
@@ -1289,7 +1289,7 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
                 SubjectType = "user",
                 SubjectId = "1",
                 Context = new Dictionary<string, object> { ["amount"] = 5000 }
-            }, default);
+            }, default)).Permissions;
 
         result.Should().ContainKey("withdraw").WhoseValue.Should().BeTrue();
     }
@@ -1304,14 +1304,14 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
             [new AttributeTuple("account", "1", "balance", JsonValue.Create(5000))],
             ContextFunctionSchema);
 
-        var result = await engine.SubjectPermission(
+        var result = (await engine.SubjectPermission(
             new SubjectPermissionRequest
             {
                 EntityType = "account",
                 EntityId = "1",
                 SubjectType = "user",
                 SubjectId = "1"
-            }, default);
+            }, default)).Permissions;
 
         result.Should().ContainKey("withdraw").WhoseValue.Should().BeFalse();
     }
@@ -1350,8 +1350,8 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     {
         var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
 
-        var result = await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+        var result = (await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(30))).Allowed;
 
         result.Should().Be(expected);
     }
@@ -1385,9 +1385,55 @@ public abstract class BaseCheckEngineSpecs : IAsyncLifetime
     {
         var engine = await CreateEngine(RecursivePermissionTuples, [], RecursivePermissionSchema);
 
-        var result = await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+        var result = (await engine.Check(new CheckRequest("folder", folder, "view", "user", user), default)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(30))).Allowed;
 
         result.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Check_reports_the_snap_token_it_read_at()
+    {
+        var (services, first, latest) = await WriteTwice();
+        var engine = services.GetRequiredService<ICheckEngine>();
+
+        (await engine.Check(new CheckRequest("workspace", "w1", "delete", "user", "u1"), default))
+            .Should().Be(new CheckResult { Allowed = true, SnapToken = latest });
+        (await engine.Check(new CheckRequest("workspace", "w2", "delete", "user", "u1", snapToken: first), default))
+            .Should().Be(new CheckResult { Allowed = false, SnapToken = first });
+    }
+
+    [Fact]
+    public async Task SubjectPermission_reports_the_snap_token_it_read_at()
+    {
+        var (services, first, latest) = await WriteTwice();
+        var engine = services.GetRequiredService<ICheckEngine>();
+        var request = new SubjectPermissionRequest
+            { EntityType = "workspace", EntityId = "w1", SubjectType = "user", SubjectId = "u1" };
+
+        (await engine.SubjectPermission(request, default)).SnapToken.Should().Be(latest);
+        (await engine.SubjectPermission(request with { SnapToken = first }, default)).SnapToken.Should().Be(first);
+    }
+
+    [Fact]
+    public async Task Explain_reports_the_snap_token_it_read_at()
+    {
+        var (services, _, latest) = await WriteTwice();
+        var engine = services.GetRequiredService<ICheckEngine>();
+
+        (await engine.Explain(new CheckRequest("workspace", "w1", "delete", "user", "u1"), default))
+            .SnapToken.Should().Be(latest);
+    }
+
+    private async ValueTask<(IServiceProvider Services, SnapToken First, SnapToken Latest)> WriteTwice()
+    {
+        var serviceProvider = CreateServiceProvider();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        var first = await writer.Write([new RelationTuple("workspace", "w1", "owner", "user", "u1")], [], default);
+        var latest = await writer.Write([new RelationTuple("workspace", "w2", "owner", "user", "u1")], [], default);
+        return (scope.ServiceProvider, first, latest);
     }
 }

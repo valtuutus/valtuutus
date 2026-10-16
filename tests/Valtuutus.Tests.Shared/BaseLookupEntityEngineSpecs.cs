@@ -32,7 +32,6 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(5);
 
-        ComparingLookupEntityEngine.Register(services);
         return services.BuildServiceProvider();
     }
 
@@ -1175,7 +1174,7 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
 
         var result = await engine.LookupEntity(new LookupEntityRequest("folder", "view", "user", user), default)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(30));
 
         result.EntityIds.Should().BeEquivalentTo(expected);
     }
@@ -1646,5 +1645,46 @@ public abstract class BaseLookupEntityEngineSpecs : IAsyncLifetime
         var result = await engine.LookupEntity(new LookupEntityRequest("group", "member", "user", "u", depth: depth), default);
 
         result.EntityIds.Should().BeEquivalentTo(expected);
+    }
+
+    [Fact]
+    public async Task LookupEntity_reports_the_snap_token_it_read_at()
+    {
+        var (services, first, latest) = await WriteTwice();
+        var engine = services.GetRequiredService<ILookupEntityEngine>();
+        var request = new LookupEntityRequest("workspace", "delete", "user", "u1");
+
+        var page = await engine.LookupEntity(request, default);
+        page.EntityIds.Should().Equal("w1", "w2");
+        page.SnapToken.Should().Be(latest);
+
+        var pinned = await engine.LookupEntity(request with { SnapToken = first }, default);
+        pinned.EntityIds.Should().Equal("w1");
+        pinned.SnapToken.Should().Be(first);
+    }
+
+    [Fact]
+    public async Task LookupEntity_that_reads_nothing_reports_no_snap_token()
+    {
+        var (services, _, _) = await WriteTwice();
+        var engine = services.GetRequiredService<ILookupEntityEngine>();
+
+        // No relation of workspace.delete can hold a group, so the engine answers without reading.
+        var page = await engine.LookupEntity(new LookupEntityRequest("workspace", "delete", "group", "g1"), default);
+
+        page.EntityIds.Should().BeEmpty();
+        page.SnapToken.Should().BeNull();
+    }
+
+    private async ValueTask<(IServiceProvider Services, SnapToken First, SnapToken Latest)> WriteTwice()
+    {
+        var serviceProvider = CreateServiceProvider();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        var first = await writer.Write([new RelationTuple("workspace", "w1", "owner", "user", "u1")], [], default);
+        var latest = await writer.Write([new RelationTuple("workspace", "w2", "owner", "user", "u1")], [], default);
+        return (scope.ServiceProvider, first, latest);
     }
 }

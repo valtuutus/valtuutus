@@ -12,6 +12,6 @@ public interface ILookupEntityEngine
     /// </summary>
     /// <param name="req">The object containing information about the question being asked.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A page of entity IDs and an optional continuation token for the next page.</returns>
-    Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken);
+    /// <returns>A page of entity IDs, an optional continuation token for the next page, and the snap token the page was read at.</returns>
+    ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken);
 }

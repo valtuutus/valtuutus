@@ -12,7 +12,7 @@ namespace Valtuutus.Core.Engines.LookupSubject.V2;
 internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCache plans, ILookupSubjectQueryRunner runner)
     : ILookupSubjectEngine
 {
-    public async Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
+    public async ValueTask<LookupSubjectResult> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
         // Skip the tags iterator allocation entirely when nothing is listening.
         using var activity = DefaultActivitySource.Instance.HasListeners()
@@ -20,7 +20,7 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
             : null;
 
         if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
-            return [];
+            return new LookupSubjectResult { SubjectIds = [], SnapToken = req.SnapToken };
 
         var root = new LookupSubjectGraphBuilder(plans, req)
             .Build(req.EntityType, req.Permission, [req.EntityId], req.Depth);
@@ -41,7 +41,7 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
 
         activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
             tags: new ActivityTagsCollection(CreateResultAttributes(result))));
-        return result;
+        return new LookupSubjectResult { SubjectIds = result, SnapToken = snapToken };
     }
 
     private static IEnumerable<KeyValuePair<string, object?>> CreateResultAttributes(HashSet<string> result)

@@ -32,7 +32,6 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             .AddValtuutusCore(schema ?? TestsConsts.DefaultSchema);
         AddSpecificProvider(services)
             .AddConcurrentQueryLimit(3);
-        ComparingLookupSubjectEngine.Register(services);
 
         return services.BuildServiceProvider();
     }
@@ -93,7 +92,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -112,7 +111,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -130,7 +129,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -149,7 +148,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -168,7 +167,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -204,8 +203,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var result = await engine.Lookup(new LookupSubjectRequest(TestsConsts.Workspaces.Identifier,
-            "edit", "user", TestsConsts.Workspaces.PublicWorkspace), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest(TestsConsts.Workspaces.Identifier,
+            "edit", "user", TestsConsts.Workspaces.PublicWorkspace), default)).SubjectIds;
 
         // assert
         result.Should()
@@ -240,8 +239,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             ], schema);
 
         // Act
-        var result = await engine.Lookup(new LookupSubjectRequest("account",
-            "withdraw", "user", "1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("account",
+            "withdraw", "user", "1"), default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(TestsConsts.Users.Alice);
@@ -269,7 +268,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(tuples, attributes, schema);
 
         // Act
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         // Assert
         result.Should().BeEquivalentTo(expected);
@@ -303,7 +302,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
                 new RelationTuple("team", "t1", "member", "user", "alice"),
             ], [], UsersetDepthSchema);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "reviewer", "user", "p1", depth), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "reviewer", "user", "p1", depth), default)).SubjectIds;
 
         result.Should().BeEquivalentTo(expected);
     }
@@ -327,7 +326,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
                 new RelationTuple("team", "t1", "member", "user", "u3"),
             ], [], UsersetDepthSchema);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "viewer", "user", "p1", depth), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "viewer", "user", "p1", depth), default)).SubjectIds;
 
         result.Should().BeEquivalentTo(expected);
     }
@@ -375,8 +374,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
 
         // Act
         var context = new Dictionary<string, object> {{key, value!}};
-        var result = await engine.Lookup(new LookupSubjectRequest("account",
-            "withdraw", "user", reqAcc, context: context), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("account",
+            "withdraw", "user", reqAcc, context: context), default)).SubjectIds;
 
         // assert
         result.Should().BeEquivalentTo(expected);
@@ -400,9 +399,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             [new RelationTuple("workspace", "1", "owner", TestsConsts.Users.Identifier, TestsConsts.Users.Alice)],
             [], schema);
 
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("workspace", "delete", "group", "1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         result.Should().BeEmpty();
     }
@@ -432,9 +431,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
             new RelationTuple("organisation", "2", "member", "user", "carol"),
         ], [], OrganisationScopeSchema);
 
-        var org1 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default);
-        var org2 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default);
-        var org999 = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "999"), default);
+        var org1 = (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default)).SubjectIds;
+        var org2 = (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default)).SubjectIds;
+        var org999 = (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "999"), default)).SubjectIds;
 
         org1.Should().BeEquivalentTo("alice", "bob");
         org2.Should().BeEquivalentTo("carol");
@@ -453,15 +452,15 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         ], [], OrganisationScopeSchema);
 
         // is_member cascades through parent.is_member -> alice, but stays scoped (no carol from org3).
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "2"), default))
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "2"), default)).SubjectIds
             .Should().BeEquivalentTo("alice");
 
         // direct_member must NOT cross the parent edge.
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default))
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "2"), default)).SubjectIds
             .Should().BeEmpty();
 
         // A leaf org with no parent: is_member resolves only its own members (empty-hop must not leak).
-        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "1"), default))
+        (await engine.Lookup(new LookupSubjectRequest("organisation", "is_member", "user", "1"), default)).SubjectIds
             .Should().BeEquivalentTo("alice");
     }
 
@@ -491,7 +490,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         }, default);
         await writer.Write([new RelationTuple("organisation", "1", "member", "user", "dave")], [], default);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("organisation", "direct_member", "user", "1"), default)).SubjectIds;
 
         // alice (active) + dave (one active row among several deleted), still scoped to org1 (no carol).
         result.Should().BeEquivalentTo("alice", "dave");
@@ -518,12 +517,12 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         foreach (var permission in new[] { "direct_member", "is_member" })
         foreach (var org in orgs)
         {
-            var set = await lookup.Lookup(new LookupSubjectRequest("organisation", permission, "user", org), default);
+            var set = (await lookup.Lookup(new LookupSubjectRequest("organisation", permission, "user", org), default)).SubjectIds;
             foreach (var subject in subjects)
             {
                 var inLookup = set.Contains(subject);
-                var checkResult = await check.Check(
-                    new CheckRequest("organisation", org, permission, "user", subject), default);
+                var checkResult = (await check.Check(
+                    new CheckRequest("organisation", org, permission, "user", subject), default)).Allowed;
                 inLookup.Should().Be(checkResult,
                     $"LookupSubject and Check must agree for permission={permission} org={org} subject={subject}");
             }
@@ -548,9 +547,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
                 new RelationTuple("document", "doc1", "editor", "user", "bob"),
             ], [], schema);
 
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("document", "non_owner", "user", "doc1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         // alice is owner → excluded; bob is editor (exists in relation_tuples) but not owner → included
         result.Should().Contain("bob");
@@ -592,9 +591,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         var engine = await CreateEngine(ConvergingTuples, [], DedupSchema);
 
         // Act
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("workspace", "view", "user", "w1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         // Assert — alice is reachable through both g1 and g2, but must appear exactly once.
         result.Should().BeEquivalentTo("alice");
@@ -626,7 +625,7 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         }).ToArray();
         var engine = await CreateEngine(tuples, [], EscapingSchema);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("doc", "view", "user", "d1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("doc", "view", "user", "d1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo(IdsNeedingEscaping.Select(g => "u" + g));
     }
@@ -654,9 +653,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         // and gets pruned before any task is spawned for it. svc1 must never appear in a
         // user-typed lookup, and alice (via admin) must still be found correctly despite the
         // sibling being pruned out of the Union.
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("organization", "access", "user", "org1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         result.Should().BeEquivalentTo("alice");
     }
@@ -683,9 +682,9 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
         // subjectType=user: "bot" is statically unreachable for a user subject, so the whole
         // Intersect is provably empty regardless of what tuples exist — even though org1 has
         // both an admin=alice AND a bot=svc1 tuple, a user can never satisfy "bot".
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("organization", "strict_access", "user", "org1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         result.Should().BeEmpty();
     }
@@ -722,8 +721,8 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     {
         var engine = await CreateEngine(RecursiveUsersetTuples, [], RecursiveUsersetSchema);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("folder", "view", "user", folder), default)
-            .WaitAsync(TimeSpan.FromSeconds(30));
+        var result = (await engine.Lookup(new LookupSubjectRequest("folder", "view", "user", folder), default)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(30))).SubjectIds;
 
         result.Should().BeEquivalentTo(expected);
     }
@@ -853,8 +852,49 @@ public abstract class BaseLookupSubjectEngineSpecs : IAsyncLifetime
     {
         var engine = await CreateEngine(tuples, [], SubjectRelationSchema);
 
-        var result = await engine.Lookup(request, default);
+        var result = (await engine.Lookup(request, default)).SubjectIds;
 
         result.Should().BeEquivalentTo(expected, because);
+    }
+
+    [Fact]
+    public async Task LookupSubject_reports_the_snap_token_it_read_at()
+    {
+        var (services, first, latest) = await WriteTwice();
+        var engine = services.GetRequiredService<ILookupSubjectEngine>();
+
+        var result = await engine.Lookup(new LookupSubjectRequest("workspace", "delete", "user", "w2"), default);
+        result.SubjectIds.Should().BeEquivalentTo(["u1"]);
+        result.SnapToken.Should().Be(latest);
+
+        var pinned = await engine.Lookup(
+            new LookupSubjectRequest("workspace", "delete", "user", "w2") { SnapToken = first }, default);
+        pinned.SubjectIds.Should().BeEmpty();
+        pinned.SnapToken.Should().Be(first);
+    }
+
+    [Fact]
+    public async Task LookupSubject_that_reads_nothing_reports_no_snap_token()
+    {
+        var (services, _, _) = await WriteTwice();
+        var engine = services.GetRequiredService<ILookupSubjectEngine>();
+
+        // No relation of workspace.delete can hold a group, so the engine answers without reading.
+        var result = await engine.Lookup(new LookupSubjectRequest("workspace", "delete", "group", "w1"), default);
+
+        result.SubjectIds.Should().BeEmpty();
+        result.SnapToken.Should().BeNull();
+    }
+
+    private async ValueTask<(IServiceProvider Services, SnapToken First, SnapToken Latest)> WriteTwice()
+    {
+        var serviceProvider = CreateServiceProvider();
+        _ownedResources.Add(serviceProvider);
+        var scope = serviceProvider.CreateAsyncScope();
+        _ownedResources.Add(scope);
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+        var first = await writer.Write([new RelationTuple("workspace", "w1", "owner", "user", "u1")], [], default);
+        var latest = await writer.Write([new RelationTuple("workspace", "w2", "owner", "user", "u1")], [], default);
+        return (scope.ServiceProvider, first, latest);
     }
 }

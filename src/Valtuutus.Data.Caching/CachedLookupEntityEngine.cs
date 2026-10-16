@@ -8,34 +8,44 @@ namespace Valtuutus.Data.Caching;
 
 public sealed class CachedLookupEntityEngine : ILookupEntityEngine
 {
-    private readonly IDataReaderProvider _reader;
-    private readonly IFusionCache _cache;
     private readonly ILookupEntityEngine _engine;
+    private readonly IFusionCache _cache;
 
     public CachedLookupEntityEngine(
-        IDataReaderProvider reader,
         [FromKeyedServices(Consts.InnerLookupEntityEngineKey)] ILookupEntityEngine engine,
         IFusionCache cache)
     {
-        _reader = reader;
         _engine = engine;
         _cache = cache;
     }
 
-    public async Task<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
+    public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookupEntity");
 
-        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
-        var resolvedReq = req with { SnapToken = snapToken };
-        return await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq), ct => _engine.LookupEntity(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
+        {
+            var resolvedReq = req with { SnapToken = snapToken };
+            return await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
+                ct => _engine.LookupEntity(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+        }
+
+        // No known token: the engine resolves the latest one, inside its first round trip when the
+        // provider can, and reports it.
+        var result = await _engine.LookupEntity(req, cancellationToken);
+        if (result.SnapToken is { } readAt)
+        {
+            await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+            await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+        }
+        return result;
     }
 
-    private static string GetLookupCacheKey(LookupEntityRequest req)
+    private static string GetLookupCacheKey(LookupEntityRequest req, SnapToken snapToken)
     {
         var scopePart = req.Scope is { } s
             ? $":{s.Relation}:{s.SubjectType}:{s.SubjectId}"
             : ":";
-        return $"lookup-entity:{req.EntityType}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SnapToken?.Value}{scopePart}:{req.PageSize}:{req.ContinuationToken}";
+        return $"lookup-entity:{req.EntityType}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{snapToken.Value}{scopePart}:{req.PageSize}:{req.ContinuationToken}";
     }
 }

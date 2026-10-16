@@ -22,11 +22,10 @@ namespace Valtuutus.Data
         Valtuutus.Data.ValtuutusDataOptions Options { get; }
         Microsoft.Extensions.DependencyInjection.IServiceCollection Services { get; }
     }
-    public abstract class RateLimiterExecuter : System.IDisposable
+    public abstract class RateLimiterExecuter
     {
         protected readonly System.Threading.SemaphoreSlim Semaphore;
         protected RateLimiterExecuter(Valtuutus.Data.ValtuutusDataOptions options) { }
-        public void Dispose() { }
         protected System.Threading.Tasks.Task EnterQuery(System.Threading.CancellationToken cancellationToken) { }
     }
     public sealed class ReapBatchResult : System.IEquatable<Valtuutus.Data.ReapBatchResult>

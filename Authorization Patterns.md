@@ -35,10 +35,10 @@ await writer.Write([
 
 **Check:**
 ```csharp
-// true — alice is admin
+// Allowed: true — alice is admin
 await checkEngine.Check(new CheckRequest("organization", "org-1", "manage_billing", "user", "alice"), ct);
 
-// false — bob is only a member
+// Allowed: false — bob is only a member
 await checkEngine.Check(new CheckRequest("organization", "org-1", "manage_billing", "user", "bob"), ct);
 ```
 
@@ -88,10 +88,10 @@ await writer.Write([
 
 **Check:**
 ```csharp
-// true — alice is org admin, which propagates through team-1 to proj-1
+// Allowed: true — alice is org admin, which propagates through team-1 to proj-1
 await checkEngine.Check(new CheckRequest("project", "proj-1", "edit", "user", "alice"), ct);
 
-// true — bob is a team member
+// Allowed: true — bob is a team member
 await checkEngine.Check(new CheckRequest("project", "proj-1", "view", "user", "bob"), ct);
 ```
 
@@ -133,10 +133,10 @@ await writer.Write(
 
 **Check:**
 ```csharp
-// true — alice is owner and doc is draft
+// Allowed: true — alice is owner and doc is draft
 await checkEngine.Check(new CheckRequest("document", "doc-1", "edit", "user", "alice"), ct);
 
-// false — bob is not owner and doc is not public
+// Allowed: false — bob is not owner and doc is not public
 await checkEngine.Check(new CheckRequest("document", "doc-1", "view", "user", "bob"), ct);
 ```
 
@@ -172,7 +172,7 @@ await writer.Write(
 
 **Check:**
 ```csharp
-// false — repo is archived, push is blocked even for the owner
+// Allowed: false — repo is archived, push is blocked even for the owner
 await checkEngine.Check(new CheckRequest("repository", "repo-1", "push", "user", "alice"), ct);
 ```
 

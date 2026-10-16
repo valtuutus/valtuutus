@@ -59,6 +59,10 @@ builder.Services.AddValtuutusCore("""
 ```
 That's it. Now all your queries to the engines will be cached to reduce the load in your database. (It is not required to use a database provider to use caching)
 
+## How cached requests pick a snap token
+
+A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes made through Valtuutus update the cache's latest token.
+
 ## Registration order
 
 `AddCaching` decorates the engines registered at the point it runs, so call it after

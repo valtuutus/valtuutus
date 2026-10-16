@@ -471,9 +471,9 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         var engine = sp.GetRequiredService<ICheckEngine>();
         engine.Should().BeOfType<CheckEngineV2>();
 
-        (await engine.Check(new CheckRequest("doc", "1", "view", "user", "u1"), default)).Should().BeTrue();
-        var perms = await engine.SubjectPermission(
-            new SubjectPermissionRequest { EntityType = "doc", EntityId = "1", SubjectType = "user", SubjectId = "u1" }, default);
+        (await engine.Check(new CheckRequest("doc", "1", "view", "user", "u1"), default)).Allowed.Should().BeTrue();
+        var perms = (await engine.SubjectPermission(
+            new SubjectPermissionRequest { EntityType = "doc", EntityId = "1", SubjectType = "user", SubjectId = "u1" }, default)).Permissions;
         perms["view"].Should().BeTrue();
         (await engine.Explain(new CheckRequest("doc", "1", "view", "user", "u1"), default)).Result.Should().BeTrue();
     }
@@ -555,7 +555,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         // with a different plan/entity/subject each time.
         for (var round = 0; round < 2; round++)
             foreach (var (expected, req) in cases)
-                (await engine.Check(req, default)).Should().Be(expected,
+                (await engine.Check(req, default)).Allowed.Should().Be(expected,
                     $"round {round} permission={req.Permission} entity={req.EntityId} subject={req.SubjectId}");
     }
 
@@ -596,8 +596,8 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
 
         for (var i = 0; i < 50; i++)
         {
-            (await engine.Check(new CheckRequest("doc", "1", "view", "user", "u1"), default)).Should().BeTrue();
-            (await engine.Check(new CheckRequest("doc", "2", "unrelated", "user", "u1"), default)).Should().BeFalse(
+            (await engine.Check(new CheckRequest("doc", "1", "view", "user", "u1"), default)).Allowed.Should().BeTrue();
+            (await engine.Check(new CheckRequest("doc", "2", "unrelated", "user", "u1"), default)).Allowed.Should().BeFalse(
                 "doc/2 has no tuples at all — any straggler leakage from the prior wide-union short-circuit would corrupt this");
         }
     }

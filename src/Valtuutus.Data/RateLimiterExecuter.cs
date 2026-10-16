@@ -2,7 +2,13 @@
 
 namespace Valtuutus.Data;
 
-public abstract class RateLimiterExecuter : IDisposable
+/// <summary>
+/// Limits how many queries one provider instance runs at once. The semaphore is never disposed: a
+/// check answers as soon as its result is known while queries of branches it no longer needs keep
+/// running on the same provider, and those can outlive the request scope that owns it. A
+/// SemaphoreSlim whose wait handle is never used holds nothing that needs disposing.
+/// </summary>
+public abstract class RateLimiterExecuter
 {
     protected readonly SemaphoreSlim Semaphore;
 
@@ -19,10 +25,5 @@ public abstract class RateLimiterExecuter : IDisposable
     {
         ValtuutusMetrics.DbQueries.Add(1);
         return Semaphore.WaitAsync(cancellationToken);
-    }
-
-    public void Dispose()
-    {
-        Semaphore.Dispose();
     }
 }

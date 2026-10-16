@@ -169,9 +169,9 @@ SnapToken token = await writer.Write(
 The token is a [ULID](https://github.com/ulid/spec) that encodes the point-in-time of the write. Pass it back on subsequent engine requests to guarantee **read-after-write consistency** — the engine will only read data at least as recent as that write:
 
 ```csharp
-bool canView = await checkEngine.Check(
+bool canView = (await checkEngine.Check(
     new CheckRequest("document", "2", "view", "user", "1", snapToken: token),
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 If you don't need strict consistency (e.g. read-heavy paths where eventual consistency is acceptable), omit the token entirely — the engine will use the latest available snapshot.

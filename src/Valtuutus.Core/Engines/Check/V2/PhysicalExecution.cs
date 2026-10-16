@@ -157,6 +157,13 @@ public interface IPhysicalExecutor
     /// default), every context it receives carries a resolved token.
     /// </summary>
     bool CanResolveSnapTokenInFirstRoundTrip => false;
+
+    /// <summary>
+    /// The token this instance resolved for <paramref name="ctx"/>, a context it was handed with
+    /// <see cref="CheckRequestContext.ResolveLatestSnapToken"/> set. Null until the round trip that
+    /// resolves it returns, so null after the request means no op of it read stored data.
+    /// </summary>
+    SnapToken? GetResolvedSnapToken(CheckRequestContext ctx) => null;
 }
 
 /// <summary>The reference <see cref="IPhysicalExecutor"/>: runs each submitted op as its own

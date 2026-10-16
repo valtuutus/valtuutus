@@ -8,52 +8,72 @@ namespace Valtuutus.Data.Caching;
 
 public sealed class CachedCheckEngine : ICheckEngine
 {
-    private readonly IDataReaderProvider _reader;
     private readonly IFusionCache _cache;
     private readonly ICheckEngine _engine;
 
     public CachedCheckEngine(
-        IDataReaderProvider reader,
         IFusionCache cache,
         [FromKeyedServices(Consts.InnerCheckEngineKey)] ICheckEngine engine)
     {
-        _reader = reader;
         _cache = cache;
         _engine = engine;
     }
 
     /// <inheritdoc />
-    public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
+    public async ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedCheck");
 
-        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
-        var resolvedReq = req with { SnapToken = snapToken };
-        return await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq), ct => _engine.Check(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
+        {
+            var resolvedReq = req with { SnapToken = snapToken };
+            return await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq, snapToken),
+                ct => _engine.Check(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+        }
+
+        // No known token: the engine resolves the latest one, inside its first round trip when the
+        // provider can, and reports it.
+        var result = await _engine.Check(req, cancellationToken);
+        if (result.SnapToken is { } readAt)
+        {
+            await _cache.SetAsync(GetCheckCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+            await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+        }
+        return result;
     }
 
-
     /// <inheritdoc />
-    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
+    public async ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
         using var activity = DefaultActivitySource.Instance.StartActivity("CachedSubjectPermission");
 
-        var snapToken = await CachingUtils.ResolveLatest(_reader, _cache, req.SnapToken, cancellationToken);
-        var resolvedReq = req with { SnapToken = snapToken };
-        return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq), ct => _engine.SubjectPermission(resolvedReq, ct), TimeSpan.FromMinutes(5), cancellationToken);
+        if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
+        {
+            var resolvedReq = req with { SnapToken = snapToken };
+            return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq, snapToken),
+                ct => _engine.SubjectPermission(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+        }
+
+        var result = await _engine.SubjectPermission(req, cancellationToken);
+        if (result.SnapToken is { } readAt)
+        {
+            await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+            await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+        }
+        return result;
     }
 
     /// <inheritdoc />
-    public Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
+    public ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
         => _engine.Explain(req, cancellationToken);
 
-    private static string GetCheckCacheKey(CheckRequest req)
+    private static string GetCheckCacheKey(CheckRequest req, SnapToken snapToken)
     {
-        return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{req.SnapToken}";
+        return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{snapToken}";
     }
 
-    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req)
+    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req, SnapToken snapToken)
     {
-        return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{req.SnapToken?.Value}";
+        return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{snapToken.Value}";
     }
 }

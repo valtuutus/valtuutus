@@ -61,7 +61,7 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
 
-        var subjects = await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default);
+        var subjects = (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default)).SubjectIds;
 
         subjects.Should().BeEquivalentTo("alice");
         counter.Count.Should().Be(1);
@@ -80,8 +80,8 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
 
-        var subjects = await engine.Lookup(
-            new LookupSubjectRequest("project", "review", "user", "p1") { SnapToken = token }, default);
+        var subjects = (await engine.Lookup(
+            new LookupSubjectRequest("project", "review", "user", "p1") { SnapToken = token }, default)).SubjectIds;
 
         subjects.Should().BeEquivalentTo("alice", "bob");
         counter.Count.Should().Be(1);
@@ -107,8 +107,8 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
 
-        var duringWrite = await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default);
-        var afterWrite = await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default);
+        var duringWrite = (await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default)).SubjectIds;
+        var afterWrite = (await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default)).SubjectIds;
 
         wroteMidRequest.Should().BeTrue("the lookup must have needed a second step for this spec to mean anything");
         duringWrite.Should().BeEquivalentTo(["bob"], "the grant committed after the request's token was resolved");
@@ -135,7 +135,7 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupSubjectEngine>();
 
-        var subjects = await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0"), default);
+        var subjects = (await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0"), default)).SubjectIds;
 
         subjects.Should().BeEquivalentTo("u0", "u1", "u2", "u3");
         counter.Count.Should().Be(roundTrips);
@@ -155,9 +155,9 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
 
         // A tokenless lookup first leaves its resolved token on the pooled connection; the
         // explicit-token request must still read only its own snapshot.
-        (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default))
+        (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default)).SubjectIds
             .Should().BeEquivalentTo("alice", "bob");
-        (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1") { SnapToken = before }, default))
+        (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1") { SnapToken = before }, default)).SubjectIds
             .Should().BeEquivalentTo("bob");
     }
 
@@ -169,7 +169,6 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
         var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
         services.AddSqlServer(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
-        services.AddValtuutusLookupSubjectV2();
         services.AddSingleton(counter);
         services.Replace(ServiceDescriptor.Scoped<IDataReaderProvider>(sp =>
             new CountingReaderProvider(ActivatorUtilities.CreateInstance<SqlServerDataReaderProvider>(sp), counter)));

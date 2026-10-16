@@ -27,14 +27,6 @@ namespace Valtuutus.Core
 }
 namespace Valtuutus.Core.Configuration
 {
-    public static class ConfigureLookupEntityV2
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupEntityV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
-    }
-    public static class ConfigureLookupSubjectV2
-    {
-        public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusLookupSubjectV2(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
-    }
     public static class ConfigureSchema
     {
         public static Microsoft.Extensions.DependencyInjection.IServiceCollection AddValtuutusCore(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.IO.Stream stream, System.Collections.Generic.IReadOnlyDictionary<string, Valtuutus.Core.Lang.FunctionExecutor>? compiledFunctions = null) { }
@@ -149,6 +141,7 @@ namespace Valtuutus.Core.Engines.Check
         public CheckExplainResult() { }
         public required bool Result { get; init; }
         public required Valtuutus.Core.Engines.Check.CheckNode Root { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
     }
     public sealed class CheckNode
     {
@@ -173,17 +166,17 @@ namespace Valtuutus.Core.Engines.Check
         Function = 5,
         FusedOp = 6,
     }
-    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class CheckRequest : System.IEquatable<Valtuutus.Core.Engines.Check.CheckRequest>
     {
         public CheckRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public CheckRequest(string entityType, string entityId, string permission, string? subjectType = null, string? subjectId = null, string? subjectRelation = null, Valtuutus.Core.Data.SnapToken? snapToken = default, System.Collections.Generic.IDictionary<string, object>? context = null) { }
-        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
-        public int Depth { get; set; }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
+        public int Depth { get; init; }
         public required string EntityId { get; init; }
         public required string EntityType { get; init; }
         public required string Permission { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public string? SubjectId { get; init; }
         public string? SubjectRelation { get; init; }
         public string? SubjectType { get; init; }
@@ -197,11 +190,16 @@ namespace Valtuutus.Core.Engines.Check
         public required string? SubjectId { get; init; }
         public required string? SubjectType { get; init; }
     }
+    public readonly struct CheckResult : System.IEquatable<Valtuutus.Core.Engines.Check.CheckResult>
+    {
+        public required bool Allowed { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
+    }
     public interface ICheckEngine
     {
-        System.Threading.Tasks.Task<bool> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<Valtuutus.Core.Engines.Check.CheckExplainResult> Explain(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
-        System.Threading.Tasks.Task<System.Collections.Generic.Dictionary<string, bool>> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Engines.Check.CheckResult> Check(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Engines.Check.CheckExplainResult> Explain(Valtuutus.Core.Engines.Check.CheckRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Engines.Check.SubjectPermissionResult> SubjectPermission(Valtuutus.Core.Engines.Check.SubjectPermissionRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public enum RelationType
     {
@@ -210,16 +208,21 @@ namespace Valtuutus.Core.Engines.Check
         Permission = 2,
         Attribute = 3,
     }
-    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>, Valtuutus.Core.Engines.IWithSnapToken
+    public class SubjectPermissionRequest : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionRequest>
     {
         public SubjectPermissionRequest() { }
         public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
         public int Depth { get; init; }
         public required string EntityId { get; init; }
         public required string EntityType { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public required string SubjectId { get; init; }
         public required string SubjectType { get; init; }
+    }
+    public readonly struct SubjectPermissionResult : System.IEquatable<Valtuutus.Core.Engines.Check.SubjectPermissionResult>
+    {
+        public required System.Collections.Generic.Dictionary<string, bool> Permissions { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
     }
 }
 namespace Valtuutus.Core.Engines.Check.V2
@@ -270,6 +273,7 @@ namespace Valtuutus.Core.Engines.Check.V2
     {
         bool CanResolveSnapTokenInFirstRoundTrip { get; }
         Valtuutus.Core.Data.IDataReaderProvider Reader { set; }
+        Valtuutus.Core.Data.SnapToken? GetResolvedSnapToken(Valtuutus.Core.Engines.Check.CheckRequestContext ctx);
         void Submit(System.ReadOnlySpan<Valtuutus.Core.Engines.Check.V2.PendingOp> ops, Valtuutus.Core.Engines.Check.CheckRequestContext ctx, Valtuutus.Core.Engines.Check.V2.IOpCompletionSink sink, System.Threading.CancellationToken ct);
     }
     public interface IPlanRewriter
@@ -355,17 +359,6 @@ namespace Valtuutus.Core.Engines.Check.V2
         public System.Collections.Immutable.ImmutableArray<Valtuutus.Core.Engines.Check.V2.PlanNode> Children { get; init; }
     }
 }
-namespace Valtuutus.Core.Engines
-{
-    public interface IWithDepth
-    {
-        int Depth { get; set; }
-    }
-    public interface IWithSnapToken
-    {
-        Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
-    }
-}
 namespace Valtuutus.Core.Engines.LookupEntity
 {
     public readonly struct EntityScope : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.EntityScope>
@@ -377,32 +370,28 @@ namespace Valtuutus.Core.Engines.LookupEntity
     }
     public interface ILookupEntityEngine
     {
-        System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken);
-    }
-    public sealed class LookupEntityEngine : Valtuutus.Core.Engines.LookupEntity.ILookupEntityEngine
-    {
-        public LookupEntityEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
-        public System.Threading.Tasks.Task<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken) { }
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage> LookupEntity(Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest req, System.Threading.CancellationToken cancellationToken);
     }
     public readonly struct LookupEntityPage : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityPage>
     {
         public LookupEntityPage(System.Collections.Generic.IReadOnlyList<string> EntityIds, string? ContinuationToken) { }
         public string? ContinuationToken { get; init; }
         public System.Collections.Generic.IReadOnlyList<string> EntityIds { get; init; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
     }
-    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupEntityRequest : System.IEquatable<Valtuutus.Core.Engines.LookupEntity.LookupEntityRequest>
     {
         public LookupEntityRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public LookupEntityRequest(string entityType, string permission, string subjectType, string subjectId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
-        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
         public string? ContinuationToken { get; init; }
-        public int Depth { get; set; }
+        public int Depth { get; init; }
         public required string EntityType { get; init; }
         public int? PageSize { get; init; }
         public required string Permission { get; init; }
         public Valtuutus.Core.Engines.LookupEntity.EntityScope? Scope { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public required string SubjectId { get; init; }
         public required string SubjectType { get; init; }
     }
@@ -466,25 +455,25 @@ namespace Valtuutus.Core.Engines.LookupSubject
 {
     public interface ILookupSubjectEngine
     {
-        System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken);
+        System.Threading.Tasks.ValueTask<Valtuutus.Core.Engines.LookupSubject.LookupSubjectResult> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken);
     }
-    public sealed class LookupSubjectEngine : Valtuutus.Core.Engines.LookupSubject.ILookupSubjectEngine
-    {
-        public LookupSubjectEngine(Valtuutus.Core.Schemas.Schema schema, Valtuutus.Core.Data.IDataReaderProvider reader) { }
-        public System.Threading.Tasks.Task<System.Collections.Generic.HashSet<string>> Lookup(Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest req, System.Threading.CancellationToken cancellationToken) { }
-    }
-    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>, Valtuutus.Core.Engines.IWithDepth, Valtuutus.Core.Engines.IWithSnapToken
+    public class LookupSubjectRequest : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectRequest>
     {
         public LookupSubjectRequest() { }
         [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
         public LookupSubjectRequest(string entityType, string permission, string subjectType, string entityId, int depth = 10, System.Collections.Generic.IDictionary<string, object>? context = null) { }
-        public System.Collections.Generic.IDictionary<string, object> Context { get; set; }
-        public int Depth { get; set; }
+        public System.Collections.Generic.IDictionary<string, object> Context { get; init; }
+        public int Depth { get; init; }
         public required string EntityId { get; init; }
         public required string EntityType { get; init; }
         public required string Permission { get; init; }
-        public Valtuutus.Core.Data.SnapToken? SnapToken { get; set; }
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
         public required string SubjectType { get; init; }
+    }
+    public readonly struct LookupSubjectResult : System.IEquatable<Valtuutus.Core.Engines.LookupSubject.LookupSubjectResult>
+    {
+        public Valtuutus.Core.Data.SnapToken? SnapToken { get; init; }
+        public required System.Collections.Generic.HashSet<string> SubjectIds { get; init; }
     }
 }
 namespace Valtuutus.Core.Engines.LookupSubject.V2
