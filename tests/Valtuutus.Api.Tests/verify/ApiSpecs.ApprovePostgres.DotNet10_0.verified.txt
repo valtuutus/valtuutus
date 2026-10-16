@@ -8,7 +8,7 @@ namespace Valtuutus.Data.Postgres
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddPostgres(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.Postgres.ValtuutusPostgresOptions? options = null) { }
     }
-    public sealed class PostgresBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase, System.IDisposable
+    public sealed class PostgresBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase
     {
         public PostgresBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Postgres.ValtuutusPostgresOptions dbOptions) { }
         public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
@@ -16,7 +16,6 @@ namespace Valtuutus.Data.Postgres
         public override void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
         protected override void CompleteCommand(System.Data.Common.DbBatchCommand cmd, Valtuutus.Data.Db.RelationalBatchQuery query) { }
         public override System.Data.Common.DbBatch CreateBatch() { }
-        public void Dispose() { }
         public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
         protected override string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query) { }
         protected override string WriteNameArrayParam(System.Data.Common.DbBatchCommand cmd, string baseName, string[] values) { }
