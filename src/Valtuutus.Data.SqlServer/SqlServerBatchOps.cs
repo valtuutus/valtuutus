@@ -20,7 +20,7 @@ namespace Valtuutus.Data.SqlServer;
 /// creation/execution against a fresh SqlConnection (no
 /// SqlServer equivalent of NpgsqlDataSource's pooled data source object to share).
 /// </summary>
-public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
+public sealed class SqlServerBatchOps : RelationalBatchProviderBase
 {
     private readonly DbConnectionFactory _connectionFactory;
     private readonly SqlServerDataReaderProvider.ReaderQueries _q;
@@ -223,8 +223,6 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase, IDisposable
     // cast is what lets the reader's SqlParameterCollection-typed helpers stay reusable here
     // unmodified, preserving parameter construction byte-for-byte.
     private static SqlParameterCollection Parameters(DbBatchCommand cmd) => ((SqlBatchCommand)cmd).Parameters;
-
-    public void Dispose() => _rateLimiter.Dispose();
 
     // The reader provider gets these semantics by extending RateLimiterExecuter directly; this
     // class's base slot is taken by RelationalBatchProviderBase, so the same mechanism is composed

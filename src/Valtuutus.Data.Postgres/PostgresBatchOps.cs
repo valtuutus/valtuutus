@@ -18,7 +18,7 @@ namespace Valtuutus.Data.Postgres;
 /// native <c>text[]</c>-style array parameter strategy, and batch creation/execution against the
 /// same cached <see cref="NpgsqlDataSource"/> the reader uses.
 /// </summary>
-public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
+public sealed class PostgresBatchOps : RelationalBatchProviderBase
 {
     private readonly PostgresDataReaderProvider.ReaderQueries _q;
     private readonly NpgsqlDataSource _dataSource;
@@ -155,8 +155,6 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase, IDisposable
     // API. The cast is what lets the reader's NpgsqlParameterCollection-typed helpers stay
     // reusable here unmodified, preserving parameter construction byte-for-byte.
     private static NpgsqlParameterCollection Parameters(DbBatchCommand cmd) => ((NpgsqlBatchCommand)cmd).Parameters;
-
-    public void Dispose() => _rateLimiter.Dispose();
 
     // The reader provider gets these semantics by extending RateLimiterExecuter directly; this
     // class's base slot is taken by RelationalBatchProviderBase, so the same mechanism is composed

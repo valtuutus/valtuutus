@@ -262,4 +262,23 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
     {
         return Task.CompletedTask;
     }
+
+    [Fact]
+    public async Task Reader_keeps_answering_after_its_scope_is_disposed()
+    {
+        // A check returns as soon as its answer is known, while queries of branches it no longer
+        // needs keep running on the request's reader; a web app disposes the request scope
+        // meanwhile.
+        var scope = Provider.CreateAsyncScope();
+        var written = await scope.ServiceProvider.GetRequiredService<IDataWriterProvider>()
+            .Write([new RelationTuple("project", "1", "member", "user", "1")], [], default);
+        var reader = scope.ServiceProvider.GetRequiredService<IDataReaderProvider>();
+        await scope.DisposeAsync();
+
+        using var relations = await reader.GetRelations(new RelationTupleFilter
+        {
+            EntityType = "project", EntityId = "1", Relation = "member", SnapToken = written
+        }, default);
+        relations.Should().ContainSingle();
+    }
 }
