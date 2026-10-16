@@ -50,9 +50,9 @@ public class DocumentPermissionTests
             [],
             CancellationToken.None);
 
-        var result = await engine.Check(
+        var result = (await engine.Check(
             new CheckRequest("document", "doc-1", "edit", "user", "alice"),
-            CancellationToken.None);
+            CancellationToken.None)).Allowed;
 
         Assert.True(result);
     }
@@ -69,9 +69,9 @@ public class DocumentPermissionTests
             [],
             CancellationToken.None);
 
-        var result = await engine.Check(
+        var result = (await engine.Check(
             new CheckRequest("document", "doc-1", "edit", "user", "bob"),
-            CancellationToken.None);
+            CancellationToken.None)).Allowed;
 
         Assert.False(result);
     }
@@ -108,9 +108,9 @@ public async Task PublicDocument_IsViewableByAnyone()
         [new AttributeTuple("document", "doc-1", "public", JsonValue.Create(true))],
         CancellationToken.None);
 
-    var result = await engine.Check(
+    var result = (await engine.Check(
         new CheckRequest("document", "doc-1", "view", "user", "anyone"),
-        CancellationToken.None);
+        CancellationToken.None)).Allowed;
 
     Assert.True(result);
 }
@@ -143,11 +143,11 @@ public async Task Push_IsBlocked_WhenContextSaysArchived()
         [],
         CancellationToken.None);
 
-    var result = await engine.Check(
+    var result = (await engine.Check(
         new CheckRequest(
             "repository", "repo-1", "push", "user", "alice",
             context: new Dictionary<string, object> { ["archived"] = true }),
-        CancellationToken.None);
+        CancellationToken.None)).Allowed;
 
     Assert.False(result);
 }
@@ -179,9 +179,9 @@ public async Task LookupSubject_ReturnsAllViewers()
         new RelationTuple("document", "doc-1", "viewer", "user", "bob"),
     ], [], CancellationToken.None);
 
-    var result = await lookupEngine.Lookup(
+    var result = (await lookupEngine.Lookup(
         new LookupSubjectRequest("document", "view", "user", "doc-1"),
-        CancellationToken.None);
+        CancellationToken.None)).SubjectIds;
 
     Assert.Equal(new HashSet<string> { "alice", "bob" }, result);
 }
@@ -224,7 +224,7 @@ public class CheckEngineTests
         await using (scope)
         {
             await writer.Write([new RelationTuple("document", "1", "owner", "user", "alice")], [], default);
-            Assert.True(await engine.Check(new CheckRequest("document", "1", "view", "user", "alice"), default));
+            Assert.True((await engine.Check(new CheckRequest("document", "1", "view", "user", "alice"), default)).Allowed);
         }
     }
 }

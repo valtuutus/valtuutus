@@ -25,9 +25,9 @@ public record LookupEntityRequest
     public required string Permission { get; init; }
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
-    public SnapToken? SnapToken { get; set; }
-    public int Depth { get; set; } = 10;
-    public IDictionary<string, object> Context { get; set; } = EmptyContext;
+    public SnapToken? SnapToken { get; init; }
+    public int Depth { get; init; } = 10;
+    public IDictionary<string, object> Context { get; init; } = EmptyContext;
 
     /// <summary>
     /// When set, constrains results to entities that have the specified relation
@@ -43,7 +43,8 @@ public record LookupEntityRequest
     /// <summary>
     /// Opaque token from a previous <see cref="LookupEntityPage.ContinuationToken"/>.
     /// When set, returns results after the position indicated by the token.
-    /// Pagination is positional — reuse the same SnapToken across pages for consistency.
+    /// Pagination is positional — pass the previous page's <see cref="LookupEntityPage.SnapToken"/> as
+    /// <see cref="SnapToken"/> to read every page from the same snapshot.
     /// </summary>
     public string? ContinuationToken { get; init; }
 }

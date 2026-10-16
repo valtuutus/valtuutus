@@ -10,7 +10,7 @@ public record SubjectPermissionRequest
     public required string EntityId { get; init; }
     public required string SubjectType { get; init; }
     public required string SubjectId { get; init; }
-    public SnapToken? SnapToken { get; set; }
+    public SnapToken? SnapToken { get; init; }
     public int Depth { get; init; } = 10;
     public IDictionary<string, object> Context { get; init; } = EmptyContext;
 };

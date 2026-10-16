@@ -101,9 +101,9 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
         var (engine, captures) = await CreateEngineWithCapture(ConvergingTuples, [], DedupSchema);
 
         // Act
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("workspace", "view", "user", "w1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         // Assert
         result.Should().BeEquivalentTo("alice");
@@ -134,9 +134,9 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
                 new RelationTuple("team", "t1", "lead", "user", "alice"),
             ], []);
 
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("project", "lead", "user", "p1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         result.Should().BeEquivalentTo("alice");
         // A single capture for the joined query itself (fed the starting id [p1]) — and no
@@ -157,9 +157,9 @@ public sealed class LookupSubjectEngineQuerySpecs : IAsyncLifetime
                 new RelationTuple("team", "t1", "member", "user", "alice"),
             ], []);
 
-        var result = await engine.Lookup(
+        var result = (await engine.Lookup(
             new LookupSubjectRequest("project", "member", "user", "p1"),
-            CancellationToken.None);
+            CancellationToken.None)).SubjectIds;
 
         result.Should().BeEquivalentTo("alice");
         captures.Should().Contain(ids => ids.Count == 1 && ids[0] == "t1");

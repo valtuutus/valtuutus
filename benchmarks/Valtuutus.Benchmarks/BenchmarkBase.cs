@@ -27,19 +27,19 @@ public abstract class BenchmarkBase
 
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Simple")]
     public async Task<bool> Check_Simple()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "admin", EntityType = "organization", EntityId = OrgId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Complex")]
     public async Task<bool> Check_Complex()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "edit", EntityType = "project", EntityId = ProjectId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
     /// <summary>
     /// Dead-branch scenario: "access := admin or bot", where "bot" is a relation only
@@ -49,19 +49,19 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Prune")]
     public async Task<bool> Check_Prune()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "access", EntityType = "organization", EntityId = OrgId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
     [Benchmark(Baseline = true), BenchmarkCategory("SubjectPermission")]
     public async Task<Dictionary<string, bool>> SubjectPermission()
-        => await _checkEngine.SubjectPermission(new()
+        => (await _checkEngine.SubjectPermission(new()
         {
             EntityType = "project", EntityId = ProjectId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Permissions;
 
     [Benchmark(Baseline = true), BenchmarkCategory("LookupEntity")]
     public async Task<LookupEntityPage> LookupEntity()
@@ -136,11 +136,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject")]
     public async Task<HashSet<string>> LookupSubject()
-        => await _lookupSubjectEngine.Lookup(new()
+        => (await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "reviewers", EntityType = "project", EntityId = FanoutProjectId,
             SubjectType = "user"
-        }, CancellationToken.None);
+        }, CancellationToken.None)).SubjectIds;
 
     /// <summary>
     /// team.invite := org.admin and (owner or member) — LookupSubject counterpart to
@@ -152,11 +152,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_SiblingBatch")]
     public async Task<HashSet<string>> LookupSubject_SiblingBatch()
-        => await _lookupSubjectEngine.Lookup(new()
+        => (await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "invite", EntityType = "team", EntityId = SiblingBatchTeamId,
             SubjectType = "user"
-        }, CancellationToken.None);
+        }, CancellationToken.None)).SubjectIds;
 
     // ── diamond scenarios ───────────────────────────────────────────────────
 
@@ -179,11 +179,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_Diamond")]
     public async Task<HashSet<string>> LookupSubject_Diamond()
-        => await _lookupSubjectEngine.Lookup(new()
+        => (await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user"
-        }, CancellationToken.None);
+        }, CancellationToken.None)).SubjectIds;
 
     /// <summary>
     /// nested_group.member := @user @nested_group#member, seeded four levels deep from a fixed
@@ -192,11 +192,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("LookupSubject_NestedGroup")]
     public async Task<HashSet<string>> LookupSubject_NestedGroup()
-        => await _lookupSubjectEngine.Lookup(new()
+        => (await _lookupSubjectEngine.Lookup(new()
         {
             Permission = "member", EntityType = "nested_group", EntityId = NestedGroupRootId,
             SubjectType = "user"
-        }, CancellationToken.None);
+        }, CancellationToken.None)).SubjectIds;
 
     /// <summary>
     /// LookupEntity counterpart to LookupSubject_NestedGroup: which nested groups a user on the
@@ -218,11 +218,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("Check_Diamond")]
     public async Task<bool> Check_Diamond()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "admin", EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
     /// <summary>
     /// SubjectPermission diamond: checks all permissions (view + admin) on a folder where
@@ -230,11 +230,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("SubjectPermission_Diamond")]
     public async Task<Dictionary<string, bool>> SubjectPermission_Diamond()
-        => await _checkEngine.SubjectPermission(new()
+        => (await _checkEngine.SubjectPermission(new()
         {
             EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user", SubjectId = UserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Permissions;
 
     /// <summary>
     /// Userset miss path: folder.view := owner or editor, both @group#member, and the subject
@@ -244,11 +244,11 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("Check_UsersetMiss")]
     public async Task<bool> Check_UsersetMiss()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "view", EntityType = "folder", EntityId = DiamondFolderId,
             SubjectType = "user", SubjectId = MissUserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
     /// <summary>
     /// TTU + direct union miss path: team.edit := org.admin or owner, subject with no tuples
@@ -258,9 +258,9 @@ public abstract class BenchmarkBase
     /// </summary>
     [Benchmark(Baseline = true), BenchmarkCategory("Check_UnionTtuDirect")]
     public async Task<bool> Check_UnionTtuDirect()
-        => await _checkEngine.Check(new()
+        => (await _checkEngine.Check(new()
         {
             Permission = "edit", EntityType = "team", EntityId = SiblingBatchTeamId,
             SubjectType = "user", SubjectId = MissUserId
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 }

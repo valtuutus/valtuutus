@@ -26,6 +26,11 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
 
     public bool CanResolveSnapTokenInFirstRoundTrip => batchOps?.UsingBatchResolvedSnapToken is not null;
 
+    public SnapToken? GetResolvedSnapToken(CheckRequestContext ctx) =>
+        ReferenceEquals(_resolvingFor, ctx) && _resolved!.Task.IsCompletedSuccessfully
+            ? _resolved.Task.Result.SnapToken
+            : null;
+
     // Instances are rented per request. For a request whose token this executor resolves: the
     // request's unresolved context, and the context carrying the token once its first batch has
     // resolved it. Submit is only ever called by the request's single driver loop.

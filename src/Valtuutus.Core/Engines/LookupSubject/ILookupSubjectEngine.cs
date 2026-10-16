@@ -10,6 +10,6 @@ public interface ILookupSubjectEngine
     /// </summary>
     /// <param name="req">The object containing information for which subjects to look up.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The list of ids of subjects of the provided type that have the permission on the specified entity.</returns>
-    Task<HashSet<string>> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken);
+    /// <returns>The ids of subjects of the provided type that have the permission on the specified entity, and the snap token they were read at.</returns>
+    ValueTask<LookupSubjectResult> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken);
 }

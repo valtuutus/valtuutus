@@ -68,8 +68,8 @@ public sealed class UsersetJoinRelationSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
 
-        var result = await engine.Check(
-            new CheckRequest("folder", entityId, "owner", "user", subjectId, snapToken: snapToken), default);
+        var result = (await engine.Check(
+            new CheckRequest("folder", entityId, "owner", "user", subjectId, snapToken: snapToken), default)).Allowed;
 
         result.Should().Be(expected);
     }
@@ -109,8 +109,8 @@ public sealed class UsersetJoinRelationSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
 
-        var result = await engine.Check(
-            new CheckRequest("folder", "f2", "owner", "user", "join-hit", snapToken: snapToken), default);
+        var result = (await engine.Check(
+            new CheckRequest("folder", "f2", "owner", "user", "join-hit", snapToken: snapToken), default)).Allowed;
 
         result.Should().BeTrue();
         // Without this fast path, this shape costs at least 2 round trips (HasDirectRelation,
