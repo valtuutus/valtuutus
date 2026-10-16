@@ -33,14 +33,14 @@ public sealed class CheckEngineSpecs : BaseCheckEngineSpecs
         await using var sp = services.BuildServiceProvider();
         var engine = sp.GetRequiredService<ICheckEngine>();
 
-        var result = await engine.Check(new CheckRequest
+        var result = (await engine.Check(new CheckRequest
         {
             EntityType = "doc",
             EntityId = "1",
             Permission = "view",
             SubjectType = "user",
             SubjectId = "u1"
-        }, CancellationToken.None);
+        }, CancellationToken.None)).Allowed;
 
         Assert.False(result);
     }

@@ -80,14 +80,14 @@ await writer.Write(
     [],
     cancellationToken);
 
-bool canView = await checkEngine.Check(
+bool canView = (await checkEngine.Check(
     new CheckRequest(
         SchemaConstsGen.Document.Name,
         "2",
         SchemaConstsGen.Document.Permissions.View,
         SchemaConstsGen.User.Name,
         "1"),
-    cancellationToken);
+    cancellationToken)).Allowed;
 ```
 
 ## Schema functions

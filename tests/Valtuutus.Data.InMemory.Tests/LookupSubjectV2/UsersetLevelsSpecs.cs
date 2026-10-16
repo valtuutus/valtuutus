@@ -113,7 +113,7 @@ public class UsersetLevelsSpecs
     {
         var (engine, runner) = await Setup(levels, Chain);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u0", "u1", "u2", "u3");
         runner.Steps.Should().HaveCount(steps);
@@ -136,7 +136,7 @@ public class UsersetLevelsSpecs
     {
         var (engine, runner) = await Setup(3, Chain);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0", depth: 1), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g0", depth: 1), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u0");
         runner.Steps.Should().ContainSingle().Which.Should().OnlyContain(q => q.Kind != LookupSubjectQueryKind.UsersetLevels);
@@ -151,7 +151,7 @@ public class UsersetLevelsSpecs
             new RelationTuple("group", "g2", "member", "user", "u2"),
             new RelationTuple("group", "g2", "member", "group", "g1", "member"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("group", "member", "user", "g1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1", "u2");
     }
@@ -185,8 +185,8 @@ public class UsersetLevelsSpecs
         var (plain, _) = await Setup(null, MixedChain);
         var request = new LookupSubjectRequest("project", "viewer", "user", "p1", depth);
 
-        var expected = await plain.Lookup(request, default);
-        var actual = await fused.Lookup(request, default);
+        var expected = (await plain.Lookup(request, default)).SubjectIds;
+        var actual = (await fused.Lookup(request, default)).SubjectIds;
 
         actual.Should().BeEquivalentTo(expected);
     }

@@ -57,7 +57,7 @@ public sealed class HasAnyOfAttributesRealDbSpecs : IAsyncLifetime
         }
 
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
-        return await engine.Check(new CheckRequest("doc", "d1", "can_edit", "user", "alice"), default);
+        return (await engine.Check(new CheckRequest("doc", "d1", "can_edit", "user", "alice"), default)).Allowed;
     }
 
     [Fact]

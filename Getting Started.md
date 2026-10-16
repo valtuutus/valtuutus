@@ -86,9 +86,9 @@ public class DocumentController(ICheckEngine checkEngine) : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier)!;
 
-        bool canView = await checkEngine.Check(
+        bool canView = (await checkEngine.Check(
             new CheckRequest("document", id, "view", "user", userId),
-            ct);
+            ct)).Allowed;
 
         if (!canView)
             return Forbid();

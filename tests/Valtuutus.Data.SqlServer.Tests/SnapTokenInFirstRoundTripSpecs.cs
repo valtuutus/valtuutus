@@ -53,16 +53,17 @@ public sealed class SnapTokenInFirstRoundTripSpecs : IAsyncLifetime
     public async Task Tokenless_check_resolves_the_token_in_its_only_round_trip()
     {
         var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
-        await Write(dbFactory, new RelationTuple("doc", "d1", "owner", "user", "alice"));
+        var written = await Write(dbFactory, new RelationTuple("doc", "d1", "owner", "user", "alice"));
 
         var counter = new RoundTripCounter();
         await using var sp = BuildServices(dbFactory, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
 
-        var allowed = await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default);
+        var result = await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default);
 
-        allowed.Should().BeTrue();
+        result.Allowed.Should().BeTrue();
+        result.SnapToken.Should().Be(written, "the engine reports the token its first round trip resolved");
         // The direct-membership answer and the token arrive together; the GetLatestSnapToken
         // round trip a tokenless request used to start with is gone (the counting reader would
         // have counted it).
@@ -88,8 +89,8 @@ public sealed class SnapTokenInFirstRoundTripSpecs : IAsyncLifetime
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
 
-        var duringWrite = await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default);
-        var afterWrite = await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default);
+        var duringWrite = (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default)).Allowed;
+        var afterWrite = (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default)).Allowed;
 
         wroteMidRequest.Should().BeTrue("the check must have needed a second wave for this spec to mean anything");
         duringWrite.Should().BeFalse("the grant committed after the request's token was resolved");
@@ -110,8 +111,8 @@ public sealed class SnapTokenInFirstRoundTripSpecs : IAsyncLifetime
 
         // Run a tokenless check first so the pooled connection carries a session token from it;
         // the explicit-token request must still see only its own snapshot.
-        (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default)).Should().BeTrue();
-        (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice", snapToken: before), default))
+        (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice"), default)).Allowed.Should().BeTrue();
+        (await engine.Check(new CheckRequest("doc", "d1", "view", "user", "alice", snapToken: before), default)).Allowed
             .Should().BeFalse();
     }
 

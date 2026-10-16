@@ -44,6 +44,7 @@ LookupEntityPage page = await lookupEntityEngine.LookupEntity(
 
 // page.EntityIds — IReadOnlyList<string>
 // page.ContinuationToken — null if no more pages
+// page.SnapToken — the snap token the page was read at
 ```
 
 ### Scope — constrain results to a parent entity
@@ -70,6 +71,8 @@ var page = await lookupEntityEngine.LookupEntity(
 ```
 
 ### Pagination
+
+Leave `SnapToken` unset to read each page at the latest snapshot, or pass the previous page's `SnapToken` to read every page from the same one.
 
 ```csharp
 string? token = null;

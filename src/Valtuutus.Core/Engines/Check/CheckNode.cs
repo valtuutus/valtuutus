@@ -1,3 +1,5 @@
+using Valtuutus.Core.Data;
+
 namespace Valtuutus.Core.Engines.Check;
 
 public enum CheckNodeType
@@ -35,4 +37,7 @@ public sealed class CheckExplainResult
 {
     public required bool Result { get; init; }
     public required CheckNode Root { get; init; }
+
+    /// <summary>The snap token the check was evaluated at.</summary>
+    public SnapToken? SnapToken { get; init; }
 }

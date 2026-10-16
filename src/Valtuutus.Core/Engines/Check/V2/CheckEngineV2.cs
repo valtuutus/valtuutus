@@ -8,7 +8,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
     CombinedPlanCache combinedPlans)
     : ICheckEngine
 {
-    public async Task<bool> Check(CheckRequest req, CancellationToken cancellationToken)
+    public async ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
     {
         ValtuutusMetrics.CheckRequests.Add(1);
         var executor = executorPool.Rent(reader);
@@ -17,13 +17,18 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         var results = await executor.ExecuteSingleAsync(
             new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
             ctx, cancellationToken, memoizeRoots: false);
+        // Read before the executor goes back to the pool, where the next request resets it.
+        var snapToken = ReadSnapToken(executor, ctx);
         // Reached only on success (an exception here leaves `executor` un-pooled — safe, just
         // sacrifices reuse of that one instance). Fire-and-forget: a short-circuited Union may
         // still have losing siblings in flight, and draining them must not add latency to an
         // answer we already have — see DrainStragglersAsync for why waiting matters at all.
         _ = DrainAndReturn(executor);
-        return results[0];
+        return new CheckResult { Allowed = results[0], SnapToken = snapToken };
     }
+
+    private static SnapToken? ReadSnapToken(CheckPlanExecutor executor, CheckRequestContext ctx) =>
+        ctx.ResolveLatestSnapToken ? executor.Physical.GetResolvedSnapToken(ctx) : ctx.SnapToken;
 
     // No caller token + an executor that can fold the "latest token" lookup into its first round
     // trip: start pending and let it do so, instead of paying a dedicated round trip up front.
@@ -59,7 +64,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         }
     }
 
-    public async Task<Dictionary<string, bool>> SubjectPermission(SubjectPermissionRequest req,
+    public async ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req,
         CancellationToken cancellationToken)
     {
         ValtuutusMetrics.CheckRequests.Add(1);
@@ -90,6 +95,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         // request's dynamic memo, so a subtree two permissions share is evaluated once.
         var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
             precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
+        var snapToken = ReadSnapToken(executor, ctx);
         _ = DrainAndReturn(executor);
 
         // Re-enumerate permissions (instead of a `names[]` array built alongside roots above) to
@@ -99,10 +105,10 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         var j = 0;
         foreach (var perm in permissions)
             dict[perm.Name] = results[j++];
-        return dict;
+        return new SubjectPermissionResult { Permissions = dict, SnapToken = snapToken };
     }
 
-    public async Task<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
+    public async ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
     {
         var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
         var ctx = new CheckRequestContext
@@ -118,6 +124,6 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
             new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
             ctx, cancellationToken);
         executorPool.Return(executor);
-        return new CheckExplainResult { Result = result, Root = root };
+        return new CheckExplainResult { Result = result, Root = root, SnapToken = snapToken };
     }
 }

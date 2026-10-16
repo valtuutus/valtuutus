@@ -152,7 +152,7 @@ public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
         await using var sp = services.BuildServiceProvider();
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
-        var result = await engine.Check(request, default);
+        var result = (await engine.Check(request, default)).Allowed;
         return (result, counter.Count);
     }
 }

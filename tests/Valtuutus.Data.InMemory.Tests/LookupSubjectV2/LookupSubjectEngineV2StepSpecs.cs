@@ -85,7 +85,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("project", "p1", "owner", "user", "u1"),
             new RelationTuple("project", "p1", "editor", "user", "u2"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "edit", "user", "p1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1", "u2");
         var query = runner.Steps.Should().ContainSingle().Which.Queries.Should().ContainSingle().Subject;
@@ -100,7 +100,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("project", "p1", "reviewer", "team", "t1", "member"),
             new RelationTuple("team", "t1", "member", "user", "u1"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "review", "user", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "review", "user", "p1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1");
         var query = runner.Steps.Should().ContainSingle().Which.Queries.Should().ContainSingle().Subject;
@@ -118,7 +118,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("project", "p1", "org", "organization", "o1"),
             new RelationTuple("organization", "o1", "admin", "user", "u1"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "manage", "user", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "manage", "user", "p1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1");
         var query = runner.Steps.Should().ContainSingle().Which.Queries.Should().ContainSingle().Subject;
@@ -135,7 +135,7 @@ public class LookupSubjectEngineV2StepSpecs
     {
         var (engine, runner, _) = await Setup(NestedGroupTuples);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1", "u2");
         runner.Steps.Should().HaveCount(3);
@@ -157,7 +157,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("group", "g2", "teams", "team", "t1"),
             new RelationTuple("team", "t1", "member", "user", "alice"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("workspace", "view", "user", "w1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("workspace", "view", "user", "w1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("alice");
         var queries = runner.Steps.SelectMany(s => s.Queries).ToList();
@@ -172,7 +172,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("project", "p1", "owner", "user", "u1"),
             new RelationTuple("project", "p1", "bot", "service", "s1"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "automate", "user", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "automate", "user", "p1"), default)).SubjectIds;
 
         result.Should().BeEquivalentTo("u1");
         var query = runner.Steps.Should().ContainSingle().Which.Queries.Should().ContainSingle().Subject;
@@ -185,7 +185,7 @@ public class LookupSubjectEngineV2StepSpecs
     {
         var (engine, runner, _) = await Setup(new RelationTuple("project", "p1", "owner", "user", "u1"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "edit", "service", "p1"), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "edit", "service", "p1"), default)).SubjectIds;
 
         result.Should().BeEmpty();
         runner.Steps.Should().BeEmpty();
@@ -198,7 +198,7 @@ public class LookupSubjectEngineV2StepSpecs
             new RelationTuple("project", "p1", "org", "organization", "o1"),
             new RelationTuple("organization", "o1", "admin", "user", "u1"));
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "manage", "user", "p1", depth: 1), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "manage", "user", "p1", depth: 1), default)).SubjectIds;
 
         result.Should().BeEmpty();
         runner.Steps.Should().BeEmpty();
@@ -209,7 +209,7 @@ public class LookupSubjectEngineV2StepSpecs
     {
         var (engine, runner, _) = await Setup(NestedGroupTuples);
 
-        var result = await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1", depth: 2), default);
+        var result = (await engine.Lookup(new LookupSubjectRequest("project", "view", "user", "p1", depth: 2), default)).SubjectIds;
 
         result.Should().BeEmpty();
         runner.Steps.Should().BeEmpty();
