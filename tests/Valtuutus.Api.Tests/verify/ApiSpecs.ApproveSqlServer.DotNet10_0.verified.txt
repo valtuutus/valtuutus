@@ -11,6 +11,7 @@ namespace Valtuutus.Data.SqlServer
     public sealed class SqlServerBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase
     {
         public SqlServerBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Db.IValtuutusDbOptions dbOptions) { }
+        public override string DbSystemName { get; }
         public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
         public override void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
@@ -63,6 +64,7 @@ namespace Valtuutus.Data.SqlServer
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct) { }
+        public System.Threading.Tasks.Task NotifyCommitted(Valtuutus.Core.Data.SnapToken snapToken) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
         public System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct) { }
@@ -77,5 +79,6 @@ namespace Valtuutus.Data.SqlServer
         public string RelationsTableName { get; }
         public string Schema { get; }
         public string TransactionsTableName { get; }
+        public int TwoHopEntityScanLimit { get; init; }
     }
 }

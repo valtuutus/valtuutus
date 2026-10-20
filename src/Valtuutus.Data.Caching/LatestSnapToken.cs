@@ -18,15 +18,21 @@ internal static class LatestSnapToken
     }
 
     /// <summary>
-    /// Records a token an engine resolved as the latest, unless the cache already knows a newer
-    /// one: a read that resolved its token before a write landed must not hide that write from
-    /// later requests.
+    /// Records a token as the latest (one an engine resolved, or one a committed write announced),
+    /// unless the cache already knows a newer one: a read that resolved its token before a write
+    /// landed, or a write that finished after a newer one, must not hide that newer write from later
+    /// requests.
     /// </summary>
-    public static async ValueTask Offer(IFusionCache cache, SnapToken snapToken, CancellationToken cancellationToken)
+    public static async ValueTask Offer(IFusionCache cache, SnapToken snapToken, CancellationToken cancellationToken,
+        Action<FusionCacheEntryOptions>? setupEntry = null)
     {
         var current = await TryGet(cache, cancellationToken);
         if (current is { } known && string.CompareOrdinal(known.Value, snapToken.Value) >= 0)
             return;
-        await cache.SetAsync(Consts.LatestSnapTokenKey, snapToken, Duration, token: cancellationToken);
+        await cache.SetAsync(Consts.LatestSnapTokenKey, snapToken, options =>
+        {
+            options.SetDuration(Duration);
+            setupEntry?.Invoke(options);
+        }, cancellationToken);
     }
 }

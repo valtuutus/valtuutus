@@ -65,6 +65,7 @@ namespace Valtuutus.Data.Db
     {
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Delete(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, Valtuutus.Core.Data.DeleteFilter filter, System.Threading.CancellationToken ct);
+        System.Threading.Tasks.Task NotifyCommitted(Valtuutus.Core.Data.SnapToken snapToken);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
         System.Threading.Tasks.Task<Valtuutus.Core.Data.SnapToken> Write(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations, System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes, System.Threading.CancellationToken ct);
     }
@@ -78,6 +79,7 @@ namespace Valtuutus.Data.Db
     }
     public interface IRelationalBatchOps
     {
+        string? DbSystemName { get; }
         Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
         void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken);
         void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
@@ -108,10 +110,12 @@ namespace Valtuutus.Data.Db
         string RelationsTableName { get; }
         string Schema { get; }
         string TransactionsTableName { get; }
+        int TwoHopEntityScanLimit { get; }
     }
     public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
     {
         protected RelationalBatchProviderBase() { }
+        public virtual string? DbSystemName { get; }
         public virtual Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
         public virtual void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }

@@ -21,22 +21,33 @@ internal static class FusedExpressionSql
     private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, string> BatchResolvedSnapTokenCommandSqlCache = new();
 
     internal static string BuildCommandSql(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll,
-        string relationsTable, string attributesTable, bool batchResolvedSnapToken)
+        string relationsTable, string attributesTable, int twoHopEntityScanLimit, bool batchResolvedSnapToken)
     {
         if (batchResolvedSnapToken)
         {
             if (BatchResolvedSnapTokenCommandSqlCache.TryGetValue(leaves, out var cachedBatchResolved))
                 return cachedBatchResolved;
             var batchResolved = SqlServerDataReaderProvider.DeclareBatchResolvedSnapToken
-                + BuildCommandSql(leaves, requireAll, relationsTable, attributesTable, batchResolvedSnapToken: false);
+                + BuildCommandSql(leaves, requireAll, relationsTable, attributesTable, twoHopEntityScanLimit,
+                    batchResolvedSnapToken: false);
             BatchResolvedSnapTokenCommandSqlCache.AddOrUpdate(leaves, batchResolved);
             return batchResolved;
         }
 
         if (CommandSqlCache.TryGetValue(leaves, out var cached)) return cached;
+        // A tuple-to-userset leaf is answered by statements ahead of the fused SELECT (see
+        // SqlServerDataReaderProvider.TwoHopExistsInto); the SELECT reads its variable.
+        var twoHops = new System.Text.StringBuilder();
+        for (var i = 0; i < leaves.Count; i++)
+        {
+            if (leaves[i].Kind != FusedLeafKind.TupleToUserSet) continue;
+            twoHops.Append($"DECLARE {TwoHopHitVariable(i)} int;\n");
+            twoHops.Append(SqlServerDataReaderProvider.TwoHopExistsInto(TwoHopHitVariable(i), relationsTable,
+                twoHopEntityScanLimit, $"@TupleSetRelation_{i}", $"@SubEntityType_{i}", "''", $"@ComputedRelation_{i}"));
+        }
         var expr = FusedExpressionSqlBuilder.BuildBooleanExpression(leaves, requireAll,
             (leaf, i) => LeafFragment(leaf, i, relationsTable, attributesTable));
-        var sql = $"SELECT CASE WHEN {expr} THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END";
+        var sql = $"{twoHops}SELECT CASE WHEN {expr} THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END";
         CommandSqlCache.AddOrUpdate(leaves, sql);
         return sql;
     }
@@ -44,36 +55,22 @@ internal static class FusedExpressionSql
     internal static string LeafFragment(FusedCheckLeaf leaf, int i, string relationsTable, string attributesTable) => leaf.Kind switch
     {
         FusedLeafKind.Direct =>
-            $"EXISTS(SELECT 1 FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation = @Relation_{i} AND subject_id = @SubjectId AND subject_relation = '')",
+            $"EXISTS(SELECT 1 FROM {relationsTable} {SqlServerDataReaderProvider.DirectTupleIndexHint} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation = @Relation_{i} AND subject_id = @SubjectId AND subject_relation = '')",
         FusedLeafKind.MultiDirect when !leaf.RequireAll =>
-            $"EXISTS(SELECT 1 FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '')",
+            $"EXISTS(SELECT 1 FROM {relationsTable} {SqlServerDataReaderProvider.DirectTupleIndexHint} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '')",
         FusedLeafKind.MultiDirect =>
-            $"(SELECT COUNT(DISTINCT relation) FROM {relationsTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '') = {leaf.Names.Length}",
+            $"(SELECT COUNT(DISTINCT relation) FROM {relationsTable} {SqlServerDataReaderProvider.DirectTupleIndexHint} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From($"@Relations_{i}")}) AND subject_id = @SubjectId AND subject_relation = '') = {leaf.Names.Length}",
         FusedLeafKind.Attribute =>
             $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute = @Attribute_{i} AND value = 'true')",
         FusedLeafKind.MultiAttribute when !leaf.RequireAll =>
             $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN ({IdList.From($"@Attributes_{i}")}) AND value = 'true')",
         FusedLeafKind.MultiAttribute =>
             $"(SELECT COUNT(DISTINCT attribute) FROM {attributesTable} WHERE {SqlServerDataReaderProvider.SnapPredicate} AND entity_type = @EntityType AND entity_id = @EntityId AND attribute IN ({IdList.From($"@Attributes_{i}")}) AND value = 'true') = {leaf.Names.Length}",
-        FusedLeafKind.TupleToUserSet => $"""
-            EXISTS(
-                SELECT 1 FROM {relationsTable} r_main_{i}
-                INNER JOIN {relationsTable} r_dep_{i}
-                    ON r_dep_{i}.entity_type = r_main_{i}.subject_type AND r_dep_{i}.entity_id = r_main_{i}.subject_id
-                WHERE r_main_{i}.created_tx_id <= @SnapToken AND (r_main_{i}.deleted_tx_id IS NULL OR r_main_{i}.deleted_tx_id > @SnapToken)
-                  AND r_main_{i}.entity_type = @EntityType
-                  AND r_main_{i}.entity_id = @EntityId
-                  AND r_main_{i}.relation = @TupleSetRelation_{i}
-                  AND r_main_{i}.subject_relation = ''
-                  AND r_dep_{i}.created_tx_id <= @SnapToken AND (r_dep_{i}.deleted_tx_id IS NULL OR r_dep_{i}.deleted_tx_id > @SnapToken)
-                  AND r_dep_{i}.relation = @ComputedRelation_{i}
-                  AND r_dep_{i}.subject_type = @SubjectType
-                  AND r_dep_{i}.subject_id = @SubjectId
-                  AND r_dep_{i}.subject_relation = ''
-            )
-            """,
+        FusedLeafKind.TupleToUserSet => $"{TwoHopHitVariable(i)} = 1",
         _ => throw new ArgumentOutOfRangeException(nameof(leaf.Kind), leaf.Kind, null),
     };
+
+    private static string TwoHopHitVariable(int i) => $"@TwoHopHit_{i}";
 
     internal static void WriteLeafParameters(SqlParameterCollection parameters, FusedCheckLeaf leaf, int i)
     {
@@ -93,6 +90,7 @@ internal static class FusedExpressionSql
                 break;
             case FusedLeafKind.TupleToUserSet:
                 SqlServerDataReaderProvider.AddStringParameter(parameters, $"@TupleSetRelation_{i}", leaf.Names[0], 64);
+                SqlServerDataReaderProvider.AddStringParameter(parameters, $"@SubEntityType_{i}", leaf.TtuSubEntityType!, 256);
                 SqlServerDataReaderProvider.AddStringParameter(parameters, $"@ComputedRelation_{i}", leaf.TtuComputedRelation!, 64);
                 break;
         }

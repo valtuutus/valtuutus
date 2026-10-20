@@ -63,8 +63,12 @@ await writer.Write(connection, [new RelationTuple("document", "2", "owner", "use
 
 - With transaction
 ```csharp
-await writer.Write(connection, transaction, [new RelationTuple("document", "2", "owner", "user", "1")], [], default);
+var snapToken = await writer.Write(connection, transaction, [new RelationTuple("document", "2", "owner", "user", "1")], [], default);
+await transaction.CommitAsync();
+await writer.NotifyCommitted(snapToken);
 ```
+
+Only you know when your transaction commits, so a write or delete made in it doesn't run `OnDataWritten` on its own. Call `NotifyCommitted` with the returned snap token after committing. With caching enabled (`AddCaching`), that's what tells the cache about the write; without it, tokenless reads can keep using the previous latest token for up to five minutes. The other overloads commit their own transaction and run `OnDataWritten` once it has committed.
 
 ## Deleting Authorization Data
 
@@ -122,7 +126,7 @@ await writer.Delete(
 
 You can mix relation and attribute deletions in a single `Delete` call by populating both `Relations` and `Attributes`.
 
-If using `IDbDataWriterProvider`, pass a connection (and optionally a transaction) as the first parameters — the signature is identical to `Write`.
+If using `IDbDataWriterProvider`, pass a connection (and optionally a transaction) as the first parameters — the signature is identical to `Write`. As with `Write`, call `NotifyCommitted` with the returned snap token once your transaction commits.
 
 ### How deletes work — soft deletes and data retention
 

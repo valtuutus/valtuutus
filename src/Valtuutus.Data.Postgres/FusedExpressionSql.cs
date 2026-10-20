@@ -21,20 +21,20 @@ internal static class FusedExpressionSql
     private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, PgStatement> BatchResolvedSnapTokenStatementCache = new();
 
     internal static PgStatement BuildStatement(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll,
-        string relationsTable, string attributesTable, bool batchResolvedSnapToken)
+        string relationsTable, string attributesTable, int twoHopEntityScanLimit, bool batchResolvedSnapToken)
     {
         var cache = batchResolvedSnapToken ? BatchResolvedSnapTokenStatementCache : StatementCache;
         if (cache.TryGetValue(leaves, out var cached)) return cached;
         var snap = batchResolvedSnapToken ? PostgresDataReaderProvider.BatchResolvedSnapTokenExpression : "@snap_token";
         var expr = FusedExpressionSqlBuilder.BuildBooleanExpression(leaves, requireAll,
-            (leaf, i) => LeafFragment(leaf, i, relationsTable, attributesTable, snap));
+            (leaf, i) => LeafFragment(leaf, i, relationsTable, attributesTable, twoHopEntityScanLimit, snap));
         var statement = PgStatement.Compile($"SELECT {expr}");
         cache.AddOrUpdate(leaves, statement);
         return statement;
     }
 
     internal static string LeafFragment(FusedCheckLeaf leaf, int i, string relationsTable, string attributesTable,
-        string snap)
+        int twoHopEntityScanLimit, string snap)
     {
         var snapPredicate = PostgresDataReaderProvider.SnapTokenPredicateFor(snap);
         return leaf.Kind switch
@@ -51,23 +51,8 @@ internal static class FusedExpressionSql
             $"EXISTS(SELECT 1 FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY(@attributes_{i}) AND value = 'true'::jsonb)",
         FusedLeafKind.MultiAttribute =>
             $"(SELECT COUNT(DISTINCT attribute) FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = ANY(@attributes_{i}) AND value = 'true'::jsonb) = {leaf.Names.Length}",
-        FusedLeafKind.TupleToUserSet => $"""
-            EXISTS(
-                SELECT 1 FROM {relationsTable} r_main_{i}
-                INNER JOIN {relationsTable} r_dep_{i}
-                    ON r_dep_{i}.entity_type = r_main_{i}.subject_type AND r_dep_{i}.entity_id = r_main_{i}.subject_id
-                WHERE r_main_{i}.created_tx_id <= {snap} AND (r_main_{i}.deleted_tx_id IS NULL OR r_main_{i}.deleted_tx_id > {snap})
-                  AND r_main_{i}.entity_type = @entity_type
-                  AND r_main_{i}.entity_id = @entity_id
-                  AND r_main_{i}.relation = @tuple_set_relation_{i}
-                  AND r_main_{i}.subject_relation = ''
-                  AND r_dep_{i}.created_tx_id <= {snap} AND (r_dep_{i}.deleted_tx_id IS NULL OR r_dep_{i}.deleted_tx_id > {snap})
-                  AND r_dep_{i}.relation = @computed_relation_{i}
-                  AND r_dep_{i}.subject_type = @subject_type
-                  AND r_dep_{i}.subject_id = @subject_id
-                  AND r_dep_{i}.subject_relation = ''
-            )
-            """,
+        FusedLeafKind.TupleToUserSet => PostgresDataReaderProvider.TwoHopExists(relationsTable, snap, twoHopEntityScanLimit,
+            $"@tuple_set_relation_{i}", $"@sub_entity_type_{i}", "''", $"@computed_relation_{i}"),
         _ => throw new ArgumentOutOfRangeException(nameof(leaf.Kind), leaf.Kind, null),
         };
     }
@@ -90,6 +75,7 @@ internal static class FusedExpressionSql
                 break;
             case FusedLeafKind.TupleToUserSet:
                 PostgresDataReaderProvider.AddStringParameter(parameters, $"tuple_set_relation_{i}", leaf.Names[0], 64);
+                PostgresDataReaderProvider.AddStringParameter(parameters, $"sub_entity_type_{i}", leaf.TtuSubEntityType!, 256);
                 PostgresDataReaderProvider.AddStringParameter(parameters, $"computed_relation_{i}", leaf.TtuComputedRelation!, 64);
                 break;
         }

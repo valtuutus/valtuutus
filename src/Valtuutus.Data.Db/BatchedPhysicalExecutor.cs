@@ -4,6 +4,7 @@ using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.Check.V2;
+using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Core.Schemas;
 
@@ -151,6 +152,9 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         }
 
         var batchCount = batchable?.Count ?? 0;
+        using var span = ValtuutusTelemetry.Enabled
+            ? ValtuutusTelemetry.StartRoundTrip(batchOps.DbSystemName, QueryNames(batchable), resolving is not null)
+            : default;
         // How far into `batchable` a result has already been reported to the sink. A fault at any
         // point — building the batch, obtaining the reader, advancing to a result set, or reading
         // rows out of it — corrupts reader positioning for every command still ahead of it, so
@@ -176,6 +180,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                     AddToBatch(batch, commandOps, op, buildCtx);
 
             await using var reader = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
+            span.Responded();
             if (resolving is not null)
             {
                 // Published before any op result: an op completion can make the engine submit the
@@ -200,6 +205,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         }
         catch (Exception e)
         {
+            span.RecordFailure(e);
             if (resolving is not null && resolving.TrySetException(e) && deferred is not null)
                 foreach (var op in deferred)
                     sink.Fail(op.Token, e);
@@ -213,6 +219,15 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         SubjectType = ctx.SubjectType, SubjectId = ctx.SubjectId,
         SnapToken = snapToken, Context = ctx.Context
     };
+
+    private static string[] QueryNames(List<PendingOp>? ops)
+    {
+        if (ops is null) return [];
+        var names = new string[ops.Count];
+        for (var i = 0; i < names.Length; i++)
+            names[i] = ops[i].Kind == OpKind.CheckOp ? ops[i].Op!.GetType().Name : ops[i].Kind.ToString();
+        return names;
+    }
 
     private static bool IsBatchable(in PendingOp op) => op.Kind switch
     {

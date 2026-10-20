@@ -14,10 +14,69 @@ namespace Valtuutus.Data.SqlServer;
 
 public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
+    internal const string DbSystem = "microsoft.sql_server";
+
     // Internal so FusedExpressionSql, which builds the fused-expression fragments for both this
     // class's HasFusedExpression and SqlServerBatchOps.AddHasFusedExpressionToBatch, uses the
     // exact snap-token predicate text those queries use.
     internal const string SnapPredicate = "created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)";
+
+    // Direct-membership probes (entity, relation, subject, subject_relation = '') read the filtered
+    // direct-tuple index, whose key ends in subject_id. A plan cached for an ordinary entity would
+    // otherwise seek only (entity_type, entity_id, relation) and filter subject_id row by row,
+    // which walks every tuple of an entity with many.
+    internal const string DirectTupleIndexHint = "WITH (INDEX(idx_relation_tuples_direct))";
+
+    // The 2-hop userset/tuple-to-userset existence test: does the subject hold depRelation on some
+    // subEntityType entity that the entity relates to through relation (with mainSubjectRelation)?
+    // Shared by the TTU fast path, the userset join and the fused TTU leaf, as statements that leave
+    // the answer (0/1) in the int variable hitVariable, declared by the caller. The join direction is
+    // decided at run time, since a cached plan cannot know which side is large: one bounded scan of
+    // the entity's tuples probes each for the subject's membership and counts them. A hit answers
+    // 1; fewer tuples than the bound means the scan saw them all, so a miss answers 0; otherwise the
+    // entity has many and the subject's memberships drive instead. That search is its own statement
+    // behind IF, so a check that never needs it never executes it: kept inside the same statement,
+    // its operators cost every check even unexecuted. It seeks the subject's memberships and probes
+    // the entity's tuples by subject through the same (relation, subject_type, subject_id,
+    // entity_type) index, which the entity-leading indexes cannot serve by subject_id.
+    internal static string TwoHopExistsInto(string hitVariable, string relationsTable, int entityScanLimit,
+        string relation, string subEntityType, string mainSubjectRelation, string depRelation)
+    {
+        var seen = hitVariable + "Seen";
+        const string bySubject = " WITH (FORCESEEK (idx_relation_tuples_relation_subject_type_subject_id_entity_type (relation, subject_type, subject_id, entity_type)))";
+        return CompactSql($"""
+            SET NOCOUNT ON;
+            DECLARE {seen} int;
+            SELECT {hitVariable} = ISNULL(MAX(e.hit), 0), {seen} = COUNT(*) FROM (
+                SELECT TOP ({entityScanLimit}) CASE WHEN EXISTS(
+                    SELECT 1 FROM {relationsTable} d
+                    WHERE {SnapPredicateFor("d")} AND d.entity_type = {subEntityType} AND d.entity_id = m.subject_id
+                      AND d.relation = {depRelation} AND d.subject_id = @SubjectId
+                      AND d.subject_type = @SubjectType AND d.subject_relation = '') THEN 1 ELSE 0 END AS hit
+                FROM {relationsTable} m
+                WHERE {SnapPredicateFor("m")} AND m.entity_type = @EntityType AND m.entity_id = @EntityId
+                  AND m.relation = {relation} AND m.subject_type = {subEntityType}
+                  AND m.subject_relation = {mainSubjectRelation}) e;
+            IF {hitVariable} = 0 AND {seen} >= {entityScanLimit}
+                SELECT {hitVariable} = CASE WHEN EXISTS(
+                    SELECT 1 FROM {relationsTable} d{bySubject}
+                    WHERE {SnapPredicateFor("d")} AND d.entity_type = {subEntityType} AND d.relation = {depRelation}
+                      AND d.subject_type = @SubjectType AND d.subject_id = @SubjectId AND d.subject_relation = ''
+                      AND EXISTS(
+                        SELECT 1 FROM {relationsTable} m{bySubject}
+                        WHERE {SnapPredicateFor("m")} AND m.entity_type = @EntityType AND m.entity_id = @EntityId
+                          AND m.relation = {relation} AND m.subject_id = d.entity_id
+                          AND m.subject_type = {subEntityType} AND m.subject_relation = {mainSubjectRelation})) THEN 1 ELSE 0 END;
+            """) + "\n";
+    }
+
+    // Collapses the indentation/newlines of a multi-line SQL template into single spaces. Applied
+    // once per catalog build: SqlClient sends the full command text on every execution and the
+    // server hashes all of it to find the cached plan, so its length is per-call cost.
+    private static string CompactSql(string sql) => System.Text.RegularExpressions.Regex.Replace(sql.Trim(), @"\s+", " ");
+
+    private static string SnapPredicateFor(string alias) =>
+        $"{alias}.created_tx_id <= @SnapToken AND ({alias}.deleted_tx_id IS NULL OR {alias}.deleted_tx_id > @SnapToken)";
 
     private readonly DbConnectionFactory _connectionFactory;
 
@@ -30,7 +89,16 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     internal const string DeclareBatchResolvedSnapToken =
         $"DECLARE @SnapToken nchar(26) = CAST(SESSION_CONTEXT(N'{BatchResolvedSnapTokenKey}') AS nchar(26));\n";
 
-    private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> QueryCache = new();
+    private readonly record struct ReaderQueriesKey(DbQueryCacheKey Tables, int TwoHopEntityScanLimit)
+    {
+        public static ReaderQueriesKey From(IValtuutusDbOptions options)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(options.TwoHopEntityScanLimit, 1, nameof(options.TwoHopEntityScanLimit));
+            return new(DbQueryCacheKey.From(options), options.TwoHopEntityScanLimit);
+        }
+    }
+
+    private static readonly ConcurrentDictionary<ReaderQueriesKey, ReaderQueries> QueryCache = new();
     private readonly ReaderQueries _q;
 
     public SqlServerDataReaderProvider(DbConnectionFactory connectionFactory,
@@ -44,7 +112,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     // Internal so SqlServerBatchOps resolves the same cached ReaderQueries instance this provider
     // uses — the dialect catalog and the single-op path reference one set of SQL strings.
     internal static ReaderQueries GetQueries(IValtuutusDbOptions dbOptions) =>
-        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key));
+        QueryCache.GetOrAdd(ReaderQueriesKey.From(dbOptions), static key => BuildQueries(key));
 
     // Internal so SqlServerBatchOps' dialect hooks build their SqlParameters through these
     // helpers, and batched commands carry byte-identical parameters (same SqlDbType, same size).
@@ -325,8 +393,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         return command;
     }
 
-    private static ReaderQueries BuildQueries(DbQueryCacheKey key)
+    private static ReaderQueries BuildQueries(ReaderQueriesKey queriesKey)
     {
+        var key = queriesKey.Tables;
+        var scanLimit = queriesKey.TwoHopEntityScanLimit;
         var relationsTable = $"[{key.Schema}].[{key.RelationsTable}]";
         var attributesTable = $"[{key.Schema}].[{key.AttributesTable}]";
         var snapPredicate = SnapPredicate;
@@ -335,6 +405,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
+            TwoHopEntityScanLimit = scanLimit,
             GetLatestSnapToken = string.Format(
                 "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY id DESC", key.Schema, key.TransactionsTable),
             ResolveLatestSnapTokenForBatch = $"""
@@ -421,7 +492,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 """,
             HasDirectRelation = $"""
                 SELECT CASE WHEN EXISTS(
-                    SELECT 1 FROM {relationsTable}
+                    SELECT 1 FROM {relationsTable} {DirectTupleIndexHint}
                     WHERE {snapPredicate}
                       AND entity_type = @EntityType AND entity_id = @EntityId AND relation = @Relation
                       AND subject_id = @SubjectId AND subject_relation = ''
@@ -436,14 +507,14 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 """,
             HasAnyDirectRelation = $"""
                 SELECT CASE WHEN EXISTS(
-                    SELECT 1 FROM {relationsTable}
+                    SELECT 1 FROM {relationsTable} {DirectTupleIndexHint}
                     WHERE {snapPredicate}
                       AND entity_type = @EntityType AND entity_id IN ({IdList.From("@EntityIds")}) AND relation = @Relation
                       AND subject_id = @SubjectId AND subject_relation = ''
                 ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
                 """,
             HasAnyOfDirectRelations = $"""
-                SELECT DISTINCT relation FROM {relationsTable}
+                SELECT DISTINCT relation FROM {relationsTable} {DirectTupleIndexHint}
                 WHERE {snapPredicate}
                   AND entity_type = @EntityType AND entity_id = @EntityId AND relation IN ({IdList.From("@Relations")})
                   AND subject_id = @SubjectId AND subject_relation = ''
@@ -540,48 +611,19 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   )
                 """,
             HasTupleToUserSetRelation = $"""
-                SELECT CASE WHEN EXISTS(
-                    SELECT 1 FROM {relationsTable} r_main
-                    INNER JOIN {relationsTable} r_dep
-                        ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                    WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
-                      AND r_main.entity_type = @EntityType
-                      AND r_main.entity_id = @EntityId
-                      AND r_main.relation = @TupleSetRelation
-                      AND r_main.subject_relation = ''
-                      AND r_dep.created_tx_id <= @SnapToken AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @SnapToken)
-                      AND r_dep.relation = @ComputedRelation
-                      AND r_dep.subject_type = @SubjectType
-                      AND r_dep.subject_id = @SubjectId
-                      AND r_dep.subject_relation = ''
-                ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
+                DECLARE @Hit int;
+                {TwoHopExistsInto("@Hit", relationsTable, scanLimit, "@TupleSetRelation", "@SubEntityType", "''", "@ComputedRelation")}SELECT CAST(@Hit AS BIT)
                 """,
             HasUsersetJoinRelation = $"""
-                SELECT CASE WHEN (
-                    EXISTS(
-                        SELECT 1 FROM {relationsTable}
-                        WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
-                          AND entity_type = @EntityType
-                          AND entity_id = @EntityId
-                          AND relation = @Relation
-                          AND subject_id = @SubjectId
-                          AND subject_relation = ''
-                    )
-                    OR EXISTS(
-                        SELECT 1 FROM {relationsTable} r_main
-                        INNER JOIN {relationsTable} r_dep
-                            ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                        WHERE r_main.created_tx_id <= @SnapToken AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > @SnapToken)
-                          AND r_main.entity_type = @EntityType
-                          AND r_main.entity_id = @EntityId
-                          AND r_main.relation = @Relation
-                          AND r_main.subject_relation = @ComputedRelation
-                          AND r_dep.created_tx_id <= @SnapToken AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > @SnapToken)
-                          AND r_dep.relation = @ComputedRelation
-                          AND r_dep.subject_type = @SubjectType
-                          AND r_dep.subject_id = @SubjectId
-                          AND r_dep.subject_relation = ''
-                    )
+                DECLARE @Hit int;
+                {TwoHopExistsInto("@Hit", relationsTable, scanLimit, "@Relation", "@SubEntityType", "@ComputedRelation", "@ComputedRelation")}SELECT CASE WHEN @Hit = 1 OR EXISTS(
+                    SELECT 1 FROM {relationsTable} {DirectTupleIndexHint}
+                    WHERE created_tx_id <= @SnapToken AND (deleted_tx_id IS NULL OR deleted_tx_id > @SnapToken)
+                      AND entity_type = @EntityType
+                      AND entity_id = @EntityId
+                      AND relation = @Relation
+                      AND subject_id = @SubjectId
+                      AND subject_relation = ''
                 ) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END
                 """,
             // The scope probe seeks by candidate entity through the filtered direct-tuple index both fixtures create.
@@ -725,6 +767,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     internal sealed record ReaderQueries
     {
         public required string RelationsTable { get; init; }
+        public required int TwoHopEntityScanLimit { get; init; }
         public required string AttributesTable { get; init; }
         public required string GetLatestSnapToken { get; init; }
         // Batch form of GetLatestSnapToken for SqlServerBatchOps: parks the latest token in the
@@ -776,7 +819,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -804,7 +847,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -828,7 +871,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -854,7 +897,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -884,7 +927,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -923,7 +966,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -949,7 +992,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -978,7 +1021,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1017,7 +1060,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1058,7 +1101,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1078,7 +1121,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1129,7 +1172,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1160,7 +1203,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1184,7 +1227,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1218,7 +1261,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1254,7 +1297,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string entityType, string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation,
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1290,7 +1333,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
         string subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1325,7 +1368,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1360,7 +1403,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subjectRelation,
         string subRelation, string subjectType, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1398,6 +1441,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@EntityId", entityId, 64);
         AddStringParameter(parameters, "@TupleSetRelation", tupleSetRelation, 64);
+        AddStringParameter(parameters, "@SubEntityType", subEntityType, 256);
         AddStringParameter(parameters, "@ComputedRelation", computedRelation, 64);
         AddStringParameter(parameters, "@SubjectType", subjectType, 256);
         AddStringParameter(parameters, "@SubjectId", subjectId, 64);
@@ -1409,7 +1453,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1429,12 +1473,13 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     }
 
     private static void PopulateHasUsersetJoinRelationCommand(SqlParameterCollection parameters,
-        string entityType, string entityId, string relation, string computedRelation,
+        string entityType, string entityId, string relation, string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken)
     {
         AddStringParameter(parameters, "@EntityType", entityType, 256);
         AddStringParameter(parameters, "@EntityId", entityId, 64);
         AddStringParameter(parameters, "@Relation", relation, 64);
+        AddStringParameter(parameters, "@SubEntityType", subEntityType, 256);
         AddStringParameter(parameters, "@ComputedRelation", computedRelation, 64);
         AddStringParameter(parameters, "@SubjectType", subjectType, 256);
         AddStringParameter(parameters, "@SubjectId", subjectId, 64);
@@ -1446,7 +1491,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1455,7 +1500,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             await using var command = CreateCommand(connection, _q.HasUsersetJoinRelation);
             PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
-                computedRelation, subjectType, subjectId, snapToken);
+                subEntityType, computedRelation, subjectType, subjectId, snapToken);
 
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
         }
@@ -1468,12 +1513,12 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
     public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
         bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
             var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
-                batchResolvedSnapToken: false);
+                _q.TwoHopEntityScanLimit, batchResolvedSnapToken: false);
             await using var connection = (SqlConnection)_connectionFactory();
             await connection.OpenAsync(cancellationToken);
 
@@ -1496,7 +1541,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1520,7 +1565,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTelemetry.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {

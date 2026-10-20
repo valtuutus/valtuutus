@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
 
@@ -14,43 +13,49 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
 {
     public async ValueTask<LookupSubjectResult> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
-        // Skip the tags iterator allocation entirely when nothing is listening.
-        using var activity = DefaultActivitySource.Instance.HasListeners()
-            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateSpanAttributes(req))
-            : null;
-
-        if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
-            return new LookupSubjectResult { SubjectIds = [], SnapToken = req.SnapToken };
-
-        var root = new LookupSubjectGraphBuilder(plans, req)
-            .Build(req.EntityType, req.Permission, [req.EntityId], req.Depth);
-
-        var snapToken = req.SnapToken;
-        using var pending = new PendingQueries();
-        while (!root.Advance(pending))
+        using var trace = ValtuutusTelemetry.StartRequest(TelemetryOperation.LookupSubject, req.SnapToken);
+        if (trace is not null)
         {
-            if (pending.Count == 0)
-                throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
-            snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
-            pending.Answered();
+            trace.SetTag(ValtuutusTelemetry.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTelemetry.EntityId, req.EntityId);
+            trace.SetTag(ValtuutusTelemetry.Permission, req.Permission);
+            trace.SetTag(ValtuutusTelemetry.SubjectType, req.SubjectType);
         }
 
-        HashSet<string> result = root.Result!.IsGate || root.Result.Ids!.Count == 0
-            ? new HashSet<string>()
-            : root.Result.Ids;
+        try
+        {
+            if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
+            {
+                trace?.Answer(req.SnapToken);
+                trace?.SetTag(ValtuutusTelemetry.ResultCount, 0);
+                return new LookupSubjectResult { SubjectIds = [], SnapToken = req.SnapToken };
+            }
 
-        activity?.AddEvent(new ActivityEvent("LookupSubjectResult",
-            tags: new ActivityTagsCollection(CreateResultAttributes(result))));
-        return new LookupSubjectResult { SubjectIds = result, SnapToken = snapToken };
-    }
+            var root = new LookupSubjectGraphBuilder(plans, req)
+                .Build(req.EntityType, req.Permission, [req.EntityId], req.Depth);
 
-    private static IEnumerable<KeyValuePair<string, object?>> CreateResultAttributes(HashSet<string> result)
-    {
-        yield return new KeyValuePair<string, object?>("LookupSubjectResultCount", result.Count);
-    }
+            var snapToken = req.SnapToken;
+            using var pending = new PendingQueries();
+            while (!root.Advance(pending))
+            {
+                if (pending.Count == 0)
+                    throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
+                trace?.NextStep();
+                snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
+                pending.Answered();
+            }
 
-    private static IEnumerable<KeyValuePair<string, object?>> CreateSpanAttributes(LookupSubjectRequest req)
-    {
-        yield return new KeyValuePair<string, object?>("LookupSubjectRequest", req);
+            HashSet<string> result = root.Result!.IsGate || root.Result.Ids!.Count == 0
+                ? new HashSet<string>()
+                : root.Result.Ids;
+
+            trace?.Answer(snapToken);
+            trace?.SetTag(ValtuutusTelemetry.ResultCount, result.Count);
+            return new LookupSubjectResult { SubjectIds = result, SnapToken = snapToken };
+        }
+        catch (Exception e) when (trace is not null && trace.Fail(e))
+        {
+            throw;
+        }
     }
 }
