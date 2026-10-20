@@ -117,6 +117,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         var snapToken = await Write(connection, transaction, relations, attributes, ct);
 
         await transaction.CommitAsync(ct);
+        await NotifyCommitted(snapToken);
         return snapToken;
     }
 
@@ -133,9 +134,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         await WriteRelationsAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, relations, ct);
         await WriteAttributesAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, attributes, ct);
 
-        var snapToken = new SnapToken(transactionId.ToString());
-        await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
+        return new SnapToken(transactionId.ToString());
     }
 
     protected virtual async Task WriteRelationsAsync(SqlConnection connection, SqlTransaction transaction, Ulid transactId, IEnumerable<RelationTuple> relations, CancellationToken ct)
@@ -197,6 +196,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         var snapToken = await Delete(connection, transaction, filter, ct);
 
         await transaction.CommitAsync(ct);
+        await NotifyCommitted(snapToken);
         return snapToken;
     }
 
@@ -221,10 +221,12 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
             await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
-        var snapToken = new SnapToken(snapTokenValue);
-        await(_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
+        return new SnapToken(snapTokenValue);
     }
+
+    /// <inheritdoc />
+    public Task NotifyCommitted(SnapToken snapToken)
+        => _options.NotifyDataWritten(_provider, snapToken);
 
     private static async Task ExecuteDeleteBatch(SqlConnection connection, SqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)

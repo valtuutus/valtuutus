@@ -48,4 +48,15 @@ public interface IDbDataWriterProvider : IDataWriterProvider
     /// <param name="ct">A token to cancel the operation.</param>
     /// <returns>The SnapToken representing the state after the delete operation.</returns>
     Task<SnapToken> Delete(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct);
+
+    /// <summary>
+    /// Announces a write or delete made in the caller's own transaction once that transaction has
+    /// committed, running the <c>ValtuutusDataOptions.OnDataWritten</c> handlers with its snap token. The overloads
+    /// that take a transaction leave this to the caller, since only the caller knows when it commits;
+    /// a cache that publishes announced tokens as the latest one (<c>AddCaching</c>) stays current only
+    /// if it is called.
+    /// </summary>
+    /// <param name="snapToken">The snap token the write or delete returned.</param>
+    /// <returns>A task that completes once the hook has run.</returns>
+    Task NotifyCommitted(SnapToken snapToken) => Task.CompletedTask;
 }

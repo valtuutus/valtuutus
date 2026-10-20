@@ -351,11 +351,13 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
         await Task.Delay(10, ct);
-        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         _relations.Write(transactId, relations);
         _attributes.Write(transactId, attributes);
+        // Published as the latest token only once its data is in place, so a read that resolves
+        // the latest token sees the whole write.
+        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }
 
@@ -363,11 +365,12 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     {
         using var _ = DefaultActivitySource.Instance.StartActivity();
         var transactId = Ulid.NewUlid();
-        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         _attributes.Delete(transactId, filter.Attributes);
         _relations.Delete(transactId, filter.Relations);
+        // Published as the latest token only once the deletions are in place.
+        lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }
 }

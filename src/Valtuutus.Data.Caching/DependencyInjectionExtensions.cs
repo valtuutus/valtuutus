@@ -25,14 +25,8 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<ILookupEntityEngine, CachedLookupEntityEngine>();
         builder.Services.AddScoped<ILookupSubjectEngine, CachedLookupSubjectEngine>();
 
-        builder.Options.OnDataWritten = async (sp, st) =>
-        {
-            var cache = sp.GetRequiredService<IFusionCache>();
-            await cache.SetAsync(Consts.LatestSnapTokenKey, st, options =>
-            {
-                options.AllowBackgroundBackplaneOperations = false;
-            });
-        };
+        builder.Options.OnDataWritten.Add((sp, st) => LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), st,
+            CancellationToken.None, options => options.AllowBackgroundBackplaneOperations = false).AsTask());
 
         return builder;
     }
