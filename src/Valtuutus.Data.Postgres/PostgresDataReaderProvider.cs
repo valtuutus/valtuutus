@@ -1363,8 +1363,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesByEntityAttributesFilter.Sql);
-            AddNullableStringParameter(command.Parameters, "entity_id", filter.EntityId, 64);
+            // The entity id is always bound here, so the statement filters it with a plain equality,
+            // which the attributes index seeks by under a generic plan too.
+            await using var command = _hotPathDataSource.CreateCommand(_q.SelectAttributesSingleEntity.Sql);
+            AddStringParameter(command.Parameters, "entity_id",
+                filter.EntityId ?? throw new ArgumentException("EntityId must be set.", nameof(filter)), 64);
             AddStringParameter(command.Parameters, "entity_type", filter.EntityType, 256);
             command.Parameters.Add(new NpgsqlParameter<string[]>("attributes", NpgsqlDbType.Array | NpgsqlDbType.Varchar) { TypedValue = filter.Attributes });
             AddFixedCharParameter(command.Parameters, "snap_token", filter.SnapToken.Value, 26);
@@ -1372,7 +1375,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var pooled = PooledList<AttributeTuple>.Rent();
             try
             {
-                _q.SelectAttributesByEntityAttributesFilter.Bind(command.Parameters);
+                _q.SelectAttributesSingleEntity.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
                     pooled.Add(ReadAttributeTuple(reader));
