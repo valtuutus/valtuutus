@@ -76,5 +76,6 @@ namespace Valtuutus.Data.SqlServer
         public string RelationsTableName { get; }
         public string Schema { get; }
         public string TransactionsTableName { get; }
+        public int TwoHopEntityScanLimit { get; init; }
     }
 }

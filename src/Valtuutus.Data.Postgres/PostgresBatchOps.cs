@@ -135,7 +135,7 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
         var statement = FusedExpressionSql.BuildStatement(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
-            _usesBatchResolvedSnapToken);
+            _q.TwoHopEntityScanLimit, _usesBatchResolvedSnapToken);
         var cmd = NewCommand(batch, statement.Sql);
         var parameters = Parameters(cmd);
         PostgresDataReaderProvider.AddStringParameter(parameters, "entity_type", entityType, 256);

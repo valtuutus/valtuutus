@@ -159,6 +159,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_type", entityType, 256);
         WriteStringParam(cmd, "entity_id", entityId, 64);
         WriteStringParam(cmd, "tuple_set_relation", tupleSetRelation, 64);
+        WriteStringParam(cmd, "sub_entity_type", subEntityType, 256);
         WriteStringParam(cmd, "computed_relation", computedRelation, 64);
         WriteStringParam(cmd, "subject_type", subjectType, 256);
         WriteStringParam(cmd, "subject_id", subjectId, 64);
@@ -175,6 +176,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         WriteStringParam(cmd, "entity_type", entityType, 256);
         WriteStringParam(cmd, "entity_id", entityId, 64);
         WriteStringParam(cmd, "relation", relation, 64);
+        WriteStringParam(cmd, "sub_entity_type", subEntityType, 256);
         WriteStringParam(cmd, "computed_relation", computedRelation, 64);
         WriteStringParam(cmd, "subject_type", subjectType, 256);
         WriteStringParam(cmd, "subject_id", subjectId, 64);

@@ -34,4 +34,13 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
     /// relation's walk one LookupEntity V2 query follows; 1 reads one level per round trip.
     /// </summary>
     public int LookupHopsPerQuery { get; init; } = 2;
+
+    /// <summary>
+    /// Tuples of the checked entity a userset or tuple-to-userset check reads before searching from
+    /// the subject's memberships instead. An entity with fewer is answered from its own tuples; one
+    /// with more (a folder shared with thousands of groups) is answered from the subject's side.
+    /// Raise it when ordinary entities hold more tuples per relation than this; lowering it only
+    /// pays off when large entities are checked often and their subjects belong to few entities.
+    /// </summary>
+    public int TwoHopEntityScanLimit { get; init; } = 32;
 }

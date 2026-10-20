@@ -13,4 +13,11 @@ public interface IValtuutusDbOptions
     /// LookupEntity V2 query follows at once; 1 reads one level per step.
     /// </summary>
     public int LookupHopsPerQuery => 1;
+
+    /// <summary>
+    /// Tuples of the checked entity a userset or tuple-to-userset check reads before searching from
+    /// the subject's memberships instead. An entity with fewer is answered from its own tuples; one
+    /// with more (a folder shared with thousands of groups) is answered from the subject's side.
+    /// </summary>
+    public int TwoHopEntityScanLimit => 32;
 }
