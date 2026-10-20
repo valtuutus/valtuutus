@@ -10,7 +10,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
 {
     public async ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
     {
-        using var trace = StartTrace("valtuutus.check", req);
+        using var trace = StartTrace(TelemetryOperation.Check, req);
         try
         {
             ValtuutusMetrics.CheckRequests.Add(1);
@@ -23,7 +23,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
             // Read before the executor goes back to the pool, where the next request resets it.
             var snapToken = ReadSnapToken(executor, ctx);
             trace?.Answer(snapToken);
-            trace?.SetTag(ValtuutusTracing.Result, results[0]);
+            trace?.SetAllowed(results[0]);
             // Reached only on success (an exception here leaves `executor` un-pooled — safe, just
             // sacrifices reuse of that one instance). Fire-and-forget: a short-circuited Union may
             // still have losing siblings in flight, and draining them must not add latency to an
@@ -37,16 +37,16 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
         }
     }
 
-    private static RequestTrace? StartTrace(string name, CheckRequest req)
+    private static RequestTelemetry? StartTrace(TelemetryOperation operation, CheckRequest req)
     {
-        var trace = ValtuutusTracing.StartRequest(name, req.SnapToken);
+        var trace = ValtuutusTelemetry.StartRequest(operation, req.SnapToken);
         if (trace is null) return null;
-        trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
-        trace.SetTag(ValtuutusTracing.EntityId, req.EntityId);
-        trace.SetTag(ValtuutusTracing.Permission, req.Permission);
-        trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
-        trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
-        trace.SetTag(ValtuutusTracing.SubjectRelation, req.SubjectRelation);
+        trace.SetTag(ValtuutusTelemetry.EntityType, req.EntityType);
+        trace.SetTag(ValtuutusTelemetry.EntityId, req.EntityId);
+        trace.SetTag(ValtuutusTelemetry.Permission, req.Permission);
+        trace.SetTag(ValtuutusTelemetry.SubjectType, req.SubjectType);
+        trace.SetTag(ValtuutusTelemetry.SubjectId, req.SubjectId);
+        trace.SetTag(ValtuutusTelemetry.SubjectRelation, req.SubjectRelation);
         return trace;
     }
 
@@ -90,13 +90,13 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
     public async ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req,
         CancellationToken cancellationToken)
     {
-        using var trace = ValtuutusTracing.StartRequest("valtuutus.subject_permission", req.SnapToken);
+        using var trace = ValtuutusTelemetry.StartRequest(TelemetryOperation.SubjectPermission, req.SnapToken);
         if (trace is not null)
         {
-            trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
-            trace.SetTag(ValtuutusTracing.EntityId, req.EntityId);
-            trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
-            trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
+            trace.SetTag(ValtuutusTelemetry.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTelemetry.EntityId, req.EntityId);
+            trace.SetTag(ValtuutusTelemetry.SubjectType, req.SubjectType);
+            trace.SetTag(ValtuutusTelemetry.SubjectId, req.SubjectId);
         }
 
         try
@@ -144,7 +144,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
             {
                 var allowed = 0;
                 foreach (var allowedPermission in dict.Values) if (allowedPermission) allowed++;
-                trace.SetTag(ValtuutusTracing.ResultCount, allowed);
+                trace.SetTag(ValtuutusTelemetry.ResultCount, allowed);
             }
             return new SubjectPermissionResult { Permissions = dict, SnapToken = snapToken };
         }
@@ -156,7 +156,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
 
     public async ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
     {
-        using var trace = StartTrace("valtuutus.explain", req);
+        using var trace = StartTrace(TelemetryOperation.Explain, req);
         try
         {
             var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
@@ -174,7 +174,7 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
                 ctx, cancellationToken);
             executorPool.Return(executor);
             trace?.Answer(snapToken);
-            trace?.SetTag(ValtuutusTracing.Result, result);
+            trace?.SetAllowed(result);
             return new CheckExplainResult { Result = result, Root = root, SnapToken = snapToken };
         }
         catch (Exception e) when (trace is not null && trace.Fail(e))

@@ -201,9 +201,9 @@ public sealed class TracingSpecs
     public void A_round_trip_still_running_after_the_answer_is_marked_as_a_straggler()
     {
         using var spans = new SpanCollector();
-        var request = ValtuutusTracing.StartRequest("valtuutus.check", requestedSnapToken: null)!;
-        ValtuutusTracing.StartRoundTrip(null, ["HasDirectRelation"], resolvesSnapToken: false).Dispose();
-        var straggler = ValtuutusTracing.StartRoundTrip(null, ["GetRelations"], resolvesSnapToken: false);
+        var request = ValtuutusTelemetry.StartRequest(TelemetryOperation.Check, requestedSnapToken: null)!;
+        ValtuutusTelemetry.StartRoundTrip(null, ["HasDirectRelation"], resolvesSnapToken: false).Dispose();
+        var straggler = ValtuutusTelemetry.StartRoundTrip(null, ["GetRelations"], resolvesSnapToken: false);
 
         request.Answer(snapToken: null);
         request.Dispose();
@@ -222,8 +222,8 @@ public sealed class TracingSpecs
     public void A_round_trip_that_responded_before_the_answer_is_not_a_straggler()
     {
         using var spans = new SpanCollector();
-        var request = ValtuutusTracing.StartRequest("valtuutus.check", requestedSnapToken: null)!;
-        var roundTrip = ValtuutusTracing.StartRoundTrip(null, ["HasDirectRelation"], resolvesSnapToken: false);
+        var request = ValtuutusTelemetry.StartRequest(TelemetryOperation.Check, requestedSnapToken: null)!;
+        var roundTrip = ValtuutusTelemetry.StartRoundTrip(null, ["HasDirectRelation"], resolvesSnapToken: false);
 
         roundTrip.Responded();
         request.Answer(snapToken: null);

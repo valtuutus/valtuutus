@@ -21,32 +21,39 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
 
     public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        using var span = ValtuutusTracing.StartCache("lookup_entity");
+        using var span = ValtuutusTelemetry.StartCache("lookup_entity", req.SnapToken);
         var hit = true;
 
-        if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
+        try
         {
-            var resolvedReq = req with { SnapToken = snapToken };
-            var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
-                ct =>
-                {
-                    hit = false;
-                    return _engine.LookupEntity(resolvedReq, ct).AsTask();
-                }, LatestSnapToken.Duration, cancellationToken);
-            span.SetCacheHit(hit);
-            return cached;
-        }
+            if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
+            {
+                var resolvedReq = req with { SnapToken = snapToken };
+                var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
+                    ct =>
+                    {
+                        hit = false;
+                        return _engine.LookupEntity(resolvedReq, ct).AsTask();
+                    }, LatestSnapToken.Duration, cancellationToken);
+                span.SetCacheHit(hit);
+                return cached;
+            }
 
-        // No known token: the engine resolves the latest one, inside its first round trip when the
-        // provider can, and reports it.
-        span.SetCacheHit(false);
-        var result = await _engine.LookupEntity(req, cancellationToken);
-        if (result.SnapToken is { } readAt)
-        {
-            await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
-            await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+            // No known token: the engine resolves the latest one, inside its first round trip when the
+            // provider can, and reports it.
+            span.SetCacheHit(false);
+            var result = await _engine.LookupEntity(req, cancellationToken);
+            if (result.SnapToken is { } readAt)
+            {
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+                await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+            }
+            return result;
         }
-        return result;
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     private static string GetLookupCacheKey(LookupEntityRequest req, SnapToken snapToken)

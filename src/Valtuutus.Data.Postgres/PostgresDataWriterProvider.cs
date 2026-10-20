@@ -102,18 +102,25 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-        using var span = ValtuutusTracing.StartWrite(PostgresDataReaderProvider.DbSystem);
+        using var span = ValtuutusTelemetry.StartWrite(PostgresDataReaderProvider.DbSystem);
+        try
+        {
 #if !NETCOREAPP3_0_OR_GREATER
-        await using var transaction = ((NpgsqlConnection)connection).BeginTransaction();
+            await using var transaction = ((NpgsqlConnection)connection).BeginTransaction();
 #else
-        await using var transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(ct);
+            await using var transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(ct);
 #endif
-        var snapToken = await WriteCore(connection, transaction, relations, attributes, ct);
-        await transaction.CommitAsync(ct);
-        span.SetSnapToken(snapToken);
-        await NotifyCommitted(snapToken);
+            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
+            await transaction.CommitAsync(ct);
+            span.SetSnapToken(snapToken);
+            await NotifyCommitted(snapToken);
 
-        return snapToken;
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     public async Task<SnapToken> Write(
@@ -124,10 +131,17 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     )
     {
-        using var span = ValtuutusTracing.StartWrite(PostgresDataReaderProvider.DbSystem);
-        var snapToken = await WriteCore(connection, transaction, relations, attributes, ct);
-        span.SetSnapToken(snapToken);
-        return snapToken;
+        using var span = ValtuutusTelemetry.StartWrite(PostgresDataReaderProvider.DbSystem);
+        try
+        {
+            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
+            span.SetSnapToken(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     private async Task<SnapToken> WriteCore(
@@ -224,18 +238,25 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         DeleteFilter filter,
         CancellationToken ct
     ) {
-        using var span = ValtuutusTracing.StartWrite(PostgresDataReaderProvider.DbSystem);
+        using var span = ValtuutusTelemetry.StartWrite(PostgresDataReaderProvider.DbSystem);
+        try
+        {
 #if !NETCOREAPP3_0_OR_GREATER
-        await using var transaction = ((NpgsqlConnection)connection).BeginTransaction();
+            await using var transaction = ((NpgsqlConnection)connection).BeginTransaction();
 #else
-        await using var transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(ct);
+            await using var transaction = await ((NpgsqlConnection)connection).BeginTransactionAsync(ct);
 #endif
-        var snapToken = await DeleteCore(connection, transaction, filter, ct);
-        await transaction.CommitAsync(ct);
-        span.SetSnapToken(snapToken);
-        await NotifyCommitted(snapToken);
+            var snapToken = await DeleteCore(connection, transaction, filter, ct);
+            await transaction.CommitAsync(ct);
+            span.SetSnapToken(snapToken);
+            await NotifyCommitted(snapToken);
 
-        return snapToken;
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     public async Task<SnapToken> Delete(
@@ -245,10 +266,17 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     )
     {
-        using var span = ValtuutusTracing.StartWrite(PostgresDataReaderProvider.DbSystem);
-        var snapToken = await DeleteCore(connection, transaction, filter, ct);
-        span.SetSnapToken(snapToken);
-        return snapToken;
+        using var span = ValtuutusTelemetry.StartWrite(PostgresDataReaderProvider.DbSystem);
+        try
+        {
+            var snapToken = await DeleteCore(connection, transaction, filter, ct);
+            span.SetSnapToken(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     private async Task<SnapToken> DeleteCore(

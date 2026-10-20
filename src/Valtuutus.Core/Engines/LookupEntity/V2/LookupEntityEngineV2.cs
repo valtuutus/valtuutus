@@ -14,13 +14,13 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
 {
     public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        using var trace = ValtuutusTracing.StartRequest("valtuutus.lookup_entity", req.SnapToken);
+        using var trace = ValtuutusTelemetry.StartRequest(TelemetryOperation.LookupEntity, req.SnapToken);
         if (trace is not null)
         {
-            trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
-            trace.SetTag(ValtuutusTracing.Permission, req.Permission);
-            trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
-            trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
+            trace.SetTag(ValtuutusTelemetry.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTelemetry.Permission, req.Permission);
+            trace.SetTag(ValtuutusTelemetry.SubjectType, req.SubjectType);
+            trace.SetTag(ValtuutusTelemetry.SubjectId, req.SubjectId);
         }
 
         try
@@ -32,7 +32,7 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
             if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
             {
                 trace?.Answer(req.SnapToken);
-                trace?.SetTag(ValtuutusTracing.ResultCount, 0);
+                trace?.SetTag(ValtuutusTelemetry.ResultCount, 0);
                 return new LookupEntityPage([], null) { SnapToken = req.SnapToken };
             }
 
@@ -65,7 +65,7 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
             sorted.Sort(StringComparer.Ordinal);
 
             trace?.Answer(snapToken);
-            trace?.SetTag(ValtuutusTracing.ResultCount, sorted.Count);
+            trace?.SetTag(ValtuutusTelemetry.ResultCount, sorted.Count);
 
             return Page(sorted, req.PageSize, req.ContinuationToken) with { SnapToken = snapToken };
         }

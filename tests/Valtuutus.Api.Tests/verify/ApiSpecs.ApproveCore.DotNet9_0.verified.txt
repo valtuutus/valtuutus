@@ -589,16 +589,19 @@ namespace Valtuutus.Core.Observability
     }
     public readonly struct ValtuutusSpan : System.IDisposable
     {
+        public System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> CountAttributes(System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes) { }
+        public System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> CountRelations(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations) { }
         public void Dispose() { }
         public bool RecordFailure(System.Exception e) { }
         public void Responded() { }
+        public void SetAllowed(bool allowed) { }
         public void SetCacheHit(bool hit) { }
         public void SetSnapToken(Valtuutus.Core.Data.SnapToken snapToken) { }
     }
-    public static class ValtuutusTracing
+    public static class ValtuutusTelemetry
     {
         public static bool Enabled { get; }
-        public static Valtuutus.Core.Observability.ValtuutusSpan StartCache(string operation) { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartCache(string operation, Valtuutus.Core.Data.SnapToken? requestedSnapToken) { }
         public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string query = "") { }
         public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, string[] queries, bool resolvesSnapToken) { }
         public static Valtuutus.Core.Observability.ValtuutusSpan StartWrite(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string operation = "") { }
