@@ -22,17 +22,25 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
     // <inheritdoc />
     public async ValueTask<LookupSubjectResult> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookup");
+        using var span = ValtuutusTracing.StartCache("lookup_subject");
+        var hit = true;
 
         if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
         {
             var resolvedReq = req with { SnapToken = snapToken };
-            return await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
-                ct => _engine.Lookup(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+            var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
+                ct =>
+                {
+                    hit = false;
+                    return _engine.Lookup(resolvedReq, ct).AsTask();
+                }, LatestSnapToken.Duration, cancellationToken);
+            span.SetCacheHit(hit);
+            return cached;
         }
 
         // No known token: the engine resolves the latest one, inside its first round trip when the
         // provider can, and reports it.
+        span.SetCacheHit(false);
         var result = await _engine.Lookup(req, cancellationToken);
         if (result.SnapToken is { } readAt)
         {

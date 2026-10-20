@@ -28,7 +28,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         Ulid? id;
         lock (_txLock) { id = _latestTransaction; }
         return Task.FromResult<SnapToken?>(id is null ? null : new SnapToken(id.Value.ToString()));
@@ -36,7 +36,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -50,7 +50,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -65,7 +65,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -79,7 +79,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -94,7 +94,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType,
         IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -109,7 +109,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter,
         string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -125,7 +125,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation, SnapToken snapToken, EntityScope? scope,
         CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -141,7 +141,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string[] relationNames, string subjectType, IEnumerable<string> entityIds, string subjectRelation,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -158,7 +158,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -175,7 +175,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -191,7 +191,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subjectRelation,
         string subRelation, string subjectType, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -206,7 +206,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -220,7 +220,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -234,7 +234,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -249,7 +249,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(
         EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -280,7 +280,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter,
         IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -295,7 +295,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(
         EntityAttributesFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -309,7 +309,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -329,7 +329,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var _ = ValtuutusTracing.StartRoundTrip(null);
         await EnterQuery(cancellationToken);
         try
         {
@@ -348,7 +348,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
 
     public async Task<SnapToken> Write(IEnumerable<RelationTuple> relations, IEnumerable<AttributeTuple> attributes, CancellationToken ct)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartWrite(null);
         var transactId = Ulid.NewUlid();
         await Task.Delay(10, ct);
         _relations.Write(transactId, relations);
@@ -357,19 +357,21 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         // the latest token sees the whole write.
         lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
+        span.SetSnapToken(snapToken);
         await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }
 
     public async Task<SnapToken> Delete(DeleteFilter filter, CancellationToken ct)
     {
-        using var _ = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartWrite(null);
         var transactId = Ulid.NewUlid();
         _attributes.Delete(transactId, filter.Attributes);
         _relations.Delete(transactId, filter.Relations);
         // Published as the latest token only once the deletions are in place.
         lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
+        span.SetSnapToken(snapToken);
         await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }

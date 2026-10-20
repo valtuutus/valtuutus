@@ -14,6 +14,8 @@ namespace Valtuutus.Data.Postgres;
 
 public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvider, IRelationalCheckOps
 {
+    internal const string DbSystem = "postgresql";
+
     internal const string BatchResolvedSnapTokenSetting = "valtuutus.snap_token";
     // Same char(26) type as the @snap_token parameter, so predicates keep their index usage. A
     // scalar subquery, so it is evaluated once per statement (an InitPlan compared like a
@@ -768,7 +770,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -804,7 +806,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<PooledList<RelationTuple>> GetRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -844,7 +846,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<bool> HasDirectRelation(RelationTupleFilter tupleFilter, string subjectId, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -870,7 +872,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<PooledList<RelationTuple>> GetIndirectRelations(RelationTupleFilter tupleFilter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -923,7 +925,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<bool> HasAnyDirectRelation(string entityType, string[] entityIds, string relation,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -953,7 +955,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<HashSet<string>> HasAnyOfDirectRelations(string entityType, string entityId, string[] relationNames,
         string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -985,7 +987,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<HashSet<string>> HasAnyOfAttributes(string entityType, string entityId, string[] attributeNames,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1007,7 +1009,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithEntityIds(EntityRelationFilter entityRelationFilter, string subjectType, IEnumerable<string> entityIds, string subjectRelation, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1038,7 +1040,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<PooledList<RelationTuple>> GetRelationsWithSubjectsIds(EntityRelationFilter entityFilter, string[] subjectsIds, string subjectType, string subjectRelation, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1072,7 +1074,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string entityType, string[] relationNames, string[] subjectsIds, string subjectType, string subjectRelation,
         SnapToken snapToken, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1106,7 +1108,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string entityType, string[] relationNames, string subjectType, IEnumerable<string> entityIds,
         string subjectRelation, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1139,7 +1141,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         EntityRelationFilter mainFilter, string subEntityType, string subjectRelation, string subRelation,
         string subjectType, string subjectId, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1177,7 +1179,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         EntityRelationFilter mainFilter, IEnumerable<string> entityIds, string subEntityType, string subjectRelation,
         string subRelation, string subjectType, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1230,7 +1232,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1267,7 +1269,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1288,7 +1290,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<bool> HasFusedExpression(string entityType, string entityId, IReadOnlyList<FusedCheckLeaf> leaves,
         bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.InternalSourceInstance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1325,7 +1327,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<bool> HasTrueBoolAttribute(string entityType, string entityId, string attribute,
         SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1343,7 +1345,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<List<AttributeTuple>> GetAttributes(EntityAttributeFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1366,7 +1368,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributes(EntityAttributesFilter filter, EntityScope? scope, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1393,7 +1395,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<PooledList<AttributeTuple>> GetAttributesSingleEntity(EntityAttributesFilter filter, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1429,7 +1431,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<List<AttributeTuple>> GetAttributesWithEntityIds(AttributeFilter filter, IEnumerable<string> entitiesIds, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1453,7 +1455,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     public async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> GetAttributesWithEntityIds(EntityAttributesFilter filter, IEnumerable<string> entitiesIds,
         CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1479,7 +1481,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<List<string>> GetEntityIdsExcluding(string entityType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {
@@ -1502,7 +1504,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
 
     public async Task<List<string>> GetSubjectIdsExcluding(string subjectType, IReadOnlyCollection<string> excludeIds, SnapToken snapToken, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
+        using var span = ValtuutusTracing.StartRoundTrip(DbSystem);
         await EnterQuery(cancellationToken);
         try
         {

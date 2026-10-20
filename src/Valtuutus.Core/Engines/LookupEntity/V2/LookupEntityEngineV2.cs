@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Observability;
 using Valtuutus.Core.Schemas;
@@ -15,49 +14,65 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
 {
     public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        // Skip the tags iterator allocation entirely when nothing is listening.
-        using var activity = DefaultActivitySource.Instance.HasListeners()
-            ? DefaultActivitySource.Instance.StartActivity(ActivityKind.Internal, tags: CreateSpanAttributes(req))
-            : null;
+        using var trace = ValtuutusTracing.StartRequest("valtuutus.lookup_entity", req.SnapToken);
+        if (trace is not null)
+        {
+            trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTracing.Permission, req.Permission);
+            trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
+            trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
+        }
 
-        if (req.Scope is { } scope && schema.GetRelationType(req.EntityType, scope.Relation) == RelationType.None)
-            throw new InvalidOperationException(
-                $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
-
-        if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
-            return new LookupEntityPage([], null) { SnapToken = req.SnapToken };
-
-        var builder = new LookupEntityGraphBuilder(plans, req);
-        List<string> sorted;
-        var snapToken = req.SnapToken;
         try
         {
-            var root = builder.Build(req.EntityType, req.Permission, req.Depth, scoped: req.Scope is not null);
+            if (req.Scope is { } scope && schema.GetRelationType(req.EntityType, scope.Relation) == RelationType.None)
+                throw new InvalidOperationException(
+                    $"Scope relation '{scope.Relation}' does not exist on entity type '{req.EntityType}'.");
 
-            using (var pending = new PendingQueries())
+            if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
             {
-                while (!root.Advance(pending))
-                {
-                    if (pending.Count == 0)
-                        throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
-                    snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
-                    pending.Answered();
-                }
+                trace?.Answer(req.SnapToken);
+                trace?.SetTag(ValtuutusTracing.ResultCount, 0);
+                return new LookupEntityPage([], null) { SnapToken = req.SnapToken };
             }
 
-            sorted = new List<string>(root.Result!);
-            EntitySets.Return(root.Result);
+            var builder = new LookupEntityGraphBuilder(plans, req);
+            List<string> sorted;
+            var snapToken = req.SnapToken;
+            try
+            {
+                var root = builder.Build(req.EntityType, req.Permission, req.Depth, scoped: req.Scope is not null);
+
+                using (var pending = new PendingQueries())
+                {
+                    while (!root.Advance(pending))
+                    {
+                        if (pending.Count == 0)
+                            throw new InvalidOperationException("The lookup graph is waiting without any query to run.");
+                        trace?.NextStep();
+                        snapToken = await runner.RunAsync(pending.Queries, snapToken, cancellationToken);
+                        pending.Answered();
+                    }
+                }
+
+                sorted = new List<string>(root.Result!);
+                EntitySets.Return(root.Result);
+            }
+            finally
+            {
+                builder.Release();
+            }
+            sorted.Sort(StringComparer.Ordinal);
+
+            trace?.Answer(snapToken);
+            trace?.SetTag(ValtuutusTracing.ResultCount, sorted.Count);
+
+            return Page(sorted, req.PageSize, req.ContinuationToken) with { SnapToken = snapToken };
         }
-        finally
+        catch (Exception e) when (trace is not null && trace.Fail(e))
         {
-            builder.Release();
+            throw;
         }
-        sorted.Sort(StringComparer.Ordinal);
-
-        activity?.AddEvent(new ActivityEvent("LookupEntityResult",
-            tags: new ActivityTagsCollection(CreateResultAttributes(sorted.Count))));
-
-        return Page(sorted, req.PageSize, req.ContinuationToken) with { SnapToken = snapToken };
     }
 
     // Pages are cut from the ordinal-sorted ids; the continuation token is the base64 of the last id served.
@@ -83,15 +98,5 @@ internal sealed class LookupEntityEngineV2(Schema schema, LookupEntityPlanCache 
             nextToken = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(page[^1]));
 
         return new LookupEntityPage(page, nextToken);
-    }
-
-    private static IEnumerable<KeyValuePair<string, object?>> CreateResultAttributes(int count)
-    {
-        yield return new KeyValuePair<string, object?>("LookupEntityResultCount", count);
-    }
-
-    private static IEnumerable<KeyValuePair<string, object?>> CreateSpanAttributes(LookupEntityRequest req)
-    {
-        yield return new KeyValuePair<string, object?>("LookupEntityRequest", req);
     }
 }

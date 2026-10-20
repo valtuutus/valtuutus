@@ -10,21 +10,44 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
 {
     public async ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
     {
-        ValtuutusMetrics.CheckRequests.Add(1);
-        var executor = executorPool.Rent(reader);
-        var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
-            cancellationToken);
-        var results = await executor.ExecuteSingleAsync(
-            new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
-            ctx, cancellationToken, memoizeRoots: false);
-        // Read before the executor goes back to the pool, where the next request resets it.
-        var snapToken = ReadSnapToken(executor, ctx);
-        // Reached only on success (an exception here leaves `executor` un-pooled — safe, just
-        // sacrifices reuse of that one instance). Fire-and-forget: a short-circuited Union may
-        // still have losing siblings in flight, and draining them must not add latency to an
-        // answer we already have — see DrainStragglersAsync for why waiting matters at all.
-        _ = DrainAndReturn(executor);
-        return new CheckResult { Allowed = results[0], SnapToken = snapToken };
+        using var trace = StartTrace("valtuutus.check", req);
+        try
+        {
+            ValtuutusMetrics.CheckRequests.Add(1);
+            var executor = executorPool.Rent(reader);
+            var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
+                cancellationToken);
+            var results = await executor.ExecuteSingleAsync(
+                new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
+                ctx, cancellationToken, memoizeRoots: false);
+            // Read before the executor goes back to the pool, where the next request resets it.
+            var snapToken = ReadSnapToken(executor, ctx);
+            trace?.Answer(snapToken);
+            trace?.SetTag(ValtuutusTracing.Result, results[0]);
+            // Reached only on success (an exception here leaves `executor` un-pooled — safe, just
+            // sacrifices reuse of that one instance). Fire-and-forget: a short-circuited Union may
+            // still have losing siblings in flight, and draining them must not add latency to an
+            // answer we already have — see DrainStragglersAsync for why waiting matters at all.
+            _ = DrainAndReturn(executor);
+            return new CheckResult { Allowed = results[0], SnapToken = snapToken };
+        }
+        catch (Exception e) when (trace is not null && trace.Fail(e))
+        {
+            throw;
+        }
+    }
+
+    private static RequestTrace? StartTrace(string name, CheckRequest req)
+    {
+        var trace = ValtuutusTracing.StartRequest(name, req.SnapToken);
+        if (trace is null) return null;
+        trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
+        trace.SetTag(ValtuutusTracing.EntityId, req.EntityId);
+        trace.SetTag(ValtuutusTracing.Permission, req.Permission);
+        trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
+        trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
+        trace.SetTag(ValtuutusTracing.SubjectRelation, req.SubjectRelation);
+        return trace;
     }
 
     private static SnapToken? ReadSnapToken(CheckPlanExecutor executor, CheckRequestContext ctx) =>
@@ -67,63 +90,96 @@ internal sealed class CheckEngineV2(IDataReaderProvider reader, Schema schema, C
     public async ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req,
         CancellationToken cancellationToken)
     {
-        ValtuutusMetrics.CheckRequests.Add(1);
-        // Roots buffer is rented from the executor itself (reused across calls on this pooled
-        // instance — see CheckPlanExecutor.RentMultiRootBuffer), not a fresh `new
-        // CheckRootRequest[permissions.Length]` every call. Rent the executor before filling it:
-        // the buffer is owned by the executor instance, so it must be picked first.
-        var executor = executorPool.Rent(reader);
-        var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
-            cancellationToken);
+        using var trace = ValtuutusTracing.StartRequest("valtuutus.subject_permission", req.SnapToken);
+        if (trace is not null)
+        {
+            trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTracing.EntityId, req.EntityId);
+            trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
+            trace.SetTag(ValtuutusTracing.SubjectId, req.SubjectId);
+        }
 
-        var permissions = schema.GetPermissions(req.EntityType);
-        var roots = executor.RentMultiRootBuffer(permissions.Length);
-        var rootsSpan = roots.Span;
-        var i = 0;
-        foreach (var perm in permissions)
-            rootsSpan[i++] = new CheckRootRequest(req.EntityType, req.EntityId, perm.Name, null, req.Depth);
+        try
+        {
+            ValtuutusMetrics.CheckRequests.Add(1);
+            // Roots buffer is rented from the executor itself (reused across calls on this pooled
+            // instance — see CheckPlanExecutor.RentMultiRootBuffer), not a fresh `new
+            // CheckRootRequest[permissions.Length]` every call. Rent the executor before filling it:
+            // the buffer is owned by the executor instance, so it must be picked first.
+            var executor = executorPool.Rent(reader);
+            var ctx = await CreateContext(executor, req.SubjectType, req.SubjectId, req.SnapToken, req.Context,
+                cancellationToken);
 
-        // Combined plan: all N permission trees hash-consed together (cached per
-        // (EntityType, SubjectType)), so a subtree shared across two permissions gets one slot
-        // in one shared array below instead of one array per root. Roots is index-aligned with
-        // combined.Roots and (below) with permissions itself, because this loop, CombinedPlanCache,
-        // and the result-building loop below all iterate the same schema.GetPermissions(entityType)
-        // FrozenDictionary.Values, whose iteration order is fixed once the schema is built.
-        var combined = combinedPlans.GetOrCompile(req.EntityType, ctx.SubjectType);
+            var permissions = schema.GetPermissions(req.EntityType);
+            var roots = executor.RentMultiRootBuffer(permissions.Length);
+            var rootsSpan = roots.Span;
+            var i = 0;
+            foreach (var perm in permissions)
+                rootsSpan[i++] = new CheckRootRequest(req.EntityType, req.EntityId, perm.Name, null, req.Depth);
 
-        // One driver loop, N roots: all permissions evaluate concurrently and share the
-        // request's dynamic memo, so a subtree two permissions share is evaluated once.
-        var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
-            precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
-        var snapToken = ReadSnapToken(executor, ctx);
-        _ = DrainAndReturn(executor);
+            // Combined plan: all N permission trees hash-consed together (cached per
+            // (EntityType, SubjectType)), so a subtree shared across two permissions gets one slot
+            // in one shared array below instead of one array per root. Roots is index-aligned with
+            // combined.Roots and (below) with permissions itself, because this loop, CombinedPlanCache,
+            // and the result-building loop below all iterate the same schema.GetPermissions(entityType)
+            // FrozenDictionary.Values, whose iteration order is fixed once the schema is built.
+            var combined = combinedPlans.GetOrCompile(req.EntityType, ctx.SubjectType);
 
-        // Re-enumerate permissions (instead of a `names[]` array built alongside roots above) to
-        // pair each name with its result — avoids a second heap array purely to carry names
-        // across the await.
-        var dict = new Dictionary<string, bool>(permissions.Length);
-        var j = 0;
-        foreach (var perm in permissions)
-            dict[perm.Name] = results[j++];
-        return new SubjectPermissionResult { Permissions = dict, SnapToken = snapToken };
+            // One driver loop, N roots: all permissions evaluate concurrently and share the
+            // request's dynamic memo, so a subtree two permissions share is evaluated once.
+            var results = await executor.ExecuteAsync(roots, ctx, cancellationToken,
+                precompiledRoots: combined.Roots, combinedSlotCount: combined.SlotCount);
+            var snapToken = ReadSnapToken(executor, ctx);
+            trace?.Answer(snapToken);
+            _ = DrainAndReturn(executor);
+
+            // Re-enumerate permissions (instead of a `names[]` array built alongside roots above) to
+            // pair each name with its result — avoids a second heap array purely to carry names
+            // across the await.
+            var dict = new Dictionary<string, bool>(permissions.Length);
+            var j = 0;
+            foreach (var perm in permissions)
+                dict[perm.Name] = results[j++];
+            if (trace is not null)
+            {
+                var allowed = 0;
+                foreach (var allowedPermission in dict.Values) if (allowedPermission) allowed++;
+                trace.SetTag(ValtuutusTracing.ResultCount, allowed);
+            }
+            return new SubjectPermissionResult { Permissions = dict, SnapToken = snapToken };
+        }
+        catch (Exception e) when (trace is not null && trace.Fail(e))
+        {
+            throw;
+        }
     }
 
     public async ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
     {
-        var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
-        var ctx = new CheckRequestContext
+        using var trace = StartTrace("valtuutus.explain", req);
+        try
         {
-            SubjectType = req.SubjectType, SubjectId = req.SubjectId,
-            SnapToken = snapToken, Context = req.Context
-        };
-        var executor = executorPool.Rent(reader);
-        // Not the Check()/DrainAndReturn fire-and-forget pattern: ExecuteExplainAsync already
-        // awaits DrainStragglersAsync internally before returning (see its own comment for why),
-        // so by this point the executor is fully quiesced and safe to return synchronously.
-        var (result, root) = await executor.ExecuteExplainAsync(
-            new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
-            ctx, cancellationToken);
-        executorPool.Return(executor);
-        return new CheckExplainResult { Result = result, Root = root, SnapToken = snapToken };
+            var snapToken = await SnapTokenUtils.ResolveLatest(reader, req.SnapToken, cancellationToken);
+            var ctx = new CheckRequestContext
+            {
+                SubjectType = req.SubjectType, SubjectId = req.SubjectId,
+                SnapToken = snapToken, Context = req.Context
+            };
+            var executor = executorPool.Rent(reader);
+            // Not the Check()/DrainAndReturn fire-and-forget pattern: ExecuteExplainAsync already
+            // awaits DrainStragglersAsync internally before returning (see its own comment for why),
+            // so by this point the executor is fully quiesced and safe to return synchronously.
+            var (result, root) = await executor.ExecuteExplainAsync(
+                new CheckRootRequest(req.EntityType, req.EntityId, req.Permission, req.SubjectRelation, req.Depth),
+                ctx, cancellationToken);
+            executorPool.Return(executor);
+            trace?.Answer(snapToken);
+            trace?.SetTag(ValtuutusTracing.Result, result);
+            return new CheckExplainResult { Result = result, Root = root, SnapToken = snapToken };
+        }
+        catch (Exception e) when (trace is not null && trace.Fail(e))
+        {
+            throw;
+        }
     }
 }

@@ -2,7 +2,6 @@ using System.Data.Common;
 using Npgsql;
 using NpgsqlTypes;
 using Valtuutus.Core.Data;
-using Valtuutus.Core.Observability;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.Postgres;
@@ -67,6 +66,8 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase
     /// <inheritdoc />
     public override void AddResolveLatestSnapTokenToBatch(DbBatch batch) => NewCommand(batch, _resolveLatestSnapTokenSql);
 
+    public override string DbSystemName => PostgresDataReaderProvider.DbSystem;
+
     public override DbBatch CreateBatch() => _dataSource.CreateBatch();
 
     // Same body PostgresDataReaderProvider.ExecuteBatchAsync had before the batch ops moved here,
@@ -74,7 +75,6 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase
     // slot is released as soon as the reader is obtained, NOT after the caller drains it.
     public override async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
         await _rateLimiter.Enter(cancellationToken);
         try
         {

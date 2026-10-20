@@ -22,17 +22,25 @@ public sealed class CachedCheckEngine : ICheckEngine
     /// <inheritdoc />
     public async ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity("CachedCheck");
+        using var span = ValtuutusTracing.StartCache("check");
+        var hit = true;
 
         if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
         {
             var resolvedReq = req with { SnapToken = snapToken };
-            return await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq, snapToken),
-                ct => _engine.Check(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+            var cached = await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq, snapToken),
+                ct =>
+                {
+                    hit = false;
+                    return _engine.Check(resolvedReq, ct).AsTask();
+                }, LatestSnapToken.Duration, cancellationToken);
+            span.SetCacheHit(hit);
+            return cached;
         }
 
         // No known token: the engine resolves the latest one, inside its first round trip when the
         // provider can, and reports it.
+        span.SetCacheHit(false);
         var result = await _engine.Check(req, cancellationToken);
         if (result.SnapToken is { } readAt)
         {
@@ -45,15 +53,23 @@ public sealed class CachedCheckEngine : ICheckEngine
     /// <inheritdoc />
     public async ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity("CachedSubjectPermission");
+        using var span = ValtuutusTracing.StartCache("subject_permission");
+        var hit = true;
 
         if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
         {
             var resolvedReq = req with { SnapToken = snapToken };
-            return await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq, snapToken),
-                ct => _engine.SubjectPermission(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+            var cached = await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq, snapToken),
+                ct =>
+                {
+                    hit = false;
+                    return _engine.SubjectPermission(resolvedReq, ct).AsTask();
+                }, LatestSnapToken.Duration, cancellationToken);
+            span.SetCacheHit(hit);
+            return cached;
         }
 
+        span.SetCacheHit(false);
         var result = await _engine.SubjectPermission(req, cancellationToken);
         if (result.SnapToken is { } readAt)
         {

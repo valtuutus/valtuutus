@@ -581,14 +581,31 @@ namespace Valtuutus.Core.Observability
     public static class DefaultActivitySource
     {
         public const string SourceName = "Valtuutus";
+        [System.Obsolete("Nothing is emitted on this source; every span is on SourceName.")]
         public const string SourceNameInternal = "Valtuutus.Internal";
         public static System.Diagnostics.ActivitySource Instance { get; }
+        [System.Obsolete("Nothing is emitted on this source; every span is on SourceName.")]
         public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
     }
     public static class ValtuutusMetrics
     {
         public static readonly System.Diagnostics.Metrics.Counter<long> DbQueries;
         public static readonly System.Diagnostics.Metrics.Meter Meter;
+    }
+    public readonly struct ValtuutusSpan : System.IDisposable
+    {
+        public void Dispose() { }
+        public bool RecordFailure(System.Exception e) { }
+        public void SetCacheHit(bool hit) { }
+        public void SetSnapToken(Valtuutus.Core.Data.SnapToken snapToken) { }
+    }
+    public static class ValtuutusTracing
+    {
+        public static bool Enabled { get; }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartCache(string operation) { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string query = "") { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, string[] queries, bool resolvesSnapToken) { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartWrite(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string operation = "") { }
     }
 }
 namespace Valtuutus.Core.Pools

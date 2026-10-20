@@ -21,17 +21,25 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
 
     public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity("CachedLookupEntity");
+        using var span = ValtuutusTracing.StartCache("lookup_entity");
+        var hit = true;
 
         if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
         {
             var resolvedReq = req with { SnapToken = snapToken };
-            return await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
-                ct => _engine.LookupEntity(resolvedReq, ct).AsTask(), LatestSnapToken.Duration, cancellationToken);
+            var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
+                ct =>
+                {
+                    hit = false;
+                    return _engine.LookupEntity(resolvedReq, ct).AsTask();
+                }, LatestSnapToken.Duration, cancellationToken);
+            span.SetCacheHit(hit);
+            return cached;
         }
 
         // No known token: the engine resolves the latest one, inside its first round trip when the
         // provider can, and reports it.
+        span.SetCacheHit(false);
         var result = await _engine.LookupEntity(req, cancellationToken);
         if (result.SnapToken is { } readAt)
         {
