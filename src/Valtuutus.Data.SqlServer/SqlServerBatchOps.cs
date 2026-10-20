@@ -178,6 +178,7 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase
         "tuple_set_relation" => "@TupleSetRelation",
         "computed_relation" => "@ComputedRelation",
         "entity_ids" => "@EntityIds",
+        "sub_entity_type" => "@SubEntityType",
         "relations" => "@Relations",
         "attributes" => "@Attributes",
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unmapped batch parameter name."),
@@ -188,7 +189,7 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
         var sql = FusedExpressionSql.BuildCommandSql(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
-            batchResolvedSnapToken: _batchResolvedSql is not null);
+            _q.TwoHopEntityScanLimit, batchResolvedSnapToken: _batchResolvedSql is not null);
         var cmd = NewCommand(batch, sql);
         var parameters = Parameters(cmd);
         SqlServerDataReaderProvider.AddStringParameter(parameters, "@EntityType", entityType, 256);

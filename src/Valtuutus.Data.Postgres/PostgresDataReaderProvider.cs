@@ -23,6 +23,56 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, uses the
     // exact snap-token predicate text those queries use.
     internal const string SnapTokenPredicate = "created_tx_id <= @snap_token AND (deleted_tx_id IS NULL OR deleted_tx_id > @snap_token)";
+    // The 2-hop userset/tuple-to-userset existence test: does the subject hold depRelation on some
+    // subEntityType entity that the entity relates to through relation (with mainSubjectRelation)?
+    // Shared by the TTU fast path, the userset join and the fused TTU leaf. The join direction is
+    // decided inside the statement, since a cached generic plan cannot know which side is large:
+    // one bounded scan of the entity's tuples probes each for the subject's membership and counts
+    // them. A hit answers true; fewer tuples than the bound means the scan saw them all, so a miss
+    // answers false; otherwise the entity has many and the subject's memberships drive instead.
+    // Postgres initializes every subtree of a statement on each execution, taken or not, so the
+    // shape keeps to one subtree per direction. In the subject-driven probe, COALESCE(entity_id, '')
+    // (identical for the NOT NULL column) keeps the planner off the entity-leading indexes, which
+    // lack subject_id as a key, and on idx_tuples_subject_entities instead.
+    internal static string TwoHopExists(string relationsTable, string snap, int entityScanLimit, string relation,
+        string subEntityType, string mainSubjectRelation, string depRelation)
+    {
+        var main = SnapTokenPredicateFor(snap, "m");
+        var dep = SnapTokenPredicateFor(snap, "d");
+        return CompactSql($"""
+            (SELECT CASE WHEN f.hit THEN true WHEN f.n < {entityScanLimit} THEN false ELSE EXISTS(
+                    SELECT 1 FROM {relationsTable} d
+                    WHERE {dep} AND d.entity_type = {subEntityType} AND d.relation = {depRelation}
+                      AND d.subject_type = @subject_type AND d.subject_id = @subject_id
+                      AND d.subject_relation = ''
+                      AND EXISTS(
+                        SELECT 1 FROM {relationsTable} m
+                        WHERE {main} AND m.entity_type = @entity_type AND COALESCE(m.entity_id, '') = @entity_id
+                          AND m.relation = {relation} AND m.subject_id = d.entity_id
+                          AND m.subject_type = {subEntityType} AND m.subject_relation = {mainSubjectRelation}))
+                END
+            FROM (SELECT COALESCE(bool_or(e.hit), false) AS hit, count(*) AS n FROM (
+                SELECT EXISTS(
+                    SELECT 1 FROM {relationsTable} d
+                    WHERE {dep} AND d.entity_type = {subEntityType} AND d.entity_id = m.subject_id
+                      AND d.relation = {depRelation} AND d.subject_id = @subject_id
+                      AND d.subject_type = @subject_type AND d.subject_relation = '') AS hit
+                FROM {relationsTable} m
+                WHERE {main} AND m.entity_type = @entity_type AND m.entity_id = @entity_id
+                  AND m.relation = {relation} AND m.subject_type = {subEntityType}
+                  AND m.subject_relation = {mainSubjectRelation}
+                LIMIT {entityScanLimit}) e) f)
+            """);
+    }
+
+    // Collapses the indentation/newlines of a multi-line SQL template into single spaces. Applied
+    // once per catalog build: the statement text is sent to the server on every execution, so its
+    // length is per-call cost.
+    private static string CompactSql(string sql) => System.Text.RegularExpressions.Regex.Replace(sql.Trim(), @"\s+", " ");
+
+    internal static string SnapTokenPredicateFor(string snap, string alias) =>
+        $"{alias}.created_tx_id <= {snap} AND ({alias}.deleted_tx_id IS NULL OR {alias}.deleted_tx_id > {snap})";
+
     internal static string SnapTokenPredicateFor(string snap) =>
         $"created_tx_id <= {snap} AND (deleted_tx_id IS NULL OR deleted_tx_id > {snap})";
 
@@ -32,6 +82,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     internal sealed record ReaderQueries
     {
         public required string RelationsTable { get; init; }
+        public required int TwoHopEntityScanLimit { get; init; }
         public required string AttributesTable { get; init; }
         public required string GetLatestSnapToken { get; init; }
         // Batch form of GetLatestSnapToken for PostgresBatchOps: parks the latest token in a
@@ -72,8 +123,17 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         public required PgStatement SelectAttributesWithEntityIdsByEntityAttributesFilter { get; init; }
     }
 
-    private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> QueryCache = new();
-    private static readonly ConcurrentDictionary<DbQueryCacheKey, ReaderQueries> BatchResolvedSnapTokenQueryCache = new();
+    private readonly record struct ReaderQueriesKey(DbQueryCacheKey Tables, int TwoHopEntityScanLimit)
+    {
+        public static ReaderQueriesKey From(IValtuutusDbOptions options)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(options.TwoHopEntityScanLimit, 1, nameof(options.TwoHopEntityScanLimit));
+            return new(DbQueryCacheKey.From(options), options.TwoHopEntityScanLimit);
+        }
+    }
+
+    private static readonly ConcurrentDictionary<ReaderQueriesKey, ReaderQueries> QueryCache = new();
+    private static readonly ConcurrentDictionary<ReaderQueriesKey, ReaderQueries> BatchResolvedSnapTokenQueryCache = new();
     private readonly ReaderQueries _q;
 
     private readonly DbConnectionFactory _connectionFactory;
@@ -382,17 +442,19 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // Internal so PostgresBatchOps resolves the same cached ReaderQueries instance this provider
     // uses — the dialect catalog and the single-op path reference one set of SQL strings.
     internal static ReaderQueries GetQueries(ValtuutusPostgresOptions dbOptions) =>
-        QueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key, "@snap_token"));
+        QueryCache.GetOrAdd(ReaderQueriesKey.From(dbOptions), static key => BuildQueries(key, "@snap_token"));
 
     // Same queries, with every snap-token predicate reading the token resolved earlier in the same batch
     // (see PostgresBatchOps.UsingBatchResolvedSnapToken) instead of the @snap_token parameter.
     internal static ReaderQueries GetBatchResolvedSnapTokenQueries(ValtuutusPostgresOptions dbOptions) =>
-        BatchResolvedSnapTokenQueryCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildQueries(key, BatchResolvedSnapTokenExpression));
+        BatchResolvedSnapTokenQueryCache.GetOrAdd(ReaderQueriesKey.From(dbOptions), static key => BuildQueries(key, BatchResolvedSnapTokenExpression));
 
     // `snap` is the SQL expression every snap-token predicate compares against: the {snap}
     // parameter, or BatchResolvedSnapTokenExpression for the batch-resolved-token catalog.
-    private static ReaderQueries BuildQueries(DbQueryCacheKey key, string snap)
+    private static ReaderQueries BuildQueries(ReaderQueriesKey queriesKey, string snap)
     {
+        var key = queriesKey.Tables;
+        var scanLimit = queriesKey.TwoHopEntityScanLimit;
         var snapPredicate = SnapTokenPredicateFor(snap);
         var relationsTable = $"{key.Schema}.{key.RelationsTable}";
         var attributesTable = $"{key.Schema}.{key.AttributesTable}";
@@ -401,6 +463,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
+            TwoHopEntityScanLimit = scanLimit,
             GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
             ResolveLatestSnapTokenForBatch =
                 $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false)",
@@ -468,23 +531,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                         AND subject_relation = @subject_relation
                   ))
                 """),
-            HasTupleToUserSetRelation = PgStatement.Compile($"""
-                SELECT EXISTS(
-                    SELECT 1 FROM {relationsTable} r_main
-                    INNER JOIN {relationsTable} r_dep
-                        ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                    WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
-                      AND r_main.entity_type = @entity_type
-                      AND r_main.entity_id = @entity_id
-                      AND r_main.relation = @tuple_set_relation
-                      AND r_main.subject_relation = ''
-                      AND r_dep.created_tx_id <= {snap} AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > {snap})
-                      AND r_dep.relation = @computed_relation
-                      AND r_dep.subject_type = @subject_type
-                      AND r_dep.subject_id = @subject_id
-                      AND r_dep.subject_relation = ''
-                )
-                """),
+            HasTupleToUserSetRelation = PgStatement.Compile(
+                $"SELECT {TwoHopExists(relationsTable, snap, scanLimit, "@tuple_set_relation", "@sub_entity_type", "''", "@computed_relation")}"),
             HasUsersetJoinRelation = PgStatement.Compile($"""
                 SELECT (
                     EXISTS(
@@ -496,21 +544,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                           AND subject_id = @subject_id
                           AND subject_relation = ''
                     )
-                    OR EXISTS(
-                        SELECT 1 FROM {relationsTable} r_main
-                        INNER JOIN {relationsTable} r_dep
-                            ON r_dep.entity_type = r_main.subject_type AND r_dep.entity_id = r_main.subject_id
-                        WHERE r_main.created_tx_id <= {snap} AND (r_main.deleted_tx_id IS NULL OR r_main.deleted_tx_id > {snap})
-                          AND r_main.entity_type = @entity_type
-                          AND r_main.entity_id = @entity_id
-                          AND r_main.relation = @relation
-                          AND r_main.subject_relation = @computed_relation
-                          AND r_dep.created_tx_id <= {snap} AND (r_dep.deleted_tx_id IS NULL OR r_dep.deleted_tx_id > {snap})
-                          AND r_dep.relation = @computed_relation
-                          AND r_dep.subject_type = @subject_type
-                          AND r_dep.subject_id = @subject_id
-                          AND r_dep.subject_relation = ''
-                    )
+                    OR {TwoHopExists(relationsTable, snap, scanLimit, "@relation", "@sub_entity_type", "@computed_relation", "@computed_relation")}
                 )
                 """),
             HasTrueBoolAttribute = PgStatement.Compile($"SELECT EXISTS(SELECT 1 FROM {attributesTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND attribute = @attribute AND value = 'true'::jsonb)"),
@@ -1185,6 +1219,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         AddStringParameter(parameters, "entity_type", entityType, 256);
         AddStringParameter(parameters, "entity_id", entityId, 64);
         AddStringParameter(parameters, "tuple_set_relation", tupleSetRelation, 64);
+        AddStringParameter(parameters, "sub_entity_type", subEntityType, 256);
         AddStringParameter(parameters, "computed_relation", computedRelation, 64);
         AddStringParameter(parameters, "subject_type", subjectType, 256);
         AddStringParameter(parameters, "subject_id", subjectId, 64);
@@ -1214,21 +1249,19 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     }
 
     private void PopulateHasUsersetJoinRelationCommand(NpgsqlParameterCollection parameters,
-        string entityType, string entityId, string relation, string computedRelation,
+        string entityType, string entityId, string relation, string subEntityType, string computedRelation,
         string subjectType, string subjectId, SnapToken snapToken)
     {
         AddFixedCharParameter(parameters, "snap_token", snapToken.Value, 26);
         AddStringParameter(parameters, "entity_type", entityType, 256);
         AddStringParameter(parameters, "entity_id", entityId, 64);
         AddStringParameter(parameters, "relation", relation, 64);
+        AddStringParameter(parameters, "sub_entity_type", subEntityType, 256);
         AddStringParameter(parameters, "computed_relation", computedRelation, 64);
         AddStringParameter(parameters, "subject_type", subjectType, 256);
         AddStringParameter(parameters, "subject_id", subjectId, 64);
     }
 
-    // subEntityType is accepted for interface-signature symmetry with HasTupleToUserSetRelation
-    // but isn't a runtime filter here — it's what proved the join eligible at compile time; the
-    // query only needs relation/computedRelation/subjectType/subjectId.
     public async Task<bool> HasUsersetJoinRelation(
         string entityType, string entityId, string relation,
         string subEntityType, string computedRelation,
@@ -1241,7 +1274,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             await using var command = _hotPathDataSource.CreateCommand();
             command.CommandText = _q.HasUsersetJoinRelation.Sql;
             PopulateHasUsersetJoinRelationCommand(command.Parameters, entityType, entityId, relation,
-                computedRelation, subjectType, subjectId, snapToken);
+                subEntityType, computedRelation, subjectType, subjectId, snapToken);
 
             _q.HasUsersetJoinRelation.Bind(command.Parameters);
             return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
@@ -1259,7 +1292,8 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         await EnterQuery(cancellationToken);
         try
         {
-            var statement = FusedExpressionSql.BuildStatement(leaves, requireAll, _q.RelationsTable, _q.AttributesTable, batchResolvedSnapToken: false);
+            var statement = FusedExpressionSql.BuildStatement(leaves, requireAll, _q.RelationsTable, _q.AttributesTable,
+                _q.TwoHopEntityScanLimit, batchResolvedSnapToken: false);
             await using var command = _hotPathDataSource.CreateCommand(statement.Sql);
             AddStringParameter(command.Parameters, "entity_type", entityType, 256);
             AddStringParameter(command.Parameters, "entity_id", entityId, 64);

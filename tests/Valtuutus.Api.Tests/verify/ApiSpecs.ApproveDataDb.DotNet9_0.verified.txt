@@ -107,6 +107,7 @@ namespace Valtuutus.Data.Db
         string RelationsTableName { get; }
         string Schema { get; }
         string TransactionsTableName { get; }
+        int TwoHopEntityScanLimit { get; }
     }
     public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
     {
