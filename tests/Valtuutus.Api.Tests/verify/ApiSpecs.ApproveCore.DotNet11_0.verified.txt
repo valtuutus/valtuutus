@@ -581,11 +581,7 @@ namespace Valtuutus.Core.Observability
     public static class DefaultActivitySource
     {
         public const string SourceName = "Valtuutus";
-        [System.Obsolete("Nothing is emitted on this source; every span is on SourceName.")]
-        public const string SourceNameInternal = "Valtuutus.Internal";
         public static System.Diagnostics.ActivitySource Instance { get; }
-        [System.Obsolete("Nothing is emitted on this source; every span is on SourceName.")]
-        public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
     }
     public static class ValtuutusMetrics
     {

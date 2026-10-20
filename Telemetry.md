@@ -13,7 +13,7 @@ builder.Services
     );
 ```
 
-`DefaultActivitySource.SourceName` holds the same name. The `"Valtuutus.Internal"` source is obsolete: nothing is emitted on it.
+`DefaultActivitySource.SourceName` holds the same name.
 
 ## What a trace looks like
 
