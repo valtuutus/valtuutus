@@ -151,12 +151,32 @@ public readonly struct ValtuutusSpan : IDisposable
     /// </summary>
     public bool RecordFailure(Exception e) => _activity is not null && ValtuutusTracing.RecordFailure(_activity, e);
 
+    /// <summary>
+    /// Marks the moment the database responded, for a round trip whose results are handed to the
+    /// engine while they are still being read: the engine can answer from the first of them before
+    /// the span ends, which does not make this round trip a straggler.
+    /// </summary>
+    public void Responded()
+    {
+        if (_activity is null) return;
+        _activity.SetTag(ValtuutusTracing.Straggler, _request is { Answered: true });
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
         if (_activity is null) return;
-        // The engine already returned its answer: nobody reads what this round trip brings back.
-        if (_request is { Answered: true }) _activity.SetTag(ValtuutusTracing.Straggler, true);
+        switch (_activity.GetTagItem(ValtuutusTracing.Straggler))
+        {
+            // The engine already returned its answer: nobody reads what this round trip brings back.
+            case null when _request is { Answered: true }:
+                _activity.SetTag(ValtuutusTracing.Straggler, true);
+                break;
+            // Decided when the database responded; the tag is only kept when true.
+            case false:
+                _activity.SetTag(ValtuutusTracing.Straggler, null);
+                break;
+        }
         _activity.Dispose();
     }
 }

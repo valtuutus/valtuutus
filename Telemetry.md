@@ -26,7 +26,7 @@ valtuutus.cache                  (only with Valtuutus.Data.Caching)
 
 The engines evaluate a request in waves: the queries a wave needs go to the database together. On Postgres and SqlServer they share one `DbBatch` round trip whenever they can be batched; the in-memory provider and the remaining queries run one per round trip. So the number of `valtuutus.round_trip` children, and their `valtuutus.queries`, show how the engine spent the request. Lookups advance in steps instead of waves, and each round trip records the step that ran it.
 
-A check answers as soon as the result is known. Round trips for branches that no longer matter can still be running at that point. They finish after the engine span has ended and carry `valtuutus.straggler = true`.
+A check answers as soon as the result is known. Round trips for branches that no longer matter can still be running at that point. When the database responds to one of them after the engine has answered, its span carries `valtuutus.straggler = true`. The round trip that delivered the answer can still end slightly after the engine span, because the engine answers from its first results while the rest are being read; it is not marked.
 
 ## Spans
 
@@ -67,7 +67,7 @@ One database round trip. Span kind `Client`.
 | `valtuutus.query_count` | int | Number of entries in `valtuutus.queries` |
 | `valtuutus.resolves_snap_token` | bool | The batch also resolved the request's latest snap token. Present only when true |
 | `valtuutus.step` | int | Lookups: the step that ran the round trip |
-| `valtuutus.straggler` | bool | The engine had already answered when the round trip finished. Present only when true |
+| `valtuutus.straggler` | bool | The engine had already answered when the database responded. Present only when true |
 | `db.system.name` | string | `postgresql` or `microsoft.sql_server`; absent for the in-memory provider |
 
 ### `valtuutus.write` and `valtuutus.delete`

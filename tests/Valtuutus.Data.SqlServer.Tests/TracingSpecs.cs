@@ -50,10 +50,11 @@ public sealed class TracingSpecs : IAsyncLifetime
         var check = spans.Named("valtuutus.check").Should().ContainSingle().Subject;
         check.GetTagItem("valtuutus.snap_token").Should().Be(written.Value);
         check.GetTagItem("valtuutus.round_trips").Should().Be(1);
-        var roundTrip = spans.ChildrenOf(check).Should().ContainSingle().Subject;
+        var roundTrip = (await spans.WaitForChildren(check, 1)).Should().ContainSingle().Subject;
         roundTrip.OperationName.Should().Be("valtuutus.round_trip");
         roundTrip.GetTagItem("db.system.name").Should().Be("microsoft.sql_server");
         roundTrip.GetTagItem("valtuutus.resolves_snap_token").Should().Be(true);
+        roundTrip.GetTagItem("valtuutus.straggler").Should().BeNull("the answer came from this round trip");
         ((string[])roundTrip.GetTagItem("valtuutus.queries")!).Should().NotBeEmpty();
     }
 

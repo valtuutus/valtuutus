@@ -217,4 +217,21 @@ public sealed class TracingSpecs
         roundTrips.Single(a => ((string[])a.GetTagItem("valtuutus.queries")!)[0] == "HasDirectRelation")
             .GetTagItem("valtuutus.straggler").Should().BeNull();
     }
+
+    [Fact]
+    public void A_round_trip_that_responded_before_the_answer_is_not_a_straggler()
+    {
+        using var spans = new SpanCollector();
+        var request = ValtuutusTracing.StartRequest("valtuutus.check", requestedSnapToken: null)!;
+        var roundTrip = ValtuutusTracing.StartRoundTrip(null, ["HasDirectRelation"], resolvesSnapToken: false);
+
+        roundTrip.Responded();
+        request.Answer(snapToken: null);
+        request.Dispose();
+        roundTrip.Dispose();
+
+        var check = spans.Named("valtuutus.check").Should().ContainSingle().Subject;
+        spans.ChildrenOf(check).Should().ContainSingle()
+            .Which.GetTagItem("valtuutus.straggler").Should().BeNull();
+    }
 }

@@ -180,6 +180,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                     AddToBatch(batch, commandOps, op, buildCtx);
 
             await using var reader = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
+            span.Responded();
             if (resolving is not null)
             {
                 // Published before any op result: an op completion can make the engine submit the

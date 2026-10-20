@@ -47,6 +47,22 @@ public sealed class SpanCollector : IDisposable
     public IReadOnlyList<Activity> ChildrenOf(Activity parent) =>
         Spans.Where(a => a.ParentSpanId == parent.SpanId).ToList();
 
+    /// <summary>
+    /// Waits for <paramref name="count"/> children of <paramref name="parent"/> to end. A round trip
+    /// can end after the engine call it belongs to: its results reach the engine while it is still
+    /// reading them.
+    /// </summary>
+    public async Task<IReadOnlyList<Activity>> WaitForChildren(Activity parent, int count)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (true)
+        {
+            var children = ChildrenOf(parent);
+            if (children.Count >= count || DateTime.UtcNow > deadline) return children;
+            await Task.Delay(10);
+        }
+    }
+
     public void Dispose()
     {
         _root.Dispose();

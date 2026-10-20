@@ -591,6 +591,7 @@ namespace Valtuutus.Core.Observability
     {
         public void Dispose() { }
         public bool RecordFailure(System.Exception e) { }
+        public void Responded() { }
         public void SetCacheHit(bool hit) { }
         public void SetSnapToken(Valtuutus.Core.Data.SnapToken snapToken) { }
     }

@@ -55,6 +55,7 @@ internal sealed class BatchedLookupSubjectQueryRunner(
             lookupBatchOps.AddToBatch(batch, query, snapToken);
 
         await using var results = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
+        span.Responded();
         var token = snapToken ?? await ReadSnapTokenAsync(results, ct).ConfigureAwait(false);
         for (var i = 0; i < queries.Count; i++)
         {
