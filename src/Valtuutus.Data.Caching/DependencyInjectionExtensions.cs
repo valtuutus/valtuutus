@@ -25,15 +25,8 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<ILookupEntityEngine, CachedLookupEntityEngine>();
         builder.Services.AddScoped<ILookupSubjectEngine, CachedLookupSubjectEngine>();
 
-        // Runs a hook configured before this call too; one configured after it replaces this one.
-        var configuredHook = builder.Options.OnDataWritten;
-        builder.Options.OnDataWritten = async (sp, st) =>
-        {
-            if (configuredHook is not null)
-                await configuredHook(sp, st);
-            await LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), st, CancellationToken.None,
-                options => options.AllowBackgroundBackplaneOperations = false);
-        };
+        builder.Options.OnDataWritten.Add((sp, st) => LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), st,
+            CancellationToken.None, options => options.AllowBackgroundBackplaneOperations = false).AsTask());
 
         return builder;
     }

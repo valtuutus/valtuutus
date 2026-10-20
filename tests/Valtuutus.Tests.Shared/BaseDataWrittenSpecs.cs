@@ -76,7 +76,7 @@ public abstract class BaseDataWrittenSpecs : IAsyncLifetime
     protected ServiceProvider BuildProvider(CheckingHook hook)
     {
         var services = new ServiceCollection().AddValtuutusCore(TestsConsts.DefaultSchema);
-        AddSpecificProvider(services).AddConcurrentQueryLimit(3).Options.OnDataWritten = hook.Run;
+        AddSpecificProvider(services).AddConcurrentQueryLimit(3).Options.OnDataWritten.Add(hook.Run);
         return services.BuildServiceProvider();
     }
 

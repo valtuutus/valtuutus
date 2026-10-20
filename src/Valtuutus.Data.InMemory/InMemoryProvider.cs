@@ -357,7 +357,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         // the latest token sees the whole write.
         lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }
 
@@ -370,7 +370,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         // Published as the latest token only once the deletions are in place.
         lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
         var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
+        await _options.NotifyDataWritten(_provider, snapToken);
         return snapToken;
     }
 }

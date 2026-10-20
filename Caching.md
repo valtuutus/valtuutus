@@ -63,7 +63,7 @@ That's it. Now all your queries to the engines will be cached to reduce the load
 
 A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes and deletes made through Valtuutus update the cache's latest token once they have committed; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward: a write that finishes after a newer one doesn't replace it.
 
-`AddCaching` updates the latest token through `ValtuutusDataOptions.OnDataWritten`. A hook you set before calling `AddCaching` keeps running alongside it; one you set afterwards replaces it, so set your own hook first.
+`AddCaching` updates the latest token by adding a handler to `ValtuutusDataOptions.OnDataWritten`. Handlers you add (`options.OnDataWritten.Add(...)`) run alongside it, in the order added, whether you add them before or after calling `AddCaching`.
 
 ## Registration order
 

@@ -226,7 +226,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     /// <inheritdoc />
     public Task NotifyCommitted(SnapToken snapToken)
-        => _options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask;
+        => _options.NotifyDataWritten(_provider, snapToken);
 
     private static async Task ExecuteDeleteBatch(SqlConnection connection, SqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)

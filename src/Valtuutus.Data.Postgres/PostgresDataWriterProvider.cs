@@ -248,7 +248,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 
     /// <inheritdoc />
     public Task NotifyCommitted(SnapToken snapToken)
-        => _options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask;
+        => _options.NotifyDataWritten(_provider, snapToken);
 
     private static async Task ExecuteDeleteBatch(NpgsqlConnection connection, NpgsqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)

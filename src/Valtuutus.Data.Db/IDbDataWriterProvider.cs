@@ -51,7 +51,7 @@ public interface IDbDataWriterProvider : IDataWriterProvider
 
     /// <summary>
     /// Announces a write or delete made in the caller's own transaction once that transaction has
-    /// committed, running <c>ValtuutusDataOptions.OnDataWritten</c> with its snap token. The overloads
+    /// committed, running the <c>ValtuutusDataOptions.OnDataWritten</c> handlers with its snap token. The overloads
     /// that take a transaction leave this to the caller, since only the caller knows when it commits;
     /// a cache that publishes announced tokens as the latest one (<c>AddCaching</c>) stays current only
     /// if it is called.
