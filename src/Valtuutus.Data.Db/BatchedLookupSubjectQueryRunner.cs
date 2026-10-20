@@ -45,8 +45,8 @@ internal sealed class BatchedLookupSubjectQueryRunner(
         ILookupSubjectBatchOps lookupBatchOps, IReadOnlyList<LookupSubjectQuery> queries, SnapToken? snapToken,
         CancellationToken ct)
     {
-        using var span = ValtuutusTracing.Enabled
-            ? ValtuutusTracing.StartRoundTrip(batchOps.DbSystemName, QueryNames(queries), snapToken is null)
+        using var span = ValtuutusTelemetry.Enabled
+            ? ValtuutusTelemetry.StartRoundTrip(batchOps.DbSystemName, QueryNames(queries), snapToken is null)
             : default;
         await using var batch = batchOps.CreateBatch();
         if (snapToken is null)

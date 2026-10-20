@@ -13,13 +13,13 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
 {
     public async ValueTask<LookupSubjectResult> Lookup(LookupSubjectRequest req, CancellationToken cancellationToken)
     {
-        using var trace = ValtuutusTracing.StartRequest("valtuutus.lookup_subject", req.SnapToken);
+        using var trace = ValtuutusTelemetry.StartRequest(TelemetryOperation.LookupSubject, req.SnapToken);
         if (trace is not null)
         {
-            trace.SetTag(ValtuutusTracing.EntityType, req.EntityType);
-            trace.SetTag(ValtuutusTracing.EntityId, req.EntityId);
-            trace.SetTag(ValtuutusTracing.Permission, req.Permission);
-            trace.SetTag(ValtuutusTracing.SubjectType, req.SubjectType);
+            trace.SetTag(ValtuutusTelemetry.EntityType, req.EntityType);
+            trace.SetTag(ValtuutusTelemetry.EntityId, req.EntityId);
+            trace.SetTag(ValtuutusTelemetry.Permission, req.Permission);
+            trace.SetTag(ValtuutusTelemetry.SubjectType, req.SubjectType);
         }
 
         try
@@ -27,7 +27,7 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
             if (!schema.CanSubjectTypeReach(req.EntityType, req.Permission, req.SubjectType))
             {
                 trace?.Answer(req.SnapToken);
-                trace?.SetTag(ValtuutusTracing.ResultCount, 0);
+                trace?.SetTag(ValtuutusTelemetry.ResultCount, 0);
                 return new LookupSubjectResult { SubjectIds = [], SnapToken = req.SnapToken };
             }
 
@@ -50,7 +50,7 @@ internal sealed class LookupSubjectEngineV2(Schema schema, LookupSubjectPlanCach
                 : root.Result.Ids;
 
             trace?.Answer(snapToken);
-            trace?.SetTag(ValtuutusTracing.ResultCount, result.Count);
+            trace?.SetTag(ValtuutusTelemetry.ResultCount, result.Count);
             return new LookupSubjectResult { SubjectIds = result, SnapToken = snapToken };
         }
         catch (Exception e) when (trace is not null && trace.Fail(e))

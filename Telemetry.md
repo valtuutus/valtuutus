@@ -1,6 +1,6 @@
 # Telemetry
 
-Valtuutus emits [OpenTelemetry](https://opentelemetry.io/) traces through an `ActivitySource` named `"Valtuutus"`. Each engine call gets one span, and every database round trip it makes gets a child span. When nothing listens to the source, no span is created and nothing is allocated for it.
+Valtuutus emits [OpenTelemetry](https://opentelemetry.io/) traces through an `ActivitySource` and metrics through a `Meter`, both named `"Valtuutus"`. Each engine call gets one span, and every database round trip it makes gets a child span. The metrics measure the same calls, without ids. When nothing listens, no span is created, nothing is measured and nothing is allocated for either.
 
 ## Setup
 
@@ -9,11 +9,13 @@ builder.Services
     .AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddSource("Valtuutus")
-        .AddOtlpExporter()                // or any other exporter
-    );
+        .AddOtlpExporter())               // or any other exporter
+    .WithMetrics(metrics => metrics
+        .AddMeter("Valtuutus")
+        .AddOtlpExporter());
 ```
 
-`DefaultActivitySource.SourceName` holds the same name.
+`DefaultActivitySource.SourceName` and `ValtuutusMetrics.Meter.Name` hold the same name.
 
 ## What a trace looks like
 
@@ -87,6 +89,36 @@ With `Valtuutus.Data.Caching`, each engine call first opens this span. On a miss
 |---|---|---|
 | `valtuutus.operation` | string | `check`, `subject_permission`, `lookup_entity` or `lookup_subject` |
 | `valtuutus.cache.hit` | bool | Whether the cache answered |
+| `valtuutus.snap_token.source` | string | As on engine spans |
+| `valtuutus.result` | bool | `check` only |
+
+## Metrics
+
+Metrics carry no entity, subject or permission attributes: their values are unbounded, and every distinct value would become its own time series.
+
+| Instrument | Type | Unit | Attributes |
+|---|---|---|---|
+| `valtuutus.operation.duration` | histogram | s | `valtuutus.operation`, `valtuutus.snap_token.source`, `valtuutus.result` (check, explain), `valtuutus.cache.hit` (with caching), `error.type` (on failure) |
+| `valtuutus.operation.round_trips` | histogram | {round_trip} | same as `valtuutus.operation.duration` |
+| `valtuutus.cache.requests` | counter | {request} | `valtuutus.operation`, `valtuutus.snap_token.source`, `valtuutus.cache.hit` |
+| `valtuutus.write.duration` | histogram | s | `valtuutus.operation` (`write`, `delete`), `error.type` (on failure) |
+| `valtuutus.write.tuples` | counter | {tuple} | `valtuutus.tuple.kind` (`relation`, `attribute`) |
+
+- **Each call is measured once, where the caller waits for it.** With `Valtuutus.Data.Caching` registered, the cache measures the call, hits included, and the engine it falls through to on a miss doesn't measure it again. `valtuutus.operation` is then one of the four cached operations; `explain` is never cached.
+- **`valtuutus.operation.round_trips`** counts the round trips started before the answer, stragglers still running at that point included. A cache hit records 0.
+- **`valtuutus.write.duration`** includes the commit when Valtuutus owns the transaction. When you pass your own transaction, it ends before you commit.
+- **Bucket boundaries:** on .NET 9 and later, the duration histograms advise boundaries from 0.1 ms to 2.5 s. On .NET 8, configure them with a `View`, or the OpenTelemetry defaults (made for milliseconds) put every call in the first bucket:
+
+  ```csharp
+  .WithMetrics(metrics => metrics
+      .AddMeter("Valtuutus")
+      .AddView("valtuutus.*.duration", new ExplicitBucketHistogramConfiguration
+      {
+          Boundaries = [0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5]
+      }))
+  ```
+
+The meter also carries counters prefixed `valtuutus.check.`, `valtuutus.db.` and `valtuutus.data.` that describe the engine's internals (waves, short-circuits, memo hits, reaped rows). They exist for tuning Valtuutus itself and may change in any release.
 
 ## What to look at
 

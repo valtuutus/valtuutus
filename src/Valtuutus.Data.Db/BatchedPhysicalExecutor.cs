@@ -152,8 +152,8 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
         }
 
         var batchCount = batchable?.Count ?? 0;
-        using var span = ValtuutusTracing.Enabled
-            ? ValtuutusTracing.StartRoundTrip(batchOps.DbSystemName, QueryNames(batchable), resolving is not null)
+        using var span = ValtuutusTelemetry.Enabled
+            ? ValtuutusTelemetry.StartRoundTrip(batchOps.DbSystemName, QueryNames(batchable), resolving is not null)
             : default;
         // How far into `batchable` a result has already been reported to the sink. A fault at any
         // point — building the batch, obtaining the reader, advancing to a result set, or reading

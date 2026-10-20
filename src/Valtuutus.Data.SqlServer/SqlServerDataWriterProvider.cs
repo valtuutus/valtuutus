@@ -114,14 +114,21 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-        using var span = ValtuutusTracing.StartWrite(SqlServerDataReaderProvider.DbSystem);
-        var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-        var snapToken = await WriteCore(connection, transaction, relations, attributes, ct);
+        using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
+        try
+        {
+            var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
+            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
 
-        await transaction.CommitAsync(ct);
-        span.SetSnapToken(snapToken);
-        await NotifyCommitted(snapToken);
-        return snapToken;
+            await transaction.CommitAsync(ct);
+            span.SetSnapToken(snapToken);
+            await NotifyCommitted(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     public async Task<SnapToken> Write(
@@ -132,10 +139,17 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     )
     {
-        using var span = ValtuutusTracing.StartWrite(SqlServerDataReaderProvider.DbSystem);
-        var snapToken = await WriteCore(connection, transaction, relations, attributes, ct);
-        span.SetSnapToken(snapToken);
-        return snapToken;
+        using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
+        try
+        {
+            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
+            span.SetSnapToken(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     private async Task<SnapToken> WriteCore(
@@ -209,22 +223,36 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     public async Task<SnapToken> Delete(IDbConnection connection, DeleteFilter filter, CancellationToken ct)
     {
-        using var span = ValtuutusTracing.StartWrite(SqlServerDataReaderProvider.DbSystem);
-        var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-        var snapToken = await DeleteCore(connection, transaction, filter, ct);
+        using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
+        try
+        {
+            var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
+            var snapToken = await DeleteCore(connection, transaction, filter, ct);
 
-        await transaction.CommitAsync(ct);
-        span.SetSnapToken(snapToken);
-        await NotifyCommitted(snapToken);
-        return snapToken;
+            await transaction.CommitAsync(ct);
+            span.SetSnapToken(snapToken);
+            await NotifyCommitted(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     public async Task<SnapToken> Delete(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
     {
-        using var span = ValtuutusTracing.StartWrite(SqlServerDataReaderProvider.DbSystem);
-        var snapToken = await DeleteCore(connection, transaction, filter, ct);
-        span.SetSnapToken(snapToken);
-        return snapToken;
+        using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
+        try
+        {
+            var snapToken = await DeleteCore(connection, transaction, filter, ct);
+            span.SetSnapToken(snapToken);
+            return snapToken;
+        }
+        catch (Exception e) when (span.RecordFailure(e))
+        {
+            throw;
+        }
     }
 
     private async Task<SnapToken> DeleteCore(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
