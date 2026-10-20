@@ -21,6 +21,12 @@ public interface IRelationalBatchOps
     DbBatch CreateBatch();
 
     /// <summary>
+    /// OpenTelemetry <c>db.system.name</c> of the database, set on the spans of the round trips
+    /// this provider's batches make; null leaves it off.
+    /// </summary>
+    string? DbSystemName => null;
+
+    /// <summary>
     /// Executes a batch created by <see cref="CreateBatch"/> as one physical round trip.
     /// Callers never acquire their own concurrency slot or touch a connection directly — but
     /// unlike every other member on <see cref="IRelationalCheckOps"/>/

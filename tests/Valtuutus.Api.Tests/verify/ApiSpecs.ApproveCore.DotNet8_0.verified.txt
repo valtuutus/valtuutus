@@ -580,14 +580,31 @@ namespace Valtuutus.Core.Observability
     public static class DefaultActivitySource
     {
         public const string SourceName = "Valtuutus";
-        public const string SourceNameInternal = "Valtuutus.Internal";
         public static System.Diagnostics.ActivitySource Instance { get; }
-        public static System.Diagnostics.ActivitySource InternalSourceInstance { get; }
     }
     public static class ValtuutusMetrics
     {
         public static readonly System.Diagnostics.Metrics.Counter<long> DbQueries;
         public static readonly System.Diagnostics.Metrics.Meter Meter;
+    }
+    public readonly struct ValtuutusSpan : System.IDisposable
+    {
+        public System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> CountAttributes(System.Collections.Generic.IEnumerable<Valtuutus.Core.AttributeTuple> attributes) { }
+        public System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> CountRelations(System.Collections.Generic.IEnumerable<Valtuutus.Core.RelationTuple> relations) { }
+        public void Dispose() { }
+        public bool RecordFailure(System.Exception e) { }
+        public void Responded() { }
+        public void SetAllowed(bool allowed) { }
+        public void SetCacheHit(bool hit) { }
+        public void SetSnapToken(Valtuutus.Core.Data.SnapToken snapToken) { }
+    }
+    public static class ValtuutusTelemetry
+    {
+        public static bool Enabled { get; }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartCache(string operation, Valtuutus.Core.Data.SnapToken? requestedSnapToken) { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string query = "") { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartRoundTrip(string? dbSystem, string[] queries, bool resolvesSnapToken) { }
+        public static Valtuutus.Core.Observability.ValtuutusSpan StartWrite(string? dbSystem, [System.Runtime.CompilerServices.CallerMemberName] string operation = "") { }
     }
 }
 namespace Valtuutus.Core.Pools

@@ -2,7 +2,6 @@ using System.Data;
 using System.Data.Common;
 using Microsoft.Data.SqlClient;
 using Valtuutus.Core.Data;
-using Valtuutus.Core.Observability;
 using Valtuutus.Data.Db;
 using Valtuutus.Data.SqlServer.Utils;
 
@@ -71,6 +70,8 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase
     // connection.CreateBatch() (pure object construction, no I/O — DbConnection.CreateBatch just
     // assigns batch.Connection). All I/O (open + execute) happens in ExecuteBatchAsync, which is
     // async and does carry a CancellationToken.
+    public override string DbSystemName => SqlServerDataReaderProvider.DbSystem;
+
     public override DbBatch CreateBatch()
     {
         var connection = (SqlConnection)_connectionFactory();
@@ -87,7 +88,6 @@ public sealed class SqlServerBatchOps : RelationalBatchProviderBase
     // not this design's first choice.
     public override async Task<DbDataReader> ExecuteBatchAsync(DbBatch batch, CancellationToken cancellationToken)
     {
-        using var activity = DefaultActivitySource.Instance.StartActivity();
         await _rateLimiter.Enter(cancellationToken);
         try
         {

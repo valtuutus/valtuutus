@@ -11,6 +11,7 @@ namespace Valtuutus.Data.SqlServer
     public sealed class SqlServerBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase
     {
         public SqlServerBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.Db.IValtuutusDbOptions dbOptions) { }
+        public override string DbSystemName { get; }
         public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
         public override void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }

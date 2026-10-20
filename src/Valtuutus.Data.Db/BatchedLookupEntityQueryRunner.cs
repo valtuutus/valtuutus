@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Observability;
 using Valtuutus.Core.Engines.LookupEntity.V2;
 using Valtuutus.Core.Pools;
 
@@ -45,6 +46,9 @@ internal sealed class BatchedLookupEntityQueryRunner(
         ILookupEntityBatchOps lookupBatchOps, IReadOnlyList<LookupEntityQuery> queries, SnapToken? snapToken,
         CancellationToken ct)
     {
+        using var span = ValtuutusTelemetry.Enabled
+            ? ValtuutusTelemetry.StartRoundTrip(batchOps.DbSystemName, QueryNames(queries), snapToken is null)
+            : default;
         await using var batch = batchOps.CreateBatch();
         if (snapToken is null)
             batchOps.AddResolveLatestSnapTokenToBatch(batch);
@@ -52,6 +56,7 @@ internal sealed class BatchedLookupEntityQueryRunner(
             lookupBatchOps.AddToBatch(batch, query, snapToken);
 
         await using var results = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
+        span.Responded();
         var token = snapToken ?? await ReadSnapTokenAsync(results, ct).ConfigureAwait(false);
         for (var i = 0; i < queries.Count; i++)
         {
@@ -60,6 +65,14 @@ internal sealed class BatchedLookupEntityQueryRunner(
             queries[i].Result = await ReadResultAsync(results, queries[i].Kind, ct).ConfigureAwait(false);
         }
         return token;
+    }
+
+    private static string[] QueryNames(IReadOnlyList<LookupEntityQuery> queries)
+    {
+        var names = new string[queries.Count];
+        for (var i = 0; i < names.Length; i++)
+            names[i] = queries[i].Kind.ToString();
+        return names;
     }
 
     private static async Task<SnapToken> ReadSnapTokenAsync(DbDataReader results, CancellationToken ct) =>

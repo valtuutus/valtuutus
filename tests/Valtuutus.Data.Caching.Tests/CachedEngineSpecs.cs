@@ -3,6 +3,7 @@ using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
+using Valtuutus.Tests.Shared;
 using Xunit;
 using ZiggyCreatures.Caching.Fusion;
 
@@ -34,6 +35,22 @@ public sealed class CachedEngineSpecs : IDisposable
         pinned.Should().Be(first);
         inner.Requests.Should().ContainSingle()
             .Which.SnapToken.Should().BeNull("the engine resolves the latest token itself");
+    }
+
+    [Fact]
+    public async Task Cache_span_reports_whether_the_cache_answered()
+    {
+        await _cache.SetAsync(Consts.LatestSnapTokenKey, Older);
+        var engine = new CachedCheckEngine(_cache, new RecordingCheckEngine(Older));
+
+        using var spans = new SpanCollector();
+        await engine.Check(Request, default);
+        await engine.Check(Request, default);
+
+        spans.Named("valtuutus.cache").Should().HaveCount(2)
+            .And.OnlyContain(a => (string?)a.GetTagItem("valtuutus.operation") == "check");
+        spans.Named("valtuutus.cache").Select(a => a.GetTagItem("valtuutus.cache.hit"))
+            .Should().Equal(false, true);
     }
 
     [Fact]
