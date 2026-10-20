@@ -61,7 +61,9 @@ That's it. Now all your queries to the engines will be cached to reduce the load
 
 ## How cached requests pick a snap token
 
-A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes made through Valtuutus update the cache's latest token.
+A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes and deletes made through Valtuutus update the cache's latest token once they have committed; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward: a write that finishes after a newer one doesn't replace it.
+
+`AddCaching` updates the latest token through `ValtuutusDataOptions.OnDataWritten`. A hook you set before calling `AddCaching` keeps running alongside it; one you set afterwards replaces it, so set your own hook first.
 
 ## Registration order
 
@@ -70,5 +72,5 @@ A request with a `SnapToken` is cached under that token. A request without one r
 
 ## Multi node scenario
 ⚠️ If you are writing/deleting data from a multi node scenario, it is highly recommended to use a backplane for Fusion Cache. 
-That way, any writes/deletes in the data will automatically invalidate the cache in all instances.
+That way, any writes/deletes in the data will automatically invalidate the cache in all instances. A write or delete returns once the backplane notification for the new latest token has been sent, so a request that lands on another instance right after it already reads at the new token.
 [Click here for more information.](https://github.com/ZiggyCreatures/FusionCache/blob/main/docs/Backplane.md)

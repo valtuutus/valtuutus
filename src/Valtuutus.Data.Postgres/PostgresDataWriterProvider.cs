@@ -108,6 +108,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 #endif
         var snapToken = await Write(connection, transaction, relations, attributes, ct);
         await transaction.CommitAsync(ct);
+        await NotifyCommitted(snapToken);
 
         return snapToken;
     }
@@ -126,9 +127,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         await WriteRelationsAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, relations, ct);
         await WriteAttributesAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, attributes, ct);
 
-        var snapToken = new SnapToken(transactId.ToString());
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
+        return new SnapToken(transactId.ToString());
     }
 
     protected virtual async Task WriteRelationsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Ulid transactId, IEnumerable<RelationTuple> relations, CancellationToken ct)
@@ -215,6 +214,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 #endif
         var snapToken = await Delete(connection, transaction, filter, ct);
         await transaction.CommitAsync(ct);
+        await NotifyCommitted(snapToken);
 
         return snapToken;
     }
@@ -243,10 +243,12 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         }
 
         await InsertTransaction(npgsqlConnection, transactId, npgsqlTransaction, ct);
-        var snapToken = new SnapToken(snapTokenValue);
-        await (_options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask);
-        return snapToken;
+        return new SnapToken(snapTokenValue);
     }
+
+    /// <inheritdoc />
+    public Task NotifyCommitted(SnapToken snapToken)
+        => _options.OnDataWritten?.Invoke(_provider, snapToken) ?? Task.CompletedTask;
 
     private static async Task ExecuteDeleteBatch(NpgsqlConnection connection, NpgsqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)
