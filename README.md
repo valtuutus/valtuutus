@@ -122,6 +122,13 @@ dotnet add package Valtuutus.Data.SqlServer
 
 Requires SQL Server 2016 or later (database compatibility level 130+), Azure SQL Database or Azure SQL Managed Instance.
 
+### If using MySQL or MariaDB:
+```shell
+dotnet add package Valtuutus.Data.MySql
+```
+
+Requires MySQL 8.4 or later, or MariaDB 10.11 or later.
+
 ### If you prefer using an InMemory provider:
 ```shell
 dotnet add package Valtuutus.Data.InMemory
@@ -146,6 +153,17 @@ builder.Services
     .AddSqlServer(_ => () => new SqlConnection(builder.Configuration.GetConnectionString("SqlServerDb")!));
 ```
 
+### If using MySQL or MariaDB:
+```csharp
+using MySqlConnector;
+using Valtuutus.Data.MySql;
+
+builder.Services
+    .AddMySql(
+        _ => () => new MySqlConnection(builder.Configuration.GetConnectionString("MySqlDb")!),
+        new ValtuutusMySqlOptions(MySqlServerType.MySql)); // MySqlServerType.MariaDb for MariaDB
+```
+
 ### If using InMemory:
 ```csharp
 builder.Services
@@ -156,10 +174,11 @@ builder.Services
 If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function.
 - [Postgres](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql)
 - [SqlServer](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
+- [MySQL and MariaDB](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
 
 ## Schema and table name customization
 
-Both relational providers accept an optional options object to customise the database schema and table names. Pass it as the second argument to `AddPostgres` or `AddSqlServer`:
+The relational providers accept an options object to customise the database schema and table names. Pass it as the second argument to `AddPostgres`, `AddSqlServer` or `AddMySql`. It is optional for Postgres and SQL Server; `AddMySql` requires it, because it declares the server type:
 
 ```csharp
 // Postgres — defaults: schema="public", tables="transactions", "relation_tuples", "attributes"
@@ -181,6 +200,17 @@ builder.Services.AddValtuutusCore(/* schema */)
             transactionsTableName:  "transactions",
             relationsTableName:     "relation_tuples",
             attributesTableName:    "attributes"));
+
+// MySQL / MariaDB — defaults: schema="" (the connection's database), same table names
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddMySql(
+        _ => () => new MySqlConnection(connectionString),
+        new ValtuutusMySqlOptions(
+            serverType:             MySqlServerType.MySql,
+            schema:                 "authz", // the MySQL database holding the tables
+            transactionsTableName:  "transactions",
+            relationsTableName:     "relation_tuples",
+            attributesTableName:    "attributes"));
 ```
 
 Make sure the migration script targets the same schema and table names you configure here.
@@ -194,7 +224,7 @@ Make sure the migration script targets the same schema and table names you confi
 
 These map directly to [Npgsql's prepared statement feature](https://www.npgsql.org/doc/prepare.html) and can improve performance for repeated queries under load.
 
-Both options types also expose `LookupHopsPerQuery` (default `2`): how many levels of a recursive relation one lookup query reads. See [How lookups run](Using%20the%20Engines.md#how-lookups-run).
+`ValtuutusPostgresOptions` and `ValtuutusSqlServerOptions` also expose `LookupHopsPerQuery` (default `2`): how many levels of a recursive relation one lookup query reads. See [How lookups run](Using%20the%20Engines.md#how-lookups-run).
 
 ## Using query concurrent limiting
 It is expected that you don't want to allow Valtuutus to expand queries while it has resources. The default limit is 5 concurrent queries for the same request. To change that, you can use the `AddConcurrentQueryLimit` method, for example:

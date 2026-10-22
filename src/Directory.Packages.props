@@ -14,6 +14,7 @@
     <PackageVersion Include="Ulid" Version="1.3.4" />
     <PackageVersion Include="ZiggyCreatures.FusionCache" Version="2.1.0" />
     <PackageVersion Include="Npgsql" Version="[9.0.3,)" />
+    <PackageVersion Include="MySqlConnector" Version="[2.6.2,)" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="[6.0.1,)" />
     <!-- Patched releases of each line: 8.0.2 keeps net8 consumers on the 8.x package line. -->
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="[8.0.2,)" Condition="'$(TargetFramework)' == 'net8.0'" />

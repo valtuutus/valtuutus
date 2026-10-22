@@ -13,11 +13,14 @@ dotnet add package Valtuutus.Data.Postgres
 # SQL Server
 dotnet add package Valtuutus.Data.SqlServer
 
+# MySQL or MariaDB
+dotnet add package Valtuutus.Data.MySql
+
 # In-memory (great for tests and local development)
 dotnet add package Valtuutus.Data.InMemory
 ```
 
-The SQL Server provider requires SQL Server 2016 or later (database compatibility level 130+), Azure SQL Database or Azure SQL Managed Instance.
+The SQL Server provider requires SQL Server 2016 or later (database compatibility level 130+), Azure SQL Database or Azure SQL Managed Instance. The MySQL provider requires MySQL 8.4 or later, or MariaDB 10.11 or later.
 
 ## 2. Run database migrations
 
@@ -25,6 +28,7 @@ If you're using a relational provider, create the required tables before startin
 
 - [Postgres migration](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql)
 - [SqlServer migration](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
+- [MySQL and MariaDB migration](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
 
 The InMemory provider needs no migration.
 
@@ -46,7 +50,7 @@ builder.Services.AddValtuutusCore("""
     builder.Configuration.GetConnectionString("PostgresDb")!));
 ```
 
-For SQL Server, replace `.AddPostgres(...)` with `.AddSqlServer(...)`. For InMemory:
+For SQL Server, replace `.AddPostgres(...)` with `.AddSqlServer(...)`. For MySQL or MariaDB, use `.AddMySql(_ => () => new MySqlConnection(...), new ValtuutusMySqlOptions(MySqlServerType.MySql))`, with `MySqlServerType.MariaDb` on MariaDB (see [Storing Data](Storing%20Data.md#mysql-and-mariadb)). For InMemory:
 
 ```csharp
 .AddInMemory()
