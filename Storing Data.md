@@ -269,6 +269,6 @@ await writer.NotifyCommitted(snapToken);
 
 ### Connection string
 
-The provider uses the connection string as you give it.
+The provider adds `AllowUserVariables=true` to the connection string it reads with: a check or lookup without a `SnapToken` resolves the latest token in its first round trip and keeps it in a session variable for the rest of that round trip. Everything else is used as you give it.
 
 By default MySqlConnector resets a pooled connection's session state before reusing it. If your application doesn't rely on session state (session variables, `SET SESSION` settings, temporary tables, named locks), you can opt in to skipping that reset with `ConnectionReset=false` as a speed-up. The setting applies to every connection in the pool for that connection string.

@@ -19,12 +19,15 @@
       <PackageReference Include="BenchmarkDotNet.Diagnostics.dotTrace" Version="0.15.8" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
       <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="10.0.0" />
+      <PackageReference Include="Testcontainers.MariaDb" Version="4.16.0" />
       <PackageReference Include="Testcontainers.MsSql" Version="4.16.0" />
+      <PackageReference Include="Testcontainers.MySql" Version="4.16.0" />
       <PackageReference Include="Testcontainers.PostgreSql" Version="4.16.0" />
     </ItemGroup>
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.InMemory\Valtuutus.Data.InMemory.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Data.MySql\Valtuutus.Data.MySql.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
       <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
       <ProjectReference Include="..\..\utils\Valtuutus.Seeder\Valtuutus.Seeder.csproj" />

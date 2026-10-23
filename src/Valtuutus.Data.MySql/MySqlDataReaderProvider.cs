@@ -8,6 +8,7 @@ using Valtuutus.Core.Observability;
 using Valtuutus.Core.Pools;
 using Valtuutus.Data.Db;
 using static Valtuutus.Data.MySql.MySqlSql;
+using static Valtuutus.Data.MySql.MySqlLookupReads;
 
 namespace Valtuutus.Data.MySql;
 
@@ -29,19 +30,13 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         _dataSource = MySqlConnections.GetOrCreateDataSource(probeConnection.ConnectionString);
     }
 
-    private static RelationTuple ReadRelationTuple(DbDataReader reader, ref byte[] buffer) =>
-        new(ReadKey(reader, 0, ref buffer), ReadKey(reader, 1, ref buffer), ReadKey(reader, 2, ref buffer),
-            ReadKey(reader, 3, ref buffer), ReadKey(reader, 4, ref buffer), ReadKey(reader, 5, ref buffer));
+    private static RelationTuple ReadRelationTuple(DbDataReader reader, KeyDecoder keys) =>
+        new(keys.Read(reader, 0), keys.Read(reader, 1), keys.Read(reader, 2),
+            keys.Read(reader, 3), keys.Read(reader, 4), keys.Read(reader, 5));
 
-    private static JsonValue ParseJsonValue(string rawJson)
-    {
-        return JsonNode.Parse(rawJson) as JsonValue
-            ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue.");
-    }
-
-    private static AttributeTuple ReadAttributeTuple(DbDataReader reader, ref byte[] buffer) =>
-        new(ReadKey(reader, 0, ref buffer), ReadKey(reader, 1, ref buffer), ReadKey(reader, 2, ref buffer),
-            ParseJsonValue(reader.GetString(3)));
+    private static AttributeTuple ReadAttributeTuple(DbDataReader reader, KeyDecoder keys) =>
+        new(keys.Read(reader, 0), keys.Read(reader, 1), keys.Read(reader, 2),
+            keys.ParseValue(reader.GetString(3)));
 
     // EXISTS and boolean combinations of it come back as integers.
     private static async Task<bool> ExecuteBoolean(DbCommand command, CancellationToken cancellationToken) =>
@@ -50,12 +45,12 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
     private static async Task<PooledList<RelationTuple>> ReadRelations(DbCommand command, CancellationToken cancellationToken)
     {
         var pooled = PooledList<RelationTuple>.Rent();
-        var buffer = RentKeyBuffer();
+        var keys = KeyDecoder.Rent();
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                pooled.Add(ReadRelationTuple(reader, ref buffer));
+                pooled.Add(ReadRelationTuple(reader, keys));
             return pooled;
         }
         catch
@@ -65,102 +60,83 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            ReturnKeyBuffer(buffer);
+            KeyDecoder.Return(keys);
         }
     }
 
+    // capacity is the expected row count; a read for given entities expects one row per entity, up
+    // to a bound, so a read whose entities mostly have no row doesn't allocate for all of them.
     private static async Task<Dictionary<(string AttributeName, string EntityId), AttributeTuple>> ReadAttributeDictionary(
-        DbCommand command, CancellationToken cancellationToken)
+        DbCommand command, int capacity, CancellationToken cancellationToken)
     {
-        var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
-        var buffer = RentKeyBuffer();
+        var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>(capacity);
+        var keys = KeyDecoder.Rent();
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tuple = ReadAttributeTuple(reader, ref buffer);
+                var tuple = ReadAttributeTuple(reader, keys);
                 dict[(tuple.Attribute, tuple.EntityId)] = tuple;
             }
             return dict;
         }
         finally
         {
-            ReturnKeyBuffer(buffer);
+            KeyDecoder.Return(keys);
         }
     }
 
     private static async Task<List<AttributeTuple>> ReadAttributeList(DbCommand command, CancellationToken cancellationToken)
     {
         var rows = new List<AttributeTuple>();
-        var buffer = RentKeyBuffer();
+        var keys = KeyDecoder.Rent();
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add(ReadAttributeTuple(reader, ref buffer));
+                rows.Add(ReadAttributeTuple(reader, keys));
             return rows;
         }
         finally
         {
-            ReturnKeyBuffer(buffer);
+            KeyDecoder.Return(keys);
         }
     }
 
     private static async Task<List<string>> ReadKeys(DbCommand command, CancellationToken cancellationToken)
     {
         var result = new List<string>();
-        var buffer = RentKeyBuffer();
+        var keys = KeyDecoder.Rent();
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                result.Add(ReadKey(reader, 0, ref buffer));
+                result.Add(keys.Read(reader, 0));
             return result;
         }
         finally
         {
-            ReturnKeyBuffer(buffer);
+            KeyDecoder.Return(keys);
         }
     }
 
     private static async Task<HashSet<string>> ReadKeySet(DbCommand command, int capacity, CancellationToken cancellationToken)
     {
         var result = new HashSet<string>(capacity, StringComparer.Ordinal);
-        var buffer = RentKeyBuffer();
+        var keys = KeyDecoder.Rent();
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                result.Add(ReadKey(reader, 0, ref buffer));
+                result.Add(keys.Read(reader, 0));
             return result;
         }
         finally
         {
-            ReturnKeyBuffer(buffer);
+            KeyDecoder.Return(keys);
         }
     }
-
-    private static void AddScopeParameters(DbParameterCollection parameters, EntityScope? scope)
-    {
-        if (scope is not { } s)
-            return;
-        AddString(parameters, "@scope_relation", s.Relation, 64);
-        AddString(parameters, "@scope_subject_type", s.SubjectType, 256);
-        AddString(parameters, "@scope_subject_id", s.SubjectId, 64);
-    }
-
-    // One value binds to the equality form's scalar parameter, any other count to the JSON form's array.
-    private static void AddOneOrMany(DbParameterCollection parameters, string scalarName, string arrayName,
-        string[] values, int scalarSize)
-    {
-        if (values.Length == 1)
-            AddString(parameters, scalarName, values[0], scalarSize);
-        else
-            AddJsonArray(parameters, arrayName, values);
-    }
-
-    private static string[] AsArray(IEnumerable<string> values) => values as string[] ?? values.ToArray();
 
     public async Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
@@ -168,7 +144,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.GetLatestSnapToken);
+            await using var command = _dataSource.CreateCommand(_q.GetLatestSnapToken.Sql);
             var res = await command.ExecuteScalarAsync(cancellationToken) as string;
             return res is not null ? new SnapToken(res) : null;
         }
@@ -184,21 +160,8 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var noSubjectFilters = string.IsNullOrWhiteSpace(tupleFilter.SubjectId)
-                && string.IsNullOrWhiteSpace(tupleFilter.SubjectRelation)
-                && string.IsNullOrWhiteSpace(tupleFilter.SubjectType);
-            await using var command = _dataSource.CreateCommand(
-                noSubjectFilters ? _q.SelectRelationsByTupleFilterNoSubject : _q.SelectRelationsByTupleFilter);
-            AddString(command.Parameters, "@entity_type", tupleFilter.EntityType, 256);
-            AddString(command.Parameters, "@entity_id", tupleFilter.EntityId, 64);
-            AddString(command.Parameters, "@relation", tupleFilter.Relation, 64);
-            if (!noSubjectFilters)
-            {
-                AddNullableString(command.Parameters, "@subject_id", tupleFilter.SubjectId, 64);
-                AddNullableString(command.Parameters, "@subject_relation", tupleFilter.SubjectRelation, 64);
-                AddNullableString(command.Parameters, "@subject_type", tupleFilter.SubjectType, 256);
-            }
-            AddSnapToken(command.Parameters, tupleFilter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.GetRelations(command.Parameters, _q, tupleFilter).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -213,12 +176,8 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.HasDirectRelation);
-            AddString(command.Parameters, "@entity_type", tupleFilter.EntityType, 256);
-            AddString(command.Parameters, "@entity_id", tupleFilter.EntityId, 64);
-            AddString(command.Parameters, "@relation", tupleFilter.Relation, 64);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
-            AddSnapToken(command.Parameters, tupleFilter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasDirectRelation(command.Parameters, _q, tupleFilter, subjectId).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -233,11 +192,8 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.GetIndirectRelations);
-            AddString(command.Parameters, "@entity_type", tupleFilter.EntityType, 256);
-            AddString(command.Parameters, "@entity_id", tupleFilter.EntityId, 64);
-            AddString(command.Parameters, "@relation", tupleFilter.Relation, 64);
-            AddSnapToken(command.Parameters, tupleFilter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.GetIndirectRelations(command.Parameters, _q, tupleFilter).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -253,13 +209,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(
-                entityIds.Length == 1 ? _q.HasDirectRelation : _q.HasAnyDirectRelationMany);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", entityIds, 64);
-            AddString(command.Parameters, "@relation", relation, 64);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasAnyDirectRelation(command.Parameters, _q, entityType, entityIds,
+                relation, subjectId, snapToken).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -275,13 +227,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(
-                relationNames.Length == 1 ? _q.HasAnyOfDirectRelationsOne : _q.HasAnyOfDirectRelationsMany);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            AddOneOrMany(command.Parameters, "@relation", "@relations", relationNames, 64);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasAnyOfDirectRelations(command.Parameters, _q, entityType,
+                entityId, relationNames, subjectId, snapToken).ApplyTo(command);
             return await ReadKeySet(command, relationNames.Length, cancellationToken);
         }
         finally
@@ -297,12 +245,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(
-                attributeNames.Length == 1 ? _q.HasAnyOfAttributesOne : _q.HasAnyOfAttributesMany);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            AddOneOrMany(command.Parameters, "@attribute", "@attributes", attributeNames, 64);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasAnyOfAttributes(command.Parameters, _q, entityType, entityId,
+                attributeNames, snapToken).ApplyTo(command);
             return await ReadKeySet(command, attributeNames.Length, cancellationToken);
         }
         finally
@@ -317,15 +262,10 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var ids = AsArray(entityIds);
-            await using var command = _dataSource.CreateCommand(
-                ids.Length == 1 ? _q.RelationsWithEntityOne : _q.RelationsWithEntityMany);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@entity_type", entityRelationFilter.EntityType, 256);
-            AddString(command.Parameters, "@relation", entityRelationFilter.Relation, 64);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", ids, 64);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddSnapToken(command.Parameters, entityRelationFilter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            RelationsWithEntityIds(command.Parameters, _q, entityRelationFilter.EntityType,
+                entityRelationFilter.Relation, subjectType, AsCollection(entityIds), subjectRelation,
+                entityRelationFilter.SnapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -340,18 +280,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var single = subjectsIds.Length == 1;
-            var sql = scope is not null
-                ? (single ? _q.RelationsWithSubjectOneScoped : _q.RelationsWithSubjectManyScoped)
-                : (single ? _q.RelationsWithSubjectOne : _q.RelationsWithSubjectMany);
-            await using var command = _dataSource.CreateCommand(sql);
-            AddString(command.Parameters, "@entity_type", entityFilter.EntityType, 256);
-            AddString(command.Parameters, "@relation", entityFilter.Relation, 64);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddOneOrMany(command.Parameters, "@subject_id", "@subject_ids", subjectsIds, 64);
-            AddScopeParameters(command.Parameters, scope);
-            AddSnapToken(command.Parameters, entityFilter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            RelationsWithSubjectIds(command.Parameters, _q, entityFilter.EntityType, entityFilter.Relation,
+                subjectsIds, subjectType, subjectRelation, scope, entityFilter.SnapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -368,18 +299,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var single = subjectsIds.Length == 1;
-            var sql = scope is not null
-                ? (single ? _q.RelationsWithSubjectOneMultiRelationScoped : _q.RelationsWithSubjectManyMultiRelationScoped)
-                : (single ? _q.RelationsWithSubjectOneMultiRelation : _q.RelationsWithSubjectManyMultiRelation);
-            await using var command = _dataSource.CreateCommand(sql);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddJsonArray(command.Parameters, "@relations", relationNames);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddOneOrMany(command.Parameters, "@subject_id", "@subject_ids", subjectsIds, 64);
-            AddScopeParameters(command.Parameters, scope);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            RelationsWithSubjectIdsMultiRelation(command.Parameters, _q, entityType,
+                relationNames, subjectsIds, subjectType, subjectRelation, scope, snapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -396,15 +318,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var ids = AsArray(entityIds);
-            await using var command = _dataSource.CreateCommand(
-                ids.Length == 1 ? _q.RelationsWithEntityOneMultiRelation : _q.RelationsWithEntityManyMultiRelation);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddJsonArray(command.Parameters, "@relations", relationNames);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", ids, 64);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            RelationsWithEntityIdsMultiRelation(command.Parameters, _q, entityType,
+                relationNames, subjectType, AsCollection(entityIds), subjectRelation, snapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -421,16 +337,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(scope is not null ? _q.JoinedScoped : _q.Joined);
-            AddSnapToken(command.Parameters, mainFilter.SnapToken);
-            AddString(command.Parameters, "@entity_type", mainFilter.EntityType, 256);
-            AddString(command.Parameters, "@relation", mainFilter.Relation, 64);
-            AddString(command.Parameters, "@sub_entity_type", subEntityType, 256);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddString(command.Parameters, "@sub_relation", subRelation, 64);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
-            AddScopeParameters(command.Parameters, scope);
+            await using var command = _dataSource.CreateCommand();
+            RelationsJoined(command.Parameters, _q, mainFilter.EntityType, mainFilter.Relation, subEntityType,
+                subjectRelation, subRelation, subjectType, subjectId, scope, mainFilter.SnapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -447,17 +356,10 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var ids = AsArray(entityIds);
-            await using var command = _dataSource.CreateCommand(
-                ids.Length == 1 ? _q.JoinedByEntityIdsOne : _q.JoinedByEntityIdsMany);
-            AddSnapToken(command.Parameters, mainFilter.SnapToken);
-            AddString(command.Parameters, "@entity_type", mainFilter.EntityType, 256);
-            AddString(command.Parameters, "@relation", mainFilter.Relation, 64);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", ids, 64);
-            AddString(command.Parameters, "@sub_entity_type", subEntityType, 256);
-            AddString(command.Parameters, "@subject_relation", subjectRelation, 64);
-            AddString(command.Parameters, "@sub_relation", subRelation, 64);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
+            await using var command = _dataSource.CreateCommand();
+            RelationsJoinedByEntityIds(command.Parameters, _q, mainFilter.EntityType,
+                mainFilter.Relation, AsCollection(entityIds), subEntityType, subjectRelation, subRelation, subjectType,
+                mainFilter.SnapToken).ApplyTo(command);
             return await ReadRelations(command, cancellationToken);
         }
         finally
@@ -475,15 +377,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.HasTupleToUserSetRelation);
-            AddSnapToken(command.Parameters, snapToken);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            AddString(command.Parameters, "@tuple_set_relation", tupleSetRelation, 64);
-            AddString(command.Parameters, "@sub_entity_type", subEntityType, 256);
-            AddString(command.Parameters, "@computed_relation", computedRelation, 64);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasTupleToUserSetRelation(command.Parameters, _q, entityType, entityId,
+                tupleSetRelation, subEntityType, computedRelation, subjectType, subjectId, snapToken).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -501,15 +397,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.HasUsersetJoinRelation);
-            AddSnapToken(command.Parameters, snapToken);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            AddString(command.Parameters, "@relation", relation, 64);
-            AddString(command.Parameters, "@sub_entity_type", subEntityType, 256);
-            AddString(command.Parameters, "@computed_relation", computedRelation, 64);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddString(command.Parameters, "@subject_id", subjectId, 64);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasUsersetJoinRelation(command.Parameters, _q, entityType, entityId,
+                relation, subEntityType, computedRelation, subjectType, subjectId, snapToken).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -525,14 +415,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(FusedExpressionSql.BuildStatement(leaves, requireAll, _q));
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            if (subjectType is not null) AddString(command.Parameters, "@subject_type", subjectType, 256);
-            if (subjectId is not null) AddString(command.Parameters, "@subject_id", subjectId, 64);
-            AddSnapToken(command.Parameters, snapToken);
-            for (var i = 0; i < leaves.Count; i++)
-                FusedExpressionSql.WriteLeafParameters(command.Parameters, leaves[i], i);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasFusedExpression(command.Parameters, _q, entityType, entityId,
+                leaves, requireAll, subjectType, subjectId, snapToken).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -548,11 +433,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.HasTrueBoolAttribute);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddString(command.Parameters, "@entity_id", entityId, 64);
-            AddString(command.Parameters, "@attribute", attribute, 64);
-            AddSnapToken(command.Parameters, snapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.HasTrueBoolAttribute(command.Parameters, _q, entityType, entityId,
+                attribute, snapToken).ApplyTo(command);
             return await ExecuteBoolean(command, cancellationToken);
         }
         finally
@@ -567,11 +450,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.AttributesByAttribute);
-            AddString(command.Parameters, "@entity_type", filter.EntityType, 256);
-            AddString(command.Parameters, "@attribute", filter.Attribute, 64);
-            AddNullableString(command.Parameters, "@entity_id", filter.EntityId, 64);
-            AddSnapToken(command.Parameters, filter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            AttributesByAttribute(command.Parameters, _q, filter.EntityType, filter.Attribute,
+                filter.EntityId, filter.SnapToken).ApplyTo(command);
             return await ReadAttributeList(command, cancellationToken);
         }
         finally
@@ -586,19 +467,10 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var single = filter.Attributes.Length == 1;
-            var sql = scope is not null
-                ? (single ? _q.AttributesScopedOne : _q.AttributesScopedMany)
-                : (single ? _q.AttributesByAttributesOne : _q.AttributesByAttributesMany);
-            await using var command = _dataSource.CreateCommand(sql);
-            // The unscoped statement filters on entity_id; the scoped one reads its scope parameters instead.
-            if (scope is null)
-                AddNullableString(command.Parameters, "@entity_id", filter.EntityId, 64);
-            AddString(command.Parameters, "@entity_type", filter.EntityType, 256);
-            AddOneOrMany(command.Parameters, "@attribute", "@attributes", filter.Attributes, 64);
-            AddScopeParameters(command.Parameters, scope);
-            AddSnapToken(command.Parameters, filter.SnapToken);
-            return await ReadAttributeDictionary(command, cancellationToken);
+            await using var command = _dataSource.CreateCommand();
+            AttributesByAttributes(command.Parameters, _q, filter.EntityType, filter.Attributes,
+                filter.EntityId, scope, filter.SnapToken).ApplyTo(command);
+            return await ReadAttributeDictionary(command, 0, cancellationToken);
         }
         finally
         {
@@ -612,21 +484,18 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(
-                filter.Attributes.Length == 1 ? _q.AttributesSingleEntityOne : _q.AttributesSingleEntityMany);
-            AddString(command.Parameters, "@entity_id",
-                filter.EntityId ?? throw new ArgumentException("EntityId must be set.", nameof(filter)), 64);
-            AddString(command.Parameters, "@entity_type", filter.EntityType, 256);
-            AddOneOrMany(command.Parameters, "@attribute", "@attributes", filter.Attributes, 64);
-            AddSnapToken(command.Parameters, filter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            MySqlCheckReads.AttributesSingleEntity(command.Parameters, _q, filter.EntityType,
+                filter.EntityId ?? throw new ArgumentException("EntityId must be set.", nameof(filter)),
+                filter.Attributes, filter.SnapToken).ApplyTo(command);
 
             var pooled = PooledList<AttributeTuple>.Rent();
-            var buffer = RentKeyBuffer();
+            var keys = KeyDecoder.Rent();
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadAttributeTuple(reader, ref buffer));
+                    pooled.Add(ReadAttributeTuple(reader, keys));
                 return pooled;
             }
             catch
@@ -636,7 +505,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
             }
             finally
             {
-                ReturnKeyBuffer(buffer);
+                KeyDecoder.Return(keys);
             }
         }
         finally
@@ -651,13 +520,9 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var ids = AsArray(entitiesIds);
-            await using var command = _dataSource.CreateCommand(
-                ids.Length == 1 ? _q.AttributesWithEntityIdsOne : _q.AttributesWithEntityIdsMany);
-            AddString(command.Parameters, "@entity_type", filter.EntityType, 256);
-            AddString(command.Parameters, "@attribute", filter.Attribute, 64);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", ids, 64);
-            AddSnapToken(command.Parameters, filter.SnapToken);
+            await using var command = _dataSource.CreateCommand();
+            AttributeWithEntityIds(command.Parameters, _q, filter.EntityType, filter.Attribute,
+                AsCollection(entitiesIds), filter.SnapToken).ApplyTo(command);
             return await ReadAttributeList(command, cancellationToken);
         }
         finally
@@ -673,14 +538,11 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            var ids = AsArray(entitiesIds);
-            await using var command = _dataSource.CreateCommand(
-                ids.Length == 1 ? _q.AttributesWithEntityIdsMultiAttributeOne : _q.AttributesWithEntityIdsMultiAttributeMany);
-            AddString(command.Parameters, "@entity_type", filter.EntityType, 256);
-            AddJsonArray(command.Parameters, "@attributes", filter.Attributes);
-            AddOneOrMany(command.Parameters, "@entity_id", "@entity_ids", ids, 64);
-            AddSnapToken(command.Parameters, filter.SnapToken);
-            return await ReadAttributeDictionary(command, cancellationToken);
+            await using var command = _dataSource.CreateCommand();
+            var ids = AsCollection(entitiesIds);
+            AttributesWithEntityIds(command.Parameters, _q, filter.EntityType,
+                filter.Attributes, ids, filter.SnapToken).ApplyTo(command);
+            return await ReadAttributeDictionary(command, Math.Min(ids.Count, 1024), cancellationToken);
         }
         finally
         {
@@ -694,10 +556,8 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.EntityIdsExcluding);
-            AddString(command.Parameters, "@entity_type", entityType, 256);
-            AddSnapToken(command.Parameters, snapToken);
-            AddJsonArray(command.Parameters, "@exclude_ids", excludeIds);
+            await using var command = _dataSource.CreateCommand();
+            EntityIdsExcluding(command.Parameters, _q, entityType, excludeIds, snapToken).ApplyTo(command);
             return await ReadKeys(command, cancellationToken);
         }
         finally
@@ -712,10 +572,8 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         await EnterQuery(cancellationToken);
         try
         {
-            await using var command = _dataSource.CreateCommand(_q.SubjectIdsExcluding);
-            AddString(command.Parameters, "@subject_type", subjectType, 256);
-            AddSnapToken(command.Parameters, snapToken);
-            AddJsonArray(command.Parameters, "@exclude_ids", excludeIds);
+            await using var command = _dataSource.CreateCommand();
+            SubjectIdsExcluding(command.Parameters, _q, subjectType, excludeIds, snapToken).ApplyTo(command);
             return await ReadKeys(command, cancellationToken);
         }
         finally

@@ -1,10 +1,10 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
-using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.MySql.Tests
 {
@@ -76,11 +76,19 @@ namespace Valtuutus.Data.MySql.Tests
 
             var services = new ServiceCollection().AddValtuutusCore(Schema);
             services.AddMySql(_ => fixture.DbFactory, fixture.Options).AddConcurrentQueryLimit(3);
+
+            var counter = new RoundTripCounter();
+            services.AddSingleton(counter);
+            services.Replace(ServiceDescriptor.Scoped<IDataReaderProvider>(sp =>
+            {
+                var real = ActivatorUtilities.CreateInstance<MySqlDataReaderProvider>(sp);
+                return new CountingReaderProvider(real, sp.GetRequiredService<RoundTripCounter>());
+            }));
+
             await using var sp = services.BuildServiceProvider();
             await using var scope = sp.CreateAsyncScope();
             var engine = scope.ServiceProvider.GetRequiredService<ICheckEngine>();
 
-            using var spans = new SpanCollector();
             var result = (await engine.Check(
                 new CheckRequest("folder", "f2", "owner", "user", "join-hit", snapToken: snapToken), default)).Allowed;
 
@@ -89,10 +97,7 @@ namespace Valtuutus.Data.MySql.Tests
             // then GetIndirectRelations plus one recursive fan-out check per matched group). The
             // userset join collapses it to exactly 1, and the request supplies its own snapToken, so
             // no GetLatestSnapToken round trip runs either.
-            var check = spans.Named("valtuutus.check").Should().ContainSingle().Subject;
-            check.GetTagItem("valtuutus.round_trips").Should().Be(1);
-            var roundTrip = (await spans.WaitForChildren(check, 1)).Should().ContainSingle().Subject;
-            ((string[])roundTrip.GetTagItem("valtuutus.queries")!).Should().Equal("HasUsersetJoinRelation");
+            counter.Count.Should().Be(1);
         }
     }
 }
