@@ -33,8 +33,12 @@ public class MySqlBenchmarks : BenchmarkBase
             .WithName($"mysql-benchmarks-{Guid.NewGuid()}")
             .Build();
         await container.StartAsync();
+        // Plaintext like the Pg and MariaDB containers, so no provider's numbers include TLS. Without
+        // TLS, the root account's caching_sha2_password login needs the server's public key.
         var (serviceProvider, checkEngine, lookupEntityEngine, lookupSubjectEngine) =
-            await MySqlBenchmarkSetup.MigrateSeedAndAnalyze(container.GetConnectionString(), MySqlServerType.MySql);
+            await MySqlBenchmarkSetup.MigrateSeedAndAnalyze(
+                container.GetConnectionString() + ";SslMode=None;AllowPublicKeyRetrieval=True",
+                MySqlServerType.MySql);
 
         AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {

@@ -18,6 +18,7 @@ namespace Valtuutus.Data.MySql
         public override void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
         public override void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
+        protected override void CompleteCommand(System.Data.Common.DbBatchCommand cmd, Valtuutus.Data.Db.RelationalBatchQuery query) { }
         public override System.Data.Common.DbBatch CreateBatch() { }
         public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
         protected override string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query) { }

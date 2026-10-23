@@ -1,6 +1,5 @@
 using System.Data.Common;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using AwesomeAssertions;
 using MySqlConnector;
 using Valtuutus.Core.Data;
@@ -13,20 +12,19 @@ namespace Valtuutus.Data.MySql.Tests;
 
 /// <summary>
 /// Runs every code path that writes a statement's parameters, through the provider's own binders,
-/// and checks it binds exactly the <c>@names</c> the statement text reads, apart from the
-/// batch-resolved session variable. The data source allows user variables, which the
-/// batch-resolved token needs, so a missing or misspelt name would read as a NULL user variable
-/// instead of failing; an extra name would mean the binder and the statement disagree. Statements
-/// that read the batch-resolved token must bind no snap-token parameter. Commands are built without
-/// a connection, so no database is needed.
+/// and checks the parameters bind to the statement: <see cref="MySqlStatement.Bind"/> accepts them
+/// only when they are exactly the names the statement reads, and leaves one positional parameter
+/// per <c>?</c> placeholder. MySqlConnector fills placeholders in order and the data source allows
+/// user variables, which the batch-resolved token needs, so neither would catch a binder and its
+/// statement disagreeing. Statements that read the batch-resolved token must bind no snap-token
+/// parameter. Commands are built without a connection, so no database is needed.
 /// </summary>
-public sealed partial class ParameterBindingSpecs
+public sealed class ParameterBindingSpecs
 {
     private static readonly SnapToken Token = new("01JAAAAAAAAAAAAAAAAAAAAAAA");
     private static readonly EntityScope Scope = new("member", "team", "t1");
     private static readonly int[] Counts = [1, 2];
     private static readonly EntityScope?[] Scopes = [null, Scope];
-    private static readonly string BatchResolvedName = Bare(MySqlQueries.BatchResolvedSnapToken);
 
     private static IEnumerable<ValtuutusMySqlOptions> EveryServer() =>
         Enum.GetValues<MySqlServerType>().Select(t => new ValtuutusMySqlOptions(t));
@@ -38,7 +36,7 @@ public sealed partial class ParameterBindingSpecs
 
     // A statement-and-parameters binder over one catalog. BatchResolvable is false for binders that
     // take their token from a filter, which only the bound-token reader calls.
-    private sealed record ReadCase(string Name, Func<DbParameterCollection, MySqlQueries, SnapToken?, string> Bind,
+    private sealed record ReadCase(string Name, Func<DbParameterCollection, MySqlQueries, SnapToken?, MySqlStatement> Bind,
         bool BatchResolvable = true);
 
     private static readonly Dictionary<string, ReadCase> ReadCases =
@@ -193,10 +191,14 @@ public sealed partial class ParameterBindingSpecs
         {
             var queries = batchResolved ? MySqlQueries.GetBatchResolved(options) : MySqlQueries.Get(options);
             using var command = new MySqlCommand();
+            var because = $"{name} on {options.ServerType}";
 
-            var sql = ReadCases[name].Bind(command.Parameters, queries, batchResolved ? null : Token);
+            var statement = ReadCases[name].Bind(command.Parameters, queries, batchResolved ? null : Token);
+            statement.ApplyTo(command);
 
-            ShouldBindExactlyWhatItReads(sql, command.Parameters, batchResolved, $"{name} on {options.ServerType}");
+            if (batchResolved)
+                statement.ParameterNames.Should().NotContain(Bare(MySqlQueries.SnapTokenParameter), because);
+            ShouldBeBoundPositionally(command.CommandText, command.Parameters, batchResolved, readsToken: true, because);
         }
     }
 
@@ -205,7 +207,7 @@ public sealed partial class ParameterBindingSpecs
     {
         var binders = typeof(MySqlLookupReads).GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
             .Concat(typeof(MySqlCheckReads).GetMethods(BindingFlags.Static | BindingFlags.NonPublic))
-            .Where(m => m.ReturnType == typeof(string))
+            .Where(m => m.ReturnType == typeof(MySqlStatement))
             .Select(m => m.Name)
             .ToHashSet();
         var covered = ReadCases.Keys.Select(k => k.Split('/')[0]).ToHashSet();
@@ -291,7 +293,8 @@ public sealed partial class ParameterBindingSpecs
 
             batch.BatchCommands.Should().ContainSingle();
             var command = batch.BatchCommands[0];
-            ShouldBindExactlyWhatItReads(command.CommandText, command.Parameters, batchResolved,
+            ShouldBeBoundPositionally(command.CommandText, command.Parameters, batchResolved,
+                readsToken: name != nameof(IRelationalBatchOps.AddResolveLatestSnapTokenToBatch),
                 $"{name} on {options.ServerType}");
         }
     }
@@ -366,8 +369,8 @@ public sealed partial class ParameterBindingSpecs
 
             batch.BatchCommands.Should().ContainSingle();
             var command = batch.BatchCommands[0];
-            ShouldBindExactlyWhatItReads(command.CommandText, command.Parameters, batchResolved: !withToken,
-                $"{kind} on {options.ServerType}");
+            ShouldBeBoundPositionally(command.CommandText, command.Parameters, batchResolved: !withToken,
+                readsToken: true, $"{kind} on {options.ServerType}");
         }
     }
 
@@ -424,47 +427,38 @@ public sealed partial class ParameterBindingSpecs
 
             batch.BatchCommands.Should().ContainSingle();
             var command = batch.BatchCommands[0];
-            ShouldBindExactlyWhatItReads(command.CommandText, command.Parameters, batchResolved: !withToken,
-                $"{kind} on {options.ServerType}");
+            ShouldBeBoundPositionally(command.CommandText, command.Parameters, batchResolved: !withToken,
+                readsToken: true, $"{kind} on {options.ServerType}");
         }
     }
 
-    private static IEnumerable<int> LevelCounts(string[] statements) =>
+    private static IEnumerable<int> LevelCounts(MySqlStatement?[] statements) =>
         Enumerable.Range(0, statements.Length).Where(i => statements[i] is not null);
 
-    [Fact]
-    public void A_misspelt_parameter_fails_the_check()
-    {
-        using var command = new MySqlCommand();
-        command.Parameters.Add(new MySqlParameter("@entity_typ", "doc"));
-
-        var act = () => ShouldBindExactlyWhatItReads("SELECT 1 WHERE entity_type = @entity_type",
-            command.Parameters, batchResolved: false, "a misspelt name");
-
-        act.Should().Throw<Exception>();
-    }
-
-    private static void ShouldBindExactlyWhatItReads(string sql, DbParameterCollection parameters, bool batchResolved,
-        string because)
+    // The command went through MySqlStatement.Bind, which throws unless the binder added exactly the
+    // names the statement reads. What is left is one nameless parameter per placeholder. A
+    // batch-resolved statement reads the session variable and binds no token; any other statement
+    // that reads a token binds it.
+    private static void ShouldBeBoundPositionally(string sql, DbParameterCollection parameters, bool batchResolved,
+        bool readsToken, string because)
     {
         sql.Should().NotBeNullOrWhiteSpace(because);
-        var bound = parameters.Cast<DbParameter>().Select(p => Bare(p.ParameterName)).ToList();
-        var read = ParameterPattern().Matches(sql)
-            .Select(m => Bare(m.Value))
-            .Where(n => n != BatchResolvedName)
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        var bound = parameters.Cast<MySqlParameter>().ToList();
 
-        bound.Should().OnlyHaveUniqueItems(because);
-        bound.Should().BeEquivalentTo(read, because);
+        bound.Should().HaveCount(sql.Count(c => c == '?'), because);
+        bound.Should().OnlyContain(p => p.ParameterName == "", because);
+        sql.Should().NotContain(MySqlQueries.SnapTokenParameter, because);
         if (batchResolved)
-            sql.Should().Contain(MySqlQueries.BatchResolvedSnapToken, because)
-                .And.NotContain(MySqlQueries.SnapTokenParameter, because);
+        {
+            sql.Should().Contain(MySqlQueries.BatchResolvedSnapToken, because);
+            bound.Should().NotContain(p => Equals(p.Value, Token.Value), because);
+        }
+        else if (readsToken)
+        {
+            sql.Should().NotContain(MySqlQueries.BatchResolvedSnapToken, because);
+            bound.Should().Contain(p => Equals(p.Value, Token.Value), because);
+        }
     }
 
-    // MySqlConnector matches a parameter bound with or without the @ prefix.
     private static string Bare(string name) => name.StartsWith('@') ? name[1..] : name;
-
-    [GeneratedRegex(@"@[A-Za-z_][A-Za-z0-9_]*")]
-    private static partial Regex ParameterPattern();
 }

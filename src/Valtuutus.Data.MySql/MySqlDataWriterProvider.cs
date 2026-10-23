@@ -28,9 +28,10 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     private const int RelationColumnCount = 6;
     private const int AttributeColumnCount = 4;
 
-    // Parameter names of a multi-row INSERT, @p{row}_{col}, shared by every statement shape.
+    // Parameter names of a multi-row INSERT, p{row}_{col}, shared by every statement shape. The
+    // statement text reads each as @p{row}_{col}.
     private static readonly string[][] RowParameterNames = Enumerable.Range(0, RowsPerInsert)
-        .Select(row => Enumerable.Range(0, RelationColumnCount).Select(col => $"@p{row}_{col}").ToArray())
+        .Select(row => Enumerable.Range(0, RelationColumnCount).Select(col => $"p{row}_{col}").ToArray())
         .ToArray();
 
     // The longest value each key field may hold. The character limits are the ones every provider
@@ -63,17 +64,17 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
 
     private sealed record WriterCommands
     {
-        public required string InsertTransaction { get; init; }
+        public required MySqlStatement InsertTransaction { get; init; }
         public required string InsertRelationsHead { get; init; }
-        public required string InsertRelationsFull { get; init; }
+        public required MySqlStatement InsertRelationsFull { get; init; }
         public required string InsertAttributesHead { get; init; }
-        public required string InsertAttributesFull { get; init; }
-        public required string TombstoneAttributes { get; init; }
+        public required MySqlStatement InsertAttributesFull { get; init; }
+        public required MySqlStatement TombstoneAttributes { get; init; }
 
         // Indexed by the null-mask of a relation filter, see RelationFilterMask.
-        public required string[] DeleteRelations { get; init; }
-        public required string DeleteAttributesOfEntity { get; init; }
-        public required string DeleteAttributesByName { get; init; }
+        public required MySqlStatement[] DeleteRelations { get; init; }
+        public required MySqlStatement DeleteAttributesOfEntity { get; init; }
+        public required MySqlStatement DeleteAttributesByName { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
@@ -107,18 +108,18 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var insertAttributesHead =
             $"INSERT INTO {at} (entity_type, entity_id, attribute, value, created_tx_id) VALUES ";
 
-        var deleteRelations = new string[1 << RelationFilterColumns.Length];
+        var deleteRelations = new MySqlStatement[1 << RelationFilterColumns.Length];
         for (var mask = 0; mask < deleteRelations.Length; mask++)
-            deleteRelations[mask] = BuildDeleteRelations(rt, mask);
+            deleteRelations[mask] = MySqlStatement.Compile(BuildDeleteRelations(rt, mask));
 
         return new WriterCommands
         {
-            InsertTransaction = $"INSERT INTO {tx} (id, created_at) VALUES (@id, @created_at)",
+            InsertTransaction = MySqlStatement.Compile($"INSERT INTO {tx} (id, created_at) VALUES (@id, @created_at)"),
             InsertRelationsHead = insertRelationsHead,
             InsertRelationsFull = BuildInsert(insertRelationsHead, RelationColumnCount, RowsPerInsert),
             InsertAttributesHead = insertAttributesHead,
             InsertAttributesFull = BuildInsert(insertAttributesHead, AttributeColumnCount, RowsPerInsert),
-            TombstoneAttributes = MySqlSql.Compact($"""
+            TombstoneAttributes = MySqlQueries.Statement($"""
                 UPDATE {at} a
                 JOIN JSON_TABLE(@keys, '$[*]' COLUMNS ({EntityTypeColumn}, {AttributeColumn}, {EntityIdColumn})) k
                   ON a.entity_type = k.entity_type AND a.attribute = k.attribute AND a.entity_id = k.entity_id
@@ -126,14 +127,14 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
                 WHERE a.deleted_tx_id IS NULL
                 """),
             DeleteRelations = deleteRelations,
-            DeleteAttributesOfEntity = MySqlSql.Compact($"""
+            DeleteAttributesOfEntity = MySqlQueries.Statement($"""
                 UPDATE {at} a
                 JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({EntityTypeColumn}, {EntityIdColumn})) f
                   ON a.entity_type = f.entity_type AND a.entity_id = f.entity_id
                 SET a.deleted_tx_id = @tx
                 WHERE a.deleted_tx_id IS NULL
                 """),
-            DeleteAttributesByName = MySqlSql.Compact($"""
+            DeleteAttributesByName = MySqlQueries.Statement($"""
                 UPDATE {at} a
                 JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({EntityTypeColumn}, {EntityIdColumn}, {AttributeColumn})) f
                   ON a.entity_type = f.entity_type AND a.entity_id = f.entity_id AND a.attribute = f.attribute
@@ -164,18 +165,19 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
                $"ON {string.Join(" AND ", on)} SET r.deleted_tx_id = @tx WHERE r.deleted_tx_id IS NULL";
     }
 
-    // The text depends only on the row count; every row's created_tx_id is the one @tx.
-    private static string BuildInsert(string head, int columns, int rows)
+    // The text depends only on the row count; every row's created_tx_id is the one @tx. A full chunk's
+    // statement is compiled once, with the catalog; a shorter last chunk's once per write.
+    private static MySqlStatement BuildInsert(string head, int columns, int rows)
     {
         var sb = new StringBuilder(head, head.Length + rows * columns * 12);
         for (var row = 0; row < rows; row++)
         {
             sb.Append(row == 0 ? "(" : ", (");
             for (var col = 0; col < columns; col++)
-                sb.Append(RowParameterNames[row][col]).Append(", ");
+                sb.Append('@').Append(RowParameterNames[row][col]).Append(", ");
             sb.Append("@tx)");
         }
-        return sb.ToString();
+        return MySqlStatement.Compile(sb.ToString());
     }
 
     public async Task<SnapToken> Write(
@@ -317,7 +319,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = chunk.Count == RowsPerInsert
+        var statement = chunk.Count == RowsPerInsert
             ? _c.InsertRelationsFull
             : BuildInsert(_c.InsertRelationsHead, RelationColumnCount, chunk.Count);
         var parameters = command.Parameters;
@@ -332,7 +334,8 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             AddValue(parameters, names[4], relation.SubjectId);
             AddValue(parameters, names[5], relation.SubjectRelation);
         }
-        AddTransactionId(parameters, "@tx", tx);
+        AddTransactionId(parameters, "tx", tx);
+        statement.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -348,12 +351,12 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         await using (var tombstone = connection.CreateCommand())
         {
             tombstone.Transaction = transaction;
-            tombstone.CommandText = _c.TombstoneAttributes;
-            tombstone.Parameters.Add(new MySqlParameter("@keys", MySqlDbType.JSON)
+            tombstone.Parameters.Add(new MySqlParameter("keys", MySqlDbType.JSON)
             {
                 Value = JsonSerializer.Serialize(keys, MySqlWriterJsonContext.Default.MySqlAttributeKeyArray)
             });
-            AddTransactionId(tombstone.Parameters, "@tx", tx);
+            AddTransactionId(tombstone.Parameters, "tx", tx);
+            _c.TombstoneAttributes.ApplyTo(tombstone);
             await tombstone.ExecuteNonQueryAsync(ct);
         }
 
@@ -381,7 +384,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = rows == RowsPerInsert
+        var statement = rows == RowsPerInsert
             ? _c.InsertAttributesFull
             : BuildInsert(_c.InsertAttributesHead, AttributeColumnCount, rows);
         var parameters = command.Parameters;
@@ -394,7 +397,8 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             AddValue(parameters, names[2], attribute.Attribute);
             parameters.Add(new MySqlParameter(names[3], MySqlDbType.LongText) { Value = values[start + row] });
         }
-        AddTransactionId(parameters, "@tx", tx);
+        AddTransactionId(parameters, "tx", tx);
+        statement.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -403,9 +407,9 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = _c.InsertTransaction;
-        AddTransactionId(command.Parameters, "@id", tx);
-        command.Parameters.Add(new MySqlParameter("@created_at", MySqlDbType.DateTime) { Value = DateTime.UtcNow });
+        AddTransactionId(command.Parameters, "id", tx);
+        command.Parameters.Add(new MySqlParameter("created_at", MySqlDbType.DateTime) { Value = DateTime.UtcNow });
+        _c.InsertTransaction.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -480,8 +484,8 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         foreach (var group in filter.Attributes.Where(FitsColumns).GroupBy(static f => f.Attribute is not null))
         {
             var filtersJson = JsonSerializer.Serialize(group.ToArray(), DeleteFilterJsonContext.Default.DeleteAttributesFilterArray);
-            var sql = group.Key ? _c.DeleteAttributesByName : _c.DeleteAttributesOfEntity;
-            await ExecuteDelete(mySqlConnection, mySqlTransaction, sql, tx, filtersJson, ct);
+            var statement = group.Key ? _c.DeleteAttributesByName : _c.DeleteAttributesOfEntity;
+            await ExecuteDelete(mySqlConnection, mySqlTransaction, statement, tx, filtersJson, ct);
         }
 
         await InsertTransaction(mySqlConnection, mySqlTransaction, tx, ct);
@@ -540,13 +544,16 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         => _options.NotifyDataWritten(_provider, snapToken);
 
     private static async Task ExecuteDelete(MySqlConnection connection, MySqlTransaction transaction,
-        string sql, string tx, string filtersJson, CancellationToken ct)
+        MySqlStatement statement, string tx, string filtersJson, CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
-        command.CommandText = sql;
-        AddTransactionId(command.Parameters, "@tx", tx);
-        command.Parameters.Add(new MySqlParameter("@filters", MySqlDbType.JSON) { Value = filtersJson });
+        AddTransactionId(command.Parameters, "tx", tx);
+        // The relation delete for a filter with no field set matches every live tuple and reads no
+        // filters.
+        if (statement.Reads("filters"))
+            command.Parameters.Add(new MySqlParameter("filters", MySqlDbType.JSON) { Value = filtersJson });
+        statement.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -557,7 +564,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         parameters.Add(new MySqlParameter(name, MySqlDbType.String) { Size = 26, Value = tx });
 }
 
-internal sealed record MySqlAttributeKey(string EntityType, string Attribute, string EntityId);
+internal readonly record struct MySqlAttributeKey(string EntityType, string Attribute, string EntityId);
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]
 [JsonSerializable(typeof(MySqlAttributeKey[]))]

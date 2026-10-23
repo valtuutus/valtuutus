@@ -58,7 +58,7 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
     // first.
     /// <inheritdoc />
     public override void AddResolveLatestSnapTokenToBatch(DbBatch batch) =>
-        NewCommand(batch, _q.ResolveLatestSnapTokenForBatch);
+        NewCommand(batch, _q.ResolveLatestSnapTokenForBatch.Sql);
 
     /// <inheritdoc />
     public override string DbSystemName => _dbSystem;
@@ -98,9 +98,15 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         }
     }
 
+    protected override string GetSql(RelationalBatchQuery query) => Statement(query).Sql;
+
+    // The base class adds parameters by name; the catalog statements take them positionally.
+    protected override void CompleteCommand(DbBatchCommand cmd, RelationalBatchQuery query) =>
+        Statement(query).Bind(cmd.Parameters);
+
     // The array-taking queries pick their statement by count in their Add* overrides, so these
     // entries are the list forms, which answer any count.
-    protected override string GetSql(RelationalBatchQuery query) => query switch
+    private MySqlStatement Statement(RelationalBatchQuery query) => query switch
     {
         RelationalBatchQuery.HasDirectRelation => _q.HasDirectRelation,
         RelationalBatchQuery.HasTrueBoolAttribute => _q.HasTrueBoolAttribute,
@@ -119,9 +125,8 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
     // One JSON array parameter, under the name the catalog SQL references.
     protected override string WriteNameArrayParam(DbBatchCommand cmd, string baseName, string[] values)
     {
-        var name = "@" + baseName;
-        AddJsonArray(cmd.Parameters, name, values);
-        return name;
+        AddJsonArray(cmd.Parameters, baseName, values);
+        return "@" + baseName;
     }
 
     protected override void WriteStringParam(DbBatchCommand cmd, string name, string value, int size) =>
@@ -141,8 +146,8 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         string relation, string subjectId, SnapToken snapToken)
     {
         var cmd = NewReaderCommand(batch);
-        cmd.CommandText = MySqlCheckReads.HasAnyDirectRelation(cmd.Parameters, _q, entityType, entityIds, relation,
-            subjectId, BoundToken(snapToken));
+        MySqlCheckReads.HasAnyDirectRelation(cmd.Parameters, _q, entityType, entityIds, relation,
+            subjectId, BoundToken(snapToken)).ApplyTo(cmd);
     }
 
     /// <inheritdoc />
@@ -150,8 +155,8 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         string[] relationNames, string subjectId, SnapToken snapToken)
     {
         var cmd = NewReaderCommand(batch);
-        cmd.CommandText = MySqlCheckReads.HasAnyOfDirectRelations(cmd.Parameters, _q, entityType, entityId,
-            relationNames, subjectId, BoundToken(snapToken));
+        MySqlCheckReads.HasAnyOfDirectRelations(cmd.Parameters, _q, entityType, entityId,
+            relationNames, subjectId, BoundToken(snapToken)).ApplyTo(cmd);
     }
 
     /// <inheritdoc />
@@ -159,8 +164,8 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         string[] attributeNames, SnapToken snapToken)
     {
         var cmd = NewReaderCommand(batch);
-        cmd.CommandText = MySqlCheckReads.HasAnyOfAttributes(cmd.Parameters, _q, entityType, entityId,
-            attributeNames, BoundToken(snapToken));
+        MySqlCheckReads.HasAnyOfAttributes(cmd.Parameters, _q, entityType, entityId,
+            attributeNames, BoundToken(snapToken)).ApplyTo(cmd);
     }
 
     /// <inheritdoc />
@@ -168,8 +173,8 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         string[] attributeNames, SnapToken snapToken)
     {
         var cmd = NewReaderCommand(batch);
-        cmd.CommandText = MySqlCheckReads.AttributesSingleEntity(cmd.Parameters, _q, entityType, entityId,
-            attributeNames, BoundToken(snapToken));
+        MySqlCheckReads.AttributesSingleEntity(cmd.Parameters, _q, entityType, entityId,
+            attributeNames, BoundToken(snapToken)).ApplyTo(cmd);
     }
 
     /// <inheritdoc />
@@ -177,12 +182,13 @@ public sealed class MySqlBatchOps : RelationalBatchProviderBase
         IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, SnapToken snapToken)
     {
         var cmd = NewReaderCommand(batch);
-        cmd.CommandText = MySqlCheckReads.HasFusedExpression(cmd.Parameters, _q, entityType, entityId, leaves,
-            requireAll, subjectType, subjectId, BoundToken(snapToken));
+        MySqlCheckReads.HasFusedExpression(cmd.Parameters, _q, entityType, entityId, leaves,
+            requireAll, subjectType, subjectId, BoundToken(snapToken)).ApplyTo(cmd);
     }
 
     // The overrides above take their statement and parameters from MySqlCheckReads, which picks the
-    // statement while it writes the parameters, so the command's text is set after it is added.
+    // statement while it writes the parameters, so the command's text is set and its parameters
+    // bound after it is added.
     private static DbBatchCommand NewReaderCommand(DbBatch batch)
     {
         var command = batch.CreateBatchCommand();

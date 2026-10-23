@@ -6,23 +6,24 @@ using static Valtuutus.Data.MySql.MySqlSql;
 
 namespace Valtuutus.Data.MySql;
 
-// Builds the fused-expression statement and binds its per-leaf parameters, so every caller of a
-// fused shape sends the same text with the same parameters.
+// Builds and compiles the fused-expression statement and writes its per-leaf parameters, so every
+// caller of a fused shape sends the same text with the same parameters.
 internal static class FusedExpressionSql
 {
     // Keyed by the leaves list's reference identity, which is stable for a compiled plan's whole
-    // lifetime, so each fused shape is built once per catalog. The ConditionalWeakTable ties each
-    // entry's lifetime to the leaves list. Catalogs are cached singletons, compared by reference,
-    // so the bound-token and batch-resolved-token catalogs each get their own text for a shape.
-    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, ConcurrentDictionary<MySqlQueries, string>> StatementCache = new();
+    // lifetime, so each fused shape is built and compiled once per catalog. The ConditionalWeakTable
+    // ties each entry's lifetime to the leaves list. Catalogs are cached singletons, compared by
+    // reference, so the bound-token and batch-resolved-token catalogs each get their own text for a
+    // shape.
+    private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, ConcurrentDictionary<MySqlQueries, MySqlStatement>> StatementCache = new();
 
-    internal static string BuildStatement(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, MySqlQueries q)
+    internal static MySqlStatement BuildStatement(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, MySqlQueries q)
     {
         var perCatalog = StatementCache.GetValue(leaves,
-            static _ => new ConcurrentDictionary<MySqlQueries, string>(ReferenceEqualityComparer.Instance));
+            static _ => new ConcurrentDictionary<MySqlQueries, MySqlStatement>(ReferenceEqualityComparer.Instance));
         if (perCatalog.TryGetValue(q, out var cached)) return cached;
         var expr = FusedExpressionSqlBuilder.BuildBooleanExpression(leaves, requireAll, (leaf, i) => LeafFragment(leaf, i, q));
-        return perCatalog.GetOrAdd(q, Compact($"SELECT {expr}"));
+        return perCatalog.GetOrAdd(q, MySqlQueries.Statement($"SELECT {expr}"));
     }
 
     // Every alias carries the leaf index, so the subqueries of different leaves never share one.
@@ -40,21 +41,46 @@ internal static class FusedExpressionSql
         return leaf.Kind switch
         {
             FusedLeafKind.Direct =>
-                $"EXISTS(SELECT {hr}1 FROM {rt} {r} WHERE {relationFilter} AND {r}.relation = @relation_{i})",
+                $"EXISTS(SELECT {hr}1 FROM {rt} {r} WHERE {relationFilter} AND {r}.relation = {Relation.Sql(i)})",
             FusedLeafKind.MultiDirect when !leaf.RequireAll =>
-                $"EXISTS(SELECT 1 FROM {JsonNames($"@relations_{i}", n)} JOIN {rt} {r} ON {r}.relation = {n}.name WHERE {relationFilter})",
+                $"EXISTS(SELECT 1 FROM {JsonNames(Relations.Sql(i), n)} JOIN {rt} {r} ON {r}.relation = {n}.name WHERE {relationFilter})",
             FusedLeafKind.MultiDirect =>
-                $"(SELECT COUNT(DISTINCT {r}.relation) FROM {JsonNames($"@relations_{i}", n)} JOIN {rt} {r} ON {r}.relation = {n}.name WHERE {relationFilter}) = {DistinctCount(leaf.Names)}",
+                $"(SELECT COUNT(DISTINCT {r}.relation) FROM {JsonNames(Relations.Sql(i), n)} JOIN {rt} {r} ON {r}.relation = {n}.name WHERE {relationFilter}) = {DistinctCount(leaf.Names)}",
             FusedLeafKind.Attribute =>
-                $"EXISTS(SELECT {ha}1 FROM {at} {a} WHERE {attributeFilter} AND {a}.attribute = @attribute_{i})",
+                $"EXISTS(SELECT {ha}1 FROM {at} {a} WHERE {attributeFilter} AND {a}.attribute = {Attribute.Sql(i)})",
             FusedLeafKind.MultiAttribute when !leaf.RequireAll =>
-                $"EXISTS(SELECT 1 FROM {JsonNames($"@attributes_{i}", n)} JOIN {at} {a} ON {a}.attribute = {n}.name WHERE {attributeFilter})",
+                $"EXISTS(SELECT 1 FROM {JsonNames(Attributes.Sql(i), n)} JOIN {at} {a} ON {a}.attribute = {n}.name WHERE {attributeFilter})",
             FusedLeafKind.MultiAttribute =>
-                $"(SELECT COUNT(DISTINCT {a}.attribute) FROM {JsonNames($"@attributes_{i}", n)} JOIN {at} {a} ON {a}.attribute = {n}.name WHERE {attributeFilter}) = {DistinctCount(leaf.Names)}",
+                $"(SELECT COUNT(DISTINCT {a}.attribute) FROM {JsonNames(Attributes.Sql(i), n)} JOIN {at} {a} ON {a}.attribute = {n}.name WHERE {attributeFilter}) = {DistinctCount(leaf.Names)}",
             FusedLeafKind.TupleToUserSet => MySqlQueries.TwoHop(rt, q.Snap,
-                $"@tuple_set_relation_{i}", $"@sub_entity_type_{i}", "''", $"@computed_relation_{i}", $"{i}"),
+                TupleSetRelation.Sql(i), SubEntityType.Sql(i), "''", ComputedRelation.Sql(i), $"{i}"),
             _ => throw new ArgumentOutOfRangeException(nameof(leaf), leaf.Kind, null),
         };
+    }
+
+    // Leaf parameter names carry the leaf index. The statement and the binder take them from these
+    // sets, so they always agree, and binding builds no name strings for the first leaves.
+    private static readonly LeafNames Relation = new("relation_");
+    private static readonly LeafNames Relations = new("relations_");
+    private static readonly LeafNames Attribute = new("attribute_");
+    private static readonly LeafNames Attributes = new("attributes_");
+    private static readonly LeafNames TupleSetRelation = new("tuple_set_relation_");
+    private static readonly LeafNames SubEntityType = new("sub_entity_type_");
+    private static readonly LeafNames ComputedRelation = new("computed_relation_");
+
+    private sealed class LeafNames(string prefix)
+    {
+        private const int Cached = 16;
+        private readonly string[] _bound = Enumerable.Range(0, Cached).Select(i => Build(prefix, i)).ToArray();
+
+        // The name the statement text reads.
+        public string Sql(int leafIndex) => "@" + Bound(leafIndex);
+
+        // The name the parameter is bound under.
+        public string Bound(int leafIndex) => leafIndex < Cached ? _bound[leafIndex] : Build(prefix, leafIndex);
+
+        private static string Build(string prefix, int leafIndex) =>
+            prefix + leafIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     // The JSON array holds each name once, so an all-of leaf compares against the distinct count.
@@ -65,21 +91,21 @@ internal static class FusedExpressionSql
         switch (leaf.Kind)
         {
             case FusedLeafKind.Direct:
-                AddString(parameters, $"@relation_{i}", leaf.Names[0], 64);
+                AddString(parameters, Relation.Bound(i), leaf.Names[0], 64);
                 break;
             case FusedLeafKind.MultiDirect:
-                AddJsonArray(parameters, $"@relations_{i}", leaf.Names);
+                AddJsonArray(parameters, Relations.Bound(i), leaf.Names);
                 break;
             case FusedLeafKind.Attribute:
-                AddString(parameters, $"@attribute_{i}", leaf.Names[0], 64);
+                AddString(parameters, Attribute.Bound(i), leaf.Names[0], 64);
                 break;
             case FusedLeafKind.MultiAttribute:
-                AddJsonArray(parameters, $"@attributes_{i}", leaf.Names);
+                AddJsonArray(parameters, Attributes.Bound(i), leaf.Names);
                 break;
             case FusedLeafKind.TupleToUserSet:
-                AddString(parameters, $"@tuple_set_relation_{i}", leaf.Names[0], 64);
-                AddString(parameters, $"@sub_entity_type_{i}", leaf.TtuSubEntityType!, 256);
-                AddString(parameters, $"@computed_relation_{i}", leaf.TtuComputedRelation!, 64);
+                AddString(parameters, TupleSetRelation.Bound(i), leaf.Names[0], 64);
+                AddString(parameters, SubEntityType.Bound(i), leaf.TtuSubEntityType!, 256);
+                AddString(parameters, ComputedRelation.Bound(i), leaf.TtuComputedRelation!, 64);
                 break;
         }
     }

@@ -20,8 +20,8 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
     private ulong _binaryMask;
     private bool _binaryMaskKnown;
 
-    // Reused across every binary field this reader decodes, so each decode allocates only its string.
-    private byte[]? _keyBuffer;
+    // Rented on the first binary field this reader decodes, and given back when it closes.
+    private KeyDecoder? _keys;
 
     // Set once the inner reader and the connection have been closed or disposed.
     private bool _closed;
@@ -31,8 +31,8 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
     {
         if (!IsBinary(ordinal))
             return inner.GetString(ordinal);
-        _keyBuffer ??= MySqlSql.RentKeyBuffer();
-        return MySqlSql.ReadKey(inner, ordinal, ref _keyBuffer);
+        _keys ??= KeyDecoder.Rent();
+        return _keys.Read(inner, ordinal);
     }
 
     private bool IsBinary(int ordinal)
@@ -157,7 +157,7 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
 
     // Closing gives the connection back to the pool. Each step runs even when the one before throws,
     // so a failure while the inner reader drains its remaining results still releases the
-    // connection and the key buffer. A second Close, or a second dispose, does nothing; disposing
+    // connection and the key decoder. A second Close, or a second dispose, does nothing; disposing
     // after Close still disposes the inner reader and the connection.
     public override void Close()
     {
@@ -176,7 +176,7 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
             }
             finally
             {
-                ReturnKeyBuffer();
+                ReturnKeys();
             }
         }
     }
@@ -199,7 +199,7 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
                 }
                 finally
                 {
-                    ReturnKeyBuffer();
+                    ReturnKeys();
                 }
             }
         }
@@ -224,17 +224,17 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
             }
             finally
             {
-                ReturnKeyBuffer();
+                ReturnKeys();
             }
         }
         GC.SuppressFinalize(this);
     }
 
-    private void ReturnKeyBuffer()
+    private void ReturnKeys()
     {
-        if (_keyBuffer is null)
+        if (_keys is null)
             return;
-        MySqlSql.ReturnKeyBuffer(_keyBuffer);
-        _keyBuffer = null;
+        KeyDecoder.Return(_keys);
+        _keys = null;
     }
 }

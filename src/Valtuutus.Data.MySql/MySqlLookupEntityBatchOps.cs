@@ -17,14 +17,14 @@ internal sealed class MySqlLookupEntityBatchOps(ValtuutusMySqlOptions dbOptions)
 {
     private readonly MySqlQueries _withParameter = MySqlQueries.Get(dbOptions);
     private readonly MySqlQueries _batchResolved = MySqlQueries.GetBatchResolved(dbOptions);
-    // One statement per level count, index = levels, built with the catalog.
-    private readonly string[] _relationsLevels =
+    // One statement per level count, index = levels, built and compiled with the catalog.
+    private readonly MySqlStatement?[] _relationsLevels =
         RelationsLevelsStatements(dbOptions, MySqlQueries.SnapTokenParameter, fromSubject: false);
-    private readonly string[] _relationsLevelsBatchResolved =
+    private readonly MySqlStatement?[] _relationsLevelsBatchResolved =
         RelationsLevelsStatements(dbOptions, MySqlQueries.BatchResolvedSnapToken, fromSubject: false);
-    private readonly string[] _relationsLevelsFromSubject =
+    private readonly MySqlStatement?[] _relationsLevelsFromSubject =
         RelationsLevelsStatements(dbOptions, MySqlQueries.SnapTokenParameter, fromSubject: true);
-    private readonly string[] _relationsLevelsFromSubjectBatchResolved =
+    private readonly MySqlStatement?[] _relationsLevelsFromSubjectBatchResolved =
         RelationsLevelsStatements(dbOptions, MySqlQueries.BatchResolvedSnapToken, fromSubject: true);
 
     public void AddToBatch(DbBatch batch, LookupEntityQuery query, SnapToken? snapToken)
@@ -32,20 +32,20 @@ internal sealed class MySqlLookupEntityBatchOps(ValtuutusMySqlOptions dbOptions)
         var q = snapToken is null ? _batchResolved : _withParameter;
         var cmd = batch.CreateBatchCommand();
         var parameters = cmd.Parameters;
-        cmd.CommandText = query.Kind switch
+        var statement = query.Kind switch
         {
             LookupEntityQueryKind.Relations => RelationsWithSubjectIds(parameters, q, query.EntityType,
-                query.Relation, AsArray(query.Ids), query.SubjectType, query.SubjectRelation, query.Scope, snapToken),
+                query.Relation, AsCollection(query.Ids), query.SubjectType, query.SubjectRelation, query.Scope, snapToken),
             LookupEntityQueryKind.RelationsMulti => RelationsWithSubjectIdsMultiRelation(parameters, q,
-                query.EntityType, query.Names, AsArray(query.Ids), query.SubjectType, query.SubjectRelation,
+                query.EntityType, query.Names, AsCollection(query.Ids), query.SubjectType, query.SubjectRelation,
                 query.Scope, snapToken),
             LookupEntityQueryKind.Joined => RelationsJoined(parameters, q, query.EntityType, query.Relation,
-                query.SubEntityType, query.SubjectRelation, query.SubRelation, query.SubjectType, query.Ids.First(),
+                query.SubEntityType, query.SubjectRelation, query.SubRelation, query.SubjectType, Single(query.Ids),
                 query.Scope, snapToken),
             LookupEntityQueryKind.Attributes => AttributesByAttributes(parameters, q, query.EntityType, query.Names,
                 entityId: null, query.Scope, snapToken),
             LookupEntityQueryKind.AttributesWithIds => AttributesWithEntityIds(parameters, q, query.EntityType,
-                query.Names, AsArray(query.Ids), snapToken),
+                query.Names, AsCollection(query.Ids), snapToken),
             LookupEntityQueryKind.Attribute => AttributesByAttribute(parameters, q, query.EntityType, query.Names[0],
                 entityId: null, snapToken),
             LookupEntityQueryKind.EntitiesExcluding => EntityIdsExcluding(parameters, q, query.EntityType, query.Ids,
@@ -55,28 +55,31 @@ internal sealed class MySqlLookupEntityBatchOps(ValtuutusMySqlOptions dbOptions)
                 snapToken),
             _ => throw new ArgumentOutOfRangeException(nameof(query), query.Kind, null),
         };
+        statement.ApplyTo(cmd);
         batch.BatchCommands.Add(cmd);
     }
 
-    private string RelationsLevels(DbParameterCollection parameters, LookupEntityQuery query, SnapToken? snapToken)
-    {
-        AddString(parameters, "@entity_type", query.EntityType, 256);
-        AddString(parameters, "@relation", query.Relation, 64);
-        AddJsonArray(parameters, "@subject_ids", query.Ids);
-        AddJsonArray(parameters, "@level_one_ids", query.LevelOneIds);
-        AddSnapToken(parameters, snapToken);
-        return (snapToken is null ? _relationsLevelsBatchResolved : _relationsLevels)[query.Levels];
-    }
-
-    private string RelationsLevelsFromSubject(DbParameterCollection parameters, LookupEntityQuery query,
+    private MySqlStatement RelationsLevels(DbParameterCollection parameters, LookupEntityQuery query,
         SnapToken? snapToken)
     {
-        AddString(parameters, "@entity_type", query.EntityType, 256);
-        AddString(parameters, "@relation", query.Relation, 64);
-        AddString(parameters, "@subject_type", query.SubjectType, 256);
-        AddString(parameters, "@subject_id", query.Ids.First(), 64);
+        AddString(parameters, "entity_type", query.EntityType, 256);
+        AddString(parameters, "relation", query.Relation, 64);
+        AddJsonArray(parameters, "subject_ids", query.Ids);
+        AddJsonArray(parameters, "level_one_ids", query.LevelOneIds);
         AddSnapToken(parameters, snapToken);
-        return (snapToken is null ? _relationsLevelsFromSubjectBatchResolved : _relationsLevelsFromSubject)[query.Levels];
+        return (snapToken is null ? _relationsLevelsBatchResolved : _relationsLevels)[query.Levels]!;
+    }
+
+    private MySqlStatement RelationsLevelsFromSubject(DbParameterCollection parameters, LookupEntityQuery query,
+        SnapToken? snapToken)
+    {
+        AddString(parameters, "entity_type", query.EntityType, 256);
+        AddString(parameters, "relation", query.Relation, 64);
+        AddString(parameters, "subject_type", query.SubjectType, 256);
+        AddString(parameters, "subject_id", Single(query.Ids), 64);
+        AddSnapToken(parameters, snapToken);
+        var statements = snapToken is null ? _relationsLevelsFromSubjectBatchResolved : _relationsLevelsFromSubject;
+        return statements[query.Levels]!;
     }
 
     // From ids, level 1 is the relation's entities whose tuples name an id through the relation,
@@ -86,7 +89,8 @@ internal sealed class MySqlLookupEntityBatchOps(ValtuutusMySqlOptions dbOptions)
     // multiply rows, and the level cap stops a cycle. Each entity is reported once, at the first
     // level reaching it, carrying the relation when that level is the last. The anchor and the
     // recursive member are the only table references, whatever the level count.
-    internal static string[] RelationsLevelsStatements(ValtuutusMySqlOptions dbOptions, string snap, bool fromSubject)
+    internal static MySqlStatement?[] RelationsLevelsStatements(ValtuutusMySqlOptions dbOptions, string snap,
+        bool fromSubject)
     {
         var rt = MySqlConnections.Relations(dbOptions);
         var anchor = fromSubject
@@ -102,10 +106,10 @@ internal sealed class MySqlLookupEntityBatchOps(ValtuutusMySqlOptions dbOptions)
                 UNION
                 SELECT o.id, 1 FROM {JsonIds("@level_one_ids", "o")}
                 """;
-        var statements = new string[Math.Max(dbOptions.LookupHopsPerQuery, 2) + 1];
+        var statements = new MySqlStatement?[Math.Max(dbOptions.LookupHopsPerQuery, 2) + 1];
         for (var levels = fromSubject ? 1 : 2; levels < statements.Length; levels++)
         {
-            statements[levels] = Compact($"""
+            statements[levels] = MySqlQueries.Statement($"""
                 WITH RECURSIVE l (entity_id, lvl) AS (
                     {anchor}
                     UNION

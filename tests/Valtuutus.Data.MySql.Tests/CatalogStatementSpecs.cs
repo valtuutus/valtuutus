@@ -11,19 +11,19 @@ namespace Valtuutus.Data.MySql.Tests
 {
     /// <summary>
     /// Runs every catalog statement, in both the bound-token and the batch-resolved catalog, on the
-    /// server, which proves each one parses and executes. Each <c>@name</c> the statement text reads
-    /// is bound to a dummy value, on a connection with user variables off so a name the dummies miss
-    /// fails instead of reading as NULL. The dummies come from the text itself, so this says nothing
-    /// about the provider's binders: <see cref="ParameterBindingSpecs"/> checks that they bind
-    /// exactly the names their statements read.
+    /// server, which proves each compiled text parses and executes. Each name the statement reads is
+    /// added as a dummy value and bound to the placeholders by <see cref="MySqlStatement.Bind"/>, on a
+    /// connection with user variables off, so the session variable gets a dummy of its own and any
+    /// other named reference left in the text fails instead of reading as NULL. The dummies come from
+    /// the statement itself, so this says nothing about the provider's binders:
+    /// <see cref="ParameterBindingSpecs"/> checks that they bind exactly the names their statements
+    /// read.
     /// </summary>
     public abstract partial class CatalogStatementSpecsBase(MySqlFixtureBase fixture)
     {
-        // String members of the catalog that hold names rather than statements, and the resolver,
-        // which assigns the session variable and so runs only with user variables allowed.
+        // The resolver assigns the session variable, so it runs only with user variables allowed.
         private static readonly HashSet<string> NonStatements =
         [
-            nameof(MySqlQueries.Snap), nameof(MySqlQueries.RelationsTable), nameof(MySqlQueries.AttributesTable),
             nameof(MySqlQueries.ResolveLatestSnapTokenForBatch),
         ];
 
@@ -38,7 +38,7 @@ namespace Valtuutus.Data.MySql.Tests
         private static IEnumerable<PropertyInfo> StatementProperties() =>
             typeof(MySqlQueries)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.PropertyType == typeof(string) && !NonStatements.Contains(p.Name));
+                .Where(p => p.PropertyType == typeof(MySqlStatement) && !NonStatements.Contains(p.Name));
 
         [Theory]
         [MemberData(nameof(Statements))]
@@ -79,7 +79,8 @@ namespace Valtuutus.Data.MySql.Tests
             return data;
         }
 
-        private static string[] LevelsStatementsOf(LevelsKind kind, ValtuutusMySqlOptions options, bool batchResolved)
+        private static MySqlStatement?[] LevelsStatementsOf(LevelsKind kind, ValtuutusMySqlOptions options,
+            bool batchResolved)
         {
             var snap = batchResolved ? MySqlQueries.BatchResolvedSnapToken : MySqlQueries.SnapTokenParameter;
             return kind switch
@@ -95,27 +96,30 @@ namespace Valtuutus.Data.MySql.Tests
         [MemberData(nameof(LevelsStatements))]
         public async Task Levels_statement_runs(LevelsKind kind, int levels, bool batchResolved)
         {
-            var sql = LevelsStatementsOf(kind, fixture.Options, batchResolved)[levels];
+            var statement = LevelsStatementsOf(kind, fixture.Options, batchResolved)[levels]!;
 
-            sql.Should().Contain(batchResolved ? MySqlQueries.BatchResolvedSnapToken : MySqlQueries.SnapTokenParameter);
-            await ExecuteWithDummyParameters(sql);
+            if (batchResolved)
+                statement.Sql.Should().Contain(MySqlQueries.BatchResolvedSnapToken);
+            else
+                statement.ParameterNames.Should().Contain(SnapTokenName);
+            await ExecuteWithDummyParameters(statement);
         }
 
         [Fact]
         public void Batch_resolved_statements_read_the_session_variable_instead_of_the_parameter()
         {
             var queries = MySqlQueries.GetBatchResolved(fixture.Options);
-            var texts = StatementProperties().Select(p => (string)p.GetValue(queries)!)
+            var statements = StatementProperties().Select(p => (MySqlStatement)p.GetValue(queries)!)
                 .Append(queries.ResolveLatestSnapTokenForBatch)
                 .Append(FusedExpressionSql.BuildStatement(EveryLeafKind(), false, queries))
                 .Append(FusedExpressionSql.BuildStatement(EveryLeafKind(), true, queries))
                 .Concat(Enum.GetValues<LevelsKind>()
                     .SelectMany(kind => LevelsStatementsOf(kind, fixture.Options, batchResolved: true))
-                    .OfType<string>())
+                    .OfType<MySqlStatement>())
                 .ToList();
 
-            texts.Should().NotContain(t => t.Contains("@snap_token"));
-            texts.Should().Contain(t => t.Contains(MySqlQueries.BatchResolvedSnapToken));
+            statements.Should().NotContain(s => s.ParameterNames.Contains(SnapTokenName));
+            statements.Should().Contain(s => s.Sql.Contains(MySqlQueries.BatchResolvedSnapToken));
         }
 
         [Theory]
@@ -132,9 +136,9 @@ namespace Valtuutus.Data.MySql.Tests
                 ? MySqlQueries.GetBatchResolved(fixture.Options)
                 : MySqlQueries.Get(fixture.Options);
 
-            var sql = FusedExpressionSql.BuildStatement(leaves, requireAll, queries);
+            var statement = FusedExpressionSql.BuildStatement(leaves, requireAll, queries);
 
-            await ExecuteWithDummyParameters(sql);
+            await ExecuteWithDummyParameters(statement);
         }
 
         [Fact]
@@ -162,8 +166,8 @@ namespace Valtuutus.Data.MySql.Tests
             (await reader.NextResultAsync()).Should().BeFalse();
         }
 
-        private static string StatementOf(MySqlQueries queries, string statement) =>
-            (string)typeof(MySqlQueries).GetProperty(statement)!.GetValue(queries)!;
+        private static MySqlStatement StatementOf(MySqlQueries queries, string statement) =>
+            (MySqlStatement)typeof(MySqlQueries).GetProperty(statement)!.GetValue(queries)!;
 
         private static FusedCheckLeaf[] EveryLeafKind() =>
             [
@@ -183,21 +187,41 @@ namespace Valtuutus.Data.MySql.Tests
         [Fact]
         public async Task An_unbound_parameter_fails_on_this_connection()
         {
-            var act = () => ExecuteWithDummyParameters("SELECT 1 FROM relation_tuples r WHERE r.entity_id = @entity_id", bind: false);
+            await using var connection = await OpenWithoutUserVariables();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1 FROM relation_tuples r WHERE r.entity_id = @entity_id";
+
+            var act = () => command.ExecuteScalarAsync();
 
             await act.Should().ThrowAsync<MySqlException>();
         }
 
-        private async Task ExecuteWithDummyParameters(string sql, bool bind = true)
+        [Fact]
+        public async Task A_placeholder_without_a_parameter_fails()
         {
             await using var connection = await OpenWithoutUserVariables();
             await using var command = connection.CreateCommand();
-            command.CommandText = sql;
-            if (bind)
-            {
-                foreach (var name in ParameterNames(sql))
-                    command.Parameters.Add(DummyParameter(name));
-            }
+            command.CommandText = "SELECT 1 FROM relation_tuples r WHERE r.entity_id = ?";
+
+            var act = () => command.ExecuteScalarAsync();
+
+            await act.Should().ThrowAsync<MySqlException>();
+        }
+
+        // The session variable stays a named reference next to the placeholders; this connection
+        // allows no user variables, so it gets a named dummy after the positional ones.
+        private async Task ExecuteWithDummyParameters(MySqlStatement statement)
+        {
+            await using var connection = await OpenWithoutUserVariables();
+            await using var command = connection.CreateCommand();
+            foreach (var name in statement.ParameterNames)
+                command.Parameters.Add(DummyParameter(name));
+            statement.ApplyTo(command);
+            if (statement.Sql.Contains(MySqlQueries.BatchResolvedSnapToken))
+                command.Parameters.Add(new MySqlParameter(MySqlQueries.BatchResolvedSnapToken, MySqlDbType.String)
+                {
+                    Value = Ulid.NewUlid().ToString()
+                });
 
             await using var reader = await command.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -218,24 +242,20 @@ namespace Valtuutus.Data.MySql.Tests
             return connection;
         }
 
-        private static IEnumerable<string> ParameterNames(string sql) =>
-            ParameterPattern().Matches(sql).Select(m => m.Value).Distinct(StringComparer.Ordinal);
+        private static readonly string SnapTokenName = MySqlQueries.SnapTokenParameter[1..];
 
-        // Lists of ids and names go in as JSON arrays; the snap token, bound or batch-resolved, is a
-        // ULID; everything else is a key. Any value works: the statements only have to run.
+        // Lists of ids and names go in as JSON arrays; the snap token is a ULID; everything else is a
+        // key. Any value works: the statements only have to run.
         private static MySqlParameter DummyParameter(string name)
         {
             if (JsonListPattern().IsMatch(name))
                 return new MySqlParameter(name, MySqlDbType.JSON) { Value = """["x","y"]""" };
-            if (name is "@snap_token" or MySqlQueries.BatchResolvedSnapToken)
+            if (name == SnapTokenName)
                 return new MySqlParameter(name, MySqlDbType.String) { Value = Ulid.NewUlid().ToString() };
             return new MySqlParameter(name, MySqlDbType.VarChar) { Value = "x" };
         }
 
-        [GeneratedRegex(@"@[A-Za-z_][A-Za-z0-9_]*")]
-        private static partial Regex ParameterPattern();
-
-        [GeneratedRegex(@"^@(\w+_ids|relations|attributes)(_\d+)?$")]
+        [GeneratedRegex(@"^(\w+_ids|relations|attributes)(_\d+)?$")]
         private static partial Regex JsonListPattern();
     }
 }
