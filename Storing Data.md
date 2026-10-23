@@ -150,6 +150,8 @@ DELETE FROM relation_tuples WHERE deleted_tx_id IS NOT NULL;
 DELETE FROM attributes       WHERE deleted_tx_id IS NOT NULL;
 ```
 
+The same statements work on MySQL and MariaDB.
+
 **These commands purge every tombstoned row unconditionally — there's no age filter.** A reader holding a snap token older than a given row's `deleted_tx_id` still needs that row to serve a consistent read; deleting it out from under that reader is exactly the kind of correctness break the soft-delete/snap-token scheme exists to prevent (see [Snap Tokens](#snap-tokens) below). Only run this as a one-off, e.g. during a maintenance window where you can guarantee no client is holding an old enough token. For ongoing, scheduled cleanup, use the [tombstone reaper](#tombstone-reaper) instead — it only ever removes tombstones older than a configurable retention window.
 
 After a bulk purge in Postgres, run `VACUUM ANALYZE` on both tables to update statistics and reclaim pages.
@@ -231,3 +233,42 @@ In practice, keep `RetentionPeriod` comfortably longer than the longest-lived sn
 
 The `transactions` table is pruned differently: rows older than the watermark are removed by age alone, with no tombstone/live distinction (there's nothing to tombstone — it's an append-only log). This is safe: nothing on the read path joins back to `transactions` to decide whether a relation tuple or attribute is visible — visibility is decided purely by comparing `deleted_tx_id`/`created_tx_id` ULIDs as strings. The one consequence is that a still-live tuple's `created_at` audit metadata, if you look it up via its `created_tx_id`, can become unavailable once its `transactions` row ages out past the retention window — the tuple itself stays fully valid and readable either way.
 
+## MySQL and MariaDB
+
+The `Valtuutus.Data.MySql` package serves both MySQL 8.4+ and MariaDB 10.11+. `ValtuutusMySqlOptions` has no default server, so declare the one you run with `ServerType`:
+
+```csharp
+using MySqlConnector;
+using Valtuutus.Data.MySql;
+
+builder.Services
+    .AddValtuutusCore(/* schema */)
+    .AddMySql(
+        _ => () => new MySqlConnection(builder.Configuration.GetConnectionString("MySqlDb")!),
+        new ValtuutusMySqlOptions(MySqlServerType.MariaDb));
+```
+
+### Migration
+
+Run the shipped [migration script](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql) (in `Database/migrations`) on the database your connection string points to, or on the one you set as `Schema`. The same script serves both servers.
+
+Key columns (types, ids, relation and attribute names) are `VARBINARY` holding UTF-8, so they compare byte for byte: case and trailing spaces make a different key. Attribute values are stored as JSON in a `LONGTEXT` column.
+
+### Writes
+
+- The writer checks key lengths before writing and throws `ArgumentException` when one is too long: ids up to 64 characters, entity and subject types up to 256, relation and attribute names up to 64. Types and names must also fit in that many UTF-8 bytes.
+- Setting the same attribute (same entity type, entity id and attribute name) twice in one `Write` throws `InvalidOperationException`.
+- The overloads that open their own transaction run it at `READ COMMITTED`. Use `READ COMMITTED` too for transactions you pass to `IDbDataWriterProvider`. Under `REPEATABLE READ`, InnoDB takes gap locks on the updates that soft-delete rows, which blocks concurrent writers.
+
+```csharp
+await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+var snapToken = await writer.Write(connection, transaction, relations, attributes, ct);
+await transaction.CommitAsync(ct);
+await writer.NotifyCommitted(snapToken);
+```
+
+### Connection string
+
+The provider uses the connection string as you give it.
+
+By default MySqlConnector resets a pooled connection's session state before reusing it. If your application doesn't rely on session state (session variables, `SET SESSION` settings, temporary tables, named locks), you can opt in to skipping that reset with `ConnectionReset=false` as a speed-up. The setting applies to every connection in the pool for that connection string.
