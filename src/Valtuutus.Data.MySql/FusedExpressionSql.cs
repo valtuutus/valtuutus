@@ -12,7 +12,8 @@ internal static class FusedExpressionSql
 {
     // Keyed by the leaves list's reference identity, which is stable for a compiled plan's whole
     // lifetime, so each fused shape is built once per catalog. The ConditionalWeakTable ties each
-    // entry's lifetime to the leaves list. Catalogs are cached singletons, compared by reference.
+    // entry's lifetime to the leaves list. Catalogs are cached singletons, compared by reference,
+    // so the bound-token and batch-resolved-token catalogs each get their own text for a shape.
     private static readonly ConditionalWeakTable<IReadOnlyList<FusedCheckLeaf>, ConcurrentDictionary<MySqlQueries, string>> StatementCache = new();
 
     internal static string BuildStatement(IReadOnlyList<FusedCheckLeaf> leaves, bool requireAll, MySqlQueries q)

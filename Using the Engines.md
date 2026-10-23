@@ -289,13 +289,13 @@ do
 
 
 - **They compile each permission once.** The plan for an (entity type, permission, subject type) is built on first use and reused by every request.
-- **They read in steps.** All the queries a lookup can ask at the same time make up one step. On Postgres and SQL Server, each step is a single database round trip.
+- **They read in steps.** All the queries a lookup can ask at the same time make up one step. On Postgres, SQL Server, MySQL and MariaDB, each step is a single database round trip.
 - **They resolve the snap token in the first round trip.** A request without a `SnapToken` reads the latest one in its first round trip and uses it for every later step, so a write committed while the lookup runs stays invisible to it.
 - **They walk recursive relations in fewer steps.** Examples are nested groups (`relation member @user @group#member`) or a userset chain.
-  - On Postgres and SQL Server, one query reads several levels of the chain.
+  - On Postgres, SQL Server, MySQL and MariaDB, one query reads several levels of the chain.
   - The entity lookup stops as soon as a level finds nothing new, instead of continuing to the request's depth.
 
-The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgresOptions` or `ValtuutusSqlServerOptions`:
+The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgresOptions`, `ValtuutusSqlServerOptions` or `ValtuutusMySqlOptions`:
 
 ```csharp
 .AddPostgres(
@@ -306,7 +306,9 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
     });
 ```
 
-Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
+Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels.
+
+On MySQL and MariaDB the default is `12`. Their levels query stops at the first level that adds nothing, so a shallow hierarchy costs the same under a high value. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
 
 The InMemory provider runs the same engines, without the round-trip batching.
 

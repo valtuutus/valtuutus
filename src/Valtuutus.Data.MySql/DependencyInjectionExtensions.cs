@@ -19,6 +19,25 @@ public static class DependencyInjectionExtensions
         ArgumentNullException.ThrowIfNull(options);
         var builder = services.AddValtuutusData();
         builder.Services.AddDbSetup(factory, options);
+        // Singleton batch ops for BatchedPhysicalExecutor: they run on the cached data source the
+        // scoped readers share, so nothing per scope is captured beyond the connection string the
+        // first resolution probes. The factory runs only if something resolves IRelationalBatchOps.
+        //
+        // DbConnectionFactory is scoped (AddDbSetup), but a singleton factory resolves from the root
+        // provider. Resolving a scoped service from root either throws under
+        // ServiceProviderOptions.ValidateScopes or silently resolves it in root's own implicit scope.
+        // A child scope disposed right away is valid to resolve scoped services from, and the probe
+        // still runs once.
+        builder.Services.AddSingleton<IRelationalBatchOps>(sp =>
+        {
+            using var scope = sp.CreateScope();
+            return new MySqlBatchOps(
+                scope.ServiceProvider.GetRequiredService<DbConnectionFactory>(),
+                sp.GetRequiredService<ValtuutusDataOptions>(),
+                options);
+        });
+        builder.Services.AddSingleton<ILookupSubjectBatchOps>(new MySqlLookupSubjectBatchOps(options));
+        builder.Services.AddSingleton<ILookupEntityBatchOps>(new MySqlLookupEntityBatchOps(options));
         builder.Services.AddSingleton(options);
         builder.Services.AddScoped<IDataReaderProvider, MySqlDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, MySqlDataWriterProvider>();

@@ -8,6 +8,25 @@ namespace Valtuutus.Data.MySql
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddMySql(this Microsoft.Extensions.DependencyInjection.IServiceCollection services, System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory> factory, Valtuutus.Data.MySql.ValtuutusMySqlOptions options) { }
     }
+    public sealed class MySqlBatchOps : Valtuutus.Data.Db.RelationalBatchProviderBase
+    {
+        public MySqlBatchOps(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.MySql.ValtuutusMySqlOptions dbOptions) { }
+        public override string DbSystemName { get; }
+        public override Valtuutus.Data.Db.IRelationalBatchOps UsingBatchResolvedSnapToken { get; }
+        public override void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddHasAnyDirectRelationToBatch(System.Data.Common.DbBatch batch, string entityType, string[] entityIds, string relation, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddHasAnyOfAttributesToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddHasAnyOfDirectRelationsToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] relationNames, string subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddHasFusedExpressionToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, System.Collections.Generic.IReadOnlyList<Valtuutus.Data.Db.FusedCheckLeaf> leaves, bool requireAll, string? subjectType, string? subjectId, Valtuutus.Core.Data.SnapToken snapToken) { }
+        public override void AddResolveLatestSnapTokenToBatch(System.Data.Common.DbBatch batch) { }
+        public override System.Data.Common.DbBatch CreateBatch() { }
+        public override System.Threading.Tasks.Task<System.Data.Common.DbDataReader> ExecuteBatchAsync(System.Data.Common.DbBatch batch, System.Threading.CancellationToken cancellationToken) { }
+        protected override string GetSql(Valtuutus.Data.Db.RelationalBatchQuery query) { }
+        protected override string WriteNameArrayParam(System.Data.Common.DbBatchCommand cmd, string baseName, string[] values) { }
+        protected override void WriteNullableStringParam(System.Data.Common.DbBatchCommand cmd, string name, string? value, int size) { }
+        protected override void WriteSnapTokenParam(System.Data.Common.DbBatchCommand cmd, string name, Valtuutus.Core.Data.SnapToken snapToken) { }
+        protected override void WriteStringParam(System.Data.Common.DbBatchCommand cmd, string name, string value, int size) { }
+    }
     public class MySqlDataReaderProvider : Valtuutus.Data.RateLimiterExecuter, Valtuutus.Core.Data.IDataReaderProvider, Valtuutus.Data.Db.IRelationalCheckOps
     {
         public MySqlDataReaderProvider(Valtuutus.Data.Db.DbConnectionFactory connectionFactory, Valtuutus.Data.ValtuutusDataOptions options, Valtuutus.Data.MySql.ValtuutusMySqlOptions dbOptions) { }
@@ -63,6 +82,7 @@ namespace Valtuutus.Data.MySql
         public ValtuutusMySqlOptions(Valtuutus.Data.MySql.MySqlServerType serverType) { }
         public ValtuutusMySqlOptions(Valtuutus.Data.MySql.MySqlServerType serverType, string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
         public string AttributesTableName { get; }
+        public int LookupHopsPerQuery { get; init; }
         public string RelationsTableName { get; }
         public string Schema { get; }
         public Valtuutus.Data.MySql.MySqlServerType ServerType { get; }

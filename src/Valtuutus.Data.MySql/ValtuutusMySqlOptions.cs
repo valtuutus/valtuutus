@@ -35,4 +35,12 @@ public record ValtuutusMySqlOptions : IValtuutusDbOptions
     public string TransactionsTableName { get; private set; } = "transactions";
     public string RelationsTableName { get; private set; } = "relation_tuples";
     public string AttributesTableName { get; private set; } = "attributes";
+
+    /// <summary>
+    /// Levels of a userset chain one LookupSubject query reads, and hops of a self-recursive
+    /// relation's walk one LookupEntity query follows; 1 reads one level per round trip. The
+    /// statement stops at the first level that adds nothing new, so a chain shallower than this
+    /// costs no extra levels.
+    /// </summary>
+    public int LookupHopsPerQuery { get; init; } = 12;
 }

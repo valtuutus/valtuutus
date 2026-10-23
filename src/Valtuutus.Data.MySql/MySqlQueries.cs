@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Valtuutus.Core.Data;
 using Valtuutus.Data.Db;
 using static Valtuutus.Data.MySql.MySqlSql;
 
@@ -13,8 +14,21 @@ internal sealed record MySqlQueries
 {
     private static readonly ConcurrentDictionary<(DbQueryCacheKey Tables, MySqlServerType ServerType, string Snap), MySqlQueries> Cache = new();
 
-    internal static MySqlQueries Get(ValtuutusMySqlOptions o) =>
-        Cache.GetOrAdd((DbQueryCacheKey.From(o), o.ServerType, "@snap_token"), static (_, opts) => Build(opts, "@snap_token"), o);
+    internal const string SnapTokenParameter = "@snap_token";
+
+    // The session variable the batch-resolved snap token is parked in. Only a batch whose first
+    // command is ResolveLatestSnapTokenForBatch may read it: pooled connections keep their session
+    // state, so anywhere else it holds whatever an earlier batch left there.
+    internal const string BatchResolvedSnapToken = "@valtuutus_snap";
+
+    internal static MySqlQueries Get(ValtuutusMySqlOptions o) => Get(o, SnapTokenParameter);
+
+    // The same statements reading the token from the batch-resolved session variable instead of a
+    // bound parameter.
+    internal static MySqlQueries GetBatchResolved(ValtuutusMySqlOptions o) => Get(o, BatchResolvedSnapToken);
+
+    private static MySqlQueries Get(ValtuutusMySqlOptions o, string snap) =>
+        Cache.GetOrAdd((DbQueryCacheKey.From(o), o.ServerType, snap), static (key, opts) => Build(opts, key.Snap), o);
 
     public required MySqlServerType ServerType { get; init; }
     public required string Snap { get; init; }
@@ -22,6 +36,10 @@ internal sealed record MySqlQueries
     public required string AttributesTable { get; init; }
 
     public required string GetLatestSnapToken { get; init; }
+
+    // Sets the batch-resolved session variable to the latest token, then returns it. The SET
+    // produces no result set, so the command yields exactly one: one row, the token.
+    public required string ResolveLatestSnapTokenForBatch { get; init; }
     public required string HasDirectRelation { get; init; }
     public required string HasAnyDirectRelationMany { get; init; }
     public required string HasAnyOfDirectRelationsOne { get; init; }
@@ -125,6 +143,10 @@ internal sealed record MySqlQueries
             AttributesTable = at,
 
             GetLatestSnapToken = Compact($"SELECT id FROM {tx} ORDER BY id DESC LIMIT 1"),
+            ResolveLatestSnapTokenForBatch = Compact($"""
+                SET {BatchResolvedSnapToken} = COALESCE((SELECT id FROM {tx} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}');
+                SELECT {BatchResolvedSnapToken}
+                """),
             HasDirectRelation = Compact($"SELECT {directExists}"),
             HasAnyDirectRelationMany = Compact($"""
                 SELECT EXISTS(SELECT 1 FROM {JsonIds("@entity_ids", "j")} JOIN {rt} r ON r.entity_id = j.id

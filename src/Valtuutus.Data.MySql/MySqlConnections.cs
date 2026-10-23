@@ -8,9 +8,12 @@ internal static class MySqlConnections
 {
     private static readonly ConcurrentDictionary<string, MySqlDataSource> DataSourceCache = new();
 
-    // One pool per connection string, shared by every reader built from the same factory.
+    // One pool per connection string, shared by every reader and batch ops built from the same
+    // factory. A batch-resolved snap token lives in a session variable the batch sets and reads,
+    // which MySqlConnector sends only with user variables allowed.
     internal static MySqlDataSource GetOrCreateDataSource(string connectionString) =>
-        DataSourceCache.GetOrAdd(connectionString, static cs => new MySqlDataSource(cs));
+        DataSourceCache.GetOrAdd(connectionString, static cs => new MySqlDataSource(
+            new MySqlConnectionStringBuilder(cs) { AllowUserVariables = true }.ConnectionString));
 
     internal static string DbSystem(MySqlServerType serverType) =>
         serverType == MySqlServerType.MariaDb ? "mariadb" : "mysql";

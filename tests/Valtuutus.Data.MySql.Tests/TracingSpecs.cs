@@ -23,10 +23,8 @@ namespace Valtuutus.Data.MySql.Tests
 
         public Task DisposeAsync() => Task.CompletedTask;
 
-        // The reader runs one statement per round trip, so a tokenless check resolves its token in a
-        // round trip of its own before the one that answers it.
         [Fact]
-        public async Task Tokenless_check_round_trips_carry_the_db_system()
+        public async Task Tokenless_check_resolves_its_token_in_the_batched_round_trip_span()
         {
             var services = new ServiceCollection().AddValtuutusCore(Schema);
             services.AddMySql(_ => fixture.DbFactory, fixture.Options);
@@ -42,13 +40,13 @@ namespace Valtuutus.Data.MySql.Tests
             var check = spans.Named("valtuutus.check").Should().ContainSingle().Subject;
             check.GetTagItem("valtuutus.snap_token").Should().Be(written.Value);
             check.GetTagItem("valtuutus.result").Should().Be(true);
-            check.GetTagItem("valtuutus.round_trips").Should().Be(2);
-            var roundTrips = await spans.WaitForChildren(check, 2);
-            roundTrips.Should().HaveCount(2);
-            roundTrips.Should().OnlyContain(a => a.OperationName == "valtuutus.round_trip"
-                && (string?)a.GetTagItem("db.system.name") == dbSystem);
-            roundTrips.SelectMany(a => (string[])a.GetTagItem("valtuutus.queries")!)
-                .Should().Contain("GetLatestSnapToken");
+            check.GetTagItem("valtuutus.round_trips").Should().Be(1);
+            var roundTrip = (await spans.WaitForChildren(check, 1)).Should().ContainSingle().Subject;
+            roundTrip.OperationName.Should().Be("valtuutus.round_trip");
+            roundTrip.GetTagItem("db.system.name").Should().Be(dbSystem);
+            roundTrip.GetTagItem("valtuutus.resolves_snap_token").Should().Be(true);
+            roundTrip.GetTagItem("valtuutus.straggler").Should().BeNull("the answer came from this round trip");
+            ((string[])roundTrip.GetTagItem("valtuutus.queries")!).Should().NotBeEmpty();
         }
 
         [Fact]

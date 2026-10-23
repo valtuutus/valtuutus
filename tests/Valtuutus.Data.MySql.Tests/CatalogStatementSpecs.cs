@@ -1,23 +1,31 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
+using Valtuutus.Core;
+using Valtuutus.Core.Data;
 using Valtuutus.Data.Db;
 
 namespace Valtuutus.Data.MySql.Tests
 {
     /// <summary>
-    /// Runs every reader statement with each parameter it names bound. An <c>@name</c> left unbound
-    /// must fail loudly: with user variables allowed it would read as a NULL user variable and the
-    /// statement would quietly match nothing. The connection here turns user variables off
-    /// explicitly, whatever the fixture's connection string says, so an unbound name fails and a
-    /// misspelt parameter name can't ship.
+    /// Runs every catalog statement, in both the bound-token and the batch-resolved catalog, on the
+    /// server, which proves each one parses and executes. Each <c>@name</c> the statement text reads
+    /// is bound to a dummy value, on a connection with user variables off so a name the dummies miss
+    /// fails instead of reading as NULL. The dummies come from the text itself, so this says nothing
+    /// about the provider's binders: <see cref="ParameterBindingSpecs"/> checks that they bind
+    /// exactly the names their statements read.
     /// </summary>
     public abstract partial class CatalogStatementSpecsBase(MySqlFixtureBase fixture)
     {
-        // String members of the catalog that hold names rather than statements.
+        // String members of the catalog that hold names rather than statements, and the resolver,
+        // which assigns the session variable and so runs only with user variables allowed.
         private static readonly HashSet<string> NonStatements =
-            [nameof(MySqlQueries.Snap), nameof(MySqlQueries.RelationsTable), nameof(MySqlQueries.AttributesTable)];
+        [
+            nameof(MySqlQueries.Snap), nameof(MySqlQueries.RelationsTable), nameof(MySqlQueries.AttributesTable),
+            nameof(MySqlQueries.ResolveLatestSnapTokenForBatch),
+        ];
 
         public static TheoryData<string> Statements()
         {
@@ -34,20 +42,130 @@ namespace Valtuutus.Data.MySql.Tests
 
         [Theory]
         [MemberData(nameof(Statements))]
-        public async Task Catalog_statement_binds_every_parameter_it_names(string statement)
+        public async Task Catalog_statement_runs(string statement)
         {
-            var queries = MySqlQueries.Get(fixture.Options);
-            var sql = (string)typeof(MySqlQueries).GetProperty(statement)!.GetValue(queries)!;
+            await ExecuteWithDummyParameters(StatementOf(MySqlQueries.Get(fixture.Options), statement));
+        }
+
+        [Theory]
+        [MemberData(nameof(Statements))]
+        public async Task Batch_resolved_catalog_statement_runs(string statement)
+        {
+            await ExecuteWithDummyParameters(StatementOf(MySqlQueries.GetBatchResolved(fixture.Options), statement));
+        }
+
+        public enum LevelsKind
+        {
+            RelationsLevels,
+            RelationsLevelsFromSubject,
+            UsersetLevels,
+        }
+
+        // Every level count each levels kind is built for, under the default hops per query.
+        public static TheoryData<LevelsKind, int, bool> LevelsStatements()
+        {
+            var data = new TheoryData<LevelsKind, int, bool>();
+            foreach (var kind in Enum.GetValues<LevelsKind>())
+            {
+                var statements = LevelsStatementsOf(kind, new ValtuutusMySqlOptions(MySqlServerType.MySql), false);
+                for (var levels = 0; levels < statements.Length; levels++)
+                {
+                    if (statements[levels] is null)
+                        continue;
+                    data.Add(kind, levels, false);
+                    data.Add(kind, levels, true);
+                }
+            }
+            return data;
+        }
+
+        private static string[] LevelsStatementsOf(LevelsKind kind, ValtuutusMySqlOptions options, bool batchResolved)
+        {
+            var snap = batchResolved ? MySqlQueries.BatchResolvedSnapToken : MySqlQueries.SnapTokenParameter;
+            return kind switch
+            {
+                LevelsKind.RelationsLevels => MySqlLookupEntityBatchOps.RelationsLevelsStatements(options, snap, fromSubject: false),
+                LevelsKind.RelationsLevelsFromSubject => MySqlLookupEntityBatchOps.RelationsLevelsStatements(options, snap, fromSubject: true),
+                LevelsKind.UsersetLevels => MySqlLookupSubjectBatchOps.UsersetLevelsStatements(options, snap),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(LevelsStatements))]
+        public async Task Levels_statement_runs(LevelsKind kind, int levels, bool batchResolved)
+        {
+            var sql = LevelsStatementsOf(kind, fixture.Options, batchResolved)[levels];
+
+            sql.Should().Contain(batchResolved ? MySqlQueries.BatchResolvedSnapToken : MySqlQueries.SnapTokenParameter);
+            await ExecuteWithDummyParameters(sql);
+        }
+
+        [Fact]
+        public void Batch_resolved_statements_read_the_session_variable_instead_of_the_parameter()
+        {
+            var queries = MySqlQueries.GetBatchResolved(fixture.Options);
+            var texts = StatementProperties().Select(p => (string)p.GetValue(queries)!)
+                .Append(queries.ResolveLatestSnapTokenForBatch)
+                .Append(FusedExpressionSql.BuildStatement(EveryLeafKind(), false, queries))
+                .Append(FusedExpressionSql.BuildStatement(EveryLeafKind(), true, queries))
+                .Concat(Enum.GetValues<LevelsKind>()
+                    .SelectMany(kind => LevelsStatementsOf(kind, fixture.Options, batchResolved: true))
+                    .OfType<string>())
+                .ToList();
+
+            texts.Should().NotContain(t => t.Contains("@snap_token"));
+            texts.Should().Contain(t => t.Contains(MySqlQueries.BatchResolvedSnapToken));
+        }
+
+        [Theory]
+        [InlineData(false, false)]
+        [InlineData(true, false)]
+        [InlineData(false, true)]
+        [InlineData(true, true)]
+        public async Task Fused_statement_over_every_leaf_kind_runs(bool requireAll,
+            bool batchResolved)
+        {
+            var leaves = EveryLeafKind();
+            leaves.Select(l => l.Kind).Distinct().Should().BeEquivalentTo(Enum.GetValues<FusedLeafKind>());
+            var queries = batchResolved
+                ? MySqlQueries.GetBatchResolved(fixture.Options)
+                : MySqlQueries.Get(fixture.Options);
+
+            var sql = FusedExpressionSql.BuildStatement(leaves, requireAll, queries);
 
             await ExecuteWithDummyParameters(sql);
         }
 
-        [Theory]
-        [InlineData(false)]
-        [InlineData(true)]
-        public async Task Fused_statement_over_every_leaf_kind_binds_every_parameter_it_names(bool requireAll)
+        [Fact]
+        public async Task Resolver_returns_the_latest_token_and_parks_it_for_the_batch()
         {
-            FusedCheckLeaf[] leaves =
+            var writer = new MySqlDataWriterProvider(fixture.DbFactory, new ServiceCollection().BuildServiceProvider(),
+                new ValtuutusDataOptions(), fixture.Options);
+            var written = await writer.Write([new RelationTuple("doc", "resolver", "owner", "user", "alice")], [], default);
+            var ops = new MySqlBatchOps(fixture.DbFactory, new ValtuutusDataOptions(), fixture.Options);
+            var batch = ops.CreateBatch();
+            ops.AddResolveLatestSnapTokenToBatch(batch);
+            ops.UsingBatchResolvedSnapToken.AddHasDirectRelationToBatch(batch, new RelationTupleFilter
+            {
+                EntityType = "doc", EntityId = "resolver", Relation = "owner", SnapToken = SnapToken.MinValue
+            }, "alice");
+
+            await using var reader = await ops.ExecuteBatchAsync(batch, default);
+
+            (await reader.ReadAsync()).Should().BeTrue();
+            reader.GetString(0).Should().Be(written.Value);
+            (await reader.ReadAsync()).Should().BeFalse();
+            (await reader.NextResultAsync()).Should().BeTrue();
+            (await reader.ReadAsync()).Should().BeTrue();
+            reader.GetBoolean(0).Should().BeTrue("the check reads the token the resolver parked");
+            (await reader.NextResultAsync()).Should().BeFalse();
+        }
+
+        private static string StatementOf(MySqlQueries queries, string statement) =>
+            (string)typeof(MySqlQueries).GetProperty(statement)!.GetValue(queries)!;
+
+        private static FusedCheckLeaf[] EveryLeafKind() =>
             [
                 new(FusedLeafKind.Direct, Negate: true, ["owner"]),
                 new(FusedLeafKind.Direct, Negate: false, ["viewer"]),
@@ -61,12 +179,6 @@ namespace Valtuutus.Data.MySql.Tests
                 new(FusedLeafKind.TupleToUserSet, Negate: true, ["parent"],
                     TtuSubEntityType: "organization", TtuComputedRelation: "member"),
             ];
-            leaves.Select(l => l.Kind).Distinct().Should().BeEquivalentTo(Enum.GetValues<FusedLeafKind>());
-
-            var sql = FusedExpressionSql.BuildStatement(leaves, requireAll, MySqlQueries.Get(fixture.Options));
-
-            await ExecuteWithDummyParameters(sql);
-        }
 
         [Fact]
         public async Task An_unbound_parameter_fails_on_this_connection()
@@ -109,13 +221,13 @@ namespace Valtuutus.Data.MySql.Tests
         private static IEnumerable<string> ParameterNames(string sql) =>
             ParameterPattern().Matches(sql).Select(m => m.Value).Distinct(StringComparer.Ordinal);
 
-        // Lists of ids and names go in as JSON arrays; the snap token is a ULID; everything else is a
-        // key. Any value works: the statements only have to run.
+        // Lists of ids and names go in as JSON arrays; the snap token, bound or batch-resolved, is a
+        // ULID; everything else is a key. Any value works: the statements only have to run.
         private static MySqlParameter DummyParameter(string name)
         {
             if (JsonListPattern().IsMatch(name))
                 return new MySqlParameter(name, MySqlDbType.JSON) { Value = """["x","y"]""" };
-            if (name == "@snap_token")
+            if (name is "@snap_token" or MySqlQueries.BatchResolvedSnapToken)
                 return new MySqlParameter(name, MySqlDbType.String) { Value = Ulid.NewUlid().ToString() };
             return new MySqlParameter(name, MySqlDbType.VarChar) { Value = "x" };
         }

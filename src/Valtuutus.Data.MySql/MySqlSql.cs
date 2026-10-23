@@ -97,6 +97,16 @@ internal static class MySqlSql
 
     internal static void AddJsonArray(DbParameterCollection parameters, string name, IEnumerable<string> values) =>
         parameters.Add(new MySqlParameter(name, MySqlDbType.JSON) { Value = ToJsonArray(values) });
+
+    // One value binds to the equality form's scalar parameter, any other count to the JSON form's array.
+    internal static void AddOneOrMany(DbParameterCollection parameters, string scalarName, string arrayName,
+        string[] values, int scalarSize)
+    {
+        if (values.Length == 1)
+            AddString(parameters, scalarName, values[0], scalarSize);
+        else
+            AddJsonArray(parameters, arrayName, values);
+    }
 }
 
 [JsonSerializable(typeof(string[]))]
