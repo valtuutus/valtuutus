@@ -84,14 +84,18 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
         batch.BatchCommands.Add(cmd);
     }
 
+    // Every level reads only the tuples that name the previous level's ids, so the joins are
+    // written previous-level-first and the order is forced, with nested loops: left to estimates,
+    // the optimizer may drive a level from the relation's whole range instead, or run the
+    // statement in parallel, whose startup each re-expanded level CTE pays again.
+    private const string LevelsQueryHints = "OPTION (FORCE ORDER, LOOP JOIN, MAXDOP 1)";
+
     // Level 0 is the relation's tuples for the ids; level i is the tuples of the usersets level
     // i-1 lists, deduplicated so diamonds don't multiply rows. Plain subjects of the subject type
     // come from every level, usersets from the last one only.
     private static string[] UsersetLevelsStatements(string relations, int hops, string prefix)
     {
-        const string snap = SqlServerDataReaderProvider.SnapPredicate;
-        // Qualified: the levels after the first join relation_tuples to the previous level's CTE.
-        const string joinedSnap =
+        const string snap =
             "r.created_tx_id <= @SnapToken AND (r.deleted_tx_id IS NULL OR r.deleted_tx_id > @SnapToken)";
         var statements = new string[Math.Max(hops, 2) + 1];
         for (var levels = 2; levels < statements.Length; levels++)
@@ -99,10 +103,9 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
             var sql = new StringBuilder(prefix);
             sql.Append($"""
                 WITH l0 AS (
-                    SELECT subject_type, subject_id, subject_relation FROM {relations}
-                    WHERE {snap}
-                      AND entity_type = @EntityType AND relation = @Relation
-                      AND entity_id IN ({IdList.From("@EntityIds")})
+                    SELECT r.subject_type, r.subject_id, r.subject_relation FROM {IdList.Rows("@EntityIds", "ids")}
+                    JOIN {relations} r ON r.entity_id = ids.id
+                    WHERE {snap} AND r.entity_type = @EntityType AND r.relation = @Relation
                 )
                 """);
             for (var i = 1; i < levels; i++)
@@ -110,10 +113,10 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
                 sql.Append($"""
 
                     , l{i} AS (
-                        SELECT DISTINCT r.subject_type, r.subject_id, r.subject_relation FROM {relations} r
-                        JOIN l{i - 1} p ON r.entity_type = p.subject_type AND r.entity_id = p.subject_id
-                                       AND r.relation = p.subject_relation
-                        WHERE {joinedSnap} AND p.subject_relation <> N''
+                        SELECT DISTINCT r.subject_type, r.subject_id, r.subject_relation FROM l{i - 1} p
+                        JOIN {relations} r ON r.entity_type = p.subject_type AND r.entity_id = p.subject_id
+                                          AND r.relation = p.subject_relation
+                        WHERE {snap} AND p.subject_relation <> N''
                     )
                     """);
             }
@@ -125,6 +128,7 @@ internal sealed class SqlServerLookupSubjectBatchOps : ILookupSubjectBatchOps
                     ? "\nWHERE subject_type = @SubjectType AND subject_relation = N''"
                     : "\nWHERE (subject_type = @SubjectType AND subject_relation = N'') OR subject_relation <> N''");
             }
+            sql.Append($"\n{LevelsQueryHints}");
             statements[levels] = sql.ToString();
         }
         return statements;
