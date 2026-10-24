@@ -171,10 +171,10 @@ builder.Services
 ```
 
 ## Database migrations
-If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function.
-- [Postgres](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql)
-- [SqlServer](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql)
-- [MySQL and MariaDB](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
+If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function. Run each provider's scripts in order; the file names start with a timestamp, and an upgrade runs only the scripts newer than the ones already applied.
+- Postgres: [initial](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql), [lookup indexes](src/Valtuutus.Data.Postgres/Database/migrations/20261024190000_lookup_indexes.sql)
+- SqlServer: [initial](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql), [lookup indexes](src/Valtuutus.Data.SqlServer/Database/migrations/20261024190000_lookup_indexes.sql)
+- MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
 
 ## Schema and table name customization
 

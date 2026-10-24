@@ -740,6 +740,8 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                   AND a.entity_type = @EntityType
                   AND a.attribute IN
                 """,
+            // NOT EXISTS lets the optimizer read the exclusion list once; NOT IN over it is a
+            // null-aware anti-join that reads the list again for every candidate row.
             GetEntityIdsExcluding = $"""
                 SELECT DISTINCT entity_id
                 FROM (
@@ -749,7 +751,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     SELECT entity_id FROM {attributesTable}
                     WHERE {snapPredicate} AND entity_type = @EntityType
                 ) universe
-                WHERE entity_id NOT IN ({IdList.From("@ExcludeIds")})
+                WHERE NOT EXISTS (SELECT 1 FROM {IdList.Rows("@ExcludeIds", "x")} WHERE x.id = universe.entity_id)
                 """,
             GetSubjectIdsExcluding = $"""
                 SELECT DISTINCT subject_id
@@ -757,7 +759,7 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                 WHERE {snapPredicate}
                   AND subject_type = @SubjectType
                   AND subject_relation = ''
-                  AND subject_id NOT IN ({IdList.From("@ExcludeIds")})
+                  AND NOT EXISTS (SELECT 1 FROM {IdList.Rows("@ExcludeIds", "x")} WHERE x.id = subject_id)
                 """,
         };
     }
