@@ -112,6 +112,12 @@ internal sealed class SqlServerLookupEntityBatchOps : ILookupEntityBatchOps
 
     private static string[] AsArray(IReadOnlyCollection<string> ids) => ids as string[] ?? ids.ToArray();
 
+    // Every level reads only the tuples that name the previous level's ids, so the joins are
+    // written previous-level-first and the order is forced, with nested loops: left to estimates,
+    // the optimizer may drive a level from the relation's whole range instead, or run the
+    // statement in parallel, whose startup each re-expanded level CTE pays again.
+    private const string LevelsQueryHints = "OPTION (FORCE ORDER, LOOP JOIN, MAXDOP 1)";
+
     // From ids, level 1 is the relation's entities whose tuples name an id through the relation,
     // plus the level-one ids. From the subject, level 0 is the relation's entities whose tuples name
     // the direct subject, and level 1 follows it. Level i follows level i-1 the same way,
@@ -119,9 +125,7 @@ internal sealed class SqlServerLookupEntityBatchOps : ILookupEntityBatchOps
     // reaching it, carrying the relation when that level is the last.
     private static string[] RelationsLevelsStatements(string relations, int hops, string prefix, bool fromSubject)
     {
-        const string snap = SqlServerDataReaderProvider.SnapPredicate;
-        // Qualified: the levels after the first join relation_tuples to the previous level's CTE.
-        const string joinedSnap =
+        const string snap =
             "r.created_tx_id <= @SnapToken AND (r.deleted_tx_id IS NULL OR r.deleted_tx_id > @SnapToken)";
         var first = fromSubject ? 0 : 1;
         var statements = new string[Math.Max(hops, 2) + 1];
@@ -131,18 +135,19 @@ internal sealed class SqlServerLookupEntityBatchOps : ILookupEntityBatchOps
             sql.Append(fromSubject
                 ? $"""
                     WITH l0 AS (
-                        SELECT entity_id FROM {relations}
+                        SELECT r.entity_id FROM {relations} r
                         WHERE {snap}
-                          AND entity_type = @EntityType AND relation = @Relation AND subject_type = @SubjectType
-                          AND subject_id = @SubjectId AND subject_relation = N''
+                          AND r.entity_type = @EntityType AND r.relation = @Relation AND r.subject_type = @SubjectType
+                          AND r.subject_id = @SubjectId AND r.subject_relation = N''
                     )
                     """
                 : $"""
                     WITH l1 AS (
-                        SELECT entity_id FROM {relations}
+                        SELECT r.entity_id FROM {IdList.Rows("@Ids", "ids")}
+                        JOIN {relations} r ON r.subject_id = ids.id
                         WHERE {snap}
-                          AND entity_type = @EntityType AND relation = @Relation AND subject_type = @EntityType
-                          AND subject_id IN ({IdList.From("@Ids")}) AND subject_relation = @Relation
+                          AND r.entity_type = @EntityType AND r.relation = @Relation AND r.subject_type = @EntityType
+                          AND r.subject_relation = @Relation
                         UNION
                         {IdList.From("@LevelOneIds")}
                     )
@@ -152,9 +157,9 @@ internal sealed class SqlServerLookupEntityBatchOps : ILookupEntityBatchOps
                 sql.Append($"""
 
                     , l{i} AS (
-                        SELECT DISTINCT r.entity_id FROM {relations} r
-                        JOIN l{i - 1} p ON r.subject_id = p.entity_id
-                        WHERE {joinedSnap}
+                        SELECT DISTINCT r.entity_id FROM l{i - 1} p
+                        JOIN {relations} r ON r.subject_id = p.entity_id
+                        WHERE {snap}
                           AND r.entity_type = @EntityType AND r.relation = @Relation
                           AND r.subject_type = @EntityType AND r.subject_relation = @Relation
                     )
@@ -172,7 +177,7 @@ internal sealed class SqlServerLookupEntityBatchOps : ILookupEntityBatchOps
                 if (i > first) sql.Append("\n    UNION ALL");
                 sql.Append($"\n    SELECT entity_id, {i} AS lvl FROM l{i}");
             }
-            sql.Append("\n) x\nGROUP BY entity_id");
+            sql.Append($"\n) x\nGROUP BY entity_id\n{LevelsQueryHints}");
             statements[levels] = sql.ToString();
         }
         return statements;

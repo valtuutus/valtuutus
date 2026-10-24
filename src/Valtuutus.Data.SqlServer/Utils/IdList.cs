@@ -19,6 +19,13 @@ internal static class IdList
     internal static string From(string parameterName) =>
         $"SELECT id FROM OPENJSON({parameterName}) WITH (id nvarchar(64) '$')";
 
+    /// <summary>
+    /// The list in <paramref name="parameterName"/> as a row source named <paramref name="alias"/>
+    /// with one <c>id</c> column, for use in a FROM clause as the side that drives a join.
+    /// </summary>
+    internal static string Rows(string parameterName, string alias) =>
+        $"OPENJSON({parameterName}) WITH (id nvarchar(64) '$') {alias}";
+
     internal static void AddParameter(SqlParameterCollection parameters, string name, IEnumerable<string> values) =>
         parameters.Add(new SqlParameter(name, SqlDbType.NVarChar, -1)
         {
