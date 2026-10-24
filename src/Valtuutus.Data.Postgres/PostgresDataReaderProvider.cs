@@ -21,6 +21,18 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
     // scalar subquery, so it is evaluated once per statement (an InitPlan compared like a
     // parameter) instead of once per filtered row like a bare function call.
     internal const string BatchResolvedSnapTokenExpression = $"(SELECT current_setting('{BatchResolvedSnapTokenSetting}')::char(26))";
+
+    // Internal so both lookup batch ops send it ahead of their levels statements. A levels
+    // statement's generic plan estimate, over its chained level CTEs, looks costlier than a custom
+    // plan's, so under the default plan cache mode Postgres re-plans it on every execution; its
+    // generic plan seeks the same indexes. SET LOCAL lasts for the batch's transaction and returns
+    // no rows, so the batch's result sets keep one per query.
+    internal static void AddGenericPlans(System.Data.Common.DbBatch batch)
+    {
+        var cmd = batch.CreateBatchCommand();
+        cmd.CommandText = "SET LOCAL plan_cache_mode = force_generic_plan";
+        batch.BatchCommands.Add(cmd);
+    }
     // Internal so FusedExpressionSql, which builds the fused-expression fragments for both this
     // class's HasFusedExpression and PostgresBatchOps.AddHasFusedExpressionToBatch, uses the
     // exact snap-token predicate text those queries use.
