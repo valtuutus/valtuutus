@@ -78,46 +78,33 @@ internal sealed class PostgresLookupSubjectBatchOps(ValtuutusPostgresOptions dbO
     }
 
     // Level 0 is the relation's tuples for the ids; level i is the tuples of the usersets level
-    // i-1 lists, deduplicated so diamonds don't multiply rows. Plain subjects of the subject type
-    // come from every level, usersets from the last one only. The snap predicate is unqualified:
-    // inside a level the CTE it joins exposes only subject columns, so the transaction columns
-    // resolve to the relation table.
+    // i-1 lists, up to level count - 1. The recursive UNION drops a repeated (subject, level) pair,
+    // so diamonds don't multiply rows, and the level cap stops a cycle. Plain subjects of the subject
+    // type come from every level, usersets from the last one only. The anchor and the recursive
+    // member are the only table references, whatever the level count.
     private static PgStatement[] UsersetLevelsStatements(ValtuutusPostgresOptions dbOptions, string snap)
     {
         var relations = PostgresDataReaderProvider.GetQueries(dbOptions).RelationsTable;
-        var predicate = PostgresDataReaderProvider.SnapTokenPredicateFor(snap);
+        var predicate = PostgresDataReaderProvider.SnapTokenPredicateFor(snap, "r");
         var statements = new PgStatement[Math.Max(dbOptions.LookupHopsPerQuery, 2) + 1];
         for (var levels = 2; levels < statements.Length; levels++)
         {
-            var sql = new StringBuilder();
-            sql.Append($"""
-                WITH l0 AS (
-                    SELECT subject_type, subject_id, subject_relation FROM {relations}
+            var last = levels - 1;
+            statements[levels] = PgStatement.Compile($"""
+                WITH RECURSIVE l (subject_type, subject_id, subject_relation, lvl) AS (
+                    SELECT r.subject_type, r.subject_id, r.subject_relation, 0 FROM {relations} r
                     WHERE {predicate}
-                      AND entity_type = @entity_type AND relation = @relation AND entity_id = ANY(@entity_ids)
+                      AND r.entity_type = @entity_type AND r.relation = @relation AND r.entity_id = ANY(@entity_ids)
+                    UNION
+                    SELECT r.subject_type, r.subject_id, r.subject_relation, l.lvl + 1 FROM {relations} r
+                    JOIN l ON r.entity_type = l.subject_type AND r.entity_id = l.subject_id
+                          AND r.relation = l.subject_relation
+                    WHERE {predicate} AND l.subject_relation <> '' AND l.lvl < {last}
                 )
+                SELECT '' AS entity_type, '' AS entity_id, '' AS relation, subject_type, subject_id, subject_relation
+                FROM l
+                WHERE (subject_type = @subject_type AND subject_relation = '') OR (lvl = {last} AND subject_relation <> '')
                 """);
-            for (var i = 1; i < levels; i++)
-            {
-                sql.Append($"""
-
-                    , l{i} AS (
-                        SELECT DISTINCT r.subject_type, r.subject_id, r.subject_relation FROM {relations} r
-                        JOIN l{i - 1} p ON r.entity_type = p.subject_type AND r.entity_id = p.subject_id
-                                       AND r.relation = p.subject_relation
-                        WHERE {predicate} AND p.subject_relation <> ''
-                    )
-                    """);
-            }
-            for (var i = 0; i < levels; i++)
-            {
-                if (i > 0) sql.Append("\nUNION ALL");
-                sql.Append($"\nSELECT '' AS entity_type, '' AS entity_id, '' AS relation, subject_type, subject_id, subject_relation FROM l{i}");
-                sql.Append(i < levels - 1
-                    ? "\nWHERE subject_type = @subject_type AND subject_relation = ''"
-                    : "\nWHERE (subject_type = @subject_type AND subject_relation = '') OR subject_relation <> ''");
-            }
-            statements[levels] = PgStatement.Compile(sql.ToString());
         }
         return statements;
     }
