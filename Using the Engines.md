@@ -302,13 +302,15 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
     _ => () => new NpgsqlConnection(connectionString),
     new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes")
     {
-        LookupHopsPerQuery = 3 // default 2; 1 reads one level per round trip
+        LookupHopsPerQuery = 4 // default 12; 1 reads one level per round trip
     });
 ```
 
-Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels.
+On Postgres, MySQL and MariaDB the default is `12`. Their levels query stops at the first level that adds nothing, so a shallow hierarchy costs the same under a high value, and a hierarchy up to twelve levels deep takes one round trip.
 
-On MySQL and MariaDB the default is `12`. Their levels query stops at the first level that adds nothing, so a shallow hierarchy costs the same under a high value. Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
+On SQL Server the default is `2`. Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels.
+
+Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
 
 The InMemory provider runs the same engines, without the round-trip batching.
 

@@ -33,7 +33,7 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
     /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
     /// relation's walk one LookupEntity V2 query follows; 1 reads one level per round trip.
     /// </summary>
-    public int LookupHopsPerQuery { get; init; } = 2;
+    public int LookupHopsPerQuery { get; init; } = 12;
 
     /// <summary>
     /// Tuples of the checked entity a userset or tuple-to-userset check reads before searching from
