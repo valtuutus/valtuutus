@@ -308,7 +308,7 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
 
 On Postgres, MySQL and MariaDB the default is `12`. Their levels query stops at the first level that adds nothing, so a shallow hierarchy costs the same under a high value, and a hierarchy up to twelve levels deep takes one round trip.
 
-On SQL Server the default is `2`. Higher values save round trips on deep hierarchies, but each query gets larger. Keep the default unless your hierarchies are consistently deeper than two levels.
+On SQL Server the default is `2`. Its levels query reads every level up to the count, and each extra level costs about as much as the round trip it saves, so keep the default unless your hierarchies are consistently deeper than two levels.
 
 Depth limits are unchanged: `Depth` still counts schema hops, whatever `LookupHopsPerQuery` is set to.
 
