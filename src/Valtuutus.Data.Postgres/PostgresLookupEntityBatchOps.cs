@@ -82,13 +82,13 @@ internal sealed class PostgresLookupEntityBatchOps(ValtuutusPostgresOptions dbOp
                     snapToken);
                 break;
             case LookupEntityQueryKind.RelationsLevels:
-                AddGenericPlans(batch);
+                PostgresDataReaderProvider.AddGenericPlans(batch);
                 statement = (snapToken is null ? _relationsLevelsBatchResolved : _relationsLevels)[query.Levels];
                 PostgresDataReaderProvider.AddRelationsLevelsParameters(parameters, query.EntityType, query.Relation,
                     query.Ids, query.LevelOneIds, snapToken);
                 break;
             case LookupEntityQueryKind.RelationsLevelsFromSubject:
-                AddGenericPlans(batch);
+                PostgresDataReaderProvider.AddGenericPlans(batch);
                 statement = (snapToken is null ? _relationsLevelsFromSubjectBatchResolved : _relationsLevelsFromSubject)[query.Levels];
                 PostgresDataReaderProvider.AddRelationsLevelsFromSubjectParameters(parameters, query.EntityType,
                     query.Relation, query.SubjectType, query.Ids.First(), snapToken);
@@ -102,17 +102,6 @@ internal sealed class PostgresLookupEntityBatchOps(ValtuutusPostgresOptions dbOp
     }
 
     private static string[] AsArray(IReadOnlyCollection<string> ids) => ids as string[] ?? ids.ToArray();
-
-    // A levels statement's generic plan estimate, over its chained level CTEs, looks costlier than
-    // a custom plan's, so under the default plan cache mode Postgres re-plans it on every
-    // execution; its generic plan seeks the same subject index. SET LOCAL lasts for the batch's transaction and returns no rows, so the
-    // batch's result sets keep one per query.
-    private static void AddGenericPlans(DbBatch batch)
-    {
-        var cmd = batch.CreateBatchCommand();
-        cmd.CommandText = "SET LOCAL plan_cache_mode = force_generic_plan";
-        batch.BatchCommands.Add(cmd);
-    }
 
     // From ids, level 1 is the relation's entities whose tuples name an id through the relation,
     // plus the level-one ids. From the subject, level 0 is the relation's entities whose tuples name

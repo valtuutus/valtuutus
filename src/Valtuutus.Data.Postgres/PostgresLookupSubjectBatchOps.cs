@@ -49,6 +49,7 @@ internal sealed class PostgresLookupSubjectBatchOps(ValtuutusPostgresOptions dbO
                     snapToken);
                 break;
             case LookupSubjectQueryKind.UsersetLevels:
+                PostgresDataReaderProvider.AddGenericPlans(batch);
                 statement = (snapToken is null ? _usersetLevelsBatchResolved : _usersetLevels)[query.Levels];
                 PostgresDataReaderProvider.AddUsersetLevelsParameters(parameters, query.EntityType, query.Relation,
                     query.Ids, query.SubjectType, snapToken);
