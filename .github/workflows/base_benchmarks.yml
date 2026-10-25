@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        provider: [InMemoryBenchmarks, PostgresBenchmarks, SqlServerBenchmarks]
+        provider: [InMemoryBenchmarks, PostgresBenchmarks, SqlServerBenchmarks, MySqlBenchmarks, MariaDbBenchmarks]
     steps:
       - uses: actions/checkout@v7
       - name: Setup dotnet
