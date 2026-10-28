@@ -82,6 +82,22 @@ public sealed class CachedEngineSpecs : IDisposable
     }
 
     [Fact]
+    public async Task A_latest_token_that_moves_backwards_in_the_cache_does_not_move_reads_backwards()
+    {
+        // Two offers race and the older one lands last (or another node overwrites the shared
+        // entry): requests on this node keep reading at the newest token it has seen.
+        await _cache.SetAsync(Consts.LatestSnapTokenKey, Newer);
+        var inner = new RecordingCheckEngine(Newer);
+        var engine = new CachedCheckEngine(_cache, inner);
+
+        await engine.Check(Request, default);
+        await _cache.SetAsync(Consts.LatestSnapTokenKey, Older);
+        await engine.Check(Request with { EntityId = "2" }, default);
+
+        inner.Requests.Select(r => r.SnapToken).Should().Equal(Newer, Newer);
+    }
+
+    [Fact]
     public async Task A_result_without_a_token_is_not_cached()
     {
         var inner = new RecordingCheckEngine(snapToken: null);

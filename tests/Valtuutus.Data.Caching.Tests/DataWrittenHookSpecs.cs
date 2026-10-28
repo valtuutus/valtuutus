@@ -2,6 +2,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
+using Valtuutus.Core.Engines.Check;
 using Xunit;
 using ZiggyCreatures.Caching.Fusion;
 
@@ -50,6 +51,38 @@ public sealed class DataWrittenHookSpecs : IDisposable
         (await Latest()).Should().Be(Newer);
     }
 
+    [Fact]
+    public async Task After_concurrent_announcements_a_request_without_a_token_reads_at_the_newest_one()
+    {
+        // Writes committed at the same time announce together: whichever order the announcements
+        // land in, a request without a token reads at the newest one.
+        var builder = Build();
+        const string crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+        var tokens = Enumerable.Range(0, 64)
+            .Select(i => new SnapToken($"01ARZ3NDEKTSV4RRFFQ69G5F{crockford[i / 32]}{crockford[i % 32]}"))
+            .ToArray();
+
+        for (var round = 0; round < 50; round++)
+        {
+            using var cache = new FusionCache(new FusionCacheOptions());
+            using var start = new ManualResetEventSlim();
+            var announcements = Enumerable.Reverse(tokens)
+                .Select(token => Task.Run(async () =>
+                {
+                    start.Wait();
+                    await Announce(builder, token, cache);
+                }))
+                .ToArray();
+            start.Set();
+            await Task.WhenAll(announcements);
+
+            var inner = new ReadAtCheckEngine();
+            await new CachedCheckEngine(cache, inner).Check(new CheckRequest("project", "1", "edit", "user", "alice"), default);
+
+            inner.ReadAt.Should().Be(tokens[^1], "round {0} must read at the newest token", round);
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -81,9 +114,9 @@ public sealed class DataWrittenHookSpecs : IDisposable
     }
 
     // Runs the handlers the way a data provider does once a write commits.
-    private async Task Announce(IValtuutusDataBuilder builder, SnapToken token)
+    private async Task Announce(IValtuutusDataBuilder builder, SnapToken token, IFusionCache? cache = null)
     {
-        var services = new CacheOnlyServiceProvider(_cache);
+        var services = new CacheOnlyServiceProvider(cache ?? _cache);
         foreach (var handler in builder.Options.OnDataWritten)
             await handler(services, token);
     }
@@ -92,6 +125,24 @@ public sealed class DataWrittenHookSpecs : IDisposable
     private sealed class CacheOnlyServiceProvider(IFusionCache cache) : IServiceProvider
     {
         public object? GetService(Type serviceType) => serviceType == typeof(IFusionCache) ? cache : null;
+    }
+
+    // Records the token the cache handed it to read at.
+    private sealed class ReadAtCheckEngine : ICheckEngine
+    {
+        public SnapToken? ReadAt { get; private set; }
+
+        public ValueTask<CheckResult> Check(CheckRequest req, CancellationToken cancellationToken)
+        {
+            ReadAt = req.SnapToken;
+            return new(new CheckResult { Allowed = true, SnapToken = req.SnapToken });
+        }
+
+        public ValueTask<SubjectPermissionResult> SubjectPermission(SubjectPermissionRequest req,
+            CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
     }
 
     private async Task<SnapToken?> Latest()
