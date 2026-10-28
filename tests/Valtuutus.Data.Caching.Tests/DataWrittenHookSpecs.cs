@@ -50,6 +50,35 @@ public sealed class DataWrittenHookSpecs : IDisposable
         (await Latest()).Should().Be(Newer);
     }
 
+    [Fact]
+    public async Task Concurrent_announcements_leave_the_newest_token_as_the_latest()
+    {
+        // Writes committed at the same time announce together: whichever order the announcements
+        // land in, the latest token ends at the newest one.
+        var builder = Build();
+        const string crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+        var tokens = Enumerable.Range(0, 64)
+            .Select(i => new SnapToken($"01ARZ3NDEKTSV4RRFFQ69G5F{crockford[i / 32]}{crockford[i % 32]}"))
+            .ToArray();
+
+        for (var round = 0; round < 50; round++)
+        {
+            await _cache.RemoveAsync(Consts.LatestSnapTokenKey);
+            using var start = new ManualResetEventSlim();
+            var announcements = Enumerable.Reverse(tokens)
+                .Select(token => Task.Run(async () =>
+                {
+                    start.Wait();
+                    await Announce(builder, token);
+                }))
+                .ToArray();
+            start.Set();
+            await Task.WhenAll(announcements);
+
+            (await Latest()).Should().Be(tokens[^1], "round {0} must end at the newest token", round);
+        }
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
