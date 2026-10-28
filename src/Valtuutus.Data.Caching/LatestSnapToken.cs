@@ -38,27 +38,18 @@ internal static class LatestSnapToken
         if (cached.HasValue && string.CompareOrdinal(cached.Value.Value, newest) >= 0)
             return;
 
-        // An offer racing this one may write an older token after this write lands, so the newest
-        // token seen is written again until no newer one arrived during the write.
-        while (true)
+        // A racing offer may still land an older token after this one; reads in this process take the
+        // newest token seen anyway, and the next offer brings the entry forward.
+        await cache.SetAsync(Consts.LatestSnapTokenKey, new SnapToken(newest), options =>
         {
-            await cache.SetAsync(Consts.LatestSnapTokenKey, new SnapToken(newest), options =>
-            {
-                options.SetDuration(Duration);
-                setupEntry?.Invoke(options);
-            }, cancellationToken);
-
-            var current = seen.Current;
-            if (string.Equals(current, newest, StringComparison.Ordinal)) return;
-            newest = current!;
-        }
+            options.SetDuration(Duration);
+            setupEntry?.Invoke(options);
+        }, cancellationToken);
     }
 
     private sealed class NewestSeen
     {
         private string? _value;
-
-        public string? Current => Volatile.Read(ref _value);
 
         /// <summary>Moves the newest token forward to <paramref name="candidate"/> if it is newer,
         /// and returns the newest token.</summary>
