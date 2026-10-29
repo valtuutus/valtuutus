@@ -83,6 +83,18 @@ public sealed class DataWrittenHookSpecs : IDisposable
         }
     }
 
+    [Fact]
+    public async Task The_written_token_is_kept_for_the_configured_latest_token_duration()
+    {
+        var builder = Build();
+        var options = new ValtuutusCachingOptions { LatestSnapTokenDuration = TimeSpan.FromMilliseconds(300) };
+
+        await Announce(builder, Older, options: options);
+        await Task.Delay(TimeSpan.FromMilliseconds(700));
+
+        (await Latest()).Should().BeNull();
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -114,17 +126,21 @@ public sealed class DataWrittenHookSpecs : IDisposable
     }
 
     // Runs the handlers the way a data provider does once a write commits.
-    private async Task Announce(IValtuutusDataBuilder builder, SnapToken token, IFusionCache? cache = null)
+    private async Task Announce(IValtuutusDataBuilder builder, SnapToken token, IFusionCache? cache = null,
+        ValtuutusCachingOptions? options = null)
     {
-        var services = new CacheOnlyServiceProvider(cache ?? _cache);
+        var services = new CachingServiceProvider(cache ?? _cache, options ?? new ValtuutusCachingOptions());
         foreach (var handler in builder.Options.OnDataWritten)
             await handler(services, token);
     }
 
-    // The handlers resolve only the cache from the provider they are handed.
-    private sealed class CacheOnlyServiceProvider(IFusionCache cache) : IServiceProvider
+    // The handlers resolve only the cache and the caching options from the provider they are handed.
+    private sealed class CachingServiceProvider(IFusionCache cache, ValtuutusCachingOptions options) : IServiceProvider
     {
-        public object? GetService(Type serviceType) => serviceType == typeof(IFusionCache) ? cache : null;
+        public object? GetService(Type serviceType)
+            => serviceType == typeof(IFusionCache) ? cache
+                : serviceType == typeof(ValtuutusCachingOptions) ? options
+                : null;
     }
 
     // Records the token the cache handed it to read at.

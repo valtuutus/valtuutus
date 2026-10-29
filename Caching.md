@@ -65,11 +65,26 @@ A request with a `SnapToken` is cached under that token. A request without one r
 
 `AddCaching` updates the latest token by adding a handler to `ValtuutusDataOptions.OnDataWritten`. Handlers you add (`options.OnDataWritten.Add(...)`) run alongside it, in the order added, whether you add them before or after calling `AddCaching`.
 
+## Cache durations
+
+```csharp
+.AddCaching(options =>
+{
+    options.Duration = TimeSpan.FromMinutes(10);               // default: 5 minutes
+    options.LatestSnapTokenDuration = TimeSpan.FromSeconds(30); // default: 5 minutes
+})
+```
+
+- `Duration` is how long a result is cached. Results are cached under the snap token they were read at, and the data at a token doesn't change, so a longer duration keeps more entries and reads the database less often without serving older answers (see the settle window below for the one exception it bounds).
+- `LatestSnapTokenDuration` is how long the latest token is kept. Requests without a token read at it, and only writes made through Valtuutus move it forward. A write made to the tables some other way (another application, a script, a migration) is missed by those requests until the latest token expires, so this duration bounds that delay.
+
+These durations set the expiry of Valtuutus's entries; the rest of your FusionCache entry options (fail-safe, distributed cache, backplane) still apply.
+
 ## Settle window
 
 A writer takes its transaction id (the snap token its rows are written at) before it commits. When two writes run concurrently, the one that took the older id can commit after the newer one, so its rows land at a token older than one requests have already read at. A result cached at that newer token would miss those rows until it expires.
 
-To bound this, a result read at a token younger than the settle window (measured from the timestamp in the token's ULID) is cached for one second instead of the full five minutes. A write that commits late does so within the window of taking its id, so any answer read before it was read at a young token and expires within a second. Results at older tokens are cached for the full duration, as before. A token that is not a ULID counts as older than the window.
+To bound this, a result read at a token younger than the settle window (measured from the timestamp in the token's ULID) is cached for one second instead of the full `Duration`. A write that commits late does so within the window of taking its id, so any answer read before it was read at a young token and expires within a second. Results at older tokens are cached for the full duration, as before. A token that is not a ULID counts as older than the window.
 
 ```csharp
 .AddCaching(options =>

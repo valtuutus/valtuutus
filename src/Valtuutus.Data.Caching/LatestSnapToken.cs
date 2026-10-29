@@ -10,8 +10,6 @@ namespace Valtuutus.Data.Caching;
 /// </summary>
 internal static class LatestSnapToken
 {
-    internal static readonly TimeSpan Duration = TimeSpan.FromMinutes(5);
-
     // The newest token this process has seen per cache. The cache entry alone cannot keep the latest
     // token from moving backwards: its get and set are separate operations, so concurrent offers (from
     // this process or another node sharing the distributed cache) can land an older token last.
@@ -28,8 +26,8 @@ internal static class LatestSnapToken
     /// unless a newer one is already known: a read that resolved its token before a write landed, or
     /// a write that finished after a newer one, must not hide that newer write from later requests.
     /// </summary>
-    public static async ValueTask Offer(IFusionCache cache, SnapToken snapToken, CancellationToken cancellationToken,
-        Action<FusionCacheEntryOptions>? setupEntry = null)
+    public static async ValueTask Offer(IFusionCache cache, SnapToken snapToken, TimeSpan duration,
+        CancellationToken cancellationToken, Action<FusionCacheEntryOptions>? setupEntry = null)
     {
         var seen = Seen.GetOrCreateValue(cache);
         var cached = await cache.TryGetAsync<SnapToken>(Consts.LatestSnapTokenKey, token: cancellationToken);
@@ -42,7 +40,7 @@ internal static class LatestSnapToken
         // newest token seen anyway, and the next offer brings the entry forward.
         await cache.SetAsync(Consts.LatestSnapTokenKey, new SnapToken(newest), options =>
         {
-            options.SetDuration(Duration);
+            options.SetDuration(duration);
             setupEntry?.Invoke(options);
         }, cancellationToken);
     }

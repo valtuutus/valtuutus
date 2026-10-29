@@ -58,7 +58,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             if (result.SnapToken is { } readAt)
             {
                 await _cache.SetAsync(GetCheckCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
-                await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+                await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             span.SetAllowed(result.Allowed);
             return result;
@@ -95,7 +95,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             if (result.SnapToken is { } readAt)
             {
                 await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
-                await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+                await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
         }

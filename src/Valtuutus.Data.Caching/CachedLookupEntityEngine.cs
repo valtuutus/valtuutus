@@ -56,7 +56,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
             if (result.SnapToken is { } readAt)
             {
                 await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
-                await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+                await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
         }
