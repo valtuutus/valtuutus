@@ -65,6 +65,26 @@ A request with a `SnapToken` is cached under that token. A request without one r
 
 `AddCaching` updates the latest token by adding a handler to `ValtuutusDataOptions.OnDataWritten`. Handlers you add (`options.OnDataWritten.Add(...)`) run alongside it, in the order added, whether you add them before or after calling `AddCaching`.
 
+## Settle window
+
+A writer takes its transaction id (the snap token its rows are written at) before it commits. When two writes run concurrently, the one that took the older id can commit after the newer one, so its rows land at a token older than one requests have already read at. A result cached at that newer token would miss those rows until it expires.
+
+To bound this, a result read at a token younger than the settle window (measured from the timestamp in the token's ULID) is cached for one second instead of the full five minutes. A write that commits late does so within the window of taking its id, so any answer read before it was read at a young token and expires within a second. Results at older tokens are cached for the full duration, as before. A token that is not a ULID counts as older than the window.
+
+```csharp
+.AddCaching(options =>
+{
+    options.SettleWindow = TimeSpan.FromSeconds(10); // default: 5 seconds
+})
+```
+
+`TimeSpan.Zero` turns the settle window off and caches every result for the full duration.
+
+- **Cache hits:** only in the window after a write, a repeated request at the newest token misses about once per second instead of hitting until the next write, so at most about `SettleWindow / 1s` extra engine runs per distinct hot request per write. When writes arrive more often than the window, results stay in one-second entries, but there they only lived until the next write anyway.
+- **Clock:** a token's age is measured with `ValtuutusCachingOptions.TimeProvider`, which `AddCaching` sets to the `TimeProvider` registered in your service collection (`TimeProvider.System` otherwise). Ages compare the reading node's clock with the writing node's: when the reading node's clock is ahead, the window shrinks by that difference; when it is behind, tokens look younger and are cached for less.
+- **Long transactions:** a write that commits more than the window after taking its id (a long transaction you own, passed to an `IDbDataWriterProvider` overload) can still be missed by a result cached at a newer token. Keep those transactions short, or raise the window.
+- **Reading your own writes:** a request without a token reads at the latest token the cache knows, which can be slightly behind a write made on another node. To read your own write, pass the `SnapToken` that `Write`/`Delete` returns.
+
 ## Registration order
 
 `AddCaching` decorates the engines registered at the point it runs, so call it after

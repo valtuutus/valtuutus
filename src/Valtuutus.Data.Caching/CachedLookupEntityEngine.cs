@@ -10,13 +10,23 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
 {
     private readonly ILookupEntityEngine _engine;
     private readonly IFusionCache _cache;
+    private readonly ValtuutusCachingOptions _options;
 
     public CachedLookupEntityEngine(
         [FromKeyedServices(Consts.InnerLookupEntityEngineKey)] ILookupEntityEngine engine,
         IFusionCache cache)
+        : this(engine, cache, new ValtuutusCachingOptions())
+    {
+    }
+
+    public CachedLookupEntityEngine(
+        [FromKeyedServices(Consts.InnerLookupEntityEngineKey)] ILookupEntityEngine engine,
+        IFusionCache cache,
+        ValtuutusCachingOptions options)
     {
         _engine = engine;
         _cache = cache;
+        _options = options;
     }
 
     public async ValueTask<LookupEntityPage> LookupEntity(LookupEntityRequest req, CancellationToken cancellationToken)
@@ -34,7 +44,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
                     {
                         hit = false;
                         return _engine.LookupEntity(resolvedReq, ct).AsTask();
-                    }, LatestSnapToken.Duration, cancellationToken);
+                    }, _options.ResultDuration(snapToken), cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -45,7 +55,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
             var result = await _engine.LookupEntity(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
             }
             return result;

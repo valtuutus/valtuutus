@@ -10,13 +10,23 @@ public sealed class CachedCheckEngine : ICheckEngine
 {
     private readonly IFusionCache _cache;
     private readonly ICheckEngine _engine;
+    private readonly ValtuutusCachingOptions _options;
 
     public CachedCheckEngine(
         IFusionCache cache,
         [FromKeyedServices(Consts.InnerCheckEngineKey)] ICheckEngine engine)
+        : this(cache, engine, new ValtuutusCachingOptions())
+    {
+    }
+
+    public CachedCheckEngine(
+        IFusionCache cache,
+        [FromKeyedServices(Consts.InnerCheckEngineKey)] ICheckEngine engine,
+        ValtuutusCachingOptions options)
     {
         _cache = cache;
         _engine = engine;
+        _options = options;
     }
 
     /// <inheritdoc />
@@ -35,7 +45,7 @@ public sealed class CachedCheckEngine : ICheckEngine
                     {
                         hit = false;
                         return _engine.Check(resolvedReq, ct).AsTask();
-                    }, LatestSnapToken.Duration, cancellationToken);
+                    }, _options.ResultDuration(snapToken), cancellationToken);
                 span.SetCacheHit(hit);
                 span.SetAllowed(cached.Allowed);
                 return cached;
@@ -47,7 +57,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.Check(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetCheckCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+                await _cache.SetAsync(GetCheckCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
             }
             span.SetAllowed(result.Allowed);
@@ -75,7 +85,7 @@ public sealed class CachedCheckEngine : ICheckEngine
                     {
                         hit = false;
                         return _engine.SubjectPermission(resolvedReq, ct).AsTask();
-                    }, LatestSnapToken.Duration, cancellationToken);
+                    }, _options.ResultDuration(snapToken), cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -84,7 +94,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.SubjectPermission(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
+                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
             }
             return result;
