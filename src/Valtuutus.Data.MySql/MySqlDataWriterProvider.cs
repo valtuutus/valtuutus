@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using System.Data;
 using System.Text;
@@ -82,6 +83,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly IServiceProvider _provider;
     private readonly ValtuutusDataOptions _options;
+    private readonly TimeProvider _timeProvider;
     private readonly string _dbSystem;
     private readonly WriterCommands _c;
 
@@ -93,6 +95,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         _factory = factory;
         _provider = provider;
         _options = options;
+        _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         _dbSystem = MySqlConnections.DbSystem(dbOptions.ServerType);
         _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static (_, o) => BuildCommands(o), dbOptions);
     }
@@ -250,9 +253,10 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var relationList = ToCheckedList(relations);
         var attributeList = ToDistinctKeyList(attributes);
 
-        var tx = Ulid.NewUlid().ToString();
+        var now = _timeProvider.GetUtcNow();
+        var tx = Ulid.NewUlid(now).ToString();
 
-        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, ct);
+        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
         await WriteRelations(mySqlConnection, mySqlTransaction, tx, relationList, ct);
         await WriteAttributes(mySqlConnection, mySqlTransaction, tx, attributeList, ct);
 
@@ -403,12 +407,12 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     }
 
     private async Task InsertTransaction(MySqlConnection connection, MySqlTransaction transaction, string tx,
-        CancellationToken ct)
+        DateTimeOffset createdAt, CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         AddTransactionId(command.Parameters, "id", tx);
-        command.Parameters.Add(new MySqlParameter("created_at", MySqlDbType.DateTime) { Value = DateTime.UtcNow });
+        command.Parameters.Add(new MySqlParameter("created_at", MySqlDbType.DateTime) { Value = createdAt.UtcDateTime });
         _c.InsertTransaction.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
     }
@@ -473,7 +477,8 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     ) {
         var mySqlConnection = (MySqlConnection)connection;
         var mySqlTransaction = (MySqlTransaction)transaction;
-        var tx = Ulid.NewUlid().ToString();
+        var now = _timeProvider.GetUtcNow();
+        var tx = Ulid.NewUlid(now).ToString();
 
         foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(RelationFilterMask))
         {
@@ -488,7 +493,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             await ExecuteDelete(mySqlConnection, mySqlTransaction, statement, tx, filtersJson, ct);
         }
 
-        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, ct);
+        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
         return new SnapToken(tx);
     }
 
