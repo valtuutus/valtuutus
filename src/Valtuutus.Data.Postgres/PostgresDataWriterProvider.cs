@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
@@ -15,6 +16,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly IServiceProvider _provider;
     private readonly ValtuutusDataOptions _options;
+    private readonly TimeProvider _timeProvider;
 
     private sealed record WriterCommands
     {
@@ -36,6 +38,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         _factory = factory;
         _provider = provider;
         _options = options;
+        _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildCommands(key));
     }
 
@@ -151,9 +154,10 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-        var transactId = Ulid.NewUlid();
+        var now = _timeProvider.GetUtcNow();
+        var transactId = Ulid.NewUlid(now);
 
-        await InsertTransaction((NpgsqlConnection)connection, transactId, (NpgsqlTransaction)transaction, ct);
+        await InsertTransaction((NpgsqlConnection)connection, transactId, now, (NpgsqlTransaction)transaction, ct);
 
         await WriteRelationsAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, relations, ct);
         await WriteAttributesAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, attributes, ct);
@@ -212,14 +216,14 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         await mergeCommand.ExecuteNonQueryAsync(ct);
     }
 
-    private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId,
+    private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId, DateTimeOffset createdAt,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
         await using var command = db.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = _c.InsertTransaction;
         command.Parameters.Add(new NpgsqlParameter<string>("id", NpgsqlDbType.Char) { Size = 26, TypedValue = transactId.ToString() });
-        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset>("created_at", NpgsqlDbType.TimestampTz) { TypedValue = DateTimeOffset.UtcNow });
+        command.Parameters.Add(new NpgsqlParameter<DateTimeOffset>("created_at", NpgsqlDbType.TimestampTz) { TypedValue = createdAt });
         await command.ExecuteNonQueryAsync(ct);
     }
 
@@ -285,7 +289,8 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         DeleteFilter filter,
         CancellationToken ct
     ) {
-        var transactId = Ulid.NewUlid();
+        var now = _timeProvider.GetUtcNow();
+        var transactId = Ulid.NewUlid(now);
         var npgsqlConnection = (NpgsqlConnection)connection;
         var npgsqlTransaction = (NpgsqlTransaction)transaction;
         var snapTokenValue = transactId.ToString();
@@ -302,7 +307,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
             await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
-        await InsertTransaction(npgsqlConnection, transactId, npgsqlTransaction, ct);
+        await InsertTransaction(npgsqlConnection, transactId, now, npgsqlTransaction, ct);
         return new SnapToken(snapTokenValue);
     }
 
