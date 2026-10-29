@@ -10,13 +10,23 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
 {
     private readonly ILookupSubjectEngine _engine;
     private readonly IFusionCache _cache;
+    private readonly ValtuutusCachingOptions _options;
 
     public CachedLookupSubjectEngine(
         [FromKeyedServices(Consts.InnerLookupSubjectEngineKey)] ILookupSubjectEngine engine,
         IFusionCache cache)
+        : this(engine, cache, new ValtuutusCachingOptions())
+    {
+    }
+
+    public CachedLookupSubjectEngine(
+        [FromKeyedServices(Consts.InnerLookupSubjectEngineKey)] ILookupSubjectEngine engine,
+        IFusionCache cache,
+        ValtuutusCachingOptions options)
     {
         _engine = engine;
         _cache = cache;
+        _options = options;
     }
 
     // <inheritdoc />
@@ -35,7 +45,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
                     {
                         hit = false;
                         return _engine.Lookup(resolvedReq, ct).AsTask();
-                    }, LatestSnapToken.Duration, cancellationToken);
+                    }, _options.ResultDuration(snapToken), cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -46,8 +56,8 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
             var result = await _engine.Lookup(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, LatestSnapToken.Duration, token: cancellationToken);
-                await LatestSnapToken.Offer(_cache, readAt, cancellationToken);
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
         }

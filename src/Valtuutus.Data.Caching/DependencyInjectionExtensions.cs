@@ -14,9 +14,19 @@ public static class DependencyInjectionExtensions
     /// registered (<c>AddValtuutusCore</c>) so it decorates the engine actually in effect.
     /// </summary>
     /// <param name="builder">Valtuutus data builder</param>
+    /// <param name="configure">Configures the caching options, such as the settle window.</param>
     /// <returns></returns>
-    public static IValtuutusDataBuilder AddCaching(this IValtuutusDataBuilder builder)
+    public static IValtuutusDataBuilder AddCaching(this IValtuutusDataBuilder builder,
+        Action<ValtuutusCachingOptions>? configure = null)
     {
+        builder.Services.AddSingleton(sp =>
+        {
+            var options = new ValtuutusCachingOptions
+                { TimeProvider = sp.GetService<TimeProvider>() ?? TimeProvider.System };
+            configure?.Invoke(options);
+            return options;
+        });
+
         RedirectToKeyedInner<ICheckEngine>(builder.Services, Consts.InnerCheckEngineKey);
         RedirectToKeyedInner<ILookupEntityEngine>(builder.Services, Consts.InnerLookupEntityEngineKey);
         RedirectToKeyedInner<ILookupSubjectEngine>(builder.Services, Consts.InnerLookupSubjectEngineKey);
@@ -26,7 +36,8 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<ILookupSubjectEngine, CachedLookupSubjectEngine>();
 
         builder.Options.OnDataWritten.Add((sp, st) => LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), st,
-            CancellationToken.None, options => options.AllowBackgroundBackplaneOperations = false).AsTask());
+            sp.GetRequiredService<ValtuutusCachingOptions>().LatestSnapTokenDuration, CancellationToken.None,
+            options => options.AllowBackgroundBackplaneOperations = false).AsTask());
 
         return builder;
     }

@@ -54,6 +54,7 @@ namespace Valtuutus.Data
     public sealed class TombstoneReaper : Valtuutus.Data.ITombstoneReaper
     {
         public TombstoneReaper(Valtuutus.Data.ITombstoneReaperProvider provider, Valtuutus.Data.ValtuutusReaperOptions options) { }
+        public TombstoneReaper(Valtuutus.Data.ITombstoneReaperProvider provider, Valtuutus.Data.ValtuutusReaperOptions options, System.TimeProvider timeProvider) { }
         public System.Threading.Tasks.Task<Valtuutus.Data.ReapResult> ReapAsync(System.Threading.CancellationToken ct = default) { }
     }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>

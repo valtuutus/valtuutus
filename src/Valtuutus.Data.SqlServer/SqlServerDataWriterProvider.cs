@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
@@ -14,6 +15,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     private readonly DbConnectionFactory _factory;
     private readonly ValtuutusDataOptions _options;
     private readonly IServiceProvider _provider;
+    private readonly TimeProvider _timeProvider;
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
@@ -26,6 +28,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         _factory = factory;
         _options = options;
         _provider = provider;
+        _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildCommands(key));
     }
 
@@ -159,8 +162,9 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         IEnumerable<AttributeTuple> attributes,
         CancellationToken ct
     ) {
-        var transactionId = Ulid.NewUlid();
-        await InsertTransaction((SqlConnection)connection, transactionId, (SqlTransaction)transaction, ct);
+        var now = _timeProvider.GetUtcNow();
+        var transactionId = Ulid.NewUlid(now);
+        await InsertTransaction((SqlConnection)connection, transactionId, now, (SqlTransaction)transaction, ct);
 
         await WriteRelationsAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, relations, ct);
         await WriteAttributesAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, attributes, ct);
@@ -257,10 +261,11 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
     private async Task<SnapToken> DeleteCore(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
     {
-        var transactId = Ulid.NewUlid();
+        var now = _timeProvider.GetUtcNow();
+        var transactId = Ulid.NewUlid(now);
         var sqlConnection = (SqlConnection)connection;
         var sqlTransaction = (SqlTransaction)transaction;
-        await InsertTransaction(sqlConnection, transactId, sqlTransaction, ct);
+        await InsertTransaction(sqlConnection, transactId, now, sqlTransaction, ct);
 
         var snapTokenValue = transactId.ToString();
 
@@ -294,14 +299,14 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    private async Task InsertTransaction(SqlConnection db, Ulid transactId, SqlTransaction transaction,
-        CancellationToken ct)
+    private async Task InsertTransaction(SqlConnection db, Ulid transactId, DateTimeOffset createdAt,
+        SqlTransaction transaction, CancellationToken ct)
     {
         await using var command = db.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = _c.InsertTransaction;
         command.Parameters.Add(new SqlParameter("@id", SqlDbType.NChar, 26) { Value = transactId.ToString() });
-        command.Parameters.Add(new SqlParameter("@created_at", SqlDbType.DateTimeOffset) { Value = DateTimeOffset.UtcNow });
+        command.Parameters.Add(new SqlParameter("@created_at", SqlDbType.DateTimeOffset) { Value = createdAt });
         await command.ExecuteNonQueryAsync(ct);
     }
 }
