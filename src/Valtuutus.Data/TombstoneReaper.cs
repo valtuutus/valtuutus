@@ -38,12 +38,20 @@ public interface ITombstoneReaper
     Task<ReapResult> ReapAsync(CancellationToken ct = default);
 }
 
-public sealed class TombstoneReaper(ITombstoneReaperProvider provider, ValtuutusReaperOptions options)
+public sealed class TombstoneReaper(
+    ITombstoneReaperProvider provider,
+    ValtuutusReaperOptions options,
+    TimeProvider timeProvider)
     : ITombstoneReaper
 {
+    public TombstoneReaper(ITombstoneReaperProvider provider, ValtuutusReaperOptions options)
+        : this(provider, options, TimeProvider.System)
+    {
+    }
+
     public async Task<ReapResult> ReapAsync(CancellationToken ct = default)
     {
-        var watermark = SnapTokenWatermark.Compute(DateTimeOffset.UtcNow, options.RetentionPeriod);
+        var watermark = SnapTokenWatermark.Compute(timeProvider.GetUtcNow(), options.RetentionPeriod);
         int totalRelations = 0, totalAttributes = 0, totalTransactions = 0, batches = 0;
         bool more = true;
 
@@ -70,7 +78,7 @@ public sealed class TombstoneReaper(ITombstoneReaperProvider provider, Valtuutus
             // in the latter case, that other instance is presumably making progress on the backlog.
             more = batch.MoreRemaining && batch.LockAcquired;
             if (more)
-                await Task.Delay(options.PauseBetweenBatches, ct);
+                await Task.Delay(options.PauseBetweenBatches, timeProvider, ct);
         }
 
         return new ReapResult(totalRelations, totalAttributes, totalTransactions, batches, watermark);

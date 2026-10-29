@@ -43,6 +43,8 @@ public static class DependencyInjectionExtensions
     /// (AddPostgres/AddSqlServer/AddInMemory). Does not run anything on its own — call
     /// ReapAsync() yourself from any trigger, or additionally call
     /// AddTombstoneReaperHostedService() from Valtuutus.Data.BackgroundService for a built-in timer.
+    /// The retention cutoff and the pause between batches use the TimeProvider registered in the
+    /// service collection, or TimeProvider.System when there is none.
     /// </summary>
     public static IValtuutusDataBuilder AddTombstoneReaper(
         this IValtuutusDataBuilder builder,
@@ -52,6 +54,7 @@ public static class DependencyInjectionExtensions
         configure?.Invoke(options);
 
         builder.Services.AddSingleton(options);
+        builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.AddScoped<ITombstoneReaper, TombstoneReaper>();
 
         return builder;
