@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Valtuutus.Core.Data;
 using Valtuutus.Data;
@@ -59,6 +60,41 @@ public class TombstoneReaperOrchestratorSpecs
 
         result.BatchesRun.Should().Be(1);
         result.RelationTuplesDeleted.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReapAsync_computes_the_watermark_from_the_time_provider()
+    {
+        var provider = Substitute.For<ITombstoneReaperProvider>();
+        provider.ReapBatchAsync(Arg.Any<SnapToken>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new ReapBatchResult(0, 0, 0, MoreRemaining: false, LockAcquired: true));
+        var time = new FakeTimeProvider(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var options = new ValtuutusReaperOptions { RetentionPeriod = TimeSpan.FromDays(3) };
+        var reaper = new TombstoneReaper(provider, options, time);
+
+        var result = await reaper.ReapAsync();
+
+        result.Watermark.Should().Be(SnapTokenWatermark.Compute(time.GetUtcNow(), options.RetentionPeriod));
+    }
+
+    [Fact]
+    public async Task ReapAsync_waits_between_batches_on_the_time_provider()
+    {
+        var provider = Substitute.For<ITombstoneReaperProvider>();
+        provider.ReapBatchAsync(Arg.Any<SnapToken>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ReapBatchResult(1, 0, 0, MoreRemaining: true, LockAcquired: true),
+                new ReapBatchResult(0, 0, 0, MoreRemaining: false, LockAcquired: true));
+        var time = new FakeTimeProvider();
+        var options = new ValtuutusReaperOptions { PauseBetweenBatches = TimeSpan.FromHours(1) };
+        var reaper = new TombstoneReaper(provider, options, time);
+
+        var sweep = reaper.ReapAsync();
+        sweep.IsCompleted.Should().BeFalse();
+        time.Advance(options.PauseBetweenBatches);
+        var result = await sweep.WaitAsync(TimeSpan.FromSeconds(10));
+
+        result.BatchesRun.Should().Be(2);
     }
 
     [Fact]

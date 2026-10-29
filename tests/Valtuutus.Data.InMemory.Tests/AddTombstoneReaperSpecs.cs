@@ -1,5 +1,8 @@
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
+using NSubstitute;
+using Valtuutus.Core.Data;
 using Valtuutus.Data;
 
 namespace Valtuutus.Data.InMemory.Tests;
@@ -39,5 +42,24 @@ public class AddTombstoneReaperSpecs
 
         var descriptor = services.Single(d => d.ServiceType == typeof(ITombstoneReaper));
         descriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
+    }
+
+    [Fact]
+    public async Task AddTombstoneReaper_uses_the_registered_time_provider()
+    {
+        var time = new FakeTimeProvider(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        var reaperProvider = Substitute.For<ITombstoneReaperProvider>();
+        reaperProvider.ReapBatchAsync(Arg.Any<SnapToken>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new ReapBatchResult(0, 0, 0, MoreRemaining: false, LockAcquired: true));
+        var services = new ServiceCollection();
+        services.AddSingleton<TimeProvider>(time);
+        services.AddSingleton(reaperProvider);
+        services.AddValtuutusData().AddTombstoneReaper();
+
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var result = await scope.ServiceProvider.GetRequiredService<ITombstoneReaper>().ReapAsync();
+
+        result.Watermark.Should().Be(SnapTokenWatermark.Compute(time.GetUtcNow(), TimeSpan.FromDays(7)));
     }
 }
