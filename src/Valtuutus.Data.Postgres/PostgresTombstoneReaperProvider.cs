@@ -37,8 +37,11 @@ internal sealed class PostgresTombstoneReaperProvider(DbConnectionFactory factor
                 "deleted_tx_id IS NOT NULL AND deleted_tx_id < @watermark", watermark.Value, batchSize, ct);
             var attributesDeleted = await ReapTable(connection, dbOptions.Schema, dbOptions.AttributesTableName,
                 "deleted_tx_id IS NOT NULL AND deleted_tx_id < @watermark", watermark.Value, batchSize, ct);
+            // The newest transactions row is never reaped, however old: it is the latest snap token,
+            // and with the table empty every read would resolve at SnapToken.MinValue and see no data.
             var transactionsDeleted = await ReapTable(connection, dbOptions.Schema, dbOptions.TransactionsTableName,
-                "id < @watermark", watermark.Value, batchSize, ct);
+                $"""id < @watermark AND id < (SELECT max(id) FROM "{dbOptions.Schema}"."{dbOptions.TransactionsTableName}")""",
+                watermark.Value, batchSize, ct);
 
             var moreRemaining = relationsDeleted == batchSize || attributesDeleted == batchSize || transactionsDeleted == batchSize;
             return new ReapBatchResult(relationsDeleted, attributesDeleted, transactionsDeleted, moreRemaining, LockAcquired: true);

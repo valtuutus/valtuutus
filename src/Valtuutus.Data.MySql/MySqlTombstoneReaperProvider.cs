@@ -25,8 +25,12 @@ internal sealed class MySqlTombstoneReaperProvider(DbConnectionFactory factory, 
     private readonly MySqlStatement _reapAttributes = MySqlStatement.Compile(
         $"DELETE FROM {MySqlConnections.Attributes(dbOptions)} WHERE deleted_tx_id IS NOT NULL AND deleted_tx_id < @watermark LIMIT @batchSize");
 
+    // The newest transactions row is never reaped, however old: it is the latest snap token,
+    // and with the table empty every read would resolve at SnapToken.MinValue and see no data.
+    // MySQL rejects a DELETE whose subquery reads the target table directly; the aggregate in
+    // the derived table makes the server materialize it first.
     private readonly MySqlStatement _reapTransactions = MySqlStatement.Compile(
-        $"DELETE FROM {MySqlConnections.Transactions(dbOptions)} WHERE id < @watermark ORDER BY id LIMIT @batchSize");
+        $"DELETE FROM {MySqlConnections.Transactions(dbOptions)} WHERE id < @watermark AND id < (SELECT newest.id FROM (SELECT MAX(id) AS id FROM {MySqlConnections.Transactions(dbOptions)}) AS newest) ORDER BY id LIMIT @batchSize");
 
     public async Task<ReapBatchResult> ReapBatchAsync(SnapToken watermark, int batchSize, CancellationToken ct)
     {
