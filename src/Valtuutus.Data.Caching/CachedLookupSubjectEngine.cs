@@ -37,10 +37,18 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
 
         try
         {
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
+            {
+                // A context value the cache cannot key exactly: answer uncached.
+                span.SetCacheHit(false);
+                var uncached = await _engine.Lookup(req, cancellationToken);
+                return uncached;
+            }
+
             if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
             {
                 var resolvedReq = req with { SnapToken = snapToken };
-                var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken),
+                var cached = await _cache.GetOrSetAsync(GetLookupCacheKey(resolvedReq, snapToken, contextKey),
                     ct =>
                     {
                         hit = false;
@@ -56,7 +64,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
             var result = await _engine.Lookup(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetLookupCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
@@ -67,8 +75,8 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
         }
     }
 
-    private static string GetLookupCacheKey(LookupSubjectRequest req, SnapToken snapToken)
+    private static string GetLookupCacheKey(LookupSubjectRequest req, SnapToken snapToken, ContextKey contextKey)
     {
-        return $"lookup-subject:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{snapToken.Value}";
+        return $"lookup-subject:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.Depth}:{snapToken.Value}{contextKey}";
     }
 }
