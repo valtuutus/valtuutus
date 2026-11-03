@@ -75,6 +75,28 @@ public class TombstoneReaperSpecs : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ReapAsync_keeps_the_newest_transaction_when_every_transaction_is_older_than_the_watermark()
+    {
+        // The latest snap token is read from the newest transactions row, so a quiet period longer
+        // than the retention must leave that row in place: an empty table resolves reads at
+        // SnapToken.MinValue, where no live tuple is visible.
+        var writer = _provider.GetRequiredService<IDataWriterProvider>();
+        await writer.Write([new RelationTuple("project", "p1", "owner", "user", "u1")], [], default);
+        var newest = await writer.Write([new RelationTuple("project", "p2", "owner", "user", "u1")], [], default);
+        await Task.Delay(TimeSpan.FromMilliseconds(10)); // ensure both transactions predate a zero-retention watermark
+
+        var reaper = _provider.GetRequiredService<ITombstoneReaper>();
+        var result = await reaper.ReapAsync();
+
+        result.TransactionsDeleted.Should().Be(1);
+        var reader = _provider.GetRequiredService<IDataReaderProvider>();
+        var latest = await reader.GetLatestSnapToken(default);
+        latest.Should().Be(newest);
+        (await reader.HasAnyDirectRelation("project", ["p1"], "owner", "u1", latest!.Value, default)).Should().BeTrue();
+        (await reader.HasAnyDirectRelation("project", ["p2"], "owner", "u1", latest.Value, default)).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task ReapAsync_loops_across_multiple_batches()
     {
         var writer = _provider.GetRequiredService<IDataWriterProvider>();
@@ -91,15 +113,12 @@ public class TombstoneReaperSpecs : IAsyncLifetime
         var reaper = _provider.GetRequiredService<ITombstoneReaper>();
         var result = await reaper.ReapAsync();
 
-        // BatchSize=2. 5 relation tombstones AND 10 transaction rows (each Write+Delete pair
-        // inserts 2 transaction rows — one per call, both via InsertTransaction, confirmed in
-        // SqlServerDataWriterProvider.cs). MoreRemaining is an OR across all three tables' delete
-        // counts, and transactions (10 rows) drains slower than relations (5 rows) at batchSize=2:
-        // 5 full batches to drain transactions, plus a 6th to observe nothing left. This was
-        // verified against the identical Postgres version of this test (Task 6), where the
-        // plan's original guess of 3 (reasoning from relations alone) was found and fixed to 6.
+        // BatchSize = 2, 5 relation tombstones -> 3 batches to drain relation_tuples alone.
+        // Each Write+Delete pair also inserts 2 transactions rows, so 10 rows exist; the newest one
+        // always stays, leaving 9 eligible. Those drain in 4 full batches plus a partial 5th, which
+        // reports nothing more remaining and therefore ends the sweep.
         result.RelationTuplesDeleted.Should().Be(5);
-        result.BatchesRun.Should().Be(6);
+        result.BatchesRun.Should().Be(5);
     }
 
     [Fact]
