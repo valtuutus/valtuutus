@@ -37,10 +37,19 @@ public sealed class CachedCheckEngine : ICheckEngine
 
         try
         {
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
+            {
+                // A context value the cache cannot key exactly: answer uncached.
+                span.SetCacheHit(false);
+                var uncached = await _engine.Check(req, cancellationToken);
+                span.SetAllowed(uncached.Allowed);
+                return uncached;
+            }
+
             if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
             {
                 var resolvedReq = req with { SnapToken = snapToken };
-                var cached = await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq, snapToken),
+                var cached = await _cache.GetOrSetAsync(GetCheckCacheKey(resolvedReq, snapToken, contextKey),
                     ct =>
                     {
                         hit = false;
@@ -57,7 +66,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.Check(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetCheckCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetCheckCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             span.SetAllowed(result.Allowed);
@@ -77,10 +86,18 @@ public sealed class CachedCheckEngine : ICheckEngine
 
         try
         {
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
+            {
+                // A context value the cache cannot key exactly: answer uncached.
+                span.SetCacheHit(false);
+                var uncached = await _engine.SubjectPermission(req, cancellationToken);
+                return uncached;
+            }
+
             if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
             {
                 var resolvedReq = req with { SnapToken = snapToken };
-                var cached = await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq, snapToken),
+                var cached = await _cache.GetOrSetAsync(GetSubjectPermissionCacheKey(resolvedReq, snapToken, contextKey),
                     ct =>
                     {
                         hit = false;
@@ -94,7 +111,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.SubjectPermission(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
@@ -109,13 +126,13 @@ public sealed class CachedCheckEngine : ICheckEngine
     public ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
         => _engine.Explain(req, cancellationToken);
 
-    private static string GetCheckCacheKey(CheckRequest req, SnapToken snapToken)
+    private static string GetCheckCacheKey(CheckRequest req, SnapToken snapToken, ContextKey contextKey)
     {
-        return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{snapToken}";
+        return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{req.Depth}:{snapToken}{contextKey}";
     }
 
-    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req, SnapToken snapToken)
+    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req, SnapToken snapToken, ContextKey contextKey)
     {
-        return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{snapToken.Value}";
+        return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{req.Depth}:{snapToken.Value}{contextKey}";
     }
 }
