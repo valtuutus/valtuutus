@@ -8,7 +8,8 @@ public interface ITombstoneReaperProvider
     /// Tries to atomically claim exclusivity for one bounded batch, then — only if claimed —
     /// deletes up to batchSize tombstoned rows per table (relation_tuples, attributes,
     /// transactions) with deleted_tx_id (or, for transactions, id) older than watermark, within
-    /// the same connection/session the claim was made on. LockAcquired is false if another
+    /// the same connection/session the claim was made on. The newest transactions row is always
+    /// kept, since the latest snap token is read from it. LockAcquired is false if another
     /// instance already holds the coordination lock for this batch — no rows are touched then.
     /// </summary>
     Task<ReapBatchResult> ReapBatchAsync(SnapToken watermark, int batchSize, CancellationToken ct);
