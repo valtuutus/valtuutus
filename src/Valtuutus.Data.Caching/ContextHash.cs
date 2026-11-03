@@ -6,8 +6,63 @@ using System.Text;
 namespace Valtuutus.Data.Caching;
 
 /// <summary>
-/// Hashes a request context into a cache key segment. Requests whose contexts differ in any key,
-/// value or value type get different segments, so a context-dependent result is never served to
+/// Cache key segment identifying a request context. Formats as nothing for an empty context,
+/// otherwise as <c>:</c> followed by the hex hash, written straight into the key being built.
+/// </summary>
+internal readonly struct ContextKey : ISpanFormattable
+{
+    private const int HexLength = 1 + 2 * ContextHash.HashBytes;
+
+    private readonly ulong _high;
+    private readonly ulong _low;
+    private readonly bool _hasValue;
+
+    public ContextKey(ulong high, ulong low)
+    {
+        _high = high;
+        _low = low;
+        _hasValue = true;
+    }
+
+    public bool TryFormat(Span<char> destination, out int charsWritten, ReadOnlySpan<char> format, IFormatProvider? provider)
+    {
+        if (!_hasValue)
+        {
+            charsWritten = 0;
+            return true;
+        }
+
+        if (destination.Length < HexLength)
+        {
+            charsWritten = 0;
+            return false;
+        }
+
+        destination[0] = ':';
+        WriteHex(destination.Slice(1, 16), _high);
+        WriteHex(destination.Slice(17, 16), _low);
+        charsWritten = HexLength;
+        return true;
+    }
+
+    public string ToString(string? format, IFormatProvider? formatProvider) => ToString();
+
+    public override string ToString() => string.Create(_hasValue ? HexLength : 0, this,
+        static (span, key) => key.TryFormat(span, out _, default, null));
+
+    private static void WriteHex(Span<char> destination, ulong value)
+    {
+        for (var i = 15; i >= 0; i--)
+        {
+            destination[i] = "0123456789ABCDEF"[(int)(value & 0xF)];
+            value >>= 4;
+        }
+    }
+}
+
+/// <summary>
+/// Hashes a request context into a <see cref="ContextKey"/>. Requests whose contexts differ in any
+/// key, value or value type get different keys, so a context-dependent result is never served to
 /// another context.
 /// </summary>
 internal static class ContextHash
@@ -21,54 +76,63 @@ internal static class ContextHash
     // Context values can come from end users, so the hash must resist crafted collisions: a
     // permitted context colliding with a denied one would serve the cached allow. Truncating
     // SHA-256 to 128 bits keeps that resistance with a shorter key.
-    private const int HashBytes = 16;
+    internal const int HashBytes = 16;
+
+    // Contexts are small; larger ones rent their buffers from the shared pools.
+    private const int StackBufferBytes = 512;
 
     /// <summary>
-    /// Returns the cache key suffix for <paramref name="context"/>: empty for an empty context,
-    /// otherwise <c>:</c> followed by the hash. Returns false when a value has a type the
+    /// Builds the key for <paramref name="context"/>. Returns false when a value has a type the
     /// engine does not read from context, in which case the request is not cacheable.
     /// </summary>
-    public static bool TryGetKeySuffix(IDictionary<string, object> context, out string suffix)
+    public static bool TryGetKey(IDictionary<string, object> context, out ContextKey key)
     {
-        if (context.Count == 0)
-        {
-            suffix = "";
-            return true;
-        }
+        key = default;
+        var count = context.Count;
+        if (count == 0) return true;
 
-        var keys = new string[context.Count];
-        context.Keys.CopyTo(keys, 0);
-        Array.Sort(keys, StringComparer.Ordinal);
-
-        var size = 0;
-        foreach (var key in keys)
-        {
-            if (!TryMaxValueSize(context[key], out var valueSize))
-            {
-                suffix = "";
-                return false;
-            }
-            size += sizeof(int) + Encoding.UTF8.GetMaxByteCount(key.Length) + 1 + valueSize;
-        }
-
-        var buffer = ArrayPool<byte>.Shared.Rent(size);
+        var keys = ArrayPool<string>.Shared.Rent(count);
         try
         {
-            var written = 0;
-            foreach (var key in keys)
+            context.Keys.CopyTo(keys, 0);
+            var sorted = keys.AsSpan(0, count);
+            if (count > 1) sorted.Sort(static (a, b) => string.CompareOrdinal(a, b));
+
+            var size = 0;
+            foreach (var name in sorted)
             {
-                written += WriteString(buffer.AsSpan(written), key);
-                written += WriteValue(buffer.AsSpan(written), context[key]);
+                if (!TryMaxValueSize(context[name], out var valueSize)) return false;
+                size += sizeof(int) + Encoding.UTF8.GetMaxByteCount(name.Length) + 1 + valueSize;
             }
 
-            Span<byte> hash = stackalloc byte[32];
-            SHA256.HashData(buffer.AsSpan(0, written), hash);
-            suffix = ":" + Convert.ToHexString(hash[..HashBytes]);
-            return true;
+            byte[]? rented = null;
+            Span<byte> buffer = size <= StackBufferBytes
+                ? stackalloc byte[StackBufferBytes]
+                : rented = ArrayPool<byte>.Shared.Rent(size);
+            try
+            {
+                var written = 0;
+                foreach (var name in sorted)
+                {
+                    written += WriteString(buffer[written..], name);
+                    written += WriteValue(buffer[written..], context[name]);
+                }
+
+                Span<byte> hash = stackalloc byte[32];
+                SHA256.HashData(buffer[..written], hash);
+                key = new ContextKey(
+                    BinaryPrimitives.ReadUInt64BigEndian(hash),
+                    BinaryPrimitives.ReadUInt64BigEndian(hash[8..]));
+                return true;
+            }
+            finally
+            {
+                if (rented is not null) ArrayPool<byte>.Shared.Return(rented);
+            }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            ArrayPool<string>.Shared.Return(keys, clearArray: true);
         }
     }
 

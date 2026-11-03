@@ -37,7 +37,7 @@ public sealed class CachedCheckEngine : ICheckEngine
 
         try
         {
-            if (!ContextHash.TryGetKeySuffix(req.Context, out var contextKey))
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
             {
                 // A context value the cache cannot key exactly: answer uncached.
                 span.SetCacheHit(false);
@@ -86,7 +86,7 @@ public sealed class CachedCheckEngine : ICheckEngine
 
         try
         {
-            if (!ContextHash.TryGetKeySuffix(req.Context, out var contextKey))
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
             {
                 // A context value the cache cannot key exactly: answer uncached.
                 span.SetCacheHit(false);
@@ -126,12 +126,12 @@ public sealed class CachedCheckEngine : ICheckEngine
     public ValueTask<CheckExplainResult> Explain(CheckRequest req, CancellationToken cancellationToken)
         => _engine.Explain(req, cancellationToken);
 
-    private static string GetCheckCacheKey(CheckRequest req, SnapToken snapToken, string contextKey)
+    private static string GetCheckCacheKey(CheckRequest req, SnapToken snapToken, ContextKey contextKey)
     {
         return $"check:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.SubjectId}:{req.SubjectRelation}:{req.Depth}:{snapToken}{contextKey}";
     }
 
-    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req, SnapToken snapToken, string contextKey)
+    private static string GetSubjectPermissionCacheKey(SubjectPermissionRequest req, SnapToken snapToken, ContextKey contextKey)
     {
         return $"subject-permission:{req.EntityType}:{req.EntityId}:{req.SubjectType}:{req.SubjectId}:{req.Depth}:{snapToken.Value}{contextKey}";
     }

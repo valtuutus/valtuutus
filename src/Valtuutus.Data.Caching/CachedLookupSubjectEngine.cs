@@ -37,7 +37,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
 
         try
         {
-            if (!ContextHash.TryGetKeySuffix(req.Context, out var contextKey))
+            if (!ContextHash.TryGetKey(req.Context, out var contextKey))
             {
                 // A context value the cache cannot key exactly: answer uncached.
                 span.SetCacheHit(false);
@@ -75,7 +75,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
         }
     }
 
-    private static string GetLookupCacheKey(LookupSubjectRequest req, SnapToken snapToken, string contextKey)
+    private static string GetLookupCacheKey(LookupSubjectRequest req, SnapToken snapToken, ContextKey contextKey)
     {
         return $"lookup-subject:{req.EntityType}:{req.EntityId}:{req.Permission}:{req.SubjectType}:{req.Depth}:{snapToken.Value}{contextKey}";
     }
