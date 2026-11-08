@@ -54,7 +54,7 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
         SnapToken snapToken);
 
     /// <summary>
-    /// Generic parameter append: <see cref="DbBatchCommand.CreateParameter"/> (net8+), name+value,
+    /// Generic parameter append: <see cref="DbBatchCommand.CreateParameter"/>, name+value,
     /// add. The default implementation the Write*Param hooks fall back to when a provider doesn't
     /// need provider-typed parameters.
     /// </summary>

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(NetLibVersion)</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Description>Valtuutus SqlServer schema migrations with Weasel; $(Description)</Description>
+        <PackageTags>$(PackageTags);sqlserver;mssql;weasel;migrations</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.SqlServer.Weasel.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Weasel.SqlServer" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\Valtuutus.Data.Weasel.Shared\*.cs" LinkBase="Shared" />
+    </ItemGroup>
+
+</Project>

@@ -1,7 +1,10 @@
-﻿using Npgsql;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
 using Valtuutus.Data.Db;
+using Valtuutus.Data.Postgres.Weasel;
+using Valtuutus.Data.Weasel;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
@@ -33,14 +36,20 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         DbFactory = () => new NpgsqlConnection(_dbContainer.GetConnectionString());
         _dbConnection = (NpgsqlConnection)DbFactory();
         await _dbConnection.OpenAsync();
-        await using (var migrationCommand = _dbConnection.CreateCommand())
-        {
-            migrationCommand.CommandText = DbMigration;
-            await migrationCommand.ExecuteNonQueryAsync();
-        }
+        await using (var sp = BuildServices())
+            await sp.ApplyValtuutusSchemaAsync();
         await SetupRespawnerAsync();
 
     }
+    private ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+        services.AddPostgres(_ => DbFactory,
+                new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes"))
+            .AddPostgresWeasel();
+        return services.BuildServiceProvider();
+    }
+
     public async Task ResetDatabaseAsync()
     {
         await _respawner.ResetAsync(_dbConnection);
@@ -61,26 +70,4 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
         await _dbContainer.DisposeAsync();
     }
 
-
-    private static string DbMigration = 
-        """
-        -- Create "attributes" table
-        CREATE TABLE "public"."attributes" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "attribute" character varying(64) NOT NULL, "value" jsonb NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
-        -- Create index "idx_attributes" to table: "attributes"
-        CREATE INDEX "idx_attributes" ON "public"."attributes" ("entity_type", "entity_id", "attribute") INCLUDE ("value");
-        -- Create "relation_tuples" table
-        CREATE TABLE "public"."relation_tuples" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "relation" character varying(64) NOT NULL, "subject_type" character varying(256) NOT NULL, "subject_id" character varying(64) NOT NULL, "subject_relation" character varying(64) NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
-        -- Create index "idx_tuples_entity_relation" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_entity_relation" ON "public"."relation_tuples" ("entity_type", "relation");
-        -- Create index "idx_tuples_subject_entities" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_subject_entities" ON "public"."relation_tuples" ("entity_type", "relation", "subject_type", "subject_id") INCLUDE ("entity_id", "subject_relation");
-        -- Create index "idx_tuples_user" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_user" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id");
-        -- Create index "idx_tuples_userset" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_userset" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_type", "subject_relation");
-        CREATE TABLE "public"."transactions" ("id" char(26) NOT NULL, "created_at" timestamptz NOT NULL, PRIMARY KEY ("id"));
-       CREATE UNIQUE INDEX "unique_attributes" on public.attributes (entity_type, entity_id, attribute) where deleted_tx_id is null;
-       CREATE INDEX "idx_tuples_direct" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id") INCLUDE ("subject_type", "created_tx_id", "deleted_tx_id") WHERE subject_relation = '';
-       CREATE INDEX "idx_tuples_indirect" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation") INCLUDE ("subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id") WHERE subject_relation <> '';
-       """;
 }

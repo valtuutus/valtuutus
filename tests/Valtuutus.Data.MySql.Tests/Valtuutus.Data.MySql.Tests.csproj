@@ -26,6 +26,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.MySql\Valtuutus.Data.MySql.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Data.MySql.Weasel\Valtuutus.Data.MySql.Weasel.csproj" />
         <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
 
     </ItemGroup>
