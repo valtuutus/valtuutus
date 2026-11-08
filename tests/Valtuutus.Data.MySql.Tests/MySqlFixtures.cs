@@ -1,9 +1,12 @@
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
 using Respawn;
 using Testcontainers.MariaDb;
 using Testcontainers.MySql;
 using Valtuutus.Data.Db;
+using Valtuutus.Data.MySql.Weasel;
+using Valtuutus.Data.Weasel;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.MySql.Tests;
@@ -43,7 +46,7 @@ public abstract class MySqlFixtureBase : IAsyncLifetime, IDatabaseFixture, IWith
         DbFactory = () => new MySqlConnection(connectionString);
         _dbConnection = (MySqlConnection)DbFactory();
         await _dbConnection.OpenAsync();
-        await RunMigrationsAsync(_dbConnection);
+        await ApplySchemaAsync(connectionString);
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.MySql,
@@ -65,29 +68,16 @@ public abstract class MySqlFixtureBase : IAsyncLifetime, IDatabaseFixture, IWith
         }
 
         var connectionString = new MySqlConnectionStringBuilder(ConnectionString) { Database = name }.ConnectionString;
-        await using var connection = new MySqlConnection(connectionString);
-        await connection.OpenAsync();
-        await RunMigrationsAsync(connection);
+        await ApplySchemaAsync(connectionString);
         return connectionString;
     }
 
-    private static async Task RunMigrationsAsync(MySqlConnection connection)
+    private async Task ApplySchemaAsync(string connectionString)
     {
-        var migrationAssembly = typeof(MySqlServerType).Assembly;
-        var migrations = migrationAssembly
-            .GetManifestResourceNames()
-            .Where(x => x.EndsWith(".sql"))
-            .OrderBy(x => x);
-
-        foreach (var migrationFile in migrations)
-        {
-            await using var stream = migrationAssembly.GetManifestResourceStream(migrationFile);
-            using var reader = new StreamReader(stream!);
-            var migrationSql = await reader.ReadToEndAsync();
-            await using var command = connection.CreateCommand();
-            command.CommandText = migrationSql;
-            await command.ExecuteNonQueryAsync();
-        }
+        var services = new ServiceCollection();
+        services.AddMySql(_ => () => new MySqlConnection(connectionString), Options).AddMySqlWeasel();
+        await using var sp = services.BuildServiceProvider();
+        await sp.ApplyValtuutusSchemaAsync();
     }
 
     public async Task ResetDatabaseAsync()

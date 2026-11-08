@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(NetLibVersion)</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <Description>Valtuutus Postgres schema migrations with Weasel; $(Description)</Description>
+        <PackageTags>$(PackageTags);postgresql;postgres;weasel;migrations</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+            <_Parameter1>Valtuutus.Data.Postgres.Weasel.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Weasel.Postgresql" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Compile Include="..\Valtuutus.Data.Weasel.Shared\*.cs" LinkBase="Shared" />
+    </ItemGroup>
+
+</Project>

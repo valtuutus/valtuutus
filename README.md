@@ -176,6 +176,43 @@ If you are using a DB provider to store your data, please look at the scripts th
 - SqlServer: [initial](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql), [lookup indexes](src/Valtuutus.Data.SqlServer/Database/migrations/20261024190000_lookup_indexes.sql)
 - MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
 
+### Applying the schema with Weasel
+
+Instead of running the scripts yourself, reference the Weasel package for your provider
+(`Valtuutus.Data.Postgres.Weasel`, `Valtuutus.Data.SqlServer.Weasel` or
+`Valtuutus.Data.MySql.Weasel`; .NET 9 or later) and opt in on the data builder. The tables are
+created and migrated with the schema and table names from your provider options, when the host
+starts, under a database lock so instances starting together take turns:
+
+```csharp
+builder.Services.AddValtuutusCore(/* schema */)
+    .AddPostgres(_ => () => new NpgsqlConnection(connectionString))
+    .AddPostgresWeasel();   // AddSqlServerWeasel / AddMySqlWeasel for the other providers
+```
+
+To apply at a time you choose instead (a migration job, a deploy step), call
+`await app.Services.ApplyValtuutusSchemaAsync();` (the opt-in call is still required, and its
+hosted service also runs if a host starts).
+
+`AutoCreate` controls how far an apply may go: `CreateOrUpdate` (default) creates what is missing
+and alters what drifted, `CreateOnly` never alters, `None` changes nothing. `All` is refused
+because it recreates the tables and deletes their data. `ConnectionFactory` supplies a different
+connection, for example a user allowed to run DDL, or one per tenant:
+
+```csharp
+.AddPostgresWeasel(o =>
+{
+    o.AutoCreate = AutoCreate.CreateOnly;
+    o.ConnectionFactory = _ => () => new NpgsqlConnection(migrationConnectionString);
+});
+```
+
+Indexes and columns you add yourself are left in place. `LockTimeout` (default one minute) bounds
+how long an apply waits for another instance holding the lock before it fails.
+
+Weasel and the scripts produce the same schema. Weasel does not detect two kinds of later drift:
+a changed column collation on SQL Server, and a dropped `JSON_VALID` check on MySQL.
+
 ## Schema and table name customization
 
 The relational providers accept an options object to customise the database schema and table names. Pass it as the second argument to `AddPostgres`, `AddSqlServer` or `AddMySql`. It is optional for Postgres and SQL Server; `AddMySql` requires it, because it declares the server type:

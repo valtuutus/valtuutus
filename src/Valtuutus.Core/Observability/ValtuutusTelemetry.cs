@@ -66,7 +66,6 @@ public static class ValtuutusTelemetry
     private static bool OperationMetricsEnabled => OperationDuration.Enabled || OperationRoundTrips.Enabled;
 
     private static Histogram<double> CreateDurationHistogram(string name, string description) =>
-#if NET9_0_OR_GREATER
         ValtuutusMetrics.Meter.CreateHistogram(name, "s", description, tags: null,
             new InstrumentAdvice<double>
             {
@@ -76,9 +75,6 @@ public static class ValtuutusTelemetry
                 HistogramBucketBoundaries =
                     [0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5]
             });
-#else
-        ValtuutusMetrics.Meter.CreateHistogram<double>(name, "s", description);
-#endif
 
     /// <summary>
     /// Starts the telemetry of an engine call: its span, and its metrics unless an outer cache call
