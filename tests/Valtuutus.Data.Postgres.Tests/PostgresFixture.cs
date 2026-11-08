@@ -45,7 +45,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
     {
         var services = new ServiceCollection();
         services.AddPostgres(_ => DbFactory,
-                new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes"))
+                new ValtuutusPostgresOptions())
             .AddPostgresWeasel();
         return services.BuildServiceProvider();
     }

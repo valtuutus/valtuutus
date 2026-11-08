@@ -72,6 +72,7 @@ namespace Valtuutus.Data.SqlServer
     }
     public class ValtuutusSqlServerOptions : System.IEquatable<Valtuutus.Data.SqlServer.ValtuutusSqlServerOptions>, Valtuutus.Data.Db.IValtuutusDbOptions
     {
+        public ValtuutusSqlServerOptions() { }
         public ValtuutusSqlServerOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
         public string AttributesTableName { get; }
         public int LookupHopsPerQuery { get; init; }

@@ -4,10 +4,13 @@ namespace Valtuutus.Data.SqlServer;
 
 public record ValtuutusSqlServerOptions : IValtuutusDbOptions
 {
-    internal ValtuutusSqlServerOptions()
+    /// <summary>
+    /// Uses the default names: schema "dbo" and the tables "transactions", "relation_tuples" and "attributes".
+    /// </summary>
+    public ValtuutusSqlServerOptions()
     {
-        
     }
+
     public ValtuutusSqlServerOptions(string schema,
         string transactionsTableName, 
         string relationsTableName,

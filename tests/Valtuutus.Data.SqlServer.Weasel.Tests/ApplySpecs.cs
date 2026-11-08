@@ -117,7 +117,7 @@ public sealed class ApplySpecs(SqlServerWeaselFixture fixture)
     public async Task NonProviderConnection_IsRejected()
     {
         var connection = Substitute.For<IDbConnection>();
-        await using var sp = SqlServerWeaselFixture.BuildServices("unused", SqlServerWeaselFixture.DefaultNames, o => o.ConnectionFactory = _ => () => connection);
+        await using var sp = SqlServerWeaselFixture.BuildServices("unused", new ValtuutusSqlServerOptions(), o => o.ConnectionFactory = _ => () => connection);
 
         var act = () => sp.ApplyValtuutusSchemaAsync();
 
@@ -216,7 +216,7 @@ public sealed class ApplySpecs(SqlServerWeaselFixture fixture)
     [Fact]
     public void AutoCreateAll_IsRefused()
     {
-        var act = () => SqlServerWeaselFixture.BuildServices("Server=unused", SqlServerWeaselFixture.DefaultNames, o => o.AutoCreate = AutoCreate.All);
+        var act = () => SqlServerWeaselFixture.BuildServices("Server=unused", new ValtuutusSqlServerOptions(), o => o.AutoCreate = AutoCreate.All);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }

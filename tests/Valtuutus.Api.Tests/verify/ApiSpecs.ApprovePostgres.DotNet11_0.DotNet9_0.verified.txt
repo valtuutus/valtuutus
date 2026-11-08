@@ -73,6 +73,7 @@ namespace Valtuutus.Data.Postgres
     }
     public class ValtuutusPostgresOptions : System.IEquatable<Valtuutus.Data.Postgres.ValtuutusPostgresOptions>, Valtuutus.Data.Db.IValtuutusDbOptions
     {
+        public ValtuutusPostgresOptions() { }
         public ValtuutusPostgresOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
         public string AttributesTableName { get; }
         public int AutoPrepareMinUsages { get; init; }

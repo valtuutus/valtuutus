@@ -37,5 +37,4 @@ public sealed class SqlServerWeaselFixture : IAsyncLifetime
 
     public static ValtuutusSqlServerOptions CustomNames => new("authz", "my_tx", "my_tuples", "my_attrs");
 
-    public static ValtuutusSqlServerOptions DefaultNames => new("dbo", "transactions", "relation_tuples", "attributes");
 }

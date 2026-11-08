@@ -33,7 +33,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
         DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
         var services = new ServiceCollection();
         services.AddSqlServer(_ => DbFactory,
-                new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes"))
+                new ValtuutusSqlServerOptions())
             .AddSqlServerWeasel();
         await using (var sp = services.BuildServiceProvider())
             await sp.ApplyValtuutusSchemaAsync();

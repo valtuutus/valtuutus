@@ -110,7 +110,7 @@ public sealed class ApplySpecs(PostgresWeaselFixture fixture)
     public async Task NonProviderConnection_IsRejected()
     {
         var connection = Substitute.For<IDbConnection>();
-        await using var sp = PostgresWeaselFixture.BuildServices("unused", PostgresWeaselFixture.DefaultNames, o => o.ConnectionFactory = _ => () => connection);
+        await using var sp = PostgresWeaselFixture.BuildServices("unused", new ValtuutusPostgresOptions(), o => o.ConnectionFactory = _ => () => connection);
 
         var act = () => sp.ApplyValtuutusSchemaAsync();
 
@@ -209,7 +209,7 @@ public sealed class ApplySpecs(PostgresWeaselFixture fixture)
     [Fact]
     public void AutoCreateAll_IsRefused()
     {
-        var act = () => PostgresWeaselFixture.BuildServices("Host=unused", PostgresWeaselFixture.DefaultNames, o => o.AutoCreate = AutoCreate.All);
+        var act = () => PostgresWeaselFixture.BuildServices("Host=unused", new ValtuutusPostgresOptions(), o => o.AutoCreate = AutoCreate.All);
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }

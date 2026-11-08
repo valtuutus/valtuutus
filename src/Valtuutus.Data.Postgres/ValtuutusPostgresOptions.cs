@@ -4,10 +4,13 @@ namespace Valtuutus.Data.Postgres;
 
 public record ValtuutusPostgresOptions : IValtuutusDbOptions
 {
-    internal ValtuutusPostgresOptions()
+    /// <summary>
+    /// Uses the default names: schema "public" and the tables "transactions", "relation_tuples" and "attributes".
+    /// </summary>
+    public ValtuutusPostgresOptions()
     {
-        
-    } 
+    }
+
     public ValtuutusPostgresOptions(string schema,
         string transactionsTableName, 
         string relationsTableName,

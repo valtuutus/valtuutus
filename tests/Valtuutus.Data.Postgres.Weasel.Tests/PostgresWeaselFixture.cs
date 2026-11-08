@@ -39,5 +39,4 @@ public sealed class PostgresWeaselFixture : IAsyncLifetime
 
     public static ValtuutusPostgresOptions CustomNames => new("authz", "my_tx", "my_tuples", "my_attrs");
 
-    public static ValtuutusPostgresOptions DefaultNames => new("public", "transactions", "relation_tuples", "attributes");
 }

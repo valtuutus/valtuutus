@@ -166,7 +166,7 @@ public sealed class LookupSubjectV2RoundTripSpecs : IAsyncLifetime
     {
         counter.BeforeRoundTrip = beforeRoundTrip;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes");
+        var options = new ValtuutusPostgresOptions();
         services.AddPostgres(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
         services.AddSingleton(counter);

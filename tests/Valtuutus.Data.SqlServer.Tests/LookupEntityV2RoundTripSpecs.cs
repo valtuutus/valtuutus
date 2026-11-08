@@ -262,7 +262,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
     {
         counter.BeforeRoundTrip = beforeRoundTrip;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
+        var options = new ValtuutusSqlServerOptions();
         services.AddSqlServer(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
         services.AddSingleton(counter);

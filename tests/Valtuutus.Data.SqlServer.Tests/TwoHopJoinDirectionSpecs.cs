@@ -84,7 +84,7 @@ public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime
     {
         var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes");
+        var options = new ValtuutusSqlServerOptions();
         services.AddSqlServer(_ => dbFactory, scanLimit is { } k ? options with { TwoHopEntityScanLimit = k } : options)
             .AddConcurrentQueryLimit(3);
         await using var provider = services.BuildServiceProvider();

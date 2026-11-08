@@ -12,5 +12,5 @@ public sealed class LookupSubjectEngineOneLevelSpecs : BaseLookupSubjectEngineSp
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services) =>
         services.AddSqlServer(_ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes") { LookupHopsPerQuery = 1 });
+            new ValtuutusSqlServerOptions() { LookupHopsPerQuery = 1 });
 }
