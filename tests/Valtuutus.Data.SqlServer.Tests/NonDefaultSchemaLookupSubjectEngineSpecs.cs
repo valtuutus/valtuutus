@@ -13,7 +13,6 @@ public sealed class NonDefaultSchemaLookupSubjectEngineSpecs : BaseLookupSubject
     {
         return services.AddSqlServer(
             _ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions(NonDefaultSchemaSqlServerFixture.Schema,
-                "transactions", "relation_tuples", "attributes"));
+            ((SqlServerFixtureBase)Fixture).Options);
     }
 }

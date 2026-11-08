@@ -10,7 +10,7 @@ public sealed class ContractSpecs(PostgresWeaselFixture fixture)
     public static TheoryData<string> Names => ["default", "custom"];
 
     private static ValtuutusPostgresOptions Options(string names) =>
-        names == "custom" ? PostgresWeaselFixture.CustomNames : PostgresWeaselFixture.DefaultNames;
+        names == "custom" ? PostgresWeaselFixture.CustomNames : new ValtuutusPostgresOptions();
 
     [Theory, MemberData(nameof(Names))]
     public async Task ScriptInstall_HasNoDifference(string names)

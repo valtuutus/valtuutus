@@ -10,7 +10,7 @@ public sealed class ContractSpecs(SqlServerWeaselFixture fixture)
     public static TheoryData<string> Names => ["default", "custom"];
 
     private static ValtuutusSqlServerOptions Options(string names) =>
-        names == "custom" ? SqlServerWeaselFixture.CustomNames : SqlServerWeaselFixture.DefaultNames;
+        names == "custom" ? SqlServerWeaselFixture.CustomNames : new ValtuutusSqlServerOptions();
 
     [Theory, MemberData(nameof(Names))]
     public async Task ScriptInstall_HasNoDifference(string names)

@@ -15,8 +15,8 @@ public abstract class BaseDataEngineSpecs : IAsyncLifetime
 
     protected BaseDataEngineSpecs(IDatabaseFixture fixture)
     {
-        Provider = CreateServiceProvider();
         Fixture = fixture;
+        Provider = CreateServiceProvider();
     }
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);

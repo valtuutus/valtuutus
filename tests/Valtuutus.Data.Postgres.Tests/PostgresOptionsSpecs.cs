@@ -26,7 +26,7 @@ public sealed class PostgresOptionsSpecs : IAsyncLifetime
     [Fact]
     public void AddPostgres_Should_Register_Custom_Options_And_Resolve_Reader()
     {
-        var options = new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes")
+        var options = new ValtuutusPostgresOptions()
         {
             MaxAutoPrepare = 8,
             AutoPrepareMinUsages = 3
