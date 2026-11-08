@@ -84,7 +84,7 @@ public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime
     {
         var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusPostgresOptions();
+        var options = Fixture.Options;
         services.AddPostgres(_ => dbFactory, scanLimit is { } k ? options with { TwoHopEntityScanLimit = k } : options)
             .AddConcurrentQueryLimit(3);
         await using var provider = services.BuildServiceProvider();

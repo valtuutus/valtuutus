@@ -1,4 +1,4 @@
-﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Respawn;
 using Testcontainers.MsSql;
@@ -10,13 +10,10 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.SqlServer.Tests;
 
 
-[CollectionDefinition("SqlServerSpec")]
-public sealed class SqlServerSpecsFixture : ICollectionFixture<SqlServerFixture>
+public abstract class SqlServerFixtureBase : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {
-}
+    public abstract ValtuutusSqlServerOptions Options { get; }
 
-public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
-{
     public DbConnectionFactory DbFactory { get; private set; } = default!;
     private Respawner _respawner = default!;
 
@@ -33,7 +30,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
         DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
         var services = new ServiceCollection();
         services.AddSqlServer(_ => DbFactory,
-                new ValtuutusSqlServerOptions())
+                Options)
             .AddSqlServerWeasel();
         await using (var sp = services.BuildServiceProvider())
             await sp.ApplyValtuutusSchemaAsync();
@@ -55,6 +52,7 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
 	    _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
 	    {
 		    DbAdapter = DbAdapter.SqlServer,
+		    SchemasToInclude = [Options.Schema],
 	    });
     }
 
@@ -76,4 +74,14 @@ public class SqlServerFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnect
 		    .ConfigureAwait(false);
     }
 
+}
+
+[CollectionDefinition("SqlServerSpec")]
+public sealed class SqlServerSpecsFixture : ICollectionFixture<SqlServerFixture>
+{
+}
+
+public class SqlServerFixture : SqlServerFixtureBase
+{
+    public override ValtuutusSqlServerOptions Options { get; } = new();
 }

@@ -16,8 +16,7 @@ public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
     {
         return services.AddSqlServer(
             _ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions(NonDefaultSchemaSqlServerFixture.Schema,
-                "transactions", "relation_tuples", "attributes"));
+            ((SqlServerFixtureBase)Fixture).Options);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()

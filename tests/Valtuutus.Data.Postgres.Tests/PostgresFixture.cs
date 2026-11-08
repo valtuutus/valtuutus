@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
@@ -18,6 +18,8 @@ public sealed class PostgresSpecsFixture : ICollectionFixture<PostgresFixture>
 
 public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {
+    public ValtuutusPostgresOptions Options { get; } = new();
+
     public DbConnectionFactory DbFactory { get; private set; } = default!;
     private NpgsqlConnection _dbConnection = default!;
     private Respawner _respawner = default!;
@@ -45,7 +47,7 @@ public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnecti
     {
         var services = new ServiceCollection();
         services.AddPostgres(_ => DbFactory,
-                new ValtuutusPostgresOptions())
+                Options)
             .AddPostgresWeasel();
         return services.BuildServiceProvider();
     }

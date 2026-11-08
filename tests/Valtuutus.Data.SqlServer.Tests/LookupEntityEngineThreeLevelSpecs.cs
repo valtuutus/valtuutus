@@ -12,5 +12,5 @@ public sealed class LookupEntityEngineThreeLevelSpecs : BaseLookupEntityEngineSp
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services) =>
         services.AddSqlServer(_ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions() { LookupHopsPerQuery = 3 });
+            ((SqlServerFixture)Fixture).Options with { LookupHopsPerQuery = 3 });
 }
