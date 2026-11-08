@@ -19,7 +19,7 @@
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="[9.0.21,)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="[9.0.0,)" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="[9.0.0,)" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="[10.0.0,)" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="[9.0.0,)" />
     <PackageVersion Include="Weasel.Postgresql" Version="9.45.0" />
     <PackageVersion Include="Weasel.SqlServer" Version="9.45.0" />
     <PackageVersion Include="Weasel.MySql" Version="9.45.0" />

@@ -16,7 +16,7 @@
 
     <ItemGroup>
         <PackageReference Include="Weasel.MySql" />
-        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" VersionOverride="[10.0.0,)" />
     </ItemGroup>
 
     <ItemGroup>
