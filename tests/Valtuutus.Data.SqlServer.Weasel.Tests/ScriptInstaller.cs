@@ -28,7 +28,6 @@ public static class ScriptInstaller
 
     private static string Rename(string sql, ValtuutusSqlServerOptions o)
     {
-        sql = Regex.Replace(sql, @"CREATE TYPE TVP_ListIds AS TABLE\s*\([^;]*\);", "", RegexOptions.Singleline);
         foreach (var (from, to) in new[] { ("attributes", o.AttributesTableName), ("relation_tuples", o.RelationsTableName), ("transactions", o.TransactionsTableName) })
         {
             var target = $"[{o.Schema}].[{to}]";
