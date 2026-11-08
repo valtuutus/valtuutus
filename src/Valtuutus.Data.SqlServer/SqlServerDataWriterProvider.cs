@@ -54,26 +54,8 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
                                DROP TABLE #temp_attributes;
                                """,
-            DeleteRelations = $"""
-                UPDATE r
-                SET deleted_tx_id = @SnapToken
-                FROM [{key.Schema}].[{key.RelationsTable}] r
-                CROSS APPLY OPENJSON(@Filters) WITH (
-                    entity_type NVARCHAR(256) '$.entity_type',
-                    entity_id NVARCHAR(64) '$.entity_id',
-                    subject_type NVARCHAR(256) '$.subject_type',
-                    subject_id NVARCHAR(64) '$.subject_id',
-                    relation NVARCHAR(64) '$.relation',
-                    subject_relation NVARCHAR(64) '$.subject_relation'
-                ) AS f
-                WHERE r.deleted_tx_id IS NULL
-                  AND (f.entity_type IS NULL OR r.entity_type = f.entity_type)
-                  AND (f.entity_id IS NULL OR r.entity_id = f.entity_id)
-                  AND (f.subject_type IS NULL OR r.subject_type = f.subject_type)
-                  AND (f.subject_id IS NULL OR r.subject_id = f.subject_id)
-                  AND (f.relation IS NULL OR r.relation = f.relation)
-                  AND (f.subject_relation IS NULL OR r.subject_relation = f.subject_relation)
-                """,
+            DeleteRelations = Enumerable.Range(0, RelationFilterShape.Count)
+                .Select(shape => BuildDeleteRelations(key, shape)).ToArray(),
             DeleteAttributes = $"""
                 UPDATE a
                 SET deleted_tx_id = @SnapToken
@@ -91,12 +73,38 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         };
     }
 
+    private static readonly Dictionary<string, string> RelationFilterTypes = new()
+    {
+        ["entity_type"] = "NVARCHAR(256)", ["entity_id"] = "NVARCHAR(64)", ["relation"] = "NVARCHAR(64)",
+        ["subject_type"] = "NVARCHAR(256)", ["subject_id"] = "NVARCHAR(64)", ["subject_relation"] = "NVARCHAR(64)",
+    };
+
+    // Only the set fields of a shape are compared, each by equality, so the statement can use an index.
+    // A shape with no field set matches every live tuple and reads no filters.
+    private static string BuildDeleteRelations(DbQueryCacheKey key, int shape)
+    {
+        if (shape == 0)
+            return $"UPDATE [{key.Schema}].[{key.RelationsTable}] SET deleted_tx_id = @SnapToken WHERE deleted_tx_id IS NULL";
+
+        var columns = RelationFilterShape.SetColumns(shape).ToArray();
+        return $"""
+            UPDATE r
+            SET deleted_tx_id = @SnapToken
+            FROM [{key.Schema}].[{key.RelationsTable}] r
+            CROSS APPLY OPENJSON(@Filters) WITH (
+                {string.Join(",\n    ", columns.Select(c => $"{c} {RelationFilterTypes[c]} '$.{c}'"))}
+            ) AS f
+            WHERE r.deleted_tx_id IS NULL
+              AND {string.Join("\n  AND ", columns.Select(c => $"r.{c} = f.{c}"))}
+            """;
+    }
+
     private sealed record WriterCommands
     {
         public required string InsertTransaction { get; init; }
         public required string RelationsDestinationTableName { get; init; }
         public required string MergeAttributes { get; init; }
-        public required string DeleteRelations { get; init; }
+        public required string[] DeleteRelations { get; init; }
         public required string DeleteAttributes { get; init; }
     }
 
@@ -269,10 +277,10 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
 
         var snapTokenValue = transactId.ToString();
 
-        if (filter.Relations.Length > 0)
+        foreach (var group in filter.Relations.GroupBy(static f => RelationFilterShape.Of(f)))
         {
-            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
-            await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteRelations, snapTokenValue, filtersJson, ct);
+            var filtersJson = JsonSerializer.Serialize(group.ToArray(), DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
+            await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteRelations[group.Key], snapTokenValue, filtersJson, ct);
         }
 
         if (filter.Attributes.Length > 0)

@@ -111,7 +111,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var insertAttributesHead =
             $"INSERT INTO {at} (entity_type, entity_id, attribute, value, created_tx_id) VALUES ";
 
-        var deleteRelations = new MySqlStatement[1 << RelationFilterColumns.Length];
+        var deleteRelations = new MySqlStatement[RelationFilterShape.Count];
         for (var mask = 0; mask < deleteRelations.Length; mask++)
             deleteRelations[mask] = MySqlStatement.Compile(BuildDeleteRelations(rt, mask));
 
@@ -480,7 +480,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var now = _timeProvider.GetUtcNow();
         var tx = MonotonicUlid.Next(_timeProvider).ToString();
 
-        foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(RelationFilterMask))
+        foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(static f => RelationFilterShape.Of(f)))
         {
             var filtersJson = JsonSerializer.Serialize(group.ToArray(), DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
             await ExecuteDelete(mySqlConnection, mySqlTransaction, _c.DeleteRelations[group.Key], tx, filtersJson, ct);
@@ -496,16 +496,6 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
         return new SnapToken(tx);
     }
-
-    // A field is set when it is non-null. An empty string is a value, so SubjectRelation = ""
-    // matches only direct tuples.
-    private static int RelationFilterMask(DeleteRelationsFilter f) =>
-        (f.EntityType is not null ? 1 << 0 : 0)
-        | (f.EntityId is not null ? 1 << 1 : 0)
-        | (f.Relation is not null ? 1 << 2 : 0)
-        | (f.SubjectType is not null ? 1 << 3 : 0)
-        | (f.SubjectId is not null ? 1 << 4 : 0)
-        | (f.SubjectRelation is not null ? 1 << 5 : 0);
 
     // A value over its limit was never written, so its filter matches no row and is dropped.
     private static bool FitsColumns(DeleteRelationsFilter f) =>
