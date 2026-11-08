@@ -16,6 +16,7 @@
 
     <ItemGroup>
         <PackageReference Include="Weasel.SqlServer" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     </ItemGroup>
 
     <ItemGroup>
