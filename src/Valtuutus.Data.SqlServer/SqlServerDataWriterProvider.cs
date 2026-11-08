@@ -163,7 +163,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactionId = Ulid.NewUlid(now);
+        var transactionId = TransactionIds.Next(_timeProvider, now);
         await InsertTransaction((SqlConnection)connection, transactionId, now, (SqlTransaction)transaction, ct);
 
         await WriteRelationsAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, relations, ct);
@@ -262,7 +262,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     private async Task<SnapToken> DeleteCore(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
     {
         var now = _timeProvider.GetUtcNow();
-        var transactId = Ulid.NewUlid(now);
+        var transactId = TransactionIds.Next(_timeProvider, now);
         var sqlConnection = (SqlConnection)connection;
         var sqlTransaction = (SqlTransaction)transaction;
         await InsertTransaction(sqlConnection, transactId, now, sqlTransaction, ct);

@@ -254,7 +254,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var attributeList = ToDistinctKeyList(attributes);
 
         var now = _timeProvider.GetUtcNow();
-        var tx = Ulid.NewUlid(now).ToString();
+        var tx = TransactionIds.Next(_timeProvider, now).ToString();
 
         await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
         await WriteRelations(mySqlConnection, mySqlTransaction, tx, relationList, ct);
@@ -478,7 +478,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var mySqlConnection = (MySqlConnection)connection;
         var mySqlTransaction = (MySqlTransaction)transaction;
         var now = _timeProvider.GetUtcNow();
-        var tx = Ulid.NewUlid(now).ToString();
+        var tx = TransactionIds.Next(_timeProvider, now).ToString();
 
         foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(RelationFilterMask))
         {

@@ -354,7 +354,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         using var span = ValtuutusTelemetry.StartWrite(null);
         try
         {
-            var transactId = Ulid.NewUlid(_timeProvider.GetUtcNow());
+            var transactId = TransactionIds.Next(_timeProvider, _timeProvider.GetUtcNow());
             await Task.Delay(10, ct);
             _relations.Write(transactId, span.CountRelations(relations));
             _attributes.Write(transactId, span.CountAttributes(attributes));
@@ -377,7 +377,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         using var span = ValtuutusTelemetry.StartWrite(null);
         try
         {
-            var transactId = Ulid.NewUlid(_timeProvider.GetUtcNow());
+            var transactId = TransactionIds.Next(_timeProvider, _timeProvider.GetUtcNow());
             _attributes.Delete(transactId, filter.Attributes);
             _relations.Delete(transactId, filter.Relations);
             // Published as the latest token only once the deletions are in place.

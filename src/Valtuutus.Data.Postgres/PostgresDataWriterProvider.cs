@@ -155,7 +155,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactId = Ulid.NewUlid(now);
+        var transactId = TransactionIds.Next(_timeProvider, now);
 
         await InsertTransaction((NpgsqlConnection)connection, transactId, now, (NpgsqlTransaction)transaction, ct);
 
@@ -290,7 +290,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactId = Ulid.NewUlid(now);
+        var transactId = TransactionIds.Next(_timeProvider, now);
         var npgsqlConnection = (NpgsqlConnection)connection;
         var npgsqlTransaction = (NpgsqlTransaction)transaction;
         var snapTokenValue = transactId.ToString();

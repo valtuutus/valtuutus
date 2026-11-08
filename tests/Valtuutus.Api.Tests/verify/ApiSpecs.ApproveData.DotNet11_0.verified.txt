@@ -57,6 +57,10 @@ namespace Valtuutus.Data
         public TombstoneReaper(Valtuutus.Data.ITombstoneReaperProvider provider, Valtuutus.Data.ValtuutusReaperOptions options, System.TimeProvider timeProvider) { }
         public System.Threading.Tasks.Task<Valtuutus.Data.ReapResult> ReapAsync(System.Threading.CancellationToken ct = default) { }
     }
+    public static class TransactionIds
+    {
+        public static System.Ulid Next(System.TimeProvider clock, System.DateTimeOffset now) { }
+    }
     public class ValtuutusDataOptions : System.IEquatable<Valtuutus.Data.ValtuutusDataOptions>
     {
         public ValtuutusDataOptions() { }
