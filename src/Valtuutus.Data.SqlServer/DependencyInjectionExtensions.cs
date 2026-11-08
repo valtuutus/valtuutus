@@ -46,6 +46,7 @@ public static class DependencyInjectionExtensions
         });
         builder.Services.AddSingleton<ILookupSubjectBatchOps>(new SqlServerLookupSubjectBatchOps(sqlServerOptions));
         builder.Services.AddSingleton<ILookupEntityBatchOps>(new SqlServerLookupEntityBatchOps(sqlServerOptions));
+        builder.Services.AddSingleton(sqlServerOptions);
         builder.Services.AddScoped<IDataReaderProvider, SqlServerDataReaderProvider>();
         builder.Services.AddScoped<IDataWriterProvider, SqlServerDataWriterProvider>();
         builder.Services.AddScoped<IDbDataWriterProvider, SqlServerDataWriterProvider>();

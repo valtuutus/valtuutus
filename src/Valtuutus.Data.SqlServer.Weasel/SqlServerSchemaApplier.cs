@@ -11,13 +11,9 @@ namespace Valtuutus.Data.SqlServer.Weasel;
 
 internal sealed class SqlServerSchemaApplier(
     IServiceProvider services,
-    IValtuutusDbOptions registeredDbOptions,
+    ValtuutusSqlServerOptions dbOptions,
     ValtuutusSqlServerWeaselOptions options) : ISchemaApplier
 {
-    private ValtuutusSqlServerOptions DbOptions => registeredDbOptions as ValtuutusSqlServerOptions
-        ?? throw new InvalidOperationException(
-            $"The Valtuutus schema is applied through Weasel, which needs the options given to AddSqlServer; {registeredDbOptions.GetType().FullName} is registered instead.");
-
     public async Task ApplyAsync(CancellationToken cancellationToken)
     {
         var logger = (services.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance)
@@ -44,7 +40,7 @@ internal sealed class SqlServerSchemaApplier(
             options.LockId, options.LockTimeout, cancellationToken);
         try
         {
-            var migration = await SchemaMigration.DetermineAsync(connection, cancellationToken, SqlServerSchema.Tables(DbOptions));
+            var migration = await SchemaMigration.DetermineAsync(connection, cancellationToken, SqlServerSchema.Tables(dbOptions));
             if (migration.Difference != SchemaPatchDifference.None)
                 await new SqlServerMigrator().ApplyAllAsync(connection, migration, options.AutoCreate,
                     new WeaselMigrationLogger(logger), cancellationToken);
