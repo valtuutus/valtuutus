@@ -17,6 +17,9 @@ public abstract class SqlServerFixtureBase : IAsyncLifetime, IDatabaseFixture, I
 {
     public abstract ValtuutusSqlServerOptions Options { get; }
 
+    /// <summary>Whether reads under read committed see row versions instead of waiting for row locks.</summary>
+    protected virtual bool ReadCommittedSnapshot => false;
+
     public DbConnectionFactory DbFactory { get; private set; } = default!;
     private readonly string _database = SharedContainers.NewDatabaseName();
     private string _serverConnectionString = default!;
@@ -26,7 +29,9 @@ public abstract class SqlServerFixtureBase : IAsyncLifetime, IDatabaseFixture, I
     public async Task InitializeAsync()
     {
         _serverConnectionString = await SharedContainers.SqlServerAsync();
-        await ExecuteOnServerAsync($"CREATE DATABASE [{_database}]");
+        await ExecuteOnServerAsync(ReadCommittedSnapshot
+            ? $"CREATE DATABASE [{_database}]; ALTER DATABASE [{_database}] SET READ_COMMITTED_SNAPSHOT ON"
+            : $"CREATE DATABASE [{_database}]");
         _connectionString = new SqlConnectionStringBuilder(_serverConnectionString) { InitialCatalog = _database }.ConnectionString;
         DbFactory = () => new SqlConnection(_connectionString);
         var services = new ServiceCollection();
@@ -70,4 +75,12 @@ public abstract class SqlServerFixtureBase : IAsyncLifetime, IDatabaseFixture, I
 public class SqlServerFixture : SqlServerFixtureBase
 {
     public override ValtuutusSqlServerOptions Options { get; } = new();
+}
+
+/// <summary>A database with read committed snapshot on, as Azure SQL Database has by default.</summary>
+public class ReadCommittedSnapshotSqlServerFixture : SqlServerFixtureBase
+{
+    public override ValtuutusSqlServerOptions Options { get; } = new();
+
+    protected override bool ReadCommittedSnapshot => true;
 }
