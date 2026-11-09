@@ -45,6 +45,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Valtuutus.Api.Tests/Valtuutus.Api.Tests.csproj" />
+    <Project Path="tests/Valtuutus.AotSmoke/Valtuutus.AotSmoke.csproj" />
     <Project Path="tests/Valtuutus.Data.BackgroundService.Tests/Valtuutus.Data.BackgroundService.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.Caching.Tests/Valtuutus.Data.Caching.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.Db.Tests/Valtuutus.Data.Db.Tests.csproj" />

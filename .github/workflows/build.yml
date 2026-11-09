@@ -56,3 +56,54 @@ jobs:
         if: always()
         with:
           trx_files: "${{ github.workspace }}/**/*.trx"
+  native-aot:
+    # Publishes a small app with Native AOT and runs it: a trim or AOT warning in Valtuutus code
+    # fails the publish, and a wrong answer under AOT fails the run, on InMemory and on each database.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15.1
+        env:
+          POSTGRES_USER: valtuutus
+          POSTGRES_PASSWORD: Valtuutus123
+          POSTGRES_DB: aot_smoke
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U valtuutus" --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: Valtuutus123
+          MYSQL_DATABASE: aot_smoke
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h localhost -pValtuutus123" --health-interval 5s --health-timeout 5s --health-retries 30
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04
+        env:
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Valtuutus123!
+        ports: ['1433:1433']
+        options: >-
+          --health-cmd "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Valtuutus123!' -Q 'SELECT 1'" --health-interval 5s --health-timeout 5s --health-retries 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v6.1.0
+        with:
+          dotnet-version: |
+            11.x
+            10.x
+            9.x
+          include-prerelease: true
+      - name: Install the native toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang zlib1g-dev
+      - name: Publish with Native AOT
+        run: dotnet publish tests/Valtuutus.AotSmoke -c Release -r linux-x64 -p:AotSmoke=true -o aot
+      - name: Run
+        run: ./aot/Valtuutus.AotSmoke
+        env:
+          VALTUUTUS_AOT_POSTGRES: Host=localhost;Port=5432;Username=valtuutus;Password=Valtuutus123;Database=aot_smoke
+          VALTUUTUS_AOT_MYSQL: Server=localhost;Port=3306;User Id=root;Password=Valtuutus123;Database=aot_smoke
+          VALTUUTUS_AOT_SQLSERVER: Server=localhost,1433;User Id=sa;Password=Valtuutus123!;Database=master;TrustServerCertificate=true
