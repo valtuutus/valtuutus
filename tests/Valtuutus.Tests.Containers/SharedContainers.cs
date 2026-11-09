@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using DotNet.Testcontainers.Containers;
 using Testcontainers.MariaDb;
 using Testcontainers.MsSql;
@@ -15,7 +17,8 @@ namespace Valtuutus.Tests.Containers;
 /// <remarks>
 /// Reused containers outlive the run, so the next run skips the server start. Remove them with
 /// <c>podman rm -f $(podman ps -aq --filter label=valtuutus-tests)</c> (or the docker equivalent).
-/// A changed server configuration starts a new container; the old one stays until removed.
+/// A changed server configuration starts a new container under a new name; the old one stays until
+/// removed.
 /// </remarks>
 public static class SharedContainers
 {
@@ -26,47 +29,71 @@ public static class SharedContainers
     public const string MySqlPassword = "Valtuutus123";
     public const string SqlServerPassword = "Valtuutus123!";
 
+    private const string PostgresImage = "postgres:15.1";
+    private static readonly string[] PostgresCommand = ["-c", "max_connections=500"];
+
+    private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04";
+
+    private const string MySqlImage = "mysql:8.4";
+    private const string MariaDbImage = "mariadb:10.11";
+    private static readonly string[] MySqlCommand =
+    [
+        "--max-connections=1000", "--skip-log-bin", "--innodb-flush-log-at-trx-commit=0",
+        "--innodb-doublewrite=0", "--sync-binlog=0", "--innodb-use-native-aio=0",
+    ];
+
     private static readonly Lazy<Task<string>> PostgresServer = new(() => StartAsync("postgres",
-        new PostgreSqlBuilder("postgres:15.1")
+        new PostgreSqlBuilder(PostgresImage)
             .WithUsername("Valtuutus")
             .WithPassword(PostgresPassword)
             .WithDatabase("Valtuutus")
-            .WithCommand("-c", "max_connections=500")
+            .WithCommand(PostgresCommand)
             .WithTmpfsMount("/var/lib/postgresql/data")
+            .WithName(ContainerName("postgres", [PostgresImage, PostgresPassword, ..PostgresCommand]))
             .WithLabel(Label, "true")
             .WithReuse(true)
             .Build()));
 
     private static readonly Lazy<Task<string>> SqlServerServer = new(() => StartAsync("sqlserver",
-        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
+        new MsSqlBuilder(SqlServerImage)
             .WithPassword(SqlServerPassword)
+            .WithName(ContainerName("sqlserver", [SqlServerImage, SqlServerPassword]))
             .WithLabel(Label, "true")
             .WithReuse(true)
             .Build()));
 
     private static readonly Lazy<Task<string>> MySqlServer = new(() => StartAsync("mysql",
-        new MySqlBuilder("mysql:8.4")
+        new MySqlBuilder(MySqlImage)
             .WithUsername("root")
             .WithPassword(MySqlPassword)
             .WithDatabase("valtuutus")
-            .WithCommand("--max-connections=1000", "--skip-log-bin", "--innodb-flush-log-at-trx-commit=0",
-                "--innodb-doublewrite=0", "--sync-binlog=0", "--innodb-use-native-aio=0")
+            .WithCommand(MySqlCommand)
             .WithTmpfsMount("/var/lib/mysql")
+            .WithName(ContainerName("mysql", [MySqlImage, MySqlPassword, ..MySqlCommand]))
             .WithLabel(Label, "true")
             .WithReuse(true)
             .Build()));
 
     private static readonly Lazy<Task<string>> MariaDbServer = new(() => StartAsync("mariadb",
-        new MariaDbBuilder("mariadb:10.11")
+        new MariaDbBuilder(MariaDbImage)
             .WithUsername("root")
             .WithPassword(MySqlPassword)
             .WithDatabase("valtuutus")
-            .WithCommand("--max-connections=1000", "--skip-log-bin", "--innodb-flush-log-at-trx-commit=0",
-                "--innodb-doublewrite=0", "--sync-binlog=0", "--innodb-use-native-aio=0")
+            .WithCommand(MySqlCommand)
             .WithTmpfsMount("/var/lib/mysql")
+            .WithName(ContainerName("mariadb", [MariaDbImage, MySqlPassword, ..MySqlCommand]))
             .WithLabel(Label, "true")
             .WithReuse(true)
             .Build()));
+
+    // Reuse finds a container by a hash of its configuration, so a fixed name would collide with the
+    // container of an earlier configuration. The name carries a hash of what the server is started
+    // with: a changed image or flag starts a new container under a new name.
+    private static string ContainerName(string server, string[] configuration)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', configuration)));
+        return $"{Label}-{server}-{Convert.ToHexStringLower(hash.AsSpan(0, 3))}";
+    }
 
     /// <summary>A connection string to the shared Postgres server, as a superuser.</summary>
     public static Task<string> PostgresAsync() => PostgresServer.Value;
