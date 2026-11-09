@@ -38,6 +38,30 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         {
             InsertTransaction =
                 $"INSERT INTO [{key.Schema}].[{key.TransactionsTable}] (id, created_at) VALUES (@id, @created_at)",
+            // A write frees its slot once it committed; a caller-owned write never does, and the next
+            // claim reuses its slot once its lock is free.
+            ReleaseSlot = $"UPDATE [{key.Schema}].[{key.TransactionsTable}_pending] SET lower_bound = NULL WHERE slot = @slot AND lower_bound = @lower_bound OPTION (KEEPFIXED PLAN)",
+            // Claims a free slot, or one whose write ended (its lock is free), or adds one, each in
+            // its own committed statement, then reads the newest committed id: the write's lock was
+            // taken before, so a reader that saw the slot unheld settled no higher than this.
+            Register = $"""
+                DECLARE @claimed TABLE (slot int);
+                UPDATE TOP (1) s SET lower_bound = @lower_bound, claimed_at = SYSUTCDATETIME()
+                OUTPUT inserted.slot INTO @claimed
+                FROM [{key.Schema}].[{key.TransactionsTable}_pending] s WITH (READPAST, ROWLOCK)
+                WHERE s.lower_bound IS NULL
+                   OR APPLOCK_TEST('public', N'vt_pending_' + s.lower_bound, 'Exclusive', 'Session') = 1
+                OPTION (KEEPFIXED PLAN);
+                IF NOT EXISTS (SELECT 1 FROM @claimed)
+                    INSERT INTO [{key.Schema}].[{key.TransactionsTable}_pending] (lower_bound, claimed_at) OUTPUT inserted.slot INTO @claimed VALUES (@lower_bound, SYSUTCDATETIME());
+                SELECT slot FROM @claimed;
+                SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WITH (READCOMMITTEDLOCK, READPAST) ORDER BY id DESC;
+                """,
+            HoldPending = $"""
+                DECLARE @held int;
+                EXEC @held = sp_getapplock @Resource = @resource, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 0;
+                IF @held < 0 THROW 50000, 'The pending transaction lock was not granted.', 1;
+                """,
             RelationsDestinationTableName = $"[{key.Schema}].[{key.RelationsTable}]",
             MergeAttributes = $"""
                                MERGE INTO [{key.Schema}].[{key.AttributesTable}] AS target
@@ -102,6 +126,9 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     private sealed record WriterCommands
     {
         public required string InsertTransaction { get; init; }
+        public required string Register { get; init; }
+        public required string HoldPending { get; init; }
+        public required string ReleaseSlot { get; init; }
         public required string RelationsDestinationTableName { get; init; }
         public required string MergeAttributes { get; init; }
         public required string[] DeleteRelations { get; init; }
@@ -129,9 +156,10 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         try
         {
             var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
+            var (snapToken, slot) = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
 
             await transaction.CommitAsync(ct);
+            await ReleaseSlot((SqlConnection)connection, slot, ct);
             span.SetSnapToken(snapToken);
             await NotifyCommitted(snapToken);
             return snapToken;
@@ -153,7 +181,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
         try
         {
-            var snapToken = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
+            var (snapToken, _) = await WriteCore(connection, transaction, span.CountRelations(relations), span.CountAttributes(attributes), ct);
             span.SetSnapToken(snapToken);
             return snapToken;
         }
@@ -163,7 +191,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         }
     }
 
-    private async Task<SnapToken> WriteCore(
+    private async Task<(SnapToken, (int, string))> WriteCore(
         IDbConnection connection,
         IDbTransaction transaction,
         IEnumerable<RelationTuple> relations,
@@ -171,13 +199,13 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactionId = MonotonicUlid.Next(_timeProvider);
+        var (transactionId, slot, lowerBound) = await Register((SqlConnection)connection, (SqlTransaction)transaction, ct);
         await InsertTransaction((SqlConnection)connection, transactionId, now, (SqlTransaction)transaction, ct);
 
         await WriteRelationsAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, relations, ct);
         await WriteAttributesAsync((SqlConnection)connection, (SqlTransaction)transaction, transactionId, attributes, ct);
 
-        return new SnapToken(transactionId.ToString());
+        return (new SnapToken(transactionId.ToString()), (slot, lowerBound));
     }
 
     protected virtual async Task WriteRelationsAsync(SqlConnection connection, SqlTransaction transaction, Ulid transactId, IEnumerable<RelationTuple> relations, CancellationToken ct)
@@ -239,9 +267,10 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         try
         {
             var transaction = (SqlTransaction)await ((SqlConnection)connection).BeginTransactionAsync(ct);
-            var snapToken = await DeleteCore(connection, transaction, filter, ct);
+            var (snapToken, slot) = await DeleteCore(connection, transaction, filter, ct);
 
             await transaction.CommitAsync(ct);
+            await ReleaseSlot((SqlConnection)connection, slot, ct);
             span.SetSnapToken(snapToken);
             await NotifyCommitted(snapToken);
             return snapToken;
@@ -257,7 +286,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         using var span = ValtuutusTelemetry.StartWrite(SqlServerDataReaderProvider.DbSystem);
         try
         {
-            var snapToken = await DeleteCore(connection, transaction, filter, ct);
+            var (snapToken, _) = await DeleteCore(connection, transaction, filter, ct);
             span.SetSnapToken(snapToken);
             return snapToken;
         }
@@ -267,10 +296,10 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         }
     }
 
-    private async Task<SnapToken> DeleteCore(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
+    private async Task<(SnapToken, (int, string))> DeleteCore(IDbConnection connection, IDbTransaction transaction, DeleteFilter filter, CancellationToken ct)
     {
         var now = _timeProvider.GetUtcNow();
-        var transactId = MonotonicUlid.Next(_timeProvider);
+        var (transactId, slot, lowerBound) = await Register((SqlConnection)connection, (SqlTransaction)transaction, ct);
         var sqlConnection = (SqlConnection)connection;
         var sqlTransaction = (SqlTransaction)transaction;
         await InsertTransaction(sqlConnection, transactId, now, sqlTransaction, ct);
@@ -289,7 +318,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
             await ExecuteDeleteBatch(sqlConnection, sqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
 
-        return new SnapToken(snapTokenValue);
+        return (new SnapToken(snapTokenValue), (slot, lowerBound));
     }
 
     /// <inheritdoc />
@@ -304,6 +333,58 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         command.CommandText = sql;
         command.Parameters.Add(new SqlParameter("@SnapToken", SqlDbType.NChar, 26) { Value = snapToken });
         command.Parameters.Add(new SqlParameter("@Filters", SqlDbType.NVarChar, -1) { Value = filtersJson });
+        await command.ExecuteNonQueryAsync(ct);
+    }
+
+    // Registers the write as in flight from its id up: the write's transaction takes an app lock named
+    // after the id, then a slot holding the id is claimed on a connection of its own, committed at
+    // once so readers see it. Readers count a slot only while its lock is held (or it was just
+    // claimed). The newest committed id is read after the claim; a write whose id isn't above it
+    // takes one that is, since a reader may already have settled there.
+    private async Task<(Ulid Id, int Slot, string LowerBound)> Register(SqlConnection db, SqlTransaction transaction, CancellationToken ct)
+    {
+        var lowerBound = MonotonicUlid.Next(_timeProvider);
+        var lowerBoundValue = lowerBound.ToString();
+
+        // The app lock is held before the slot is claimed, so a claimed slot whose lock is free
+        // belongs to a write that already ended and can be reused at once.
+        await using (var hold = db.CreateCommand())
+        {
+            hold.Transaction = transaction;
+            hold.CommandText = _c.HoldPending;
+            hold.Parameters.Add(new SqlParameter("@resource", SqlDbType.NVarChar, 255) { Value = "vt_pending_" + lowerBoundValue });
+            await hold.ExecuteNonQueryAsync(ct);
+        }
+
+        int slot;
+        string? newest = null;
+        await using (var side = (SqlConnection)_factory())
+        {
+            await side.OpenAsync(ct);
+            await using var register = side.CreateCommand();
+            register.CommandText = _c.Register;
+            register.Parameters.Add(new SqlParameter("@lower_bound", SqlDbType.NChar, 26) { Value = lowerBoundValue });
+            await using var reader = await register.ExecuteReaderAsync(ct);
+            await reader.ReadAsync(ct);
+            slot = reader.GetInt32(0);
+            if (await reader.NextResultAsync(ct) && await reader.ReadAsync(ct) && !reader.IsDBNull(0)) newest = reader.GetString(0);
+        }
+
+        var id = newest is not null && string.CompareOrdinal(newest, lowerBoundValue) >= 0
+            ? MonotonicUlid.NextAfter(_timeProvider, Ulid.Parse(newest))
+            : lowerBound;
+        return (id, slot, lowerBoundValue);
+    }
+
+    // Releases the slot in its own short statement once the write committed. A caller-owned write
+    // never releases its slot: once the caller commits, its app lock is gone, readers ignore the slot,
+    // and the next claim reuses it.
+    private async Task ReleaseSlot(SqlConnection db, (int Slot, string LowerBound) slot, CancellationToken ct)
+    {
+        await using var command = db.CreateCommand();
+        command.CommandText = _c.ReleaseSlot;
+        command.Parameters.Add(new SqlParameter("@slot", SqlDbType.Int) { Value = slot.Slot });
+        command.Parameters.Add(new SqlParameter("@lower_bound", SqlDbType.NChar, 26) { Value = slot.LowerBound });
         await command.ExecuteNonQueryAsync(ct);
     }
 

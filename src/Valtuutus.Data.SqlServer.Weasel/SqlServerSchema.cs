@@ -15,7 +15,7 @@ internal static class SqlServerSchema
     private const string TxId = "nchar(26)";
 
     public static Table[] Tables(ValtuutusSqlServerOptions options) =>
-        [Attributes(options), Relations(options), Transactions(options)];
+        [Attributes(options), Relations(options), Transactions(options), PendingTransactions(options)];
 
     private static Table NewTable(ValtuutusSqlServerOptions options, string name) =>
         new(new SqlServerObjectName(options.Schema, name)) { PrimaryKeyName = $"PK_{name}", AddOnlyMigrations = true };
@@ -62,6 +62,15 @@ internal static class SqlServerSchema
         Index(t, "idx_relationtuples_subjecttype_subjectid_relation", ["subject_type", "subject_id", "relation"], ["id", "entity_type", "entity_id", "subject_relation", "created_tx_id", "deleted_tx_id"]);
         Index(t, "idx_relation_tuples_direct", ["entity_type", "entity_id", "relation", "subject_id"], ["subject_type", "created_tx_id", "deleted_tx_id"], "[subject_relation] = ''");
         Index(t, "idx_relation_tuples_indirect", ["entity_type", "entity_id", "relation"], ["subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id"], "[subject_relation] <> ''");
+        return t;
+    }
+
+    private static Table PendingTransactions(ValtuutusSqlServerOptions options)
+    {
+        var t = NewTable(options, $"{options.TransactionsTableName}_pending");
+        t.AddColumn("slot", "int").AsPrimaryKey().AutoIncrement();
+        t.AddColumn("lower_bound", TxId).AllowNulls();
+        t.AddColumn("claimed_at", "datetime2(7)").AllowNulls();
         return t;
     }
 
