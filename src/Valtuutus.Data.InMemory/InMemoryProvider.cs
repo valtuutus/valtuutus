@@ -16,8 +16,7 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
     private readonly IServiceProvider _provider;
     private readonly TimeProvider _timeProvider;
 
-    private readonly object _txLock = new();
-    private Ulid? _latestTransaction;
+    private readonly InMemoryTransactions _transactions;
 
     public InMemoryProvider(RelationsStore relations, AttributesStore attributes,
         ValtuutusDataOptions options, IServiceProvider provider) : base(options)
@@ -27,13 +26,14 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         _options = options;
         _provider = provider;
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
+        // Shared by every scope of the container, like the stores; a provider built by hand keeps its own.
+        _transactions = provider.GetService<InMemoryTransactions>() ?? new InMemoryTransactions();
     }
 
     public Task<SnapToken?> GetLatestSnapToken(CancellationToken cancellationToken)
     {
         using var _ = ValtuutusTelemetry.StartRoundTrip(null);
-        Ulid? id;
-        lock (_txLock) { id = _latestTransaction; }
+        var id = _transactions.Latest;
         return Task.FromResult<SnapToken?>(id is null ? null : new SnapToken(id.Value.ToString()));
     }
 
@@ -354,12 +354,17 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         using var span = ValtuutusTelemetry.StartWrite(null);
         try
         {
-            var transactId = MonotonicUlid.Next(_timeProvider);
-            _relations.Write(transactId, span.CountRelations(relations));
-            _attributes.Write(transactId, span.CountAttributes(attributes));
-            // Published as the latest token only once its data is in place, so a read that resolves
-            // the latest token sees the whole write.
-            lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
+            Ulid transactId;
+            // The id is taken and the write applied under one lock, so writes land in id order; the
+            // token is published only once the data is in place, so a read that resolves it sees the
+            // whole write.
+            lock (_transactions.WriteLock)
+            {
+                transactId = MonotonicUlid.Next(_timeProvider);
+                _relations.Write(transactId, span.CountRelations(relations));
+                _attributes.Write(transactId, span.CountAttributes(attributes));
+                _transactions.Publish(transactId);
+            }
             var snapToken = new SnapToken(transactId.ToString());
             span.SetSnapToken(snapToken);
             await _options.NotifyDataWritten(_provider, snapToken);
@@ -376,11 +381,15 @@ public class InMemoryProvider : RateLimiterExecuter, IDataReaderProvider, IDataW
         using var span = ValtuutusTelemetry.StartWrite(null);
         try
         {
-            var transactId = MonotonicUlid.Next(_timeProvider);
-            _attributes.Delete(transactId, filter.Attributes);
-            _relations.Delete(transactId, filter.Relations);
-            // Published as the latest token only once the deletions are in place.
-            lock (_txLock) { if (_latestTransaction is null || transactId.CompareTo(_latestTransaction.Value) > 0) _latestTransaction = transactId; }
+            Ulid transactId;
+            // As for writes: id, deletions and publication under one lock.
+            lock (_transactions.WriteLock)
+            {
+                transactId = MonotonicUlid.Next(_timeProvider);
+                _attributes.Delete(transactId, filter.Attributes);
+                _relations.Delete(transactId, filter.Relations);
+                _transactions.Publish(transactId);
+            }
             var snapToken = new SnapToken(transactId.ToString());
             span.SetSnapToken(snapToken);
             await _options.NotifyDataWritten(_provider, snapToken);
