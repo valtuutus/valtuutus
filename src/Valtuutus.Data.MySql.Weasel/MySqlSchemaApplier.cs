@@ -14,8 +14,20 @@ internal sealed class MySqlSchemaApplier(
     ValtuutusMySqlOptions dbOptions,
     ValtuutusMySqlWeaselOptions options) : ISchemaApplier
 {
+    // Named locks are server-wide, so the name carries the database the tables live in: applies over
+    // the same database serialize, and databases on the same server don't block each other. The
+    // database is hashed to keep the name within the server's limit on lock names.
+    internal const string LockName = "CONCAT(@name, '_', MD5(@database))";
+
+    // The server's limit on lock names, less the separator and the hash.
+    internal const int MaxLockIdLength = 64 - 1 - 32;
+
     public async Task ApplyAsync(CancellationToken cancellationToken)
     {
+        if (options.LockId.Length > MaxLockIdLength)
+            throw new InvalidOperationException(
+                $"The Valtuutus schema lock id '{options.LockId}' is longer than {MaxLockIdLength} characters.");
+
         var logger = (services.GetService<ILoggerFactory>() ?? NullLoggerFactory.Instance)
             .CreateLogger<MySqlSchemaApplier>();
 
@@ -38,8 +50,8 @@ internal sealed class MySqlSchemaApplier(
         // The lock is polled so that cancellation ends the wait on every server.
         await LockPoller.AcquireAsync(async () =>
         {
-            await using var acquire = new MySqlCommand("SELECT GET_LOCK(@name, 0)", connection);
-            acquire.Parameters.AddWithValue("name", options.LockId);
+            await using var acquire = new MySqlCommand($"SELECT GET_LOCK({LockName}, 0)", connection);
+            AddLockParameters(acquire, database);
             var result = await acquire.ExecuteScalarAsync(cancellationToken);
             return result is not null and not DBNull && Convert.ToInt64(result) == 1;
         }, options.LockId, options.LockTimeout, cancellationToken);
@@ -57,8 +69,8 @@ internal sealed class MySqlSchemaApplier(
             // lock with it, ends.
             try
             {
-                await using var release = new MySqlCommand("SELECT RELEASE_LOCK(@name)", connection);
-                release.Parameters.AddWithValue("name", options.LockId);
+                await using var release = new MySqlCommand($"SELECT RELEASE_LOCK({LockName})", connection);
+                AddLockParameters(release, database);
                 await release.ExecuteScalarAsync(CancellationToken.None);
             }
             catch (Exception ex)
@@ -67,5 +79,11 @@ internal sealed class MySqlSchemaApplier(
                 MySqlConnection.ClearPool(connection);
             }
         }
+    }
+
+    private void AddLockParameters(MySqlCommand command, string database)
+    {
+        command.Parameters.AddWithValue("name", options.LockId);
+        command.Parameters.AddWithValue("database", database);
     }
 }
