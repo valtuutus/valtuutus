@@ -68,6 +68,9 @@ public sealed class PostgresBatchOps : RelationalBatchProviderBase
 
     public override string DbSystemName => PostgresDataReaderProvider.DbSystem;
 
+    // Npgsql returns a text column's UTF-8 bytes without allocating.
+    public override bool KeysAsUtf8 => true;
+
     public override DbBatch CreateBatch() => _dataSource.CreateBatch();
 
     // Same body PostgresDataReaderProvider.ExecuteBatchAsync had before the batch ops moved here,

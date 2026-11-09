@@ -45,7 +45,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
     private static async Task<PooledList<RelationTuple>> ReadRelations(DbCommand command, CancellationToken cancellationToken)
     {
         var pooled = PooledList<RelationTuple>.Rent();
-        var keys = KeyDecoder.Rent();
+        var keys = KeyDecoder.Rent(keysAsUtf8: true);
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -60,7 +60,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            KeyDecoder.Return(keys);
+            keys.Dispose();
         }
     }
 
@@ -70,7 +70,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         DbCommand command, int capacity, CancellationToken cancellationToken)
     {
         var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>(capacity);
-        var keys = KeyDecoder.Rent();
+        var keys = KeyDecoder.Rent(keysAsUtf8: true);
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -83,14 +83,14 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            KeyDecoder.Return(keys);
+            keys.Dispose();
         }
     }
 
     private static async Task<List<AttributeTuple>> ReadAttributeList(DbCommand command, CancellationToken cancellationToken)
     {
         var rows = new List<AttributeTuple>();
-        var keys = KeyDecoder.Rent();
+        var keys = KeyDecoder.Rent(keysAsUtf8: true);
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -100,14 +100,14 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            KeyDecoder.Return(keys);
+            keys.Dispose();
         }
     }
 
     private static async Task<List<string>> ReadKeys(DbCommand command, CancellationToken cancellationToken)
     {
         var result = new List<string>();
-        var keys = KeyDecoder.Rent();
+        var keys = KeyDecoder.Rent(keysAsUtf8: true);
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -117,14 +117,14 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            KeyDecoder.Return(keys);
+            keys.Dispose();
         }
     }
 
     private static async Task<HashSet<string>> ReadKeySet(DbCommand command, int capacity, CancellationToken cancellationToken)
     {
         var result = new HashSet<string>(capacity, StringComparer.Ordinal);
-        var keys = KeyDecoder.Rent();
+        var keys = KeyDecoder.Rent(keysAsUtf8: true);
         try
         {
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -134,7 +134,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         }
         finally
         {
-            KeyDecoder.Return(keys);
+            keys.Dispose();
         }
     }
 
@@ -490,7 +490,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
                 filter.Attributes, filter.SnapToken).ApplyTo(command);
 
             var pooled = PooledList<AttributeTuple>.Rent();
-            var keys = KeyDecoder.Rent();
+            var keys = KeyDecoder.Rent(keysAsUtf8: true);
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -505,7 +505,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
             }
             finally
             {
-                KeyDecoder.Return(keys);
+                keys.Dispose();
             }
         }
         finally

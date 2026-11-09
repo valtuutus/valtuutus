@@ -367,25 +367,6 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             AddFixedCharParameter(parameters, "@SnapToken", token.Value, 26);
     }
 
-    private static RelationTuple ReadRelationTuple(SqlDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-            reader.GetString(3), reader.GetString(4), reader.GetString(5));
-
-    private static JsonValue ParseJsonValue(string rawJson)
-    {
-        return JsonNode.Parse(rawJson) as JsonValue
-            ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue.");
-    }
-
-    private static AttributeTuple ReadAttributeTuple(SqlDataReader reader)
-    {
-        return new AttributeTuple(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            ParseJsonValue(reader.GetString(3)));
-    }
-
     private SqlCommand CreateCommand(SqlConnection connection, string commandText)
     {
         var command = connection.CreateCommand();
@@ -887,8 +868,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             var rows = new List<AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: false);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add(ReadAttributeTuple(reader));
+                rows.Add(keys.ReadAttributeTuple(reader));
             return rows;
         }
         finally
@@ -914,9 +896,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: false);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tuple = ReadAttributeTuple(reader);
+                var tuple = keys.ReadAttributeTuple(reader);
                 dict[(tuple.Attribute, tuple.EntityId)] = tuple;
             }
             return dict;
@@ -950,8 +933,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadAttributeTuple(reader));
+                    pooled.Add(keys.ReadAttributeTuple(reader));
                 return pooled;
             }
             catch
@@ -981,8 +965,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             var rows = new List<AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: false);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add(ReadAttributeTuple(reader));
+                rows.Add(keys.ReadAttributeTuple(reader));
             return rows;
         }
         finally
@@ -1008,9 +993,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
 
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: false);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tuple = ReadAttributeTuple(reader);
+                var tuple = keys.ReadAttributeTuple(reader);
                 dict[(tuple.Attribute, tuple.EntityId)] = tuple;
             }
             return dict;
@@ -1076,8 +1062,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1137,8 +1124,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1245,8 +1233,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1279,8 +1268,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     subjectType, subjectRelation, subjectsIds, scope, entityFilter.SnapToken);
 
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1315,8 +1305,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     subjectType, subjectRelation, subjectsIds, scope, snapToken);
 
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1350,8 +1341,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1385,8 +1377,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     subEntityType, subjectRelation, subRelation, subjectType, subjectId, scope, mainFilter.SnapToken);
 
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1420,8 +1413,9 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
                     mainFilter.Relation, entityIds, subEntityType, subjectRelation, subRelation, subjectType, mainFilter.SnapToken);
 
                 await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: false);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch

@@ -27,6 +27,13 @@ public interface IRelationalBatchOps
     string? DbSystemName => null;
 
     /// <summary>
+    /// Whether the driver returns the key columns of this provider's results as their UTF-8 bytes
+    /// through <see cref="DbDataReader.GetBytes"/>, so reading a key the previous row already had
+    /// allocates nothing. False reads keys as strings.
+    /// </summary>
+    bool KeysAsUtf8 => false;
+
+    /// <summary>
     /// Executes a batch created by <see cref="CreateBatch"/> as one physical round trip.
     /// Callers never acquire their own concurrency slot or touch a connection directly — but
     /// unlike every other member on <see cref="IRelationalCheckOps"/>/

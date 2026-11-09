@@ -405,25 +405,6 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             AddFixedCharParameter(parameters, "snap_token", token.Value, 26);
     }
 
-    private static RelationTuple ReadRelationTuple(NpgsqlDataReader reader) =>
-        new(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-            reader.GetString(3), reader.GetString(4), reader.GetString(5));
-
-    private static JsonValue ParseJsonValue(string rawJson)
-    {
-        return JsonNode.Parse(rawJson) as JsonValue
-            ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue.");
-    }
-
-    private static AttributeTuple ReadAttributeTuple(NpgsqlDataReader reader)
-    {
-        return new AttributeTuple(
-            reader.GetString(0),
-            reader.GetString(1),
-            reader.GetString(2),
-            ParseJsonValue(reader.GetString(3)));
-    }
-
     // Internal so PostgresBatchOps binds its batches to the SAME cached NpgsqlDataSource (same
     // cache key, same instance) the reader uses — one connection pool and one auto-prepare cache
     // for both the single-op and the batched path.
@@ -831,8 +812,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             try
             {
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -897,15 +879,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 _q.GetIndirectRelations.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    pooled.Add(new RelationTuple(
-                        reader.GetString(0),
-                        reader.GetString(1),
-                        reader.GetString(2),
-                        reader.GetString(3),
-                        reader.GetString(4),
-                        reader.GetString(5)));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 }
                 return pooled;
             }
@@ -1034,8 +1011,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 _q.SelectRelationsWithEntityIds.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1066,8 +1044,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 statement.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1100,8 +1079,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 statement.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1133,8 +1113,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 _q.GetRelationsWithEntityIdsMultiRelationSnap.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadRelationTuple(reader));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 return pooled;
             }
             catch
@@ -1167,11 +1148,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 statement.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    pooled.Add(new RelationTuple(
-                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                        reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 }
                 return pooled;
             }
@@ -1204,11 +1184,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 _q.GetRelationsJoinedByEntityIds.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
                 {
-                    pooled.Add(new RelationTuple(
-                        reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                        reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                    pooled.Add(keys.ReadRelationTuple(reader));
                 }
                 return pooled;
             }
@@ -1368,8 +1347,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var rows = new List<AttributeTuple>();
             _q.SelectAttributesByEntityAttributeFilter.Bind(command.Parameters);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: true);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add(ReadAttributeTuple(reader));
+                rows.Add(keys.ReadAttributeTuple(reader));
             return rows;
         }
         finally
@@ -1392,9 +1372,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             statement.Bind(command.Parameters);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: true);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tuple = ReadAttributeTuple(reader);
+                var tuple = keys.ReadAttributeTuple(reader);
                 dict[(tuple.Attribute, tuple.EntityId)] = tuple;
             }
             return dict;
@@ -1425,8 +1406,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             {
                 _q.SelectAttributesSingleEntity.Bind(command.Parameters);
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+                using var keys = KeyDecoder.Rent(keysAsUtf8: true);
                 while (await reader.ReadAsync(cancellationToken))
-                    pooled.Add(ReadAttributeTuple(reader));
+                    pooled.Add(keys.ReadAttributeTuple(reader));
                 return pooled;
             }
             catch
@@ -1454,8 +1436,9 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var rows = new List<AttributeTuple>();
             _q.SelectAttributesWithEntityIdsByAttributeFilter.Bind(command.Parameters);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: true);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add(ReadAttributeTuple(reader));
+                rows.Add(keys.ReadAttributeTuple(reader));
             return rows;
         }
         finally
@@ -1478,9 +1461,10 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             var dict = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
             _q.SelectAttributesWithEntityIdsByEntityAttributesFilter.Bind(command.Parameters);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            using var keys = KeyDecoder.Rent(keysAsUtf8: true);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tuple = ReadAttributeTuple(reader);
+                var tuple = keys.ReadAttributeTuple(reader);
                 dict[(tuple.Attribute, tuple.EntityId)] = tuple;
             }
             return dict;
