@@ -17,16 +17,9 @@ public static class DependencyInjectionExtensions
         AutoCreateGuard.EnsureSafe(options.AutoCreate);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<ISchemaApplier, PostgresSchemaApplier>();
-        builder.Services.AddHostedService<SchemaHostedService>();
+        builder.Services.AddSingleton<PostgresSchemaApplier>();
+        builder.Services.AddSingleton<ISchemaApplier>(sp => sp.GetRequiredService<PostgresSchemaApplier>());
+        builder.Services.AddHostedService(sp => new SchemaHostedService(sp.GetRequiredService<PostgresSchemaApplier>()));
         return builder;
-    }
-
-    /// <summary>Applies the Valtuutus schema now, with the options given to AddPostgresWeasel.</summary>
-    public static Task ApplyValtuutusSchemaAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
-    {
-        var applier = services.GetService<ISchemaApplier>()
-            ?? throw new InvalidOperationException("Call AddPostgresWeasel() on the Valtuutus data builder before ApplyValtuutusSchemaAsync().");
-        return applier.ApplyAsync(cancellationToken);
     }
 }

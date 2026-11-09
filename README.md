@@ -195,7 +195,7 @@ builder.Services.AddValtuutusCore(/* schema */)
 ```
 
 To apply at a time you choose instead (a migration job, a deploy step), call
-`await app.Services.ApplyValtuutusSchemaAsync();` (the opt-in call is still required, and its
+`await app.Services.ApplyValtuutusSchemaAsync();` from the `Valtuutus.Data` namespace (the opt-in call is still required, and its
 hosted service also runs if a host starts).
 
 `AutoCreate` controls how far an apply may go: `CreateOrUpdate` (default) creates what is missing

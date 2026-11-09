@@ -8,6 +8,11 @@ namespace Valtuutus.Data
         public static Valtuutus.Data.IValtuutusDataBuilder AddConcurrentQueryLimit(this Valtuutus.Data.IValtuutusDataBuilder builder, int limit) { }
         public static Valtuutus.Data.IValtuutusDataBuilder AddTombstoneReaper(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.ValtuutusReaperOptions>? configure = null) { }
         public static Valtuutus.Data.IValtuutusDataBuilder AddValtuutusData(this Microsoft.Extensions.DependencyInjection.IServiceCollection services) { }
+        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public interface ISchemaApplier
+    {
+        System.Threading.Tasks.Task ApplyAsync(System.Threading.CancellationToken cancellationToken);
     }
     public interface ITombstoneReaper
     {
