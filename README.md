@@ -226,35 +226,40 @@ The relational providers accept an options object to customise the database sche
 builder.Services.AddValtuutusCore(/* schema */)
     .AddPostgres(
         _ => () => new NpgsqlConnection(connectionString),
-        new ValtuutusPostgresOptions(
-            schema:                 "authz",
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusPostgresOptions
+        {
+            Schema = "authz",
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 
 // SQL Server — defaults: schema="dbo", same table names
 builder.Services.AddValtuutusCore(/* schema */)
     .AddSqlServer(
         _ => () => new SqlConnection(connectionString),
-        new ValtuutusSqlServerOptions(
-            schema:                 "authz",
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusSqlServerOptions
+        {
+            Schema = "authz",
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 
 // MySQL / MariaDB — defaults: schema="" (the connection's database), same table names
 builder.Services.AddValtuutusCore(/* schema */)
     .AddMySql(
         _ => () => new MySqlConnection(connectionString),
-        new ValtuutusMySqlOptions(
-            serverType:             MySqlServerType.MySql,
-            schema:                 "authz", // the MySQL database holding the tables
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusMySqlOptions(MySqlServerType.MySql)
+        {
+            Schema = "authz", // the MySQL database holding the tables
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 ```
 
-Make sure the migration script targets the same schema and table names you configure here.
+Set only the names you change; the others keep their defaults. Make sure the migration script targets the same schema and table names you configure here.
 
 `ValtuutusPostgresOptions` also exposes two Npgsql-specific properties for automatic prepared statements:
 

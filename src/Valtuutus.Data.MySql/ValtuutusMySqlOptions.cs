@@ -4,25 +4,14 @@ namespace Valtuutus.Data.MySql;
 
 public record ValtuutusMySqlOptions : IValtuutusDbOptions
 {
+    private string _schema = "";
+    private string _transactionsTableName = "transactions";
+    private string _relationsTableName = "relation_tuples";
+    private string _attributesTableName = "attributes";
+
     public ValtuutusMySqlOptions(MySqlServerType serverType)
     {
         ServerType = serverType;
-    }
-
-    public ValtuutusMySqlOptions(MySqlServerType serverType,
-        string schema,
-        string transactionsTableName,
-        string relationsTableName,
-        string attributesTableName) : this(serverType)
-    {
-        ArgumentNullException.ThrowIfNull(schema);
-        if (string.IsNullOrWhiteSpace(transactionsTableName)) throw new ArgumentNullException(nameof(transactionsTableName));
-        if (string.IsNullOrWhiteSpace(relationsTableName)) throw new ArgumentNullException(nameof(relationsTableName));
-        if (string.IsNullOrWhiteSpace(attributesTableName)) throw new ArgumentNullException(nameof(attributesTableName));
-        Schema = schema;
-        TransactionsTableName = transactionsTableName;
-        RelationsTableName = relationsTableName;
-        AttributesTableName = attributesTableName;
     }
 
     public MySqlServerType ServerType { get; }
@@ -31,10 +20,25 @@ public record ValtuutusMySqlOptions : IValtuutusDbOptions
     /// The database holding the tables. Empty uses the connection's own database, with unqualified
     /// table names.
     /// </summary>
-    public string Schema { get; private set; } = "";
-    public string TransactionsTableName { get; private set; } = "transactions";
-    public string RelationsTableName { get; private set; } = "relation_tuples";
-    public string AttributesTableName { get; private set; } = "attributes";
+    public string Schema { get => _schema; init => _schema = value ?? throw new ArgumentNullException(nameof(Schema)); }
+
+    public string TransactionsTableName
+    {
+        get => _transactionsTableName;
+        init => _transactionsTableName = NotBlank(value, nameof(TransactionsTableName));
+    }
+
+    public string RelationsTableName
+    {
+        get => _relationsTableName;
+        init => _relationsTableName = NotBlank(value, nameof(RelationsTableName));
+    }
+
+    public string AttributesTableName
+    {
+        get => _attributesTableName;
+        init => _attributesTableName = NotBlank(value, nameof(AttributesTableName));
+    }
 
     /// <summary>
     /// Levels of a userset chain one LookupSubject query reads, and hops of a self-recursive
@@ -43,4 +47,7 @@ public record ValtuutusMySqlOptions : IValtuutusDbOptions
     /// costs no extra levels.
     /// </summary>
     public int LookupHopsPerQuery { get; init; } = 12;
+
+    private static string NotBlank(string value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentNullException(name) : value;
 }

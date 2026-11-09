@@ -4,32 +4,34 @@ namespace Valtuutus.Data.SqlServer;
 
 public record ValtuutusSqlServerOptions : IValtuutusDbOptions
 {
+    private string _schema = "dbo";
+    private string _transactionsTableName = "transactions";
+    private string _relationsTableName = "relation_tuples";
+    private string _attributesTableName = "attributes";
+
     /// <summary>
-    /// Uses the default names: schema "dbo" and the tables "transactions", "relation_tuples" and "attributes".
+    /// The schema holding the tables. Defaults to "dbo"; the tables default to "transactions",
+    /// "relation_tuples" and "attributes".
     /// </summary>
-    public ValtuutusSqlServerOptions()
+    public string Schema { get => _schema; init => _schema = NotBlank(value, nameof(Schema)); }
+
+    public string TransactionsTableName
     {
+        get => _transactionsTableName;
+        init => _transactionsTableName = NotBlank(value, nameof(TransactionsTableName));
     }
 
-    public ValtuutusSqlServerOptions(string schema,
-        string transactionsTableName, 
-        string relationsTableName,
-        string attributesTableName)
+    public string RelationsTableName
     {
-        if(string.IsNullOrWhiteSpace(schema)) throw new ArgumentNullException(nameof(schema));
-        if(string.IsNullOrWhiteSpace(transactionsTableName)) throw new ArgumentNullException(nameof(transactionsTableName));
-        if(string.IsNullOrWhiteSpace(relationsTableName)) throw new ArgumentNullException(nameof(relationsTableName));
-        if(string.IsNullOrWhiteSpace(attributesTableName)) throw new ArgumentNullException(nameof(attributesTableName));
-        Schema = schema;
-        TransactionsTableName = transactionsTableName;
-        RelationsTableName = relationsTableName;
-        AttributesTableName = attributesTableName;
+        get => _relationsTableName;
+        init => _relationsTableName = NotBlank(value, nameof(RelationsTableName));
     }
-    
-    public string Schema { get; } = "dbo";
-    public string TransactionsTableName { get; } = "transactions";
-    public string RelationsTableName { get; } = "relation_tuples";
-    public string AttributesTableName { get; } = "attributes";
+
+    public string AttributesTableName
+    {
+        get => _attributesTableName;
+        init => _attributesTableName = NotBlank(value, nameof(AttributesTableName));
+    }
 
     /// <summary>
     /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
@@ -46,4 +48,6 @@ public record ValtuutusSqlServerOptions : IValtuutusDbOptions
     /// </summary>
     public int TwoHopEntityScanLimit { get; init; } = 32;
 
-};
+    private static string NotBlank(string value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentNullException(name) : value;
+}

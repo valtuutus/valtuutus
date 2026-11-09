@@ -73,12 +73,11 @@ namespace Valtuutus.Data.SqlServer
     public class ValtuutusSqlServerOptions : System.IEquatable<Valtuutus.Data.SqlServer.ValtuutusSqlServerOptions>, Valtuutus.Data.Db.IValtuutusDbOptions
     {
         public ValtuutusSqlServerOptions() { }
-        public ValtuutusSqlServerOptions(string schema, string transactionsTableName, string relationsTableName, string attributesTableName) { }
-        public string AttributesTableName { get; }
+        public string AttributesTableName { get; init; }
         public int LookupHopsPerQuery { get; init; }
-        public string RelationsTableName { get; }
-        public string Schema { get; }
-        public string TransactionsTableName { get; }
+        public string RelationsTableName { get; init; }
+        public string Schema { get; init; }
+        public string TransactionsTableName { get; init; }
         public int TwoHopEntityScanLimit { get; init; }
     }
 }

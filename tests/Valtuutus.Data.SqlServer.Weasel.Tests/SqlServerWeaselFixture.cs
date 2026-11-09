@@ -48,6 +48,9 @@ public sealed class SqlServerWeaselFixture : IAsyncLifetime
         return services.BuildServiceProvider();
     }
 
-    public static ValtuutusSqlServerOptions CustomNames => new("authz", "my_tx", "my_tuples", "my_attrs");
+    public static ValtuutusSqlServerOptions CustomNames => new()
+    {
+        Schema = "authz", TransactionsTableName = "my_tx", RelationsTableName = "my_tuples", AttributesTableName = "my_attrs"
+    };
 
 }

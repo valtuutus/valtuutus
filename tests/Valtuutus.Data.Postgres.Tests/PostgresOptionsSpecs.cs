@@ -46,4 +46,17 @@ public sealed class PostgresOptionsSpecs : IAsyncLifetime, IClassFixture<Postgre
         resolvedOptions.AutoPrepareMinUsages.Should().Be(3);
         reader.Should().NotBeNull();
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    public void A_blank_schema_or_table_name_is_refused(string blank)
+    {
+        var options = new ValtuutusPostgresOptions();
+
+        ((Action)(() => _ = options with { Schema = blank })).Should().Throw<ArgumentNullException>().WithParameterName("Schema");
+        ((Action)(() => _ = options with { TransactionsTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("TransactionsTableName");
+        ((Action)(() => _ = options with { RelationsTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("RelationsTableName");
+        ((Action)(() => _ = options with { AttributesTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("AttributesTableName");
+    }
 }
