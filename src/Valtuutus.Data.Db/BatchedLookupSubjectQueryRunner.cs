@@ -1,5 +1,4 @@
 using System.Data.Common;
-using System.Text.Json.Nodes;
 using Valtuutus.Core;
 using Valtuutus.Core.Data;
 using Valtuutus.Core.Observability;
@@ -56,12 +55,13 @@ internal sealed class BatchedLookupSubjectQueryRunner(
 
         await using var results = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
         span.Responded();
+        using var keys = KeyDecoder.Rent(batchOps.KeysAsUtf8);
         var token = snapToken ?? await ReadSnapTokenAsync(results, ct).ConfigureAwait(false);
         for (var i = 0; i < queries.Count; i++)
         {
             if (i > 0 || snapToken is null)
                 await results.NextResultAsync(ct).ConfigureAwait(false);
-            queries[i].Result = await ReadResultAsync(results, queries[i].Kind, ct).ConfigureAwait(false);
+            queries[i].Result = await ReadResultAsync(results, queries[i].Kind, keys, ct).ConfigureAwait(false);
         }
         return token;
     }
@@ -80,7 +80,7 @@ internal sealed class BatchedLookupSubjectQueryRunner(
             : SnapToken.MinValue;
 
     private static async Task<object> ReadResultAsync(DbDataReader results, LookupSubjectQueryKind kind,
-        CancellationToken ct)
+        KeyDecoder keys, CancellationToken ct)
     {
         switch (kind)
         {
@@ -94,9 +94,7 @@ internal sealed class BatchedLookupSubjectQueryRunner(
                 {
                     while (await results.ReadAsync(ct).ConfigureAwait(false))
                     {
-                        pooled.Add(new RelationTuple(
-                            results.GetString(0), results.GetString(1), results.GetString(2),
-                            results.GetString(3), results.GetString(4), results.GetString(5)));
+                        pooled.Add(keys.ReadRelationTuple(results));
                     }
                 }
                 catch
@@ -111,7 +109,7 @@ internal sealed class BatchedLookupSubjectQueryRunner(
                 var attributes = new Dictionary<(string AttributeName, string EntityId), AttributeTuple>();
                 while (await results.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    var tuple = ReadAttributeTuple(results);
+                    var tuple = keys.ReadAttributeTuple(results);
                     attributes[(tuple.Attribute, tuple.EntityId)] = tuple;
                 }
                 return attributes;
@@ -120,7 +118,7 @@ internal sealed class BatchedLookupSubjectQueryRunner(
             {
                 var attributes = new List<AttributeTuple>();
                 while (await results.ReadAsync(ct).ConfigureAwait(false))
-                    attributes.Add(ReadAttributeTuple(results));
+                    attributes.Add(keys.ReadAttributeTuple(results));
                 return attributes;
             }
             case LookupSubjectQueryKind.SubjectsExcluding:
@@ -134,9 +132,4 @@ internal sealed class BatchedLookupSubjectQueryRunner(
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
         }
     }
-
-    private static AttributeTuple ReadAttributeTuple(DbDataReader results) =>
-        new(results.GetString(0), results.GetString(1), results.GetString(2),
-            JsonNode.Parse(results.GetString(3)) as JsonValue
-            ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue."));
 }

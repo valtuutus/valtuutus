@@ -125,6 +125,9 @@ public abstract class RelationalBatchProviderBase : IRelationalBatchOps
     public virtual string? DbSystemName => null;
 
     /// <inheritdoc />
+    public virtual bool KeysAsUtf8 => false;
+
+    /// <inheritdoc />
     public virtual void AddResolveLatestSnapTokenToBatch(DbBatch batch)
         => throw new NotSupportedException($"{GetType().Name} cannot resolve the snap token inside a batch.");
 
