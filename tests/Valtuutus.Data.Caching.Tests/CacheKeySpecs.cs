@@ -17,6 +17,9 @@ public sealed class CacheKeySpecs : IDisposable
 
     private readonly FusionCache _cache = new(new FusionCacheOptions());
 
+    // The requests' token is known to be settled, so their answers are cached.
+    public CacheKeySpecs() => _cache.Set(Consts.LatestSnapTokenKey, Token);
+
     public void Dispose() => _cache.Dispose();
 
     private static Dictionary<string, object> Ctx(params (string Key, object Value)[] entries)

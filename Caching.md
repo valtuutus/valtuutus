@@ -61,7 +61,9 @@ That's it. Now all your queries to the engines will be cached to reduce the load
 
 ## How cached requests pick a snap token
 
-A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes and deletes made through Valtuutus update the cache's latest token once they have committed; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward: a write that finishes after a newer one doesn't replace it.
+A request without a `SnapToken` reads at the latest token the cache knows, so a cached answer needs no database round trip. That token is always a **settled** one: on Postgres, SQL Server, MySQL and MariaDB no write can still commit at or under it, so the answer at it never changes. When the cache knows no latest token (on first use, or after it expires), the engine resolves the latest settled token in its first round trip, and the result is cached under it. Writes and deletes made through Valtuutus move the cache's latest token forward once they have committed, to the latest settled token read right after the commit; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward.
+
+A request with a `SnapToken` is cached under that token when the token is at or below the latest one the cache knows. A newer token (typically the one a write just returned, while a write that took its id earlier is still open) is answered without the cache: rows can still land under it.
 
 `AddCaching` updates the latest token by adding a handler to `ValtuutusDataOptions.OnDataWritten`. Handlers you add (`options.OnDataWritten.Add(...)`) run alongside it, in the order added, whether you add them before or after calling `AddCaching`.
 
@@ -81,6 +83,8 @@ A request with a `SnapToken` is cached under that token. A request without one r
 These durations set the expiry of Valtuutus's entries; the rest of your FusionCache entry options (fail-safe, distributed cache, backplane) still apply.
 
 ## Settle window
+
+With settled tokens, the providers above never let a cached answer go stale, and the settle window only shortens how long recent answers are kept. It still bounds staleness for providers that don't settle tokens (InMemory, or a custom provider).
 
 A writer takes its transaction id (the snap token its rows are written at) before it commits. When two writes run concurrently, the one that took the older id can commit after the newer one, so its rows land at a token older than one requests have already read at. A result cached at that newer token would miss those rows until it expires.
 

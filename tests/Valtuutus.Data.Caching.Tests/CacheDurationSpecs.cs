@@ -26,6 +26,7 @@ public sealed class CacheDurationSpecs : IDisposable
     {
         var token = TokenTakenNow();
         _time.Advance(TimeSpan.FromMinutes(1));
+        await _cache.SetAsync(Consts.LatestSnapTokenKey, token);
         var inner = new RecordingCheckEngine(token);
         var engine = new CachedCheckEngine(_cache, inner,
             new ValtuutusCachingOptions { TimeProvider = _time, Duration = ShortDuration });
