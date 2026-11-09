@@ -382,15 +382,35 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         var attributesTable = $"[{key.Schema}].[{key.AttributesTable}]";
         var snapPredicate = SnapPredicate;
 
+        // The latest token is the latest settled one: the newest committed id below every write still
+        // in flight, so no write can still commit at or under it. A slot counts while its write's app
+        // lock is held, or while it was just claimed. Slots being claimed or freed are skipped rather
+        // than waited for: a write still claiming validates its id afterwards, and one freeing its
+        // slot already committed. The bound is resolved into a variable first so the token read is a
+        // seek; the slot table's plan is kept as is, since its statistics churn with every write.
+        // Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
+        var pendingBound = $"""
+            DECLARE @Pending nchar(26);
+            SELECT @Pending = MIN(p.lower_bound) FROM [{key.Schema}].[{key.TransactionsTable}_pending] p WITH (READCOMMITTEDLOCK, READPAST)
+            WHERE p.lower_bound IS NOT NULL
+              AND (p.claimed_at > DATEADD(millisecond, -50, SYSUTCDATETIME())
+                   OR APPLOCK_TEST('public', N'vt_pending_' + p.lower_bound, 'Exclusive', 'Session') = 0)
+            OPTION (KEEPFIXED PLAN);
+            SET @Pending = COALESCE(@Pending, CAST(N'8' AS nchar(26)));
+            """;
+
         return new ReaderQueries
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
             TwoHopEntityScanLimit = scanLimit,
-            GetLatestSnapToken = string.Format(
-                "SELECT TOP 1 id FROM [{0}].[{1}] ORDER BY id DESC", key.Schema, key.TransactionsTable),
+            GetLatestSnapToken = $"""
+                {pendingBound}
+                SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id < @Pending ORDER BY id DESC;
+                """,
             ResolveLatestSnapTokenForBatch = $"""
-                DECLARE @LatestSnapToken nchar(26) = COALESCE((SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] ORDER BY id DESC), '{SnapToken.MinValue.Value}');
+                {pendingBound}
+                DECLARE @LatestSnapToken nchar(26) = COALESCE((SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id < @Pending ORDER BY id DESC), '{SnapToken.MinValue.Value}');
                 EXEC sp_set_session_context @key = N'{BatchResolvedSnapTokenKey}', @value = @LatestSnapToken;
                 SELECT @LatestSnapToken;
                 """,

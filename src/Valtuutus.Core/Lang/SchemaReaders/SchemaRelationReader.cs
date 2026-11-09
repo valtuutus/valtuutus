@@ -28,8 +28,6 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
         var relationSymbol = new RelationSymbol(relationName, relation.Start.Line, relation.Start.Column, entityName,
             refRelations);
 
-        ValidateMatchingEntitiesReferences(relation, entityName, relationSymbol, relationName);
-
         schemaReader.AddSymbol(relationSymbol);
 
         var config = (RelationSchemaBuilder builder) =>
@@ -88,26 +86,6 @@ internal class SchemaRelationReader(SchemaReader schemaReader)
         }
 
         return refRelations;
-    }
-
-    private void ValidateMatchingEntitiesReferences(ValtuutusParser.RelationDefinitionContext relation,
-        string entityName,
-        RelationSymbol relationSymbol, string relationName)
-    {
-        var finalEntities = schemaReader.GetFinalEntitiesNames(relationSymbol);
-        if (finalEntities.Count > 1)
-        {
-            // the relations, after expanding the relation tree, should always end up in the same entity
-            // so, if the count > 1 we have more than one entity as leafs of the tree.
-            // hence an invalid state
-            schemaReader.AddError(new LangError()
-            {
-                Line = relation.Start.Line,
-                StartPos = relation.Start.Column,
-                Message =
-                    $"Entity '{entityName}' '{relationName}' has inconsistent final entity references.",
-            });
-        }
     }
 
     private void ValidateEntityExists(ValtuutusParser.RelationDefinitionContext relation, string refEntityName)

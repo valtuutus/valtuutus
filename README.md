@@ -172,9 +172,13 @@ builder.Services
 
 ## Database migrations
 If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function. Run each provider's scripts in order; the file names start with a timestamp, and an upgrade runs only the scripts newer than the ones already applied.
-- Postgres: [initial](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql), [lookup indexes](src/Valtuutus.Data.Postgres/Database/migrations/20261024190000_lookup_indexes.sql)
-- SqlServer: [initial](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql), [lookup indexes](src/Valtuutus.Data.SqlServer/Database/migrations/20261024190000_lookup_indexes.sql), [drop TVP_ListIds](src/Valtuutus.Data.SqlServer/Database/migrations/20261107120000_drop_tvp_listids.sql)
-- MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
+- Postgres: [initial](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql), [lookup indexes](src/Valtuutus.Data.Postgres/Database/migrations/20261024190000_lookup_indexes.sql), [pending transactions](src/Valtuutus.Data.Postgres/Database/migrations/20261109120000_transactions_pending.sql)
+- SqlServer: [initial](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql), [lookup indexes](src/Valtuutus.Data.SqlServer/Database/migrations/20261024190000_lookup_indexes.sql), [drop TVP_ListIds](src/Valtuutus.Data.SqlServer/Database/migrations/20261107120000_drop_tvp_listids.sql), [pending transactions](src/Valtuutus.Data.SqlServer/Database/migrations/20261109120000_transactions_pending.sql)
+- MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql), [pending transactions](src/Valtuutus.Data.MySql/Database/migrations/20261109120000_transactions_pending.sql)
+
+On SQL Server, consider turning on `READ_COMMITTED_SNAPSHOT` for the Valtuutus database (Azure SQL Database has it on by default): without it, a read that touches rows an open write changed waits for that write to finish.
+
+On MySQL and MariaDB, writes in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) are best made at `READ COMMITTED`. Under the server default, `REPEATABLE READ`, a delete keeps gap locks next to the tuples it tombstones, and concurrent deletes of neighbouring tuples can deadlock; retry the transaction when that happens. Writes Valtuutus commits itself already use `READ COMMITTED`.
 
 ### Applying the schema with Weasel
 
@@ -191,7 +195,7 @@ builder.Services.AddValtuutusCore(/* schema */)
 ```
 
 To apply at a time you choose instead (a migration job, a deploy step), call
-`await app.Services.ApplyValtuutusSchemaAsync();` (the opt-in call is still required, and its
+`await app.Services.ApplyValtuutusSchemaAsync();` from the `Valtuutus.Data` namespace (the opt-in call is still required, and its
 hosted service also runs if a host starts).
 
 `AutoCreate` controls how far an apply may go: `CreateOrUpdate` (default) creates what is missing
@@ -222,35 +226,40 @@ The relational providers accept an options object to customise the database sche
 builder.Services.AddValtuutusCore(/* schema */)
     .AddPostgres(
         _ => () => new NpgsqlConnection(connectionString),
-        new ValtuutusPostgresOptions(
-            schema:                 "authz",
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusPostgresOptions
+        {
+            Schema = "authz",
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 
 // SQL Server — defaults: schema="dbo", same table names
 builder.Services.AddValtuutusCore(/* schema */)
     .AddSqlServer(
         _ => () => new SqlConnection(connectionString),
-        new ValtuutusSqlServerOptions(
-            schema:                 "authz",
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusSqlServerOptions
+        {
+            Schema = "authz",
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 
 // MySQL / MariaDB — defaults: schema="" (the connection's database), same table names
 builder.Services.AddValtuutusCore(/* schema */)
     .AddMySql(
         _ => () => new MySqlConnection(connectionString),
-        new ValtuutusMySqlOptions(
-            serverType:             MySqlServerType.MySql,
-            schema:                 "authz", // the MySQL database holding the tables
-            transactionsTableName:  "transactions",
-            relationsTableName:     "relation_tuples",
-            attributesTableName:    "attributes"));
+        new ValtuutusMySqlOptions(MySqlServerType.MySql)
+        {
+            Schema = "authz", // the MySQL database holding the tables
+            TransactionsTableName = "transactions",
+            RelationsTableName = "relation_tuples",
+            AttributesTableName = "attributes",
+        });
 ```
 
-Make sure the migration script targets the same schema and table names you configure here.
+Set only the names you change; the others keep their defaults. Make sure the migration script targets the same schema and table names you configure here.
 
 `ValtuutusPostgresOptions` also exposes two Npgsql-specific properties for automatic prepared statements:
 

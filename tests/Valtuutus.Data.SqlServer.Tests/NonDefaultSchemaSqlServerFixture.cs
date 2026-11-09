@@ -11,5 +11,5 @@ namespace Valtuutus.Data.SqlServer.Tests;
 public class NonDefaultSchemaSqlServerFixture : SqlServerFixtureBase
 {
     public override ValtuutusSqlServerOptions Options { get; } =
-        new("authz", "transactions", "relation_tuples", "attributes");
+        new() { Schema = "authz" };
 }

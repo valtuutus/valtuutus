@@ -9,32 +9,17 @@ public record ValtuutusMySqlOptions : IValtuutusDbOptions
         ServerType = serverType;
     }
 
-    public ValtuutusMySqlOptions(MySqlServerType serverType,
-        string schema,
-        string transactionsTableName,
-        string relationsTableName,
-        string attributesTableName) : this(serverType)
-    {
-        ArgumentNullException.ThrowIfNull(schema);
-        if (string.IsNullOrWhiteSpace(transactionsTableName)) throw new ArgumentNullException(nameof(transactionsTableName));
-        if (string.IsNullOrWhiteSpace(relationsTableName)) throw new ArgumentNullException(nameof(relationsTableName));
-        if (string.IsNullOrWhiteSpace(attributesTableName)) throw new ArgumentNullException(nameof(attributesTableName));
-        Schema = schema;
-        TransactionsTableName = transactionsTableName;
-        RelationsTableName = relationsTableName;
-        AttributesTableName = attributesTableName;
-    }
-
     public MySqlServerType ServerType { get; }
 
     /// <summary>
     /// The database holding the tables. Empty uses the connection's own database, with unqualified
     /// table names.
     /// </summary>
-    public string Schema { get; private set; } = "";
-    public string TransactionsTableName { get; private set; } = "transactions";
-    public string RelationsTableName { get; private set; } = "relation_tuples";
-    public string AttributesTableName { get; private set; } = "attributes";
+    public string Schema { get; init => field = value ?? throw new ArgumentNullException(nameof(Schema)); } = "";
+
+    public string TransactionsTableName { get; init => field = NotBlank(value, nameof(TransactionsTableName)); } = "transactions";
+    public string RelationsTableName { get; init => field = NotBlank(value, nameof(RelationsTableName)); } = "relation_tuples";
+    public string AttributesTableName { get; init => field = NotBlank(value, nameof(AttributesTableName)); } = "attributes";
 
     /// <summary>
     /// Levels of a userset chain one LookupSubject query reads, and hops of a self-recursive
@@ -43,4 +28,7 @@ public record ValtuutusMySqlOptions : IValtuutusDbOptions
     /// costs no extra levels.
     /// </summary>
     public int LookupHopsPerQuery { get; init; } = 12;
+
+    private static string NotBlank(string value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentNullException(name) : value;
 }

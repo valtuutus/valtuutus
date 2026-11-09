@@ -61,7 +61,9 @@ That's it. Now all your queries to the engines will be cached to reduce the load
 
 ## How cached requests pick a snap token
 
-A request with a `SnapToken` is cached under that token. A request without one reads at the latest token the cache knows, so a cached answer needs no database round trip. When the cache knows no latest token (on first use, or after it expires), the engine resolves it in its first round trip, and the result is cached under the token the engine reports. Writes and deletes made through Valtuutus update the cache's latest token once they have committed; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward: a write that finishes after a newer one doesn't replace it.
+A request without a `SnapToken` reads at the latest token the cache knows, so a cached answer needs no database round trip. That token is always a **settled** one: on Postgres, SQL Server, MySQL, MariaDB and InMemory no write can still commit at or under it, so the answer at it never changes. A custom `IDataReaderProvider` must keep the same promise: `GetLatestSnapToken` returns a token no write can still commit at or under. When the cache knows no latest token (on first use, or after it expires), the engine resolves the latest settled token in its first round trip, and the result is cached under it. Writes and deletes made through Valtuutus move the cache's latest token forward once they have committed, to the latest settled token read right after the commit; one made in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) does so when you call `NotifyCommitted` after committing it. The latest token only moves forward.
+
+A request with a `SnapToken` is cached under that token when the token is at or below the latest one the cache knows. A newer token (typically the one a write just returned, while a write that took its id earlier is still open) is answered without the cache: rows can still land under it.
 
 `AddCaching` updates the latest token by adding a handler to `ValtuutusDataOptions.OnDataWritten`. Handlers you add (`options.OnDataWritten.Add(...)`) run alongside it, in the order added, whether you add them before or after calling `AddCaching`.
 
@@ -75,30 +77,14 @@ A request with a `SnapToken` is cached under that token. A request without one r
 })
 ```
 
-- `Duration` is how long a result is cached. Results are cached under the snap token they were read at, and the data at a token doesn't change, so a longer duration keeps more entries and reads the database less often without serving older answers (see the settle window below for the one exception it bounds).
+- `Duration` is how long a result is cached. Results are cached under the snap token they were read at, and the data at a token doesn't change, so a longer duration keeps more entries and reads the database less often without serving older answers.
 - `LatestSnapTokenDuration` is how long the latest token is kept. Requests without a token read at it, and only writes made through Valtuutus move it forward. A write made to the tables some other way (another application, a script, a migration) is missed by those requests until the latest token expires, so this duration bounds that delay.
 
 These durations set the expiry of Valtuutus's entries; the rest of your FusionCache entry options (fail-safe, distributed cache, backplane) still apply.
 
-## Settle window
+## Reading your own writes
 
-A writer takes its transaction id (the snap token its rows are written at) before it commits. When two writes run concurrently, the one that took the older id can commit after the newer one, so its rows land at a token older than one requests have already read at. A result cached at that newer token would miss those rows until it expires.
-
-To bound this, a result read at a token younger than the settle window (measured from the timestamp in the token's ULID) is cached for one second instead of the full `Duration`. A write that commits late does so within the window of taking its id, so any answer read before it was read at a young token and expires within a second. Results at older tokens are cached for the full duration, as before. A token that is not a ULID counts as older than the window.
-
-```csharp
-.AddCaching(options =>
-{
-    options.SettleWindow = TimeSpan.FromSeconds(10); // default: 5 seconds
-})
-```
-
-`TimeSpan.Zero` turns the settle window off and caches every result for the full duration.
-
-- **Cache hits:** only in the window after a write, a repeated request at the newest token misses about once per second instead of hitting until the next write, so at most about `SettleWindow / 1s` extra engine runs per distinct hot request per write. When writes arrive more often than the window, results stay in one-second entries, but there they only lived until the next write anyway.
-- **Clock:** a token's age is measured with `ValtuutusCachingOptions.TimeProvider`, which `AddCaching` sets to the `TimeProvider` registered in your service collection (`TimeProvider.System` otherwise). Ages compare the reading node's clock with the writing node's: when the reading node's clock is ahead, the window shrinks by that difference; when it is behind, tokens look younger and are cached for less.
-- **Long transactions:** a write that commits more than the window after taking its id (a long transaction you own, passed to an `IDbDataWriterProvider` overload) can still be missed by a result cached at a newer token. Keep those transactions short, or raise the window.
-- **Reading your own writes:** a request without a token reads at the latest token the cache knows, which can be slightly behind a write made on another node. To read your own write, pass the `SnapToken` that `Write`/`Delete` returns.
+A request without a token reads at the latest token the cache knows, which can be slightly behind a write made on another node. To read your own write, pass the `SnapToken` that `Write`/`Delete` returns.
 
 ## Registration order
 

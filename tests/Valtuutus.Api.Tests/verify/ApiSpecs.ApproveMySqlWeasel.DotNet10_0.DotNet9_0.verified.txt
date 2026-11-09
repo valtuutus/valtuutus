@@ -7,7 +7,6 @@ namespace Valtuutus.Data.MySql.Weasel
     public static class DependencyInjectionExtensions
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddMySqlWeasel(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.MySql.Weasel.ValtuutusMySqlWeaselOptions>? configure = null) { }
-        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ValtuutusMySqlWeaselOptions
     {

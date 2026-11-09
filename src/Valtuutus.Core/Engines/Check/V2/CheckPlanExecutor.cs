@@ -1074,6 +1074,12 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 });
                 return;
             }
+
+            if (!allSame)
+            {
+                StartMixedFanOut(idx, t, relations);
+                return;
+            }
         }
 
         frame.State = 3;
@@ -1097,6 +1103,79 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 : null;
             ResolveDynamic(rel.SubjectType, rel.SubjectId, computedRelation, rel.SubjectRelation,
                 depth, explainParent, rootIndex, selfNode: childNode);
+        }
+    }
+
+    // A tupleset whose subjects are of several types: the subjects of each type whose computed
+    // relation is a plain direct relation are answered by one HasAnyDirectRelation, the rest one by
+    // one; batches and single subjects count down the same pending total, and the first true decides.
+    // Types that can't reach the requested subject type are skipped.
+    private void StartMixedFanOut(int idx, TupleToUserSetNode t, PooledList<RelationTuple> relations)
+    {
+        var computedRelation = t.ComputedRelation;
+        var subjectType = _ctx.SubjectType;
+        Dictionary<string, List<string>>? batches = null;
+        List<int>? singles = null;
+        for (var i = 0; i < relations.Count; i++)
+        {
+            var rel = relations[i];
+            if (!string.IsNullOrEmpty(subjectType) && !schema.CanSubjectTypeReach(rel.SubjectType, computedRelation, subjectType))
+                continue;
+            if (schema.GetRelationType(rel.SubjectType, computedRelation) == RelationType.DirectRelation
+                && !schema.GetRelation(rel.SubjectType, computedRelation).HasSubRelationPaths)
+            {
+                batches ??= new Dictionary<string, List<string>>(StringComparer.Ordinal);
+                if (!batches.TryGetValue(rel.SubjectType, out var ids)) batches[rel.SubjectType] = ids = [];
+                ids.Add(rel.SubjectId);
+            }
+            else
+            {
+                (singles ??= []).Add(i);
+            }
+        }
+
+        ref var frame = ref _frames[idx];
+        var pending = (batches?.Count ?? 0) + (singles?.Count ?? 0);
+        if (pending == 0)
+        {
+            if (_explain) { var n = _explainNodes[idx]; if (n is not null) n.Detail ??= "no subject type reaches the subject"; }
+            CompleteFrame(idx, false);
+            return;
+        }
+
+        frame.State = 4;
+        frame.Pending = pending;
+        // Captured before spawning: ResolveDynamic can grow/replace _frames, which would dangle `frame`.
+        var depth = frame.Depth;
+        var rootIndex = frame.RootIndex;
+
+        if (batches is not null)
+        {
+            foreach (var (type, ids) in batches)
+            {
+                SubmitOp(new PendingOp
+                {
+                    Token = idx, Kind = OpKind.HasAnyDirectRelation,
+                    EntityType = type, EntityId = "", Relation = computedRelation,
+                    EntityIds = [..ids]
+                });
+            }
+        }
+
+        if (singles is null) return;
+        foreach (var i in singles)
+        {
+            var rel = relations[i];
+            CheckNode? childNode = _explain
+                ? new CheckNode
+                {
+                    Type = CheckNodeType.Permission, Name = computedRelation,
+                    EntityType = rel.SubjectType, EntityId = rel.SubjectId,
+                    SubjectType = _ctx.SubjectType, SubjectId = _ctx.SubjectId,
+                }
+                : null;
+            ResolveDynamic(rel.SubjectType, rel.SubjectId, computedRelation, rel.SubjectRelation,
+                depth, idx, rootIndex, selfNode: childNode);
         }
     }
 
@@ -1273,6 +1352,20 @@ internal sealed class CheckPlanExecutor(Schema schema, CheckPlanCache plans) : I
                 if (completion.Payload is List<RelationTuple> relsList)
                 {
                     OnTupleToUserSetExpanded(idx, t, new PooledList<RelationTuple>(relsList));
+                }
+                else if (frame.State == 4)
+                {
+                    // One of a mixed fan-out's batches: it counts like a child of the fan-out.
+                    if (completion.Result)
+                    {
+                        if (_explain) { var n = _explainNodes[idx]; if (n is not null) n.Detail ??= "batch: direct relation found"; }
+                        CompleteFrame(idx, true);
+                    }
+                    else if (--frame.Pending == 0)
+                    {
+                        if (_explain) { var n = _explainNodes[idx]; if (n is not null) n.Detail ??= "batch: no direct relation"; }
+                        CompleteFrame(idx, false);
+                    }
                 }
                 else
                 {

@@ -217,7 +217,13 @@ public class LangSemanticValidationsSpecs
         schema.IsT0.Should().BeFalse();
 
         schema.AsT1.Should().BeEquivalentTo([
-            new { Message = "Undefined relation, attribute or permission with name: member for entity organization", }
+            new
+            {
+                Message = "Undefined relation, attribute or permission with name: member for entity company. " +
+                          "The arrow org.member evaluates member on company itself, not on the subjects of " +
+                          "company#org: define member on company (e.g. permission member := org.member) or " +
+                          "remove @company#org from org",
+            }
         ]);
     }
 
@@ -527,7 +533,7 @@ public class LangSemanticValidationsSpecs
     }
 
     [Fact]
-    public void Schema_with_relation_with_different_entities_should_return_error()
+    public void Schema_with_relation_to_different_entities_is_valid()
     {
         var schema = new SchemaReader().Parse(@"
         entity user {}
@@ -539,15 +545,11 @@ public class LangSemanticValidationsSpecs
         }
     ");
 
-        schema.IsT0.Should().BeFalse();
-
-        schema.AsT1.Should().BeEquivalentTo([
-            new { Message = "Entity 'project' 'member' has inconsistent final entity references.", }
-        ]);
+        schema.IsT0.Should().BeTrue();
     }
 
     [Fact]
-    public void Schema_with_relation_with_different_entities_deep_should_return_error()
+    public void Schema_with_usersets_resolving_to_different_entities_is_valid()
     {
         var schema = new SchemaReader().Parse(@"
         entity user {}
@@ -565,10 +567,49 @@ public class LangSemanticValidationsSpecs
         }
     ");
 
-        schema.IsT0.Should().BeFalse();
+        schema.IsT0.Should().BeTrue();
+    }
 
+    [Fact]
+    public void Schema_with_arrow_over_different_entities_defining_the_member_is_valid()
+    {
+        // The member may be a different kind on each entity: it is evaluated per subject.
+        var schema = new SchemaReader().Parse(@"
+        entity user {}
+        entity service_account {
+            relation owner @user;
+        }
+        entity team {
+            relation member @user;
+            permission owner := member;
+        }
+        entity doc {
+            relation assignee @service_account @team;
+            permission view := assignee.owner;
+        }
+    ");
+
+        schema.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Schema_with_arrow_over_different_entities_missing_the_member_on_one_should_return_error()
+    {
+        var schema = new SchemaReader().Parse(@"
+        entity user {}
+        entity service_account {}
+        entity team {
+            relation member @user;
+        }
+        entity doc {
+            relation assignee @team @service_account;
+            permission view := assignee.member;
+        }
+    ");
+
+        schema.IsT0.Should().BeFalse();
         schema.AsT1.Should().BeEquivalentTo([
-            new { Message = "Entity 'project' 'member' has inconsistent final entity references.", }
+            new { Message = "Undefined relation, attribute or permission with name: member for entity service_account", }
         ]);
     }
 
@@ -626,10 +667,8 @@ public class LangSemanticValidationsSpecs
     }
 
     [Fact]
-    public void Schema_with_userset_targets_of_one_entity_resolving_to_different_entities_should_return_error()
+    public void Schema_with_userset_targets_of_one_entity_resolving_to_different_entities_is_valid()
     {
-        // team#member resolves to user, team#bot to service_account: both userset targets are on the
-        // same entity, so each must still be expanded for the inconsistency to be seen.
         var schema = new SchemaReader().Parse(@"
             entity user {}
             entity service_account {}
@@ -642,7 +681,55 @@ public class LangSemanticValidationsSpecs
             }
         ");
 
+        schema.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Schema_with_arrow_over_userset_whose_entity_lacks_the_member_should_return_error()
+    {
+        // The arrow reads admin on the group itself; that the group's members define it does not count.
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity group {
+                relation member @organization;
+            }
+            entity folder {
+                relation parent @organization @group#member;
+                permission read := parent.admin;
+            }
+        ");
+
         schema.IsT0.Should().BeFalse();
-        schema.AsT1.Should().ContainSingle(e => e.Message == "Entity 'doc' 'viewer' has inconsistent final entity references.");
+        schema.AsT1.Should().BeEquivalentTo([
+            new
+            {
+                Message = "Undefined relation, attribute or permission with name: admin for entity group. " +
+                          "The arrow parent.admin evaluates admin on group itself, not on the subjects of " +
+                          "group#member: define admin on group (e.g. permission admin := member.admin) or " +
+                          "remove @group#member from parent",
+            }
+        ]);
+    }
+
+    [Fact]
+    public void Schema_with_arrow_over_userset_whose_entity_defines_the_member_is_valid()
+    {
+        // The members of the group need not define admin: the arrow never reaches them.
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity group {
+                relation member @user;
+                relation admin @user;
+            }
+            entity folder {
+                relation parent @group#member;
+                permission read := parent.admin;
+            }
+        ");
+
+        schema.IsT0.Should().BeTrue(schema.IsT1 ? string.Join("; ", schema.AsT1.Select(e => e.Message)) : "");
     }
 }

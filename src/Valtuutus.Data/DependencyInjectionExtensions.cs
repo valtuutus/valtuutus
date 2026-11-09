@@ -59,4 +59,21 @@ public static class DependencyInjectionExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Applies the Valtuutus schema now, with the options given to the provider's schema package
+    /// (AddPostgresWeasel, AddSqlServerWeasel or AddMySqlWeasel). Every registered applier runs, in
+    /// registration order.
+    /// </summary>
+    public static async Task ApplyValtuutusSchemaAsync(this IServiceProvider services,
+        CancellationToken cancellationToken = default)
+    {
+        var appliers = services.GetServices<ISchemaApplier>().ToArray();
+        if (appliers.Length == 0)
+            throw new InvalidOperationException(
+                "Call AddPostgresWeasel(), AddSqlServerWeasel() or AddMySqlWeasel() on the Valtuutus data builder before ApplyValtuutusSchemaAsync().");
+
+        foreach (var applier in appliers)
+            await applier.ApplyAsync(cancellationToken).ConfigureAwait(false);
+    }
 }

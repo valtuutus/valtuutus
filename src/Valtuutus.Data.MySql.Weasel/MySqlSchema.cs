@@ -13,7 +13,7 @@ internal static class MySqlSchema
 
     /// <param name="database">The database holding the tables; the options' schema, or the connection's database when that is empty.</param>
     public static Table[] Tables(ValtuutusMySqlOptions options, string database) =>
-        [Transactions(options, database), Relations(options, database), Attributes(options, database)];
+        [Transactions(options, database), Relations(options, database), Attributes(options, database), PendingTransactions(options, database)];
 
     private static T Configure<T>(T table) where T : Table
     {
@@ -30,6 +30,15 @@ internal static class MySqlSchema
         t.AddColumn("id", TxId).AsPrimaryKey();
         t.AddColumn("created_at", "DATETIME(6)").NotNull();
         t.Indexes.Add(new IndexDefinition("idx_created_at") { Columns = ["created_at"] });
+        return t;
+    }
+
+    private static Table PendingTransactions(ValtuutusMySqlOptions options, string database)
+    {
+        var t = Configure(new Table(new MySqlObjectName(database, $"{options.TransactionsTableName}_pending")));
+        t.AddColumn("slot", "BIGINT").AsPrimaryKey().AutoIncrement();
+        t.AddColumn("lower_bound", TxId).NotNull();
+        t.AddColumn("claimed_at", "DATETIME(6)").NotNull();
         return t;
     }
 

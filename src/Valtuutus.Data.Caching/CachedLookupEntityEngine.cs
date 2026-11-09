@@ -44,6 +44,15 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
                 return uncached;
             }
 
+            if (req.SnapToken is { } pinned && !await LatestSnapToken.Covers(_cache, pinned, cancellationToken))
+            {
+                // A token newer than the latest settled one this cache knows may still gain the rows
+                // of a write that took its id earlier: the answer at it is not final yet.
+                span.SetCacheHit(false);
+                var unsettled = await _engine.LookupEntity(req, cancellationToken);
+                return unsettled;
+            }
+
             if ((req.SnapToken ?? await LatestSnapToken.TryGet(_cache, cancellationToken)) is { } snapToken)
             {
                 var resolvedReq = req with { SnapToken = snapToken };
@@ -52,7 +61,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
                     {
                         hit = false;
                         return _engine.LookupEntity(resolvedReq, ct).AsTask();
-                    }, _options.ResultDuration(snapToken), cancellationToken);
+                    }, _options.Duration, cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -63,7 +72,7 @@ public sealed class CachedLookupEntityEngine : ILookupEntityEngine
             var result = await _engine.LookupEntity(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetLookupCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt, contextKey), result, _options.Duration, token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;

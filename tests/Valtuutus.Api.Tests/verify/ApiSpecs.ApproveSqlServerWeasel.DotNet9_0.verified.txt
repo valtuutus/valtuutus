@@ -6,7 +6,6 @@ namespace Valtuutus.Data.SqlServer.Weasel
     public static class DependencyInjectionExtensions
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddSqlServerWeasel(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.SqlServer.Weasel.ValtuutusSqlServerWeaselOptions>? configure = null) { }
-        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ValtuutusSqlServerWeaselOptions
     {

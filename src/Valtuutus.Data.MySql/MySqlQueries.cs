@@ -38,8 +38,16 @@ internal sealed record MySqlQueries
 
     public required MySqlStatement GetLatestSnapToken { get; init; }
 
-    // Sets the batch-resolved session variable to the latest token, then returns it. The SET
-    // produces no result set, so the command yields exactly one: one row, the token.
+    // The latest token is the latest settled one: the newest committed id below every write still
+    // in flight, so no write can still commit at or under it. Every ULID starts with a digit below
+    // 8, so '8' stands for "no write in flight".
+    private static string SettledBound(ValtuutusMySqlOptions o) =>
+        $"id < COALESCE((SELECT MIN(lower_bound) FROM {MySqlConnections.Pending(o)}), '8')";
+
+    // Sets the batch-resolved session variable to the latest token, then returns it. The token is
+    // read with SELECT ... INTO, a consistent read: a SELECT nested in SET is a locking read on
+    // InnoDB, which waits for every open write and deadlocks with writers. SET and SELECT ... INTO
+    // produce no result set, so the command yields exactly one: one row, the token.
     public required MySqlStatement ResolveLatestSnapTokenForBatch { get; init; }
     public required MySqlStatement HasDirectRelation { get; init; }
     public required MySqlStatement HasAnyDirectRelationMany { get; init; }
@@ -146,9 +154,11 @@ internal sealed record MySqlQueries
             RelationsTable = rt,
             AttributesTable = at,
 
-            GetLatestSnapToken = Statement($"SELECT id FROM {tx} ORDER BY id DESC LIMIT 1"),
+            GetLatestSnapToken = Statement($"SELECT id FROM {tx} WHERE {SettledBound(o)} ORDER BY id DESC LIMIT 1"),
             ResolveLatestSnapTokenForBatch = Statement($"""
-                SET {BatchResolvedSnapToken} = COALESCE((SELECT id FROM {tx} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}');
+                SET {BatchResolvedSnapToken} = NULL;
+                SELECT id INTO {BatchResolvedSnapToken} FROM {tx} WHERE {SettledBound(o)} ORDER BY id DESC LIMIT 1;
+                SET {BatchResolvedSnapToken} = COALESCE({BatchResolvedSnapToken}, '{SnapToken.MinValue.Value}');
                 SELECT {BatchResolvedSnapToken}
                 """),
             HasDirectRelation = Statement($"SELECT {directExists}"),

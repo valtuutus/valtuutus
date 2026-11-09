@@ -7,7 +7,6 @@ namespace Valtuutus.Data.Postgres.Weasel
     public static class DependencyInjectionExtensions
     {
         public static Valtuutus.Data.IValtuutusDataBuilder AddPostgresWeasel(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.Postgres.Weasel.ValtuutusPostgresWeaselOptions>? configure = null) { }
-        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
     }
     public sealed class ValtuutusPostgresWeaselOptions
     {

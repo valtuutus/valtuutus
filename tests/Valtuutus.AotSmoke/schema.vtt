@@ -1,0 +1,13 @@
+entity user {}
+entity team {
+    relation member @user;
+}
+entity workspace {
+    relation owner @user;
+    relation member @user @team#member;
+    attribute public bool;
+    attribute status int;
+    permission view := owner or (member and public);
+    permission edit := owner and isActive(status);
+}
+fn isActive(status int) => status == 1;

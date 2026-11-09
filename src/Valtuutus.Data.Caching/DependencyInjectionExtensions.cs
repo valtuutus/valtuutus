@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Valtuutus.Core.Data;
 using Valtuutus.Core.Engines.Check;
 using Valtuutus.Core.Engines.LookupEntity;
 using Valtuutus.Core.Engines.LookupSubject;
@@ -14,15 +15,14 @@ public static class DependencyInjectionExtensions
     /// registered (<c>AddValtuutusCore</c>) so it decorates the engine actually in effect.
     /// </summary>
     /// <param name="builder">Valtuutus data builder</param>
-    /// <param name="configure">Configures the caching options, such as the settle window.</param>
+    /// <param name="configure">Configures the caching options, such as the cache durations.</param>
     /// <returns></returns>
     public static IValtuutusDataBuilder AddCaching(this IValtuutusDataBuilder builder,
         Action<ValtuutusCachingOptions>? configure = null)
     {
-        builder.Services.AddSingleton(sp =>
+        builder.Services.AddSingleton(_ =>
         {
-            var options = new ValtuutusCachingOptions
-                { TimeProvider = sp.GetService<TimeProvider>() ?? TimeProvider.System };
+            var options = new ValtuutusCachingOptions();
             configure?.Invoke(options);
             return options;
         });
@@ -35,9 +35,19 @@ public static class DependencyInjectionExtensions
         builder.Services.AddScoped<ILookupEntityEngine, CachedLookupEntityEngine>();
         builder.Services.AddScoped<ILookupSubjectEngine, CachedLookupSubjectEngine>();
 
-        builder.Options.OnDataWritten.Add((sp, st) => LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), st,
-            sp.GetRequiredService<ValtuutusCachingOptions>().LatestSnapTokenDuration, CancellationToken.None,
-            options => options.AllowBackgroundBackplaneOperations = false).AsTask());
+        // A committed write's own token may not be settled yet: a write that took its id earlier can
+        // still be open. The latest token offered is the provider's latest settled one, read after
+        // the commit; a provider the handler can't reach offers the written token.
+        builder.Options.OnDataWritten.Add(async (sp, written) =>
+        {
+            var settled = sp.GetService<IDataReaderProvider>() is { } reader
+                ? await reader.GetLatestSnapToken(CancellationToken.None)
+                : written;
+            if (settled is not { } latest) return;
+            await LatestSnapToken.Offer(sp.GetRequiredService<IFusionCache>(), latest,
+                sp.GetRequiredService<ValtuutusCachingOptions>().LatestSnapTokenDuration, CancellationToken.None,
+                options => options.AllowBackgroundBackplaneOperations = false);
+        });
 
         return builder;
     }

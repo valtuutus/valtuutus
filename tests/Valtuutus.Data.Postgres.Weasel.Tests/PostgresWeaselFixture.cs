@@ -49,6 +49,9 @@ public sealed class PostgresWeaselFixture : IAsyncLifetime
         return services.BuildServiceProvider();
     }
 
-    public static ValtuutusPostgresOptions CustomNames => new("authz", "my_tx", "my_tuples", "my_attrs");
+    public static ValtuutusPostgresOptions CustomNames => new()
+    {
+        Schema = "authz", TransactionsTableName = "my_tx", RelationsTableName = "my_tuples", AttributesTableName = "my_attrs"
+    };
 
 }

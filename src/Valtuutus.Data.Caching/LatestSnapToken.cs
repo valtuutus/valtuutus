@@ -5,8 +5,9 @@ using ZiggyCreatures.Caching.Fusion;
 namespace Valtuutus.Data.Caching;
 
 /// <summary>
-/// The latest snap token this cache knows. A request without a token reads at it, so a cached
-/// result answers the request without a round trip.
+/// The latest snap token this cache knows, always a settled one: no write can still commit at or under
+/// it. A request without a token reads at it, so a cached result answers the request without a round
+/// trip.
 /// </summary>
 internal static class LatestSnapToken
 {
@@ -20,6 +21,14 @@ internal static class LatestSnapToken
         var latest = await cache.TryGetAsync<SnapToken>(Consts.LatestSnapTokenKey, token: cancellationToken);
         return latest.HasValue ? new SnapToken(Seen.GetOrCreateValue(cache).Advance(latest.Value.Value)) : null;
     }
+
+    /// <summary>
+    /// Whether <paramref name="snapToken"/> is at or below the latest token this cache knows. That
+    /// token is a settled one, so an answer read at <paramref name="snapToken"/> is final and can be
+    /// cached under it.
+    /// </summary>
+    public static async ValueTask<bool> Covers(IFusionCache cache, SnapToken snapToken, CancellationToken cancellationToken) =>
+        await TryGet(cache, cancellationToken) is { } latest && string.CompareOrdinal(snapToken.Value, latest.Value) <= 0;
 
     /// <summary>
     /// Records a token as the latest (one an engine resolved, or one a committed write announced),

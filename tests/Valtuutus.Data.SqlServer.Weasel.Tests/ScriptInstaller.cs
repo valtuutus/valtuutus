@@ -28,7 +28,7 @@ public static class ScriptInstaller
 
     private static string Rename(string sql, ValtuutusSqlServerOptions o)
     {
-        foreach (var (from, to) in new[] { ("attributes", o.AttributesTableName), ("relation_tuples", o.RelationsTableName), ("transactions", o.TransactionsTableName) })
+        foreach (var (from, to) in new[] { ("attributes", o.AttributesTableName), ("relation_tuples", o.RelationsTableName), ("transactions_pending", $"{o.TransactionsTableName}_pending"), ("transactions", o.TransactionsTableName) })
         {
             var target = $"[{o.Schema}].[{to}]";
             sql = Regex.Replace(sql, $@"\[dbo\]\.\[{from}\]", target);

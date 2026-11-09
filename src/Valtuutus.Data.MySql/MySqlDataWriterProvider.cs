@@ -66,6 +66,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
     private sealed record WriterCommands
     {
         public required MySqlStatement InsertTransaction { get; init; }
+        public required MySqlStatement Register { get; init; }
         public required string InsertRelationsHead { get; init; }
         public required MySqlStatement InsertRelationsFull { get; init; }
         public required string InsertAttributesHead { get; init; }
@@ -98,6 +99,11 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         _dbSystem = MySqlConnections.DbSystem(dbOptions.ServerType);
         _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static (_, o) => BuildCommands(o), dbOptions);
+        // MySqlConnector drops the password from ConnectionString once a connection opens, so the
+        // string is read from a fresh connection that is never opened.
+        using var probe = (MySqlConnection)factory();
+        _dataSource = MySqlConnections.GetOrCreateDataSource(probe.ConnectionString);
+        MySqlPendingSweeper.Ensure(_dataSource, MySqlConnections.Pending(dbOptions));
     }
 
     private static WriterCommands BuildCommands(ValtuutusMySqlOptions o)
@@ -117,7 +123,25 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
 
         return new WriterCommands
         {
-            InsertTransaction = MySqlStatement.Compile($"INSERT INTO {tx} (id, created_at) VALUES (@id, @created_at)"),
+            // The write frees its slot in its own transaction, first thing, so the slot stays locked
+            // for the life of the write and is free exactly when the write commits, whoever commits
+            // it.
+            InsertTransaction = MySqlStatement.Compile(
+                $"UPDATE {MySqlConnections.Pending(o)} SET lower_bound = '~~~~~~~~~~~~~~~~~~~~~~~~~~' WHERE slot = @slot AND lower_bound = @lower_bound; INSERT INTO {tx} (id, created_at) VALUES (@id, @created_at)"),
+            // Claims a free slot, or adds one, in its own committed transaction; read committed takes
+            // no gap locks, so claims don't wait for each other. The newest committed id is read after
+            // the claim committed.
+            Register = MySqlStatement.Compile($"""
+                SET @valtuutus_slot = NULL;
+                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+                START TRANSACTION;
+                SELECT slot INTO @valtuutus_slot FROM {MySqlConnections.Pending(o)} WHERE lower_bound = '~~~~~~~~~~~~~~~~~~~~~~~~~~' LIMIT 1 FOR UPDATE SKIP LOCKED;
+                UPDATE {MySqlConnections.Pending(o)} SET lower_bound = @lower_bound, claimed_at = UTC_TIMESTAMP(6) WHERE slot = @valtuutus_slot;
+                INSERT INTO {MySqlConnections.Pending(o)} (lower_bound, claimed_at) SELECT @lower_bound, UTC_TIMESTAMP(6) FROM DUAL WHERE @valtuutus_slot IS NULL;
+                SET @valtuutus_slot = COALESCE(@valtuutus_slot, LAST_INSERT_ID());
+                COMMIT;
+                SELECT @valtuutus_slot, (SELECT id FROM {tx} ORDER BY id DESC LIMIT 1);
+                """),
             InsertRelationsHead = insertRelationsHead,
             InsertRelationsFull = BuildInsert(insertRelationsHead, RelationColumnCount, RowsPerInsert),
             InsertAttributesHead = insertAttributesHead,
@@ -164,8 +188,23 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             on.Add($"r.{column} = f.{column}");
         }
 
-        return $"UPDATE {relationsTable} r JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({string.Join(", ", columns)})) f " +
+        return $"UPDATE {DeleteHint(mask)} {relationsTable} r JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({string.Join(", ", columns)})) f " +
                $"ON {string.Join(" AND ", on)} SET r.deleted_tx_id = @tx WHERE r.deleted_tx_id IS NULL";
+    }
+
+    // MySQL may scan the whole table instead of seeking an index when an entity's tuples are mostly
+    // tombstones. A scan locks every row it reads, and inside a caller's repeatable-read transaction
+    // it keeps them: deletes of unrelated entities then wait on each other and deadlock. The hint
+    // reads the filters first and seeks the index the shape leads with. An index that doesn't exist
+    // only warns; MariaDB reads the hint as a comment and seeks the index on its own.
+    private static string DeleteHint(int mask)
+    {
+        static bool Has(int mask, params int[] bits) => bits.All(b => (mask & (1 << b)) != 0);
+        const int entityType = 0, entityId = 1, relation = 2, subjectType = 3, subjectId = 4;
+        var index = Has(mask, entityType, entityId) ? " INDEX(r idx_tuples_entity)"
+            : Has(mask, entityType, relation, subjectType, subjectId) ? " INDEX(r idx_tuples_subject)"
+            : "";
+        return $"/*+ JOIN_ORDER(f, r){index} */";
     }
 
     // The text depends only on the row count; every row's created_tx_id is the one @tx. A full chunk's
@@ -254,9 +293,9 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var attributeList = ToDistinctKeyList(attributes);
 
         var now = _timeProvider.GetUtcNow();
-        var tx = MonotonicUlid.Next(_timeProvider).ToString();
+        var (tx, slot) = await Register(ct);
 
-        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
+        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, slot, now, ct);
         await WriteRelations(mySqlConnection, mySqlTransaction, tx, relationList, ct);
         await WriteAttributes(mySqlConnection, mySqlTransaction, tx, attributeList, ct);
 
@@ -406,12 +445,48 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         await command.ExecuteNonQueryAsync(ct);
     }
 
+    // Registers the write as in flight from its id up, on a connection of its own in autocommit, so
+    // readers see it at once and stop below it until the write commits. The newest committed id is
+    // read after the registration committed; a write whose id isn't above it takes one that is, since
+    // a reader that resolved its token before the registration became visible may have settled there.
+    private async Task<(string Id, Slot Slot)> Register(CancellationToken ct)
+    {
+        var lowerBound = MonotonicUlid.Next(_timeProvider);
+        long slot;
+        string? newest;
+        // The shared data source allows the user variable the claim parks the slot in.
+        await using (var side = await _dataSource.OpenConnectionAsync(ct))
+        {
+            await using var register = side.CreateCommand();
+            AddTransactionId(register.Parameters, "lower_bound", lowerBound.ToString());
+            _c.Register.ApplyTo(register);
+            await using var reader = await register.ExecuteReaderAsync(ct);
+            do
+            {
+                if (reader.FieldCount == 2 && await reader.ReadAsync(ct)) break;
+            } while (await reader.NextResultAsync(ct));
+            slot = Convert.ToInt64(reader.GetValue(0));
+            newest = reader.IsDBNull(1) ? null : reader.GetString(1);
+        }
+
+        var id = newest is not null && string.CompareOrdinal(newest, lowerBound.ToString()) >= 0
+            ? MonotonicUlid.NextAfter(_timeProvider, Ulid.Parse(newest))
+            : lowerBound;
+        return (id.ToString(), new Slot(slot, lowerBound.ToString()));
+    }
+
+    private readonly record struct Slot(long Number, string LowerBound);
+
+    private readonly MySqlDataSource _dataSource;
+
     private async Task InsertTransaction(MySqlConnection connection, MySqlTransaction transaction, string tx,
-        DateTimeOffset createdAt, CancellationToken ct)
+        Slot slot, DateTimeOffset createdAt, CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         AddTransactionId(command.Parameters, "id", tx);
+        AddTransactionId(command.Parameters, "lower_bound", slot.LowerBound);
+        command.Parameters.Add(new MySqlParameter("slot", MySqlDbType.Int64) { Value = slot.Number });
         command.Parameters.Add(new MySqlParameter("created_at", MySqlDbType.DateTime) { Value = createdAt.UtcDateTime });
         _c.InsertTransaction.ApplyTo(command);
         await command.ExecuteNonQueryAsync(ct);
@@ -478,7 +553,9 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var mySqlConnection = (MySqlConnection)connection;
         var mySqlTransaction = (MySqlTransaction)transaction;
         var now = _timeProvider.GetUtcNow();
-        var tx = MonotonicUlid.Next(_timeProvider).ToString();
+        var (tx, slot) = await Register(ct);
+        // First, so the slot is locked for the rest of the write and the sweeper leaves it alone.
+        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, slot, now, ct);
 
         foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(static f => RelationFilterShape.Of(f)))
         {
@@ -493,7 +570,6 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             await ExecuteDelete(mySqlConnection, mySqlTransaction, statement, tx, filtersJson, ct);
         }
 
-        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, now, ct);
         return new SnapToken(tx);
     }
 

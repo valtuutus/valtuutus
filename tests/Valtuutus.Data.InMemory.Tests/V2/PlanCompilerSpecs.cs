@@ -107,14 +107,63 @@ public class PlanCompilerSpecs
         union.Children[1].Should().Be(new TupleToUserSetNode("parent", "admin"));
     }
 
+    private const string MixedTargetsSchema = """
+        entity user {}
+        entity bot {}
+        entity service_account {
+            relation owner @user;
+            permission manage := owner;
+        }
+        entity team {
+            relation owner @user;
+            relation lead @user;
+            permission manage := lead;
+        }
+        entity robot {
+            relation owner @bot;
+        }
+        entity doc {
+            relation holder @service_account @team;
+            relation keeper @service_account @robot;
+            permission edit := holder.owner;
+            permission manage := holder.manage;
+            permission keep := keeper.owner;
+        }
+        """;
+
+    [Fact]
+    public void Ttu_over_targets_of_several_types_takes_a_fast_path_per_type()
+    {
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "edit", "user");
+
+        plan.Root.Should().Be(new UnionNode([
+            new TupleToUserSetNode("holder", "owner", "service_account"),
+            new TupleToUserSetNode("holder", "owner", "team")]), PlanNodeStructuralComparer.Instance);
+    }
+
+    [Fact]
+    public void Ttu_whose_member_is_a_permission_on_a_target_type_reads_the_tupleset()
+    {
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "manage", "user");
+
+        plan.Root.Should().Be(new TupleToUserSetNode("holder", "manage"), PlanNodeStructuralComparer.Instance);
+    }
+
+    [Fact]
+    public void Ttu_drops_target_types_that_cannot_reach_the_subject_type()
+    {
+        // robot.owner holds bots only, so a user is never reached through a robot.
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "keep", "user");
+
+        plan.Root.Should().Be(new TupleToUserSetNode("keeper", "owner", "service_account"), PlanNodeStructuralComparer.Instance);
+    }
+
     [Fact]
     public void Ttu_leaf_with_multiple_tupleset_entities_is_not_fast_path_eligible()
     {
-        // The schema DSL requires a relation's fully-resolved final entity references to be
-        // consistent, so two *unrelated* direct entity types on one relation can't parse. To get
-        // TuplesetRelation.Entities.Count > 1 while satisfying that, one entry is direct
-        // (organization) and the other is a userset (group#member) that itself resolves down to
-        // organization — still two Entities, still not fast-path eligible.
+        // One entry is direct (organization) and the other a userset (group#member): two
+        // Entities, one userset-typed, so not fast-path eligible. The arrow walks to the group
+        // itself, so group defines admin too.
         const string s = """
             entity user {}
             entity organization {
@@ -122,6 +171,7 @@ public class PlanCompilerSpecs
             }
             entity group {
                 relation member @organization;
+                permission admin := member.admin;
             }
             entity folder {
                 relation parent @organization @group#member;
@@ -135,12 +185,9 @@ public class PlanCompilerSpecs
     [Fact]
     public void Ttu_leaf_with_userset_typed_tupleset_target_is_not_fast_path_eligible()
     {
-        // The schema parser resolves a TTU's computed relation against the tupleset relation's
-        // fully-recursed final entity, which always bottoms out at a non-userset reference — so
-        // `admin` must exist there. A self-referencing `viewers @organization` keeps that bottom
-        // entity at organization (which has `admin`), while folder.parent's own (single) Entities
-        // entry is still userset-typed (Relation "viewers" is non-null), which is the condition
-        // under test.
+        // folder.parent's single Entities entry is userset-typed (Relation "viewers" is
+        // non-null), which is the condition under test. The arrow walks to the organization
+        // itself, which defines admin.
         const string s = """
             entity user {}
             entity organization {

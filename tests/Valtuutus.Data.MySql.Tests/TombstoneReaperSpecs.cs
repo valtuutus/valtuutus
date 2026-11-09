@@ -216,7 +216,7 @@ namespace Valtuutus.Data.MySql.Tests
         }
 
         private ValtuutusMySqlOptions SchemaOptions(string schema) =>
-            new(fixture.ServerType, schema, "transactions", "relation_tuples", "attributes");
+            new(fixture.ServerType) { Schema = schema };
 
         private static ServiceProvider Services(string connectionString, ValtuutusMySqlOptions options)
         {
