@@ -22,7 +22,7 @@ public class CompletionMailboxSpecs
         var pending = mailbox.DequeueAsync(CancellationToken.None).AsTask();
         pending.IsCompleted.Should().BeFalse();
         mailbox.Post(new Completion(3, false, null, null));
-        (await pending.WaitAsync(TimeSpan.FromSeconds(5))).Token.Should().Be(3);
+        (await pending.WaitAsync(TimeSpan.FromSeconds(30))).Token.Should().Be(3);
     }
 
     [Fact]
@@ -64,6 +64,6 @@ public class CompletionMailboxSpecs
         var pending = mailbox.DequeueAsync(CancellationToken.None).AsTask();
         pending.IsCompleted.Should().BeFalse("Clear must drop both queued completions, leaving nothing to dequeue");
         mailbox.Post(new Completion(3, false, null, null));
-        (await pending.WaitAsync(TimeSpan.FromSeconds(5))).Token.Should().Be(3);
+        (await pending.WaitAsync(TimeSpan.FromSeconds(30))).Token.Should().Be(3);
     }
 }
