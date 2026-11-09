@@ -13,7 +13,7 @@ internal static class PostgresSchema
     private const string TxId = "character(26)";
 
     public static Table[] Tables(ValtuutusPostgresOptions options) =>
-        [Attributes(options), Relations(options), Transactions(options)];
+        [Attributes(options), Relations(options), Transactions(options), PendingTransactions(options)];
 
     private static Table NewTable(ValtuutusPostgresOptions options, string name) =>
         new(new PostgresqlObjectName(options.Schema, name, SchemaUtils.IdentifierUsage.General))
@@ -65,6 +65,17 @@ internal static class PostgresSchema
         t.Indexes.Add(new IndexDefinition("idx_tuples_userset") { Columns = ["entity_type", "entity_id", "relation", "subject_type", "subject_relation"] });
         t.Indexes.Add(new IndexDefinition("idx_tuples_direct") { Columns = ["entity_type", "entity_id", "relation", "subject_id"], IncludeColumns = ["subject_type", "created_tx_id", "deleted_tx_id"], Predicate = "subject_relation = ''" });
         t.Indexes.Add(new IndexDefinition("idx_tuples_indirect") { Columns = ["entity_type", "entity_id", "relation"], IncludeColumns = ["subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id"], Predicate = "subject_relation <> ''" });
+        return t;
+    }
+
+    private static Table PendingTransactions(ValtuutusPostgresOptions options)
+    {
+        var t = NewTable(options, $"{options.TransactionsTableName}_pending");
+        AddIdentity(t);
+        t.AddColumn("lower_bound", TxId).NotNull();
+        t.AddColumn("xid", "xid8").NotNull();
+        t.AddColumn("registered_at", "timestamptz").NotNull().DefaultValueByExpression("clock_timestamp()");
+        t.Indexes.Add(new IndexDefinition("idx_pending_lower_bound") { Columns = ["lower_bound"] });
         return t;
     }
 

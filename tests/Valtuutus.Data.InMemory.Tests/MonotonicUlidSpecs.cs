@@ -53,6 +53,38 @@ public class MonotonicUlidSpecs
     }
 
     [Fact]
+    public void A_ulid_taken_after_a_floor_ahead_of_the_clock_follows_the_floor()
+    {
+        var floor = Ulid.NewUlid(Start.AddHours(1));
+
+        var next = MonotonicUlid.NextAfter(_clock, floor);
+
+        next.Should().BeGreaterThan(floor);
+        next.Time.Should().Be(Start.AddHours(1));
+    }
+
+    [Fact]
+    public void Ulids_taken_after_a_floor_keep_following_it()
+    {
+        var after = MonotonicUlid.NextAfter(_clock, Ulid.NewUlid(Start.AddHours(1)));
+
+        var next = MonotonicUlid.Next(_clock);
+
+        next.Should().BeGreaterThan(after);
+    }
+
+    [Fact]
+    public void A_floor_behind_the_clock_changes_nothing()
+    {
+        var before = MonotonicUlid.Next(_clock);
+
+        var next = MonotonicUlid.NextAfter(_clock, Ulid.NewUlid(Start.AddHours(-1)));
+
+        next.Should().BeGreaterThan(before);
+        next.Time.Should().Be(Start);
+    }
+
+    [Fact]
     public void Each_clock_keeps_its_own_order()
     {
         var other = new FakeTimeProvider(Start.AddYears(-1));

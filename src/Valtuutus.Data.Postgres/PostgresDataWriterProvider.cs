@@ -25,10 +25,13 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         public required string[] DeleteRelations { get; init; }
         public required string DeleteAttributes { get; init; }
         public required string MergeAttributes { get; init; }
+        public required string Settle { get; init; }
+        public required string Renumber { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
+    private readonly PostgresPendingRegistrar _registrar;
 
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
@@ -39,7 +42,14 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         _provider = provider;
         _options = options;
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
-        _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildCommands(key));
+        var key = DbQueryCacheKey.From(dbOptions);
+        _c = CommandCache.GetOrAdd(key, static key => BuildCommands(key));
+        // Same probe-then-cache pattern as the reader: the factory yields the connection string, the
+        // shared cache yields the data source, and with it this database's registrar.
+        using var probe = (NpgsqlConnection)factory();
+        var dataSource = PostgresDataReaderProvider.GetOrCreateDataSource(probe.ConnectionString,
+            dbOptions as ValtuutusPostgresOptions ?? new ValtuutusPostgresOptions());
+        _registrar = PostgresPendingRegistrar.For(dataSource, key);
     }
 
     private static WriterCommands BuildCommands(DbQueryCacheKey key) => new()
@@ -47,7 +57,15 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CopyRelations =
             $"copy {key.Schema}.{key.RelationsTable} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
         InsertTransaction =
-            $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at)",
+            $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at) RETURNING pg_current_xact_id()::text",
+        Settle = $"DELETE FROM {PostgresPendingRegistrar.PendingTable(key)} WHERE lower_bound = @lower_bound",
+        Renumber = $"""
+            UPDATE {key.Schema}.{key.TransactionsTable} SET id = @renumbered WHERE id = @id;
+            UPDATE {key.Schema}.{key.RelationsTable} SET created_tx_id = @renumbered WHERE created_tx_id = @id;
+            UPDATE {key.Schema}.{key.RelationsTable} SET deleted_tx_id = @renumbered WHERE deleted_tx_id = @id;
+            UPDATE {key.Schema}.{key.AttributesTable} SET created_tx_id = @renumbered WHERE created_tx_id = @id;
+            UPDATE {key.Schema}.{key.AttributesTable} SET deleted_tx_id = @renumbered WHERE deleted_tx_id = @id;
+            """,
         DeleteRelations = Enumerable.Range(0, RelationFilterShape.Count)
             .Select(shape => BuildDeleteRelations(key, shape)).ToArray(),
         DeleteAttributes = $"""
@@ -161,13 +179,23 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     ) {
         var now = _timeProvider.GetUtcNow();
         var transactId = MonotonicUlid.Next(_timeProvider);
+        var db = (NpgsqlConnection)connection;
+        var tx = (NpgsqlTransaction)transaction;
 
-        await InsertTransaction((NpgsqlConnection)connection, transactId, now, (NpgsqlTransaction)transaction, ct);
+        var xid = await InsertTransaction(db, transactId, now, tx, ct);
+        var registration = _registrar.RegisterAsync(transactId.ToString(), xid, ct);
+        try
+        {
+            await WriteRelationsAsync(db, tx, transactId, relations, ct);
+            await WriteAttributesAsync(db, tx, transactId, attributes, ct);
+        }
+        catch
+        {
+            await AwaitQuietly(registration);
+            throw;
+        }
 
-        await WriteRelationsAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, relations, ct);
-        await WriteAttributesAsync((NpgsqlConnection)connection, (NpgsqlTransaction)transaction, transactId, attributes, ct);
-
-        return new SnapToken(transactId.ToString());
+        return new SnapToken((await Settle(db, tx, transactId, await registration, ct)).ToString());
     }
 
     protected virtual async Task WriteRelationsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Ulid transactId, IEnumerable<RelationTuple> relations, CancellationToken ct)
@@ -221,7 +249,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         await mergeCommand.ExecuteNonQueryAsync(ct);
     }
 
-    private async Task InsertTransaction(NpgsqlConnection db, Ulid transactId, DateTimeOffset createdAt,
+    private async Task<string> InsertTransaction(NpgsqlConnection db, Ulid transactId, DateTimeOffset createdAt,
         NpgsqlTransaction transaction, CancellationToken ct)
     {
         await using var command = db.CreateCommand();
@@ -229,7 +257,50 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         command.CommandText = _c.InsertTransaction;
         command.Parameters.Add(new NpgsqlParameter<string>("id", NpgsqlDbType.Char) { Size = 26, TypedValue = transactId.ToString() });
         command.Parameters.Add(new NpgsqlParameter<DateTimeOffset>("created_at", NpgsqlDbType.TimestampTz) { TypedValue = createdAt });
+        return (string)(await command.ExecuteScalarAsync(ct))!;
+    }
+
+    // Removes the write's pending row inside the write's own transaction, so it disappears exactly
+    // when the write commits, whoever commits it; a rollback brings it back for the registrar to
+    // collect. A write whose id isn't above the newest id committed when it registered takes a new
+    // one first: a reader may already have settled at that newest id.
+    private async Task<Ulid> Settle(NpgsqlConnection db, NpgsqlTransaction transaction, Ulid transactId,
+        string? newestCommitted, CancellationToken ct)
+    {
+        await using var command = db.CreateCommand();
+        command.Transaction = transaction;
+        AddFixedChar(command, "lower_bound", transactId.ToString());
+
+        if (newestCommitted is null || string.CompareOrdinal(newestCommitted, transactId.ToString()) < 0)
+        {
+            command.CommandText = _c.Settle;
+            await command.ExecuteNonQueryAsync(ct);
+            return transactId;
+        }
+
+        var renumbered = MonotonicUlid.NextAfter(_timeProvider, Ulid.Parse(newestCommitted));
+        command.CommandText = _c.Settle + ";\n" + _c.Renumber;
+        AddFixedChar(command, "id", transactId.ToString());
+        AddFixedChar(command, "renumbered", renumbered.ToString());
         await command.ExecuteNonQueryAsync(ct);
+        return renumbered;
+    }
+
+    private static void AddFixedChar(NpgsqlCommand command, string name, string value) =>
+        command.Parameters.Add(new NpgsqlParameter<string>(name, NpgsqlDbType.Char) { Size = 26, TypedValue = value });
+
+    // A write that fails before it settles still waits for its registration, so nothing it started
+    // outlives it; the registration's own outcome no longer matters.
+    private static async Task AwaitQuietly(Task registration)
+    {
+        try
+        {
+            await registration;
+        }
+        catch
+        {
+            // The write's own exception is the one that propagates.
+        }
     }
 
     public async Task<SnapToken> Delete(
@@ -300,6 +371,11 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         var npgsqlTransaction = (NpgsqlTransaction)transaction;
         var snapTokenValue = transactId.ToString();
 
+        var xid = await InsertTransaction(npgsqlConnection, transactId, now, npgsqlTransaction, ct);
+        var registration = _registrar.RegisterAsync(snapTokenValue, xid, ct);
+        try
+        {
+
         foreach (var group in filter.Relations.GroupBy(static f => RelationFilterShape.Of(f)))
         {
             var filtersJson = JsonSerializer.Serialize(group.ToArray(), DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
@@ -311,9 +387,14 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
             var filtersJson = JsonSerializer.Serialize(filter.Attributes, DeleteFilterJsonContext.Default.DeleteAttributesFilterArray);
             await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteAttributes, snapTokenValue, filtersJson, ct);
         }
+        }
+        catch
+        {
+            await AwaitQuietly(registration);
+            throw;
+        }
 
-        await InsertTransaction(npgsqlConnection, transactId, now, npgsqlTransaction, ct);
-        return new SnapToken(snapTokenValue);
+        return new SnapToken((await Settle(npgsqlConnection, npgsqlTransaction, transactId, await registration, ct)).ToString());
     }
 
     /// <inheritdoc />
