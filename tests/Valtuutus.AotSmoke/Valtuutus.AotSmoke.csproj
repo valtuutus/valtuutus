@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Published with Native AOT in CI (dotnet publish -p:AotSmoke=true) and run: a trim or AOT
+         warning fails the publish, and a wrong answer under AOT fails the run. Not a test project:
+         dotnet test skips it. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <IsTestProject>false</IsTestProject>
+        <!-- AOT compilation is switched on only for the CI publish (-p:AotSmoke=true): on every
+             build it would restore the AOT compiler package, and passed as PublishAot itself it
+             would reach the netstandard2.0 projects, which can't be compiled ahead of time. The
+             analyzers it brings run on every build. -->
+        <PublishAot Condition="'$(AotSmoke)' == 'true'">true</PublishAot>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <EnableAotAnalyzer>true</EnableAotAnalyzer>
+        <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+        <!-- Microsoft.Data.SqlClient requires ICU. -->
+        <InvariantGlobalization>false</InvariantGlobalization>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <!-- An advisory on the AOT compiler package the SDK brings is reported but doesn't fail the
+             smoke test, which checks how Valtuutus behaves under AOT. -->
+        <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+        <!-- IL2104/IL3053 summarize warnings inside a third-party assembly (SqlClient and its
+             dependencies carry permanent ones); warnings in Valtuutus code still fail the publish. -->
+        <NoWarn>$(NoWarn);IL2104;IL3053</NoWarn>
+        <AdditionalFileItemNames>$(AdditionalFileItemNames);EmbeddedResource</AdditionalFileItemNames>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+        <PackageReference Include="ZiggyCreatures.FusionCache" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Valtuutus.Lang.SourceGen\Valtuutus.Lang.SourceGen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\..\src\Valtuutus.Core\Valtuutus.Core.csproj" />
+        <ProjectReference Include="..\..\src\Valtuutus.Data.InMemory\Valtuutus.Data.InMemory.csproj" />
+        <ProjectReference Include="..\..\src\Valtuutus.Data.Caching\Valtuutus.Data.Caching.csproj" />
+        <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
+        <ProjectReference Include="..\..\src\Valtuutus.Data.MySql\Valtuutus.Data.MySql.csproj" />
+        <ProjectReference Include="..\..\src\Valtuutus.Data.SqlServer\Valtuutus.Data.SqlServer.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="schema.vtt" />
+    </ItemGroup>
+
+</Project>
