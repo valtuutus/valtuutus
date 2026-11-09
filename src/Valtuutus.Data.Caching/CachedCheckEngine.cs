@@ -64,7 +64,7 @@ public sealed class CachedCheckEngine : ICheckEngine
                     {
                         hit = false;
                         return _engine.Check(resolvedReq, ct).AsTask();
-                    }, _options.ResultDuration(snapToken), cancellationToken);
+                    }, _options.Duration, cancellationToken);
                 span.SetCacheHit(hit);
                 span.SetAllowed(cached.Allowed);
                 return cached;
@@ -76,7 +76,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.Check(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetCheckCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetCheckCacheKey(req, readAt, contextKey), result, _options.Duration, token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             span.SetAllowed(result.Allowed);
@@ -121,7 +121,7 @@ public sealed class CachedCheckEngine : ICheckEngine
                     {
                         hit = false;
                         return _engine.SubjectPermission(resolvedReq, ct).AsTask();
-                    }, _options.ResultDuration(snapToken), cancellationToken);
+                    }, _options.Duration, cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -130,7 +130,7 @@ public sealed class CachedCheckEngine : ICheckEngine
             var result = await _engine.SubjectPermission(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetSubjectPermissionCacheKey(req, readAt, contextKey), result, _options.Duration, token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;

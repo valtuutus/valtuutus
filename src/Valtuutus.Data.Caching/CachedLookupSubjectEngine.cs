@@ -62,7 +62,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
                     {
                         hit = false;
                         return _engine.Lookup(resolvedReq, ct).AsTask();
-                    }, _options.ResultDuration(snapToken), cancellationToken);
+                    }, _options.Duration, cancellationToken);
                 span.SetCacheHit(hit);
                 return cached;
             }
@@ -73,7 +73,7 @@ public sealed class CachedLookupSubjectEngine : ILookupSubjectEngine
             var result = await _engine.Lookup(req, cancellationToken);
             if (result.SnapToken is { } readAt)
             {
-                await _cache.SetAsync(GetLookupCacheKey(req, readAt, contextKey), result, _options.ResultDuration(readAt), token: cancellationToken);
+                await _cache.SetAsync(GetLookupCacheKey(req, readAt, contextKey), result, _options.Duration, token: cancellationToken);
                 await LatestSnapToken.Offer(_cache, readAt, _options.LatestSnapTokenDuration, cancellationToken);
             }
             return result;
