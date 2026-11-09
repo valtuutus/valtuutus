@@ -174,7 +174,7 @@ builder.Services
 If you are using a DB provider to store your data, please look at the scripts that create the tables that Valtuutus require to function. Run each provider's scripts in order; the file names start with a timestamp, and an upgrade runs only the scripts newer than the ones already applied.
 - Postgres: [initial](src/Valtuutus.Data.Postgres/Database/migrations/20240221201712_initial.sql), [lookup indexes](src/Valtuutus.Data.Postgres/Database/migrations/20261024190000_lookup_indexes.sql), [pending transactions](src/Valtuutus.Data.Postgres/Database/migrations/20261109120000_transactions_pending.sql)
 - SqlServer: [initial](src/Valtuutus.Data.SqlServer/Database/migrations/20240224120604_initial.sql), [lookup indexes](src/Valtuutus.Data.SqlServer/Database/migrations/20261024190000_lookup_indexes.sql), [drop TVP_ListIds](src/Valtuutus.Data.SqlServer/Database/migrations/20261107120000_drop_tvp_listids.sql), [pending transactions](src/Valtuutus.Data.SqlServer/Database/migrations/20261109120000_transactions_pending.sql)
-- MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql)
+- MySQL and MariaDB: [initial](src/Valtuutus.Data.MySql/Database/migrations/20261022000000_initial.sql), [pending transactions](src/Valtuutus.Data.MySql/Database/migrations/20261109120000_transactions_pending.sql)
 
 On SQL Server, consider turning on `READ_COMMITTED_SNAPSHOT` for the Valtuutus database (Azure SQL Database has it on by default): without it, a read that touches rows an open write changed waits for that write to finish.
 
