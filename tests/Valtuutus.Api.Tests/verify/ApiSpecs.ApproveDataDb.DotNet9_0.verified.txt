@@ -111,6 +111,13 @@ namespace Valtuutus.Data.Db
         string TransactionsTableName { get; }
         int TwoHopEntityScanLimit { get; }
     }
+    public static class RelationFilterShape
+    {
+        public const int Count = 64;
+        public static readonly string[] Columns;
+        public static int Of(in Valtuutus.Core.Data.DeleteRelationsFilter filter) { }
+        public static System.Collections.Generic.IEnumerable<string> SetColumns(int shape) { }
+    }
     public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
     {
         protected RelationalBatchProviderBase() { }

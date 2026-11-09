@@ -418,12 +418,14 @@ public sealed class RelationsStore : IDisposable
             foreach (var e in _all)
             {
                 if (e.DeletedTxId is not null) continue;
-                if (!string.IsNullOrWhiteSpace(f.EntityId) && f.EntityId != e.Relation.EntityId) continue;
-                if (!string.IsNullOrWhiteSpace(f.EntityType) && f.EntityType != e.Relation.EntityType) continue;
-                if (!string.IsNullOrWhiteSpace(f.SubjectId) && f.SubjectId != e.Relation.SubjectId) continue;
-                if (!string.IsNullOrWhiteSpace(f.SubjectType) && f.SubjectType != e.Relation.SubjectType) continue;
-                if (!string.IsNullOrWhiteSpace(f.SubjectRelation) && f.SubjectRelation != e.Relation.SubjectRelation) continue;
-                if (!string.IsNullOrWhiteSpace(f.Relation) && f.Relation != e.Relation.Relation) continue;
+                // A field is set when it is non-null. An empty string is a value, so SubjectRelation = ""
+                // matches only direct tuples.
+                if (f.EntityId is not null && f.EntityId != e.Relation.EntityId) continue;
+                if (f.EntityType is not null && f.EntityType != e.Relation.EntityType) continue;
+                if (f.SubjectId is not null && f.SubjectId != e.Relation.SubjectId) continue;
+                if (f.SubjectType is not null && f.SubjectType != e.Relation.SubjectType) continue;
+                if (f.SubjectRelation is not null && f.SubjectRelation != (e.Relation.SubjectRelation ?? "")) continue;
+                if (f.Relation is not null && f.Relation != e.Relation.Relation) continue;
                 e.DeletedTxId = transactId;
             }
         }

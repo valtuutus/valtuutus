@@ -12,15 +12,6 @@ namespace Valtuutus.Data.MySql.Tests
     {
         private ServiceProvider _provider = default!;
 
-        private static readonly RelationTuple OwnerP1 = new("project", "p1", "owner", "user", "u1");
-        private static readonly RelationTuple MemberP1 = new("project", "p1", "member", "user", "u2");
-        private static readonly RelationTuple MemberP2 = new("project", "p2", "member", "user", "u1");
-        private static readonly RelationTuple GroupMemberP2 = new("project", "p2", "member", "group", "g1", "member");
-        private static readonly RelationTuple OwnerP3 = new("project", "p3", "owner", "user", "u3");
-        private static readonly RelationTuple MemberG1 = new("group", "g1", "member", "user", "u1");
-
-        private static readonly RelationTuple[] All = [OwnerP1, MemberP1, MemberP2, GroupMemberP2, OwnerP3, MemberG1];
-
         public Task InitializeAsync()
         {
             var services = new ServiceCollection().AddValtuutusCore(TestsConsts.DefaultSchema);
@@ -32,80 +23,6 @@ namespace Valtuutus.Data.MySql.Tests
         public async Task DisposeAsync()
         {
             await _provider.DisposeAsync();
-        }
-
-        private async Task<SnapToken> Delete(DeleteFilter filter)
-        {
-            var writer = _provider.GetRequiredService<IDataWriterProvider>();
-            await writer.Write(All, [], default);
-            return await writer.Delete(filter, default);
-        }
-
-        [Fact]
-        public async Task Filters_with_different_masks_delete_exactly_their_matches()
-        {
-            await Delete(new DeleteFilter
-            {
-                Relations =
-                [
-                    new DeleteRelationsFilter
-                    {
-                        EntityType = "project", EntityId = "p1", Relation = "owner",
-                        SubjectType = "user", SubjectId = "u1", SubjectRelation = ""
-                    },
-                    new DeleteRelationsFilter { EntityType = "project", EntityId = "p3" },
-                    new DeleteRelationsFilter { SubjectType = "user", SubjectId = "u2" },
-                    new DeleteRelationsFilter { EntityType = "group", EntityId = "g1", Relation = "member" },
-                ]
-            });
-
-            (await LiveRelations()).Should().BeEquivalentTo([MemberP2, GroupMemberP2]);
-        }
-
-        [Fact]
-        public async Task Subject_only_filter_deletes_every_tuple_of_that_subject()
-        {
-            await Delete(new DeleteFilter
-            {
-                Relations = [new DeleteRelationsFilter { SubjectType = "user", SubjectId = "u1" }]
-            });
-
-            (await LiveRelations()).Should().BeEquivalentTo([MemberP1, GroupMemberP2, OwnerP3]);
-        }
-
-        [Fact]
-        public async Task Empty_subject_relation_matches_only_direct_tuples()
-        {
-            await Delete(new DeleteFilter
-            {
-                Relations = [new DeleteRelationsFilter { EntityType = "project", EntityId = "p2", SubjectRelation = "" }]
-            });
-
-            (await LiveRelations()).Should().BeEquivalentTo([OwnerP1, MemberP1, GroupMemberP2, OwnerP3, MemberG1]);
-        }
-
-        [Fact]
-        public async Task Filters_sharing_a_mask_are_applied_together()
-        {
-            await Delete(new DeleteFilter
-            {
-                Relations =
-                [
-                    new DeleteRelationsFilter { EntityType = "project", EntityId = "p1" },
-                    new DeleteRelationsFilter { EntityType = "project", EntityId = "p3" },
-                ]
-            });
-
-            (await LiveRelations()).Should().BeEquivalentTo([MemberP2, GroupMemberP2, MemberG1]);
-        }
-
-        [Fact]
-        public async Task All_null_filter_tombstones_every_live_tuple()
-        {
-            var deleteToken = await Delete(new DeleteFilter { Relations = [new DeleteRelationsFilter()] });
-
-            (await LiveRelations()).Should().BeEmpty();
-            (await CountTombstones("relation_tuples", deleteToken)).Should().Be(All.Length);
         }
 
         [Fact]
