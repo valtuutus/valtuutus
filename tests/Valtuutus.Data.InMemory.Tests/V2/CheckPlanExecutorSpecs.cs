@@ -646,7 +646,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
             "r1's op is still outstanding — DrainStragglersAsync must wait for it, not return early");
 
         physical.Release("r1", false);
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
         drainTask.IsCompletedSuccessfully.Should().BeTrue("releasing the last outstanding op must let the drain finish promptly");
     }
 
@@ -850,6 +850,10 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         recording.SubmitCalls[0].Select(o => o.Kind).Should().AllBeEquivalentTo(OpKind.HasTrueBoolAttribute);
     }
 
+    // Bounds a wait that finishes in microseconds once released; generous so a stalled CI runner
+    // isn't read as a lost wake-up.
+    private static readonly TimeSpan DrainBound = TimeSpan.FromSeconds(30);
+
     private const string StragglerSchema = """
         entity user {}
         entity doc {
@@ -887,7 +891,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         await Task.Delay(50);
         drainTask.IsCompleted.Should().BeFalse("r1 is still outstanding after the fault");
         physical.Release("r1", true);
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
     }
 
     [Fact]
@@ -907,7 +911,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
 
         var drainTask = executor.DrainStragglersAsync();
         physical.ReleaseWithFailure("r1", new TimeoutException("late failure"));
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
         drainTask.IsCompletedSuccessfully.Should().BeTrue("a straggler's failure must be discarded, not thrown");
 
         // The instance must still be fully usable afterwards (this is what pooling relies on).
@@ -950,7 +954,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
         physical.ReleaseWithPayload("shared", payload.Transfer());
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
 
         physical.HeldRelations.Clear();
         var again = await executor.ExecuteAsync(
@@ -993,7 +997,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g1"));
         payload.Add(new RelationTuple("doc", "1", "shared", "group", "g2"));
         controllable.ReleaseWithPayload("shared", payload.Transfer());
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
 
         recording.Submitted.Count.Should().Be(submittedBeforeDrain,
             "member-relation fan-out ops discovered after the answer must be dropped, not submitted");
@@ -1020,7 +1024,7 @@ public class CheckPlanExecutorSpecs : IAsyncLifetime
         var drainTask = executor.DrainStragglersAsync();
         physical.Release("r0", false);
         physical.Release("r1", false);
-        await drainTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await drainTask.WaitAsync(DrainBound);
         drainTask.IsCompletedSuccessfully.Should().BeTrue();
     }
 
