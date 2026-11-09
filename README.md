@@ -178,6 +178,8 @@ If you are using a DB provider to store your data, please look at the scripts th
 
 On SQL Server, consider turning on `READ_COMMITTED_SNAPSHOT` for the Valtuutus database (Azure SQL Database has it on by default): without it, a read that touches rows an open write changed waits for that write to finish.
 
+On MySQL and MariaDB, writes in your own transaction (an `IDbDataWriterProvider` overload that takes a transaction) are best made at `READ COMMITTED`. Under the server default, `REPEATABLE READ`, a delete keeps gap locks next to the tuples it tombstones, and concurrent deletes of neighbouring tuples can deadlock; retry the transaction when that happens. Writes Valtuutus commits itself already use `READ COMMITTED`.
+
 ### Applying the schema with Weasel
 
 Instead of running the scripts yourself, reference the Weasel package for your provider
