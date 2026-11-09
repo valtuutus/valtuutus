@@ -61,9 +61,7 @@ public abstract class MySqlFixtureBase : IAsyncLifetime, IDatabaseFixture, IWith
 
         var connectionString = new MySqlConnectionStringBuilder(_serverConnectionString) { Database = name }.ConnectionString;
         var services = new ServiceCollection();
-        // Named locks are server-wide; a lock of its own keeps fixtures from queueing behind each other.
-        services.AddMySql(_ => () => new MySqlConnection(connectionString), Options)
-            .AddMySqlWeasel(weasel => weasel.LockId = $"schema_{name}");
+        services.AddMySql(_ => () => new MySqlConnection(connectionString), Options).AddMySqlWeasel();
         await using var sp = services.BuildServiceProvider();
         await sp.ApplyValtuutusSchemaAsync();
         return connectionString;

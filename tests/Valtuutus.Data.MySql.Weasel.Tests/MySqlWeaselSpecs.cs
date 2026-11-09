@@ -11,9 +11,7 @@ namespace Valtuutus.Data.MySql.Weasel.Tests;
 
 public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
 {
-    // Named locks are server-wide and every test process shares the server, so the name is this
-    // process's own.
-    private static readonly string CustomLockId = $"custom-valtuutus-lock-{Guid.NewGuid():N}";
+    private const string CustomLockId = "custom-valtuutus-lock";
 
     public static TheoryData<string> Names => ["default", "custom"];
 
