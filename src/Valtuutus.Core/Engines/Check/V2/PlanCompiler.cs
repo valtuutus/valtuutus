@@ -153,18 +153,35 @@ internal static class PlanCompiler
         }
         if (!reachable) return ConstNode.False;
 
-        if (tuplesetRel.Entities.Count == 1 && tuplesetRel.Entities[0].Relation is null)
+        // Each target type the subject can reach through the computed relation takes the fast path
+        // on its own; a relation pointing at several types becomes a union of one fast path per
+        // type. Only when every reachable type qualifies: a type that doesn't is read through the
+        // tupleset, which already covers the other types too.
+        List<PlanNode>? perType = null;
+        foreach (var target in tuplesetRel.Entities)
         {
-            var subEntityType = tuplesetRel.Entities[0].Type;
-            if (schema.GetRelationType(subEntityType, t.ComputedRelation) == RelationType.DirectRelation)
-            {
-                var computedRel = schema.GetRelation(subEntityType, t.ComputedRelation);
-                if (!computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(subjectType))
-                    return t with { FastPathSubEntityType = subEntityType };
-            }
+            if (target.Relation is not null) return t;
+            if (perType?.Exists(n => ((TupleToUserSetNode)n).FastPathSubEntityType == target.Type) == true) continue;
+            if (!schema.CanSubjectTypeReach(target.Type, t.ComputedRelation, subjectType)) continue;
+            if (!IsFastPathTarget(schema, target.Type, t.ComputedRelation, subjectType)) return t;
+            (perType ??= []).Add(t with { FastPathSubEntityType = target.Type });
         }
 
-        return t;
+        return perType switch
+        {
+            null => t,
+            [var single] => single,
+            _ => new UnionNode([..perType]),
+        };
+    }
+
+    // The computed relation is a plain direct relation on the target type that holds the subject's
+    // type directly, so one join answers whether any tupleset subject of that type holds it.
+    private static bool IsFastPathTarget(Schema schema, string targetType, string computedRelation, string subjectType)
+    {
+        if (schema.GetRelationType(targetType, computedRelation) != RelationType.DirectRelation) return false;
+        var computedRel = schema.GetRelation(targetType, computedRelation);
+        return !computedRel.HasSubRelationPaths && computedRel.EntityTypes.Contains(subjectType);
     }
 
     // The userset-join fast-path guard: DirectRelationNode always compiles as the sole

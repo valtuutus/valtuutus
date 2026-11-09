@@ -124,6 +124,27 @@ As you can see we have a new syntax above,
 ```
 When we look at the maintainer relation, it indicates that the maintainer can be a user as well as this user can be a team member.
 
+A relation can also point at entities of different types, for example work assigned to people or to service accounts:
+```csharp
+"""
+    entity user {}
+    entity service_account {
+        relation owner @user;
+    }
+    entity team {
+        relation member @user @service_account;
+        permission owner := member;
+    }
+    entity doc {
+        relation assignee @user @service_account;
+        relation holder @service_account @team;
+        permission edit := assignee;
+        permission manage := holder.owner;
+    }
+"""
+```
+Each subject is checked as the type it is: `edit` holds for the user or the service account assigned. A permission that walks a relation (`holder.owner`) asks each target for the member, so every entity type the relation can point at must define it, as a relation, a permission or an attribute: here `owner` is a relation on `service_account` and a permission on `team`. Lookups return only subjects of the type you ask for.
+
 ## Defining Permissions
 Permissions define who can perform a specific action on a resource in which circumstances.
 

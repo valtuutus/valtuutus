@@ -107,6 +107,57 @@ public class PlanCompilerSpecs
         union.Children[1].Should().Be(new TupleToUserSetNode("parent", "admin"));
     }
 
+    private const string MixedTargetsSchema = """
+        entity user {}
+        entity bot {}
+        entity service_account {
+            relation owner @user;
+            permission manage := owner;
+        }
+        entity team {
+            relation owner @user;
+            relation lead @user;
+            permission manage := lead;
+        }
+        entity robot {
+            relation owner @bot;
+        }
+        entity doc {
+            relation holder @service_account @team;
+            relation keeper @service_account @robot;
+            permission edit := holder.owner;
+            permission manage := holder.manage;
+            permission keep := keeper.owner;
+        }
+        """;
+
+    [Fact]
+    public void Ttu_over_targets_of_several_types_takes_a_fast_path_per_type()
+    {
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "edit", "user");
+
+        plan.Root.Should().Be(new UnionNode([
+            new TupleToUserSetNode("holder", "owner", "service_account"),
+            new TupleToUserSetNode("holder", "owner", "team")]), PlanNodeStructuralComparer.Instance);
+    }
+
+    [Fact]
+    public void Ttu_whose_member_is_a_permission_on_a_target_type_reads_the_tupleset()
+    {
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "manage", "user");
+
+        plan.Root.Should().Be(new TupleToUserSetNode("holder", "manage"), PlanNodeStructuralComparer.Instance);
+    }
+
+    [Fact]
+    public void Ttu_drops_target_types_that_cannot_reach_the_subject_type()
+    {
+        // robot.owner holds bots only, so a user is never reached through a robot.
+        var plan = PlanCompiler.Compile(Parse(MixedTargetsSchema), "doc", "keep", "user");
+
+        plan.Root.Should().Be(new TupleToUserSetNode("keeper", "owner", "service_account"), PlanNodeStructuralComparer.Instance);
+    }
+
     [Fact]
     public void Ttu_leaf_with_multiple_tupleset_entities_is_not_fast_path_eligible()
     {

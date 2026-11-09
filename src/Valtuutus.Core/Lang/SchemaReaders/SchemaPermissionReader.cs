@@ -236,20 +236,20 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
                 idCtx.Start.Line, idCtx.Start.Column);
         }
 
-        // The relations are already validated here,
-        // so we can get the first without thinking about it
-        var targetEntityName = schemaReader.GetFinalEntitiesNames(targetRelation).First();
-
+        // A relation may resolve to several entity types; each of them must define the member.
         var targetEntityRelationName = idCtx.ID(1).GetText();
-        var attr = schemaReader.FindEntityAttribute(targetEntityName, targetEntityRelationName);
-        var perm = schemaReader.FindEntityPermission(targetEntityName, targetEntityRelationName);
-        var relation = schemaReader.FindEntityRelation(targetEntityName, targetEntityRelationName);
-
-        if (attr is null && perm is null && relation is null)
+        foreach (var targetEntityName in schemaReader.GetFinalEntitiesNames(targetRelation))
         {
-            throw new LangException(
-                $"Undefined relation, attribute or permission with name: {targetEntityRelationName} for entity {targetEntityName}",
-                idCtx.Start.Line, idCtx.Start.Column);
+            var attr = schemaReader.FindEntityAttribute(targetEntityName, targetEntityRelationName);
+            var perm = schemaReader.FindEntityPermission(targetEntityName, targetEntityRelationName);
+            var relation = schemaReader.FindEntityRelation(targetEntityName, targetEntityRelationName);
+
+            if (attr is null && perm is null && relation is null)
+            {
+                throw new LangException(
+                    $"Undefined relation, attribute or permission with name: {targetEntityRelationName} for entity {targetEntityName}",
+                    idCtx.Start.Line, idCtx.Start.Column);
+            }
         }
     }
 
