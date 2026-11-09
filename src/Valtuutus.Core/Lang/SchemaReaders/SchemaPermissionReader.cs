@@ -236,20 +236,32 @@ internal class SchemaPermissionReader(SchemaReader schemaReader)
                 idCtx.Start.Line, idCtx.Start.Column);
         }
 
-        // A relation may resolve to several entity types; each of them must define the member.
+        // An arrow evaluates the member on each subject's own entity. A userset subject @T#rel
+        // walks to T itself, never to the subjects of T#rel, so every entity the relation names
+        // must define the member.
         var targetEntityRelationName = idCtx.ID(1).GetText();
-        foreach (var targetEntityName in schemaReader.GetFinalEntitiesNames(targetRelation))
+        foreach (var reference in targetRelation.References)
         {
+            var targetEntityName = reference.ReferencedEntityName;
             var attr = schemaReader.FindEntityAttribute(targetEntityName, targetEntityRelationName);
             var perm = schemaReader.FindEntityPermission(targetEntityName, targetEntityRelationName);
             var relation = schemaReader.FindEntityRelation(targetEntityName, targetEntityRelationName);
 
-            if (attr is null && perm is null && relation is null)
+            if (attr is not null || perm is not null || relation is not null) continue;
+
+            var message =
+                $"Undefined relation, attribute or permission with name: {targetEntityRelationName} for entity {targetEntityName}";
+            if (!string.IsNullOrEmpty(reference.ReferencedEntityRelation))
             {
-                throw new LangException(
-                    $"Undefined relation, attribute or permission with name: {targetEntityRelationName} for entity {targetEntityName}",
-                    idCtx.Start.Line, idCtx.Start.Column);
+                message += $". The arrow {targetRelationName}.{targetEntityRelationName} evaluates " +
+                           $"{targetEntityRelationName} on {targetEntityName} itself, not on the subjects of " +
+                           $"{targetEntityName}#{reference.ReferencedEntityRelation}: define " +
+                           $"{targetEntityRelationName} on {targetEntityName} (e.g. permission {targetEntityRelationName} := " +
+                           $"{reference.ReferencedEntityRelation}.{targetEntityRelationName}) or remove " +
+                           $"@{targetEntityName}#{reference.ReferencedEntityRelation} from {targetRelationName}";
             }
+
+            throw new LangException(message, idCtx.Start.Line, idCtx.Start.Column);
         }
     }
 

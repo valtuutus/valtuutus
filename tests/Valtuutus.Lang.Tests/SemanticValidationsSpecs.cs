@@ -217,7 +217,13 @@ public class LangSemanticValidationsSpecs
         schema.IsT0.Should().BeFalse();
 
         schema.AsT1.Should().BeEquivalentTo([
-            new { Message = "Undefined relation, attribute or permission with name: member for entity organization", }
+            new
+            {
+                Message = "Undefined relation, attribute or permission with name: member for entity company. " +
+                          "The arrow org.member evaluates member on company itself, not on the subjects of " +
+                          "company#org: define member on company (e.g. permission member := org.member) or " +
+                          "remove @company#org from org",
+            }
         ]);
     }
 
@@ -676,5 +682,54 @@ public class LangSemanticValidationsSpecs
         ");
 
         schema.IsT0.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Schema_with_arrow_over_userset_whose_entity_lacks_the_member_should_return_error()
+    {
+        // The arrow reads admin on the group itself; that the group's members define it does not count.
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity organization {
+                relation admin @user;
+            }
+            entity group {
+                relation member @organization;
+            }
+            entity folder {
+                relation parent @organization @group#member;
+                permission read := parent.admin;
+            }
+        ");
+
+        schema.IsT0.Should().BeFalse();
+        schema.AsT1.Should().BeEquivalentTo([
+            new
+            {
+                Message = "Undefined relation, attribute or permission with name: admin for entity group. " +
+                          "The arrow parent.admin evaluates admin on group itself, not on the subjects of " +
+                          "group#member: define admin on group (e.g. permission admin := member.admin) or " +
+                          "remove @group#member from parent",
+            }
+        ]);
+    }
+
+    [Fact]
+    public void Schema_with_arrow_over_userset_whose_entity_defines_the_member_is_valid()
+    {
+        // The members of the group need not define admin: the arrow never reaches them.
+        var schema = new SchemaReader().Parse(@"
+            entity user {}
+            entity group {
+                relation member @user;
+                relation admin @user;
+            }
+            entity folder {
+                relation parent @group#member;
+                permission read := parent.admin;
+            }
+        ");
+
+        schema.IsT0.Should().BeTrue(schema.IsT1 ? string.Join("; ", schema.AsT1.Select(e => e.Message)) : "");
     }
 }

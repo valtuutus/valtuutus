@@ -161,11 +161,9 @@ public class PlanCompilerSpecs
     [Fact]
     public void Ttu_leaf_with_multiple_tupleset_entities_is_not_fast_path_eligible()
     {
-        // The schema DSL requires a relation's fully-resolved final entity references to be
-        // consistent, so two *unrelated* direct entity types on one relation can't parse. To get
-        // TuplesetRelation.Entities.Count > 1 while satisfying that, one entry is direct
-        // (organization) and the other is a userset (group#member) that itself resolves down to
-        // organization — still two Entities, still not fast-path eligible.
+        // One entry is direct (organization) and the other a userset (group#member): two
+        // Entities, one userset-typed, so not fast-path eligible. The arrow walks to the group
+        // itself, so group defines admin too.
         const string s = """
             entity user {}
             entity organization {
@@ -173,6 +171,7 @@ public class PlanCompilerSpecs
             }
             entity group {
                 relation member @organization;
+                permission admin := member.admin;
             }
             entity folder {
                 relation parent @organization @group#member;
@@ -186,12 +185,9 @@ public class PlanCompilerSpecs
     [Fact]
     public void Ttu_leaf_with_userset_typed_tupleset_target_is_not_fast_path_eligible()
     {
-        // The schema parser resolves a TTU's computed relation against the tupleset relation's
-        // fully-recursed final entity, which always bottoms out at a non-userset reference — so
-        // `admin` must exist there. A self-referencing `viewers @organization` keeps that bottom
-        // entity at organization (which has `admin`), while folder.parent's own (single) Entities
-        // entry is still userset-typed (Relation "viewers" is non-null), which is the condition
-        // under test.
+        // folder.parent's single Entities entry is userset-typed (Relation "viewers" is
+        // non-null), which is the condition under test. The arrow walks to the organization
+        // itself, which defines admin.
         const string s = """
             entity user {}
             entity organization {

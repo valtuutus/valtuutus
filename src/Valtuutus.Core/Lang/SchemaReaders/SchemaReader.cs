@@ -199,41 +199,4 @@ internal class SchemaReader
 
         return schemaBuilder.Build();
     }
-
-    internal HashSet<string> GetFinalEntitiesNames(RelationSymbol relationSymbol)
-    {
-        var res = new HashSet<string>();
-
-        GetFinalEntityNameInternal(relationSymbol, res, []);
-
-        return res;
-
-        // Visited is keyed by entity#relation and marked on entry: a userset that refers back to
-        // itself is expanded once, and two different relations of the same entity are each expanded.
-        void GetFinalEntityNameInternal(RelationSymbol symbol, HashSet<string> finalEntities,
-            HashSet<(string Entity, string Relation)> visitedRelations)
-        {
-            if (!visitedRelations.Add((symbol.EntityName, symbol.Name)))
-                return;
-
-            foreach (var reference in symbol.References)
-            {
-                if (!string.IsNullOrEmpty(reference.ReferencedEntityRelation))
-                {
-                    var relation = FindEntityRelation(reference.ReferencedEntityName, reference.ReferencedEntityRelation!);
-
-                    if (relation is null)
-                    {
-                        // Is not up to this algorithm to validate a valid relation
-                        continue;
-                    }
-
-                    GetFinalEntityNameInternal(relation, finalEntities, visitedRelations);
-                    continue;
-                }
-
-                finalEntities.Add(reference.ReferencedEntityName);
-            }
-        }
-    }
 }
