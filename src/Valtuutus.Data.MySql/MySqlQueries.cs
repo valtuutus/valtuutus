@@ -38,6 +38,12 @@ internal sealed record MySqlQueries
 
     public required MySqlStatement GetLatestSnapToken { get; init; }
 
+    // The latest token is the latest settled one: the newest committed id below every write still
+    // in flight, so no write can still commit at or under it. Every ULID starts with a digit below
+    // 8, so '8' stands for "no write in flight".
+    private static string SettledBound(ValtuutusMySqlOptions o) =>
+        $"id < COALESCE((SELECT MIN(lower_bound) FROM {MySqlConnections.Pending(o)}), '8')";
+
     // Sets the batch-resolved session variable to the latest token, then returns it. The token is
     // read with SELECT ... INTO, a consistent read: a SELECT nested in SET is a locking read on
     // InnoDB, which waits for every open write and deadlocks with writers. SET and SELECT ... INTO
@@ -148,10 +154,10 @@ internal sealed record MySqlQueries
             RelationsTable = rt,
             AttributesTable = at,
 
-            GetLatestSnapToken = Statement($"SELECT id FROM {tx} ORDER BY id DESC LIMIT 1"),
+            GetLatestSnapToken = Statement($"SELECT id FROM {tx} WHERE {SettledBound(o)} ORDER BY id DESC LIMIT 1"),
             ResolveLatestSnapTokenForBatch = Statement($"""
                 SET {BatchResolvedSnapToken} = NULL;
-                SELECT id INTO {BatchResolvedSnapToken} FROM {tx} ORDER BY id DESC LIMIT 1;
+                SELECT id INTO {BatchResolvedSnapToken} FROM {tx} WHERE {SettledBound(o)} ORDER BY id DESC LIMIT 1;
                 SET {BatchResolvedSnapToken} = COALESCE({BatchResolvedSnapToken}, '{SnapToken.MinValue.Value}');
                 SELECT {BatchResolvedSnapToken}
                 """),

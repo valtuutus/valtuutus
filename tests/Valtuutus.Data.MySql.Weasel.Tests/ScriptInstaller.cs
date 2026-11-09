@@ -14,7 +14,8 @@ public static class ScriptInstaller
         foreach (var name in ScriptNames().Take(onlyFirst ?? int.MaxValue))
         {
             var sql = ReadScript(name)
-                .Replace("CREATE TABLE transactions", $"CREATE TABLE `{database}`.`{options.TransactionsTableName}`")
+                .Replace("CREATE TABLE transactions_pending", $"CREATE TABLE `{database}`.`{options.TransactionsTableName}_pending`")
+                .Replace("CREATE TABLE transactions ", $"CREATE TABLE `{database}`.`{options.TransactionsTableName}` ")
                 .Replace("CREATE TABLE relation_tuples", $"CREATE TABLE `{database}`.`{options.RelationsTableName}`")
                 .Replace("CREATE TABLE attributes", $"CREATE TABLE `{database}`.`{options.AttributesTableName}`");
             await Exec(connection, sql);

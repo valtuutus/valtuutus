@@ -24,4 +24,5 @@ internal static class MySqlConnections
     internal static string Relations(IValtuutusDbOptions o) => Table(o.Schema, o.RelationsTableName);
     internal static string Attributes(IValtuutusDbOptions o) => Table(o.Schema, o.AttributesTableName);
     internal static string Transactions(IValtuutusDbOptions o) => Table(o.Schema, o.TransactionsTableName);
+    internal static string Pending(IValtuutusDbOptions o) => Table(o.Schema, $"{o.TransactionsTableName}_pending");
 }
