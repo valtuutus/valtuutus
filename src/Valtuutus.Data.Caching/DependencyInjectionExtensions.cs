@@ -15,15 +15,14 @@ public static class DependencyInjectionExtensions
     /// registered (<c>AddValtuutusCore</c>) so it decorates the engine actually in effect.
     /// </summary>
     /// <param name="builder">Valtuutus data builder</param>
-    /// <param name="configure">Configures the caching options, such as the settle window.</param>
+    /// <param name="configure">Configures the caching options, such as the cache durations.</param>
     /// <returns></returns>
     public static IValtuutusDataBuilder AddCaching(this IValtuutusDataBuilder builder,
         Action<ValtuutusCachingOptions>? configure = null)
     {
-        builder.Services.AddSingleton(sp =>
+        builder.Services.AddSingleton(_ =>
         {
-            var options = new ValtuutusCachingOptions
-                { TimeProvider = sp.GetService<TimeProvider>() ?? TimeProvider.System };
+            var options = new ValtuutusCachingOptions();
             configure?.Invoke(options);
             return options;
         });

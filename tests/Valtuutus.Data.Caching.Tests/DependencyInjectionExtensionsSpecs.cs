@@ -55,6 +55,23 @@ public class DependencyInjectionExtensionsSpecs
             .WithMessage("*ICheckEngine*");
     }
 
+    [Fact]
+    public void AddCaching_registers_the_configured_durations()
+    {
+        var services = new ServiceCollection();
+        services.AddValtuutusCore(Schema);
+        services.AddValtuutusData().AddCaching(options =>
+        {
+            options.Duration = TimeSpan.FromMinutes(10);
+            options.LatestSnapTokenDuration = TimeSpan.FromSeconds(30);
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<ValtuutusCachingOptions>().Should().Be(new ValtuutusCachingOptions
+            { Duration = TimeSpan.FromMinutes(10), LatestSnapTokenDuration = TimeSpan.FromSeconds(30) });
+    }
+
     private static ServiceDescriptor GetUnkeyed<TService>(IServiceCollection services)
         => services.Last(d => d.ServiceType == typeof(TService) && !d.IsKeyedService);
 
