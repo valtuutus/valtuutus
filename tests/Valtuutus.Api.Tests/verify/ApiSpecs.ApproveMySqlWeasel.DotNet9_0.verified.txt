@@ -1,0 +1,19 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v9.0", FrameworkDisplayName=".NET 9.0")]
+namespace Valtuutus.Data.MySql.Weasel
+{
+    public static class DependencyInjectionExtensions
+    {
+        public static Valtuutus.Data.IValtuutusDataBuilder AddMySqlWeasel(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.MySql.Weasel.ValtuutusMySqlWeaselOptions>? configure = null) { }
+        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ValtuutusMySqlWeaselOptions
+    {
+        public ValtuutusMySqlWeaselOptions() { }
+        public JasperFx.AutoCreate AutoCreate { get; set; }
+        public System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory>? ConnectionFactory { get; set; }
+        public string LockId { get; set; }
+        public System.TimeSpan LockTimeout { get; set; }
+    }
+}

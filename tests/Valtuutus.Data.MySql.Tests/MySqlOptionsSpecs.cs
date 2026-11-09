@@ -35,12 +35,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class MySqlOptionsSpecs(MySqlFixture fixture) : MySqlOptionsSpecsBase(fixture);
+    public sealed class MySqlOptionsSpecs(MySqlFixture fixture) : MySqlOptionsSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class MySqlOptionsSpecs(MariaDbFixture fixture) : MySqlOptionsSpecsBase(fixture);
+    public sealed class MySqlOptionsSpecs(MariaDbFixture fixture) : MySqlOptionsSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

@@ -4,8 +4,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerAuthzSpec")]
-public sealed class NonDefaultSchemaLookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
+public sealed class NonDefaultSchemaLookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IClassFixture<NonDefaultSchemaSqlServerFixture>
 {
     public NonDefaultSchemaLookupSubjectEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 
@@ -13,7 +12,6 @@ public sealed class NonDefaultSchemaLookupSubjectEngineSpecs : BaseLookupSubject
     {
         return services.AddSqlServer(
             _ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions(NonDefaultSchemaSqlServerFixture.Schema,
-                "transactions", "relation_tuples", "attributes"));
+            ((SqlServerFixtureBase)Fixture).Options);
     }
 }

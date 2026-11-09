@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("InMemorySpecs")]
-public sealed class WriterClockSpecs : BaseWriterClockSpecs
+public sealed class WriterClockSpecs : BaseWriterClockSpecs, IClassFixture<InMemoryFixture>
 {
     public WriterClockSpecs(InMemoryFixture fixture) : base(fixture)
     {

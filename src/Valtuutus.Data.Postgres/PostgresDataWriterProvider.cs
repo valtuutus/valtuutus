@@ -22,7 +22,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     {
         public required string CopyRelations { get; init; }
         public required string InsertTransaction { get; init; }
-        public required string DeleteRelations { get; init; }
+        public required string[] DeleteRelations { get; init; }
         public required string DeleteAttributes { get; init; }
         public required string MergeAttributes { get; init; }
     }
@@ -48,20 +48,8 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
             $"copy {key.Schema}.{key.RelationsTable} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
         InsertTransaction =
             $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at)",
-        DeleteRelations = $"""
-            UPDATE {key.Schema}.{key.RelationsTable} r
-            SET deleted_tx_id = @SnapToken
-            FROM jsonb_to_recordset(@Filters::jsonb) AS f(
-                entity_type text, entity_id text, subject_type text,
-                subject_id text, relation text, subject_relation text)
-            WHERE r.deleted_tx_id IS NULL
-              AND (f.entity_type IS NULL OR r.entity_type = f.entity_type)
-              AND (f.entity_id IS NULL OR r.entity_id = f.entity_id)
-              AND (f.subject_type IS NULL OR r.subject_type = f.subject_type)
-              AND (f.subject_id IS NULL OR r.subject_id = f.subject_id)
-              AND (f.relation IS NULL OR r.relation = f.relation)
-              AND (f.subject_relation IS NULL OR r.subject_relation = f.subject_relation)
-            """,
+        DeleteRelations = Enumerable.Range(0, RelationFilterShape.Count)
+            .Select(shape => BuildDeleteRelations(key, shape)).ToArray(),
         DeleteAttributes = $"""
             UPDATE {key.Schema}.{key.AttributesTable} a
             SET deleted_tx_id = @SnapToken
@@ -87,6 +75,23 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
                            DROP TABLE temp_attributes;
                            """"
     };
+
+    // Only the set fields of a shape are compared, each by equality, so the statement can use an index.
+    // A shape with no field set matches every live tuple and reads no filters.
+    private static string BuildDeleteRelations(DbQueryCacheKey key, int shape)
+    {
+        var head = $"UPDATE {key.Schema}.{key.RelationsTable} r SET deleted_tx_id = @SnapToken";
+        if (shape == 0)
+            return head + " WHERE r.deleted_tx_id IS NULL";
+
+        var columns = RelationFilterShape.SetColumns(shape).ToArray();
+        return $"""
+            {head}
+            FROM jsonb_to_recordset(@Filters::jsonb) AS f({string.Join(", ", columns.Select(c => $"{c} text"))})
+            WHERE r.deleted_tx_id IS NULL
+              AND {string.Join("\n  AND ", columns.Select(c => $"r.{c} = f.{c}"))}
+            """;
+    }
 
     public async Task<SnapToken> Write(
         IEnumerable<RelationTuple> relations,
@@ -155,7 +160,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactId = Ulid.NewUlid(now);
+        var transactId = MonotonicUlid.Next(_timeProvider);
 
         await InsertTransaction((NpgsqlConnection)connection, transactId, now, (NpgsqlTransaction)transaction, ct);
 
@@ -290,15 +295,15 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         CancellationToken ct
     ) {
         var now = _timeProvider.GetUtcNow();
-        var transactId = Ulid.NewUlid(now);
+        var transactId = MonotonicUlid.Next(_timeProvider);
         var npgsqlConnection = (NpgsqlConnection)connection;
         var npgsqlTransaction = (NpgsqlTransaction)transaction;
         var snapTokenValue = transactId.ToString();
 
-        if (filter.Relations.Length > 0)
+        foreach (var group in filter.Relations.GroupBy(static f => RelationFilterShape.Of(f)))
         {
-            var filtersJson = JsonSerializer.Serialize(filter.Relations, DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
-            await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteRelations, snapTokenValue, filtersJson, ct);
+            var filtersJson = JsonSerializer.Serialize(group.ToArray(), DeleteFilterJsonContext.Default.DeleteRelationsFilterArray);
+            await ExecuteDeleteBatch(npgsqlConnection, npgsqlTransaction, _c.DeleteRelations[group.Key], snapTokenValue, filtersJson, ct);
         }
 
         if (filter.Attributes.Length > 0)

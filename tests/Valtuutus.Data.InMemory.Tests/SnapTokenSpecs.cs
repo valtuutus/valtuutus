@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("InMemorySpecs")]
-public class SnapTokenSpecs : BaseSnapTokenSpecs
+public class SnapTokenSpecs : BaseSnapTokenSpecs, IClassFixture<InMemoryFixture>
 {
     public SnapTokenSpecs(InMemoryFixture fixture) : base(fixture)
     {

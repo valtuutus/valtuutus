@@ -99,12 +99,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class ExactKeyComparisonSpecs(MySqlFixture fixture) : ExactKeyComparisonSpecsBase(fixture);
+    public sealed class ExactKeyComparisonSpecs(MySqlFixture fixture) : ExactKeyComparisonSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class ExactKeyComparisonSpecs(MariaDbFixture fixture) : ExactKeyComparisonSpecsBase(fixture);
+    public sealed class ExactKeyComparisonSpecs(MariaDbFixture fixture) : ExactKeyComparisonSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

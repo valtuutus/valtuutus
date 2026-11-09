@@ -16,8 +16,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// resolves the latest token inside its first round trip; every later step of that request still
 /// reads that one token.
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
+public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     // edit: two sibling direct relations, one query. review: a direct relation plus a terminal
     // userset, two queries in one step. view: a non-terminal userset, one step per group hop.
@@ -70,7 +69,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         await Write(dbFactory, [new RelationTuple("project", "p1", "owner", "user", "alice")]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -89,7 +88,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         var token = await Write(dbFactory, [new RelationTuple("team", "t1", "member", "user", "alice")]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -114,7 +113,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
             [new AttributeTuple("project", "p2", "active", JsonValue.Create(true)!)]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -142,7 +141,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
             ]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -162,7 +161,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
 
         var counter = new RoundTripCounter();
         var wroteMidRequest = false;
-        await using var sp = BuildServices(dbFactory, counter, beforeRoundTrip: async roundTrip =>
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter, beforeRoundTrip: async roundTrip =>
         {
             if (roundTrip != 2) return;
             // Step 1 already pinned the token; this grant commits after it.
@@ -189,7 +188,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         await Write(dbFactory, [new RelationTuple("team", "t1", "member", "user", "bob")]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -222,7 +221,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         ]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter, hops: hops);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter, hops: hops);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -246,7 +245,7 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         await Write(dbFactory, [new RelationTuple("group", "g9", "member", "user", "u")]);
 
         var counter = new RoundTripCounter();
-        await using var sp = BuildServices(dbFactory, counter, hops: 2);
+        await using var sp = BuildServices(dbFactory, Fixture.Options, counter, hops: 2);
         await using var scope = sp.CreateAsyncScope();
         var engine = scope.ServiceProvider.GetRequiredService<ILookupEntityEngine>();
 
@@ -257,12 +256,11 @@ public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
         counter.Count.Should().Be(2);
     }
 
-    private static ServiceProvider BuildServices(DbConnectionFactory dbFactory, RoundTripCounter counter,
+    private static ServiceProvider BuildServices(DbConnectionFactory dbFactory, ValtuutusPostgresOptions options, RoundTripCounter counter,
         Func<int, Task>? beforeRoundTrip = null, int? hops = null)
     {
         counter.BeforeRoundTrip = beforeRoundTrip;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes");
         services.AddPostgres(_ => dbFactory, hops is { } k ? options with { LookupHopsPerQuery = k } : options)
             .AddConcurrentQueryLimit(3);
         services.AddSingleton(counter);

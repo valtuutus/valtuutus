@@ -34,7 +34,10 @@
     <Project Path="src/Valtuutus.Data.Db/Valtuutus.Data.Db.csproj" />
     <Project Path="src/Valtuutus.Data.InMemory/Valtuutus.Data.InMemory.csproj" />
     <Project Path="src/Valtuutus.Data.MySql/Valtuutus.Data.MySql.csproj" />
+    <Project Path="src/Valtuutus.Data.MySql.Weasel/Valtuutus.Data.MySql.Weasel.csproj" />
     <Project Path="src/Valtuutus.Data.Postgres/Valtuutus.Data.Postgres.csproj" />
+    <Project Path="src/Valtuutus.Data.Postgres.Weasel/Valtuutus.Data.Postgres.Weasel.csproj" />
+    <Project Path="src/Valtuutus.Data.SqlServer.Weasel/Valtuutus.Data.SqlServer.Weasel.csproj" />
     <Project Path="src/Valtuutus.Data.SqlServer/Valtuutus.Data.SqlServer.csproj" />
     <Project Path="src/Valtuutus.Data/Valtuutus.Data.csproj" />
     <Project Path="src/Valtuutus.Lang.SourceGen/Valtuutus.Lang.SourceGen.csproj" />
@@ -47,11 +50,15 @@
     <Project Path="tests/Valtuutus.Data.Db.Tests/Valtuutus.Data.Db.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.InMemory.Tests/Valtuutus.Data.InMemory.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.MySql.Tests/Valtuutus.Data.MySql.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.MySql.Weasel.Tests/Valtuutus.Data.MySql.Weasel.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.Postgres.Tests/Valtuutus.Data.Postgres.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.Postgres.Weasel.Tests/Valtuutus.Data.Postgres.Weasel.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Data.SqlServer.Weasel.Tests/Valtuutus.Data.SqlServer.Weasel.Tests.csproj" />
     <Project Path="tests/Valtuutus.Data.SqlServer.Tests/Valtuutus.Data.SqlServer.Tests.csproj" />
     <Project Path="tests/Valtuutus.Lang.SourceGen.IntegrationTests/Valtuutus.Lang.SourceGen.IntegrationTests.csproj" />
     <Project Path="tests/Valtuutus.Lang.SourceGen.Tests/Valtuutus.Lang.SourceGen.Tests.csproj" />
     <Project Path="tests/Valtuutus.Lang.Tests/Valtuutus.Lang.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Tests.Containers/Valtuutus.Tests.Containers.csproj" />
     <Project Path="tests/Valtuutus.Tests.Shared/Valtuutus.Tests.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/Solution Items/">

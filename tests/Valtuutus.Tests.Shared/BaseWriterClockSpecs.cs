@@ -70,6 +70,25 @@ public abstract class BaseWriterClockSpecs : IAsyncLifetime
         Ulid.Parse(token.Value).Time.Should().Be(Time.GetUtcNow());
     }
 
+    [Fact]
+    public async Task Writes_at_the_same_instant_return_increasing_snap_tokens()
+    {
+        await using var provider = BuildProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var writer = scope.ServiceProvider.GetRequiredService<IDataWriterProvider>();
+
+        var tokens = new List<SnapToken>();
+        for (var i = 0; i < 20; i++)
+            tokens.Add(i % 2 == 0
+                ? await writer.Write([AliceOwnsWorkspace], [], default)
+                : await writer.Delete(RevokeAliceOwnership, default));
+
+        tokens.Select(t => t.Value).Should().BeInAscendingOrder(StringComparer.Ordinal).And.OnlyHaveUniqueItems();
+        tokens.Should().AllSatisfy(t => Ulid.Parse(t.Value).Time.Should().Be(Time.GetUtcNow()));
+        (await scope.ServiceProvider.GetRequiredService<IDataReaderProvider>().GetLatestSnapToken(default))
+            .Should().Be(tokens[^1]);
+    }
+
     protected ServiceProvider BuildProvider()
     {
         var services = new ServiceCollection().AddValtuutusCore(TestsConsts.DefaultSchema);

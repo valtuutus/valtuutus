@@ -6,8 +6,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class PostgresOptionsSpecs : IAsyncLifetime
+public sealed class PostgresOptionsSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private readonly PostgresFixture _fixture;
 
@@ -26,7 +25,7 @@ public sealed class PostgresOptionsSpecs : IAsyncLifetime
     [Fact]
     public void AddPostgres_Should_Register_Custom_Options_And_Resolve_Reader()
     {
-        var options = new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes")
+        var options = new ValtuutusPostgresOptions()
         {
             MaxAutoPrepare = 8,
             AutoPrepareMinUsages = 3

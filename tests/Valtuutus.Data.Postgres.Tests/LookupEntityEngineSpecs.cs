@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
+public sealed class LookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IClassFixture<PostgresFixture>
 {
     public LookupEntityEngineSpecs(PostgresFixture fixture) : base(fixture){}
 

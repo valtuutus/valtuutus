@@ -26,13 +26,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v6.0.0
+        uses: actions/setup-dotnet@v6.1.0
         with:
           dotnet-version: |
             11.x
             10.x
             9.x
-            8.x
           include-prerelease: true
       - name: Install dotnet-coverage
         run: dotnet tool install --global dotnet-coverage

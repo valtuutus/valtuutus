@@ -14,7 +14,6 @@
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="NSubstitute" />
         <PackageReference Include="Respawn" />
-        <PackageReference Include="Testcontainers.PostgreSql" />
         <PackageReference Include="Verify.Xunit" />
         <PackageReference Include="xunit" />
         <PackageReference Include="xunit.runner.visualstudio">
@@ -25,7 +24,9 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres\Valtuutus.Data.Postgres.csproj" />
+      <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres.Weasel\Valtuutus.Data.Postgres.Weasel.csproj" />
         <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
+        <ProjectReference Include="..\Valtuutus.Tests.Containers\Valtuutus.Tests.Containers.csproj" />
 
     </ItemGroup>
 

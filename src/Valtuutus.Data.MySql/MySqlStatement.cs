@@ -211,13 +211,7 @@ internal sealed class MySqlStatement
             }
             return -1;
         }
-#if NET9_0_OR_GREATER
         return _index.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(bare, out var found) ? found : -1;
-#else
-        return _index.TryGetValue(bare.Length == parameterName.Length ? parameterName : bare.ToString(), out var found)
-            ? found
-            : -1;
-#endif
     }
 
     private static bool IsNameStart(char c) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or '_';

@@ -80,6 +80,7 @@ namespace Valtuutus.Data.Db
     public interface IRelationalBatchOps
     {
         string? DbSystemName { get; }
+        bool KeysAsUtf8 { get; }
         Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
         void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken);
         void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter);
@@ -112,10 +113,27 @@ namespace Valtuutus.Data.Db
         string TransactionsTableName { get; }
         int TwoHopEntityScanLimit { get; }
     }
+    public sealed class KeyDecoder : System.IDisposable
+    {
+        public void Dispose() { }
+        public System.Text.Json.Nodes.JsonValue ParseValue(string raw) { }
+        public string Read(System.Data.Common.DbDataReader reader, int ordinal) { }
+        public Valtuutus.Core.AttributeTuple ReadAttributeTuple(System.Data.Common.DbDataReader reader) { }
+        public Valtuutus.Core.RelationTuple ReadRelationTuple(System.Data.Common.DbDataReader reader) { }
+        public static Valtuutus.Data.Db.KeyDecoder Rent(bool keysAsUtf8) { }
+    }
+    public static class RelationFilterShape
+    {
+        public const int Count = 64;
+        public static readonly string[] Columns;
+        public static int Of(in Valtuutus.Core.Data.DeleteRelationsFilter filter) { }
+        public static System.Collections.Generic.IEnumerable<string> SetColumns(int shape) { }
+    }
     public abstract class RelationalBatchProviderBase : Valtuutus.Data.Db.IRelationalBatchOps
     {
         protected RelationalBatchProviderBase() { }
         public virtual string? DbSystemName { get; }
+        public virtual bool KeysAsUtf8 { get; }
         public virtual Valtuutus.Data.Db.IRelationalBatchOps? UsingBatchResolvedSnapToken { get; }
         public virtual void AddGetAttributesSingleEntityToBatch(System.Data.Common.DbBatch batch, string entityType, string entityId, string[] attributeNames, Valtuutus.Core.Data.SnapToken snapToken) { }
         public virtual void AddGetIndirectRelationsToBatch(System.Data.Common.DbBatch batch, Valtuutus.Core.Data.RelationTupleFilter tupleFilter) { }

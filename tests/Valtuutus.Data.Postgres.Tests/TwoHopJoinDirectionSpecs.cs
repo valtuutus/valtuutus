@@ -16,8 +16,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// and the fused TTU leaf (doc.edit_or_own), each tokenless (resolved in the first batch) and with
 /// an explicit token (single-op path).
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime
+public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private const string Schema = """
         entity user {}
@@ -84,7 +83,7 @@ public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime
     {
         var dbFactory = ((IWithDbConnectionFactory)Fixture).DbFactory;
         var services = new ServiceCollection().AddValtuutusCore(Schema);
-        var options = new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes");
+        var options = Fixture.Options;
         services.AddPostgres(_ => dbFactory, scanLimit is { } k ? options with { TwoHopEntityScanLimit = k } : options)
             .AddConcurrentQueryLimit(3);
         await using var provider = services.BuildServiceProvider();

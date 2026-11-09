@@ -1,86 +1,72 @@
-﻿using Npgsql;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Respawn;
-using Testcontainers.PostgreSql;
 using Valtuutus.Data.Db;
+using Valtuutus.Data.Postgres.Weasel;
+using Valtuutus.Data.Weasel;
+using Valtuutus.Tests.Containers;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-
-[CollectionDefinition("PostgreSqlSpec")]
-public sealed class PostgresSpecsFixture : ICollectionFixture<PostgresFixture>
-{
-}
-
-
+/// <summary>
+/// A database of its own on the shared Postgres server, migrated and reset before each test. Each
+/// test class gets one, so classes run in parallel without seeing each other's rows.
+/// </summary>
 public class PostgresFixture : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {
+    public ValtuutusPostgresOptions Options { get; } = new();
+
     public DbConnectionFactory DbFactory { get; private set; } = default!;
+    private string _serverConnectionString = default!;
+    private string _connectionString = default!;
+    private readonly string _database = SharedContainers.NewDatabaseName();
     private NpgsqlConnection _dbConnection = default!;
     private Respawner _respawner = default!;
 
-    
-    private readonly PostgreSqlContainer _dbContainer = new PostgreSqlBuilder("postgres:15.1")
-        .WithUsername("Valtuutus")
-        .WithPassword("Valtuutus123")
-        .WithDatabase("Valtuutus")
-        .WithName($"pg-integration-tests-{Guid.NewGuid()}")
-        .Build();
-    
     public async Task InitializeAsync()
     {
-        await _dbContainer.StartAsync();
-        DbFactory = () => new NpgsqlConnection(_dbContainer.GetConnectionString());
+        _serverConnectionString = await SharedContainers.PostgresAsync();
+        await ExecuteOnServerAsync($"CREATE DATABASE {_database}");
+        _connectionString = new NpgsqlConnectionStringBuilder(_serverConnectionString) { Database = _database }.ConnectionString;
+        DbFactory = () => new NpgsqlConnection(_connectionString);
         _dbConnection = (NpgsqlConnection)DbFactory();
         await _dbConnection.OpenAsync();
-        await using (var migrationCommand = _dbConnection.CreateCommand())
-        {
-            migrationCommand.CommandText = DbMigration;
-            await migrationCommand.ExecuteNonQueryAsync();
-        }
-        await SetupRespawnerAsync();
-
-    }
-    public async Task ResetDatabaseAsync()
-    {
-        await _respawner.ResetAsync(_dbConnection);
-    }
-    
-    private async Task SetupRespawnerAsync()
-    {
+        await using (var sp = BuildServices())
+            await sp.ApplyValtuutusSchemaAsync();
         _respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
         {
             DbAdapter = DbAdapter.Postgres,
             WithReseed = true,
         });
     }
-    
+
+    private ServiceProvider BuildServices()
+    {
+        var services = new ServiceCollection();
+        services.AddPostgres(_ => DbFactory, Options).AddPostgresWeasel();
+        return services.BuildServiceProvider();
+    }
+
+    public async Task ResetDatabaseAsync()
+    {
+        await _respawner.ResetAsync(_dbConnection);
+    }
 
     public async Task DisposeAsync()
     {
-        await _dbContainer.DisposeAsync();
+        await _dbConnection.DisposeAsync();
+        await using (var pooled = new NpgsqlConnection(_connectionString))
+            NpgsqlConnection.ClearPool(pooled);
+        await ExecuteOnServerAsync($"DROP DATABASE IF EXISTS {_database} WITH (FORCE)");
     }
 
-
-    private static string DbMigration = 
-        """
-        -- Create "attributes" table
-        CREATE TABLE "public"."attributes" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "attribute" character varying(64) NOT NULL, "value" jsonb NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
-        -- Create index "idx_attributes" to table: "attributes"
-        CREATE INDEX "idx_attributes" ON "public"."attributes" ("entity_type", "entity_id", "attribute") INCLUDE ("value");
-        -- Create "relation_tuples" table
-        CREATE TABLE "public"."relation_tuples" ("id" bigint NOT NULL GENERATED ALWAYS AS IDENTITY, "entity_type" character varying(256) NOT NULL, "entity_id" character varying(64) NOT NULL, "relation" character varying(64) NOT NULL, "subject_type" character varying(256) NOT NULL, "subject_id" character varying(64) NOT NULL, "subject_relation" character varying(64) NOT NULL, created_tx_id char(26) NOT NULL, deleted_tx_id char(26), PRIMARY KEY ("id"));
-        -- Create index "idx_tuples_entity_relation" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_entity_relation" ON "public"."relation_tuples" ("entity_type", "relation");
-        -- Create index "idx_tuples_subject_entities" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_subject_entities" ON "public"."relation_tuples" ("entity_type", "relation", "subject_type", "subject_id") INCLUDE ("entity_id", "subject_relation");
-        -- Create index "idx_tuples_user" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_user" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id");
-        -- Create index "idx_tuples_userset" to table: "relation_tuples"
-        CREATE INDEX "idx_tuples_userset" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_type", "subject_relation");
-        CREATE TABLE "public"."transactions" ("id" char(26) NOT NULL, "created_at" timestamptz NOT NULL, PRIMARY KEY ("id"));
-       CREATE UNIQUE INDEX "unique_attributes" on public.attributes (entity_type, entity_id, attribute) where deleted_tx_id is null;
-       CREATE INDEX "idx_tuples_direct" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation", "subject_id") INCLUDE ("subject_type", "created_tx_id", "deleted_tx_id") WHERE subject_relation = '';
-       CREATE INDEX "idx_tuples_indirect" ON "public"."relation_tuples" ("entity_type", "entity_id", "relation") INCLUDE ("subject_type", "subject_id", "subject_relation", "created_tx_id", "deleted_tx_id") WHERE subject_relation <> '';
-       """;
+    private async Task ExecuteOnServerAsync(string sql)
+    {
+        await using var connection = new NpgsqlConnection(_serverConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
+    }
 }

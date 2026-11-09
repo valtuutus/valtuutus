@@ -1,0 +1,20 @@
+﻿[assembly: System.Reflection.AssemblyMetadata("IsAotCompatible", "True")]
+[assembly: System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+[assembly: System.Reflection.AssemblyMetadata("RepositoryUrl", "https://github.com/valtuutus/valtuutus")]
+[assembly: System.Runtime.Versioning.TargetFramework(".NETCoreApp,Version=v10.0", FrameworkDisplayName=".NET 10.0")]
+namespace Valtuutus.Data.Postgres.Weasel
+{
+    public static class DependencyInjectionExtensions
+    {
+        public static Valtuutus.Data.IValtuutusDataBuilder AddPostgresWeasel(this Valtuutus.Data.IValtuutusDataBuilder builder, System.Action<Valtuutus.Data.Postgres.Weasel.ValtuutusPostgresWeaselOptions>? configure = null) { }
+        public static System.Threading.Tasks.Task ApplyValtuutusSchemaAsync(this System.IServiceProvider services, System.Threading.CancellationToken cancellationToken = default) { }
+    }
+    public sealed class ValtuutusPostgresWeaselOptions
+    {
+        public ValtuutusPostgresWeaselOptions() { }
+        public JasperFx.AutoCreate AutoCreate { get; set; }
+        public System.Func<System.IServiceProvider, Valtuutus.Data.Db.DbConnectionFactory>? ConnectionFactory { get; set; }
+        public int LockId { get; set; }
+        public System.TimeSpan LockTimeout { get; set; }
+    }
+}

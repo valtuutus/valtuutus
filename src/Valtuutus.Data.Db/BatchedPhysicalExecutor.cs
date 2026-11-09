@@ -181,6 +181,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
 
             await using var reader = await batchOps.ExecuteBatchAsync(batch, ct).ConfigureAwait(false);
             span.Responded();
+            using var keys = KeyDecoder.Rent(batchOps.KeysAsUtf8);
             if (resolving is not null)
             {
                 // Published before any op result: an op completion can make the engine submit the
@@ -199,7 +200,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
             {
                 if (i > 0 || resolving is not null)
                     await reader.NextResultAsync(ct).ConfigureAwait(false);
-                await ReadResult(reader, batchable![i], ctx, sink, ct).ConfigureAwait(false);
+                await ReadResult(reader, batchable![i], ctx, sink, keys, ct).ConfigureAwait(false);
                 reported = i + 1;
             }
         }
@@ -277,7 +278,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
     }
 
     private async Task ReadResult(DbDataReader reader, PendingOp op, CheckRequestContext ctx, IOpCompletionSink sink,
-        CancellationToken ct)
+        KeyDecoder keys, CancellationToken ct)
     {
         switch (op.Kind)
         {
@@ -300,9 +301,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                 {
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
-                        pooled.Add(new RelationTuple(
-                            reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                            reader.GetString(3), reader.GetString(4), reader.GetString(5)));
+                        pooled.Add(keys.ReadRelationTuple(reader));
                     }
                 }
                 catch
@@ -324,9 +323,7 @@ internal sealed class BatchedPhysicalExecutor(Schema schema, IRelationalBatchOps
                 using var attributes = PooledList<AttributeTuple>.Rent();
                 while (await reader.ReadAsync(ct).ConfigureAwait(false))
                 {
-                    attributes.Add(new AttributeTuple(reader.GetString(0), reader.GetString(1), reader.GetString(2),
-                        JsonNode.Parse(reader.GetString(3)) as JsonValue
-                        ?? throw new InvalidOperationException("Attribute value must deserialize to a JsonValue.")));
+                    attributes.Add(keys.ReadAttributeTuple(reader));
                 }
                 sink.Complete(op.Token, PhysicalOpRunner.EvaluateAttributeExpr(schema, ctx, op, attributes.AsSpan()));
                 break;

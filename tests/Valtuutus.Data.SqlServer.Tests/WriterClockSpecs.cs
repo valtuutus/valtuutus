@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public sealed class WriterClockSpecs : BaseDbWriterClockSpecs
+public sealed class WriterClockSpecs : BaseDbWriterClockSpecs, IClassFixture<SqlServerFixture>
 {
     public WriterClockSpecs(SqlServerFixture fixture) : base(fixture)
     {

@@ -59,4 +59,22 @@ public class ApiSpecs
     {
         return ApiSpecExtensions.VerifyAssembly<TombstoneReaperHostedService>();
     }
+
+    [Fact]
+    public Task ApprovePostgresWeasel()
+    {
+        return ApiSpecExtensions.VerifyAssembly<Valtuutus.Data.Postgres.Weasel.ValtuutusPostgresWeaselOptions>();
+    }
+
+    [Fact]
+    public Task ApproveSqlServerWeasel()
+    {
+        return ApiSpecExtensions.VerifyAssembly<Valtuutus.Data.SqlServer.Weasel.ValtuutusSqlServerWeaselOptions>();
+    }
+
+    [Fact]
+    public Task ApproveMySqlWeasel()
+    {
+        return ApiSpecExtensions.VerifyAssembly<Valtuutus.Data.MySql.Weasel.ValtuutusMySqlWeaselOptions>();
+    }
 }

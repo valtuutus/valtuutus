@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class DataWrittenSpecs : BaseDbDataWrittenSpecs
+public sealed class DataWrittenSpecs : BaseDbDataWrittenSpecs, IClassFixture<PostgresFixture>
 {
     public DataWrittenSpecs(PostgresFixture fixture) : base(fixture)
     {

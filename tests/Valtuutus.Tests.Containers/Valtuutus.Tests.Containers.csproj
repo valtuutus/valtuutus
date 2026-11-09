@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFrameworks>$(NetLibVersion)</TargetFrameworks>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsTestProject>false</IsTestProject>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.Data.SqlClient" />
+        <!-- Microsoft.Data.SqlClient 6.x depends on System.Security.Cryptography.Pkcs versions with a known
+             vulnerability; the provider pins a patched one the same way. -->
+        <PackageReference Include="System.Security.Cryptography.Pkcs" />
+        <PackageReference Include="Testcontainers.MariaDb" />
+        <PackageReference Include="Testcontainers.MsSql" />
+        <PackageReference Include="Testcontainers.MySql" />
+        <PackageReference Include="Testcontainers.PostgreSql" />
+    </ItemGroup>
+
+</Project>

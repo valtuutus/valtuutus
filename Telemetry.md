@@ -107,16 +107,7 @@ Metrics carry no entity, subject or permission attributes: their values are unbo
 - **Each call is measured once, where the caller waits for it.** With `Valtuutus.Data.Caching` registered, the cache measures the call, hits included, and the engine it falls through to on a miss doesn't measure it again. `valtuutus.operation` is then one of the four cached operations; `explain` is never cached.
 - **`valtuutus.operation.round_trips`** counts the round trips started before the answer, stragglers still running at that point included. A cache hit records 0.
 - **`valtuutus.write.duration`** includes the commit when Valtuutus owns the transaction. When you pass your own transaction, it ends before you commit.
-- **Bucket boundaries:** on .NET 9 and later, the duration histograms advise boundaries from 0.1 ms to 2.5 s. On .NET 8, configure them with a `View`, or the OpenTelemetry defaults (made for milliseconds) put every call in the first bucket:
-
-  ```csharp
-  .WithMetrics(metrics => metrics
-      .AddMeter("Valtuutus")
-      .AddView("valtuutus.*.duration", new ExplicitBucketHistogramConfiguration
-      {
-          Boundaries = [0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5]
-      }))
-  ```
+- **Bucket boundaries:** the duration histograms advise boundaries from 0.1 ms to 2.5 s.
 
 The meter also carries counters prefixed `valtuutus.check.`, `valtuutus.db.` and `valtuutus.data.` that describe the engine's internals (waves, short-circuits, memo hits, reaped rows). They exist for tuning Valtuutus itself and may change in any release.
 

@@ -7,8 +7,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerAuthzSpec")]
-public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
+public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs, IClassFixture<NonDefaultSchemaSqlServerFixture>
 {
     public NonDefaultSchemaDataEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 
@@ -16,8 +15,7 @@ public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
     {
         return services.AddSqlServer(
             _ => ((IWithDbConnectionFactory)Fixture).DbFactory,
-            new ValtuutusSqlServerOptions(NonDefaultSchemaSqlServerFixture.Schema,
-                "transactions", "relation_tuples", "attributes"));
+            ((SqlServerFixtureBase)Fixture).Options);
     }
 
     protected override async Task<(RelationTuple[] relations, AttributeTuple[] attributes)> GetCurrentTuples()

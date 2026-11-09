@@ -3,6 +3,8 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 
+using Valtuutus.Data.Db;
+
 namespace Valtuutus.Data.MySql;
 
 /// <summary>
@@ -31,7 +33,7 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
     {
         if (!IsBinary(ordinal))
             return inner.GetString(ordinal);
-        _keys ??= KeyDecoder.Rent();
+        _keys ??= KeyDecoder.Rent(keysAsUtf8: true);
         return _keys.Read(inner, ordinal);
     }
 
@@ -234,7 +236,7 @@ internal sealed class MySqlBatchReader(DbDataReader inner, DbConnection connecti
     {
         if (_keys is null)
             return;
-        KeyDecoder.Return(_keys);
+        _keys.Dispose();
         _keys = null;
     }
 }

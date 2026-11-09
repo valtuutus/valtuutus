@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public sealed class CheckEngineSpecs : BaseCheckEngineSpecs
+public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IClassFixture<SqlServerFixture>
 {
     public CheckEngineSpecs(SqlServerFixture fixture) : base(fixture) {}
 

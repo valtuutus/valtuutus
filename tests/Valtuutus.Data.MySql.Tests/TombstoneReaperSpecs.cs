@@ -149,7 +149,7 @@ namespace Valtuutus.Data.MySql.Tests
         [Fact]
         public async Task ReapBatchAsync_over_another_database_on_the_same_server_takes_a_lock_of_its_own()
         {
-            const string secondDatabase = "valtuutus_second";
+            var secondDatabase = $"{fixture.DatabaseName}_second";
             var secondConnectionString = await fixture.CreateDatabaseAsync(secondDatabase);
 
             // A session holds the lock of the fixture's database, as an instance mid-batch over it
@@ -257,12 +257,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class TombstoneReaperSpecs(MySqlFixture fixture) : TombstoneReaperSpecsBase(fixture);
+    public sealed class TombstoneReaperSpecs(MySqlFixture fixture) : TombstoneReaperSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class TombstoneReaperSpecs(MariaDbFixture fixture) : TombstoneReaperSpecsBase(fixture);
+    public sealed class TombstoneReaperSpecs(MariaDbFixture fixture) : TombstoneReaperSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

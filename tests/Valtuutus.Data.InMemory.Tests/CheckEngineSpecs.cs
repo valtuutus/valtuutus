@@ -6,8 +6,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("InMemorySpecs")]
-public sealed class CheckEngineSpecs : BaseCheckEngineSpecs
+public sealed class CheckEngineSpecs : BaseCheckEngineSpecs, IClassFixture<InMemoryFixture>
 {
     public CheckEngineSpecs(InMemoryFixture fixture) : base(fixture){}
 
