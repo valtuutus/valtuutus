@@ -70,6 +70,21 @@ await writer.NotifyCommitted(snapToken);
 
 Only you know when your transaction commits, so a write or delete made in it doesn't run `OnDataWritten` on its own. Call `NotifyCommitted` with the returned snap token after committing. With caching enabled (`AddCaching`), that's what tells the cache about the write; without it, tokenless reads can keep using the previous latest token for up to five minutes. The other overloads commit their own transaction and run `OnDataWritten` once it has committed.
 
+### Reading your own writes
+
+Once `Write` or `Delete` returns (for a write in your own transaction, once `NotifyCommitted` returns), every request without a snap token sees it, on any node, with or without caching. To get there, a committed write waits for the writes that took an older id and are still open to end. Writes that don't overlap pay one extra round trip; overlapping ones wait for the older ones to finish.
+
+A transaction you own and keep open makes concurrent writes wait for it. `SettleTimeout` (default 5 seconds) bounds that wait: past it the write returns anyway, and requests without a token see it as soon as the older write ends. Requests carrying the returned snap token always see the write.
+
+```csharp
+var data = services.AddPostgres(_ => factory);
+data.Options.SettleTimeout = TimeSpan.FromSeconds(2);
+```
+
+`TimeSpan.Zero` turns the wait off, for apps that always pass the returned snap token and want every bit of write throughput: writes return as soon as they commit, and a request without a token may miss one while an older write is open.
+
+A write in your own transaction that is never announced with `NotifyCommitted` doesn't wait, so a request without a token right after it may not see it yet.
+
 ## Deleting Authorization Data
 
 Relations and attributes can be deleted by calling `Delete` on `IDataWriterProvider` (or `IDbDataWriterProvider`). Like `Write`, `Delete` returns a `SnapToken` reflecting the state after the deletion.

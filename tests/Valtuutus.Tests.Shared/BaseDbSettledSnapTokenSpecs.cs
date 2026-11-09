@@ -61,7 +61,7 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
         await using var connection = await OpenConnection();
         await using var older = await connection.BeginTransactionAsync();
         await writer.Write(connection, older, [AliceOwnsPublic], [], default);
-        await writer.Write([BobOwnsPrivate], [], default);
+        await WriteUnannounced(writer, [BobOwnsPrivate]);
 
         var read = await AliceCanDelete(provider, snapToken: null);
         await older.CommitAsync();
@@ -78,10 +78,11 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
         await using var connection = await OpenConnection();
         await using var older = await connection.BeginTransactionAsync();
         await writer.Write(connection, older, [AliceOwnsPublic], [], default);
-        var newer = await writer.Write([BobOwnsPrivate], [], default);
+        var newer = await WriteUnannounced(writer, [BobOwnsPrivate]);
 
         var whileOpen = await AliceCanDelete(provider, snapToken: null);
         await older.CommitAsync();
+        await Task.Delay(EndedWriteRelease);
         var afterCommit = await AliceCanDelete(provider, snapToken: null);
 
         string.CompareOrdinal(whileOpen.SnapToken!.Value.Value, newer.Value).Should().BeNegative("the older write was still open");
@@ -124,6 +125,17 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
         string.CompareOrdinal(revoked.Value, granted.Value).Should().BePositive();
         (await AliceCanDelete(provider, granted)).Allowed.Should().BeTrue();
         (await AliceCanDelete(provider, revoked)).Allowed.Should().BeFalse();
+    }
+
+    // A write committed in the caller's own transaction and never announced returns without waiting
+    // for the older write the spec keeps open.
+    private async Task<SnapToken> WriteUnannounced(IDbDataWriterProvider writer, RelationTuple[] relations)
+    {
+        await using var connection = await OpenConnection();
+        await using var transaction = await connection.BeginTransactionAsync();
+        var written = await writer.Write(connection, transaction, relations, [], default);
+        await transaction.CommitAsync();
+        return written;
     }
 
     private ServiceProvider BuildProvider(TimeProvider? clock = null)
