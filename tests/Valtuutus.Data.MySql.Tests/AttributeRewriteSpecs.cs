@@ -149,12 +149,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class AttributeRewriteSpecs(MySqlFixture fixture) : AttributeRewriteSpecsBase(fixture);
+    public sealed class AttributeRewriteSpecs(MySqlFixture fixture) : AttributeRewriteSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class AttributeRewriteSpecs(MariaDbFixture fixture) : AttributeRewriteSpecsBase(fixture);
+    public sealed class AttributeRewriteSpecs(MariaDbFixture fixture) : AttributeRewriteSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

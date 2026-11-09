@@ -9,8 +9,7 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.Postgres.Tests;
 
 
-[Collection("PostgreSqlSpec")]
-public class DataEngineSpecs : BaseDataEngineSpecs
+public class DataEngineSpecs : BaseDataEngineSpecs, IClassFixture<PostgresFixture>
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)
     {

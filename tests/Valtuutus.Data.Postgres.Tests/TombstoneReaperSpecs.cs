@@ -7,8 +7,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public class TombstoneReaperSpecs : IAsyncLifetime
+public class TombstoneReaperSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private readonly PostgresFixture _fixture;
     private ServiceProvider _provider = default!;

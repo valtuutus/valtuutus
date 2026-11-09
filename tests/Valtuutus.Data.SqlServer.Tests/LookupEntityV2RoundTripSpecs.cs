@@ -16,8 +16,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// resolves the latest token inside its first round trip; every later step of that request still
 /// reads that one token.
 /// </summary>
-[Collection("SqlServerSpec")]
-public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime
+public sealed class LookupEntityV2RoundTripSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     // edit: two sibling direct relations, one query. review: a direct relation plus a terminal
     // userset, two queries in one step. view: a non-terminal userset, one step per group hop.

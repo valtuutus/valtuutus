@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public sealed class DataWrittenSpecs : BaseDbDataWrittenSpecs
+public sealed class DataWrittenSpecs : BaseDbDataWrittenSpecs, IClassFixture<SqlServerFixture>
 {
     public DataWrittenSpecs(SqlServerFixture fixture) : base(fixture)
     {

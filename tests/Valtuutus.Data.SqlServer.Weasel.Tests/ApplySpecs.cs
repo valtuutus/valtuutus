@@ -9,8 +9,7 @@ using Weasel.Core;
 
 namespace Valtuutus.Data.SqlServer.Weasel.Tests;
 
-[Collection("SqlServerWeasel")]
-public sealed class ApplySpecs(SqlServerWeaselFixture fixture)
+public sealed class ApplySpecs(SqlServerWeaselFixture fixture) : IClassFixture<SqlServerWeaselFixture>
 {
     private const string CustomLockId = "custom-valtuutus-lock";
 

@@ -58,6 +58,7 @@
     <Project Path="tests/Valtuutus.Lang.SourceGen.IntegrationTests/Valtuutus.Lang.SourceGen.IntegrationTests.csproj" />
     <Project Path="tests/Valtuutus.Lang.SourceGen.Tests/Valtuutus.Lang.SourceGen.Tests.csproj" />
     <Project Path="tests/Valtuutus.Lang.Tests/Valtuutus.Lang.Tests.csproj" />
+    <Project Path="tests/Valtuutus.Tests.Containers/Valtuutus.Tests.Containers.csproj" />
     <Project Path="tests/Valtuutus.Tests.Shared/Valtuutus.Tests.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/Solution Items/">

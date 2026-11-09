@@ -16,8 +16,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// proves that fused SQL actually matches real seeded rows correctly, not just fakes/NSubstitute
 /// (which is all Tasks 1-7 exercised).
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class HasAnyOfAttributesRealDbSpecs : IAsyncLifetime
+public sealed class HasAnyOfAttributesRealDbSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private const string Schema = """
         entity user {}

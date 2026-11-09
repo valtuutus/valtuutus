@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class DeleteFilterSpecs(PostgresFixture fixture) : BaseDeleteFilterSpecs(fixture)
+public sealed class DeleteFilterSpecs(PostgresFixture fixture) : BaseDeleteFilterSpecs(fixture), IClassFixture<PostgresFixture>
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services) =>
         services.AddPostgres(_ => ((IWithDbConnectionFactory)Fixture).DbFactory);

@@ -4,8 +4,7 @@ using Weasel.Core;
 
 namespace Valtuutus.Data.Postgres.Weasel.Tests;
 
-[Collection("PostgresWeasel")]
-public sealed class ContractSpecs(PostgresWeaselFixture fixture)
+public sealed class ContractSpecs(PostgresWeaselFixture fixture) : IClassFixture<PostgresWeaselFixture>
 {
     public static TheoryData<string> Names => ["default", "custom"];
 

@@ -5,8 +5,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 
 // The shared LookupEntity specs with one hop per query, next to LookupEntityEngineSpecs on the
 // provider default, so both shapes of the walk stay equal to the V1 engine.
-[Collection("SqlServerSpec")]
-public sealed class LookupEntityEngineOneLevelSpecs : BaseLookupEntityEngineSpecs
+public sealed class LookupEntityEngineOneLevelSpecs : BaseLookupEntityEngineSpecs, IClassFixture<SqlServerFixture>
 {
     public LookupEntityEngineOneLevelSpecs(SqlServerFixture fixture) : base(fixture) {}
 

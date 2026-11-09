@@ -10,8 +10,7 @@ using Valtuutus.Tests.Shared;
 namespace Valtuutus.Data.SqlServer.Tests;
 
 
-[Collection("SqlServerSpec")]
-public sealed class DataEngineSpecs : BaseDataEngineSpecs
+public sealed class DataEngineSpecs : BaseDataEngineSpecs, IClassFixture<SqlServerFixture>
 {
 
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services)

@@ -121,14 +121,12 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
     public sealed class BatchedExecutorRoundTripSpecs(MySqlFixture fixture, ITestOutputHelper output)
-        : BatchedExecutorRoundTripSpecsBase(fixture, output);
+        : BatchedExecutorRoundTripSpecsBase(fixture, output), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
     public sealed class BatchedExecutorRoundTripSpecs(MariaDbFixture fixture, ITestOutputHelper output)
-        : BatchedExecutorRoundTripSpecsBase(fixture, output);
+        : BatchedExecutorRoundTripSpecsBase(fixture, output), IClassFixture<MariaDbFixture>;
 }

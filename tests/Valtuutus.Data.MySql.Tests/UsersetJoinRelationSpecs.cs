@@ -104,12 +104,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class UsersetJoinRelationSpecs(MySqlFixture fixture) : UsersetJoinRelationSpecsBase(fixture);
+    public sealed class UsersetJoinRelationSpecs(MySqlFixture fixture) : UsersetJoinRelationSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class UsersetJoinRelationSpecs(MariaDbFixture fixture) : UsersetJoinRelationSpecsBase(fixture);
+    public sealed class UsersetJoinRelationSpecs(MariaDbFixture fixture) : UsersetJoinRelationSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

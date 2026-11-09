@@ -149,12 +149,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class OverLongValueSpecs(MySqlFixture fixture) : OverLongValueSpecsBase(fixture);
+    public sealed class OverLongValueSpecs(MySqlFixture fixture) : OverLongValueSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class OverLongValueSpecs(MariaDbFixture fixture) : OverLongValueSpecsBase(fixture);
+    public sealed class OverLongValueSpecs(MariaDbFixture fixture) : OverLongValueSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

@@ -1,84 +1,70 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Respawn;
-using Testcontainers.MsSql;
 using Valtuutus.Data.Db;
 using Valtuutus.Data.SqlServer.Weasel;
 using Valtuutus.Data.Weasel;
+using Valtuutus.Tests.Containers;
 using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-
+/// <summary>
+/// A database of its own on the shared SQL Server, migrated and reset before each test. Each test
+/// class gets one, so classes run in parallel without seeing each other's rows.
+/// </summary>
 public abstract class SqlServerFixtureBase : IAsyncLifetime, IDatabaseFixture, IWithDbConnectionFactory
 {
     public abstract ValtuutusSqlServerOptions Options { get; }
 
     public DbConnectionFactory DbFactory { get; private set; } = default!;
+    private readonly string _database = SharedContainers.NewDatabaseName();
+    private string _serverConnectionString = default!;
+    private string _connectionString = default!;
     private Respawner _respawner = default!;
 
-    
-    private readonly MsSqlContainer _dbContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
-	    .WithPassword("Valtuutus123!")
-	    .WithName($"mssql-integration-tests-{Guid.NewGuid()}")
-	    .Build();
-    
     public async Task InitializeAsync()
     {
-	    await _dbContainer.StartAsync();
-	    await CreateDatabase("Valtuutus");
-        DbFactory = () => new SqlConnection(_dbContainer.GetConnectionString());
+        _serverConnectionString = await SharedContainers.SqlServerAsync();
+        await ExecuteOnServerAsync($"CREATE DATABASE [{_database}]");
+        _connectionString = new SqlConnectionStringBuilder(_serverConnectionString) { InitialCatalog = _database }.ConnectionString;
+        DbFactory = () => new SqlConnection(_connectionString);
         var services = new ServiceCollection();
-        services.AddSqlServer(_ => DbFactory,
-                Options)
-            .AddSqlServerWeasel();
+        services.AddSqlServer(_ => DbFactory, Options).AddSqlServerWeasel();
         await using (var sp = services.BuildServiceProvider())
             await sp.ApplyValtuutusSchemaAsync();
-        await SetupRespawnerAsync();
 
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
+        {
+            DbAdapter = DbAdapter.SqlServer,
+            SchemasToInclude = [Options.Schema],
+        });
     }
-    
+
     public async Task ResetDatabaseAsync()
     {
-	    await using var connection = new SqlConnection(_dbContainer.GetConnectionString());
-	    await connection.OpenAsync();
-	    await _respawner.ResetAsync(connection);
-    }
-    
-    private async Task SetupRespawnerAsync()
-    {
-	    await using var connection = new SqlConnection(_dbContainer.GetConnectionString());
-	    await connection.OpenAsync();
-	    _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
-	    {
-		    DbAdapter = DbAdapter.SqlServer,
-		    SchemasToInclude = [Options.Schema],
-	    });
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
+        await _respawner.ResetAsync(connection);
     }
 
     public async Task DisposeAsync()
     {
-        await _dbContainer.DisposeAsync();
+        await using (var pooled = new SqlConnection(_connectionString))
+            SqlConnection.ClearPool(pooled);
+        await SharedSqlServer.DropDatabaseAsync(_serverConnectionString, _database);
     }
-    
-    private async Task CreateDatabase(string databaseName)
+
+    private async Task ExecuteOnServerAsync(string sql)
     {
-	    var createDatabaseScript = $@"
-        IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{databaseName}')
-          BEGIN
-            CREATE DATABASE [{databaseName}];
-          END;
-      ";
-
-	    await _dbContainer.ExecScriptAsync(createDatabaseScript)
-		    .ConfigureAwait(false);
+        await using var connection = new SqlConnection(_serverConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        await command.ExecuteNonQueryAsync();
     }
-
-}
-
-[CollectionDefinition("SqlServerSpec")]
-public sealed class SqlServerSpecsFixture : ICollectionFixture<SqlServerFixture>
-{
 }
 
 public class SqlServerFixture : SqlServerFixtureBase

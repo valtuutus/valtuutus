@@ -5,8 +5,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 
 // The shared LookupSubject specs with one userset level per query, next to LookupSubjectEngineSpecs
 // on the provider default, so both shapes of the plan stay equal to the V1 engine.
-[Collection("SqlServerSpec")]
-public sealed class LookupSubjectEngineOneLevelSpecs : BaseLookupSubjectEngineSpecs
+public sealed class LookupSubjectEngineOneLevelSpecs : BaseLookupSubjectEngineSpecs, IClassFixture<SqlServerFixture>
 {
     public LookupSubjectEngineOneLevelSpecs(SqlServerFixture fixture) : base(fixture) {}
 

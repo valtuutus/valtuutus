@@ -161,14 +161,12 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
     public sealed class FusedExpressionRoundTripSpecs(MySqlFixture fixture, ITestOutputHelper output)
-        : FusedExpressionRoundTripSpecsBase(fixture, output);
+        : FusedExpressionRoundTripSpecsBase(fixture, output), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
     public sealed class FusedExpressionRoundTripSpecs(MariaDbFixture fixture, ITestOutputHelper output)
-        : FusedExpressionRoundTripSpecsBase(fixture, output);
+        : FusedExpressionRoundTripSpecsBase(fixture, output), IClassFixture<MariaDbFixture>;
 }

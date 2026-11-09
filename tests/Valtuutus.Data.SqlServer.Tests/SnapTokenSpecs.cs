@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public class SnapTokenSpecs : BaseSnapTokenSpecs
+public class SnapTokenSpecs : BaseSnapTokenSpecs, IClassFixture<SqlServerFixture>
 {
     public SnapTokenSpecs(SqlServerFixture fixture) : base(fixture)
     {

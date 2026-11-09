@@ -15,8 +15,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// instead of a dedicated one — and every round trip of that request still runs against that one
 /// token, so a write committed mid-request stays invisible to it.
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class SnapTokenInFirstRoundTripSpecs : IAsyncLifetime
+public sealed class SnapTokenInFirstRoundTripSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     // Neither doc.owner nor group.member can take the 2-hop join fast path (group.member has two
     // userset targets), so a check through a group needs a first wave (direct membership + the

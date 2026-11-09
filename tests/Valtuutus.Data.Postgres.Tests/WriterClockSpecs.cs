@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class WriterClockSpecs : BaseDbWriterClockSpecs
+public sealed class WriterClockSpecs : BaseDbWriterClockSpecs, IClassFixture<PostgresFixture>
 {
     public WriterClockSpecs(PostgresFixture fixture) : base(fixture)
     {

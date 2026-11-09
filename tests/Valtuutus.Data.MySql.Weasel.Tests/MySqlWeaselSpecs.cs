@@ -11,7 +11,9 @@ namespace Valtuutus.Data.MySql.Weasel.Tests;
 
 public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
 {
-    private const string CustomLockId = "custom-valtuutus-lock";
+    // Named locks are server-wide and every test process shares the server, so the name is this
+    // process's own.
+    private static readonly string CustomLockId = $"custom-valtuutus-lock-{Guid.NewGuid():N}";
 
     public static TheoryData<string> Names => ["default", "custom"];
 
@@ -252,8 +254,6 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
     }
 }
 
-[Collection("MySqlWeasel")]
-public sealed class MySqlServerWeaselSpecs(MySqlWeaselFixture fixture) : MySqlWeaselSpecs(fixture);
+public sealed class MySqlServerWeaselSpecs(MySqlWeaselFixture fixture) : MySqlWeaselSpecs(fixture), IClassFixture<MySqlWeaselFixture>;
 
-[Collection("MariaDbWeasel")]
-public sealed class MariaDbServerWeaselSpecs(MariaDbWeaselFixture fixture) : MySqlWeaselSpecs(fixture);
+public sealed class MariaDbServerWeaselSpecs(MariaDbWeaselFixture fixture) : MySqlWeaselSpecs(fixture), IClassFixture<MariaDbWeaselFixture>;

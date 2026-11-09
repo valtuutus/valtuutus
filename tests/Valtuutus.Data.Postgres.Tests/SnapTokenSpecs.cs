@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public class SnapTokenSpecs : BaseSnapTokenSpecs
+public class SnapTokenSpecs : BaseSnapTokenSpecs, IClassFixture<PostgresFixture>
 {
     public SnapTokenSpecs(PostgresFixture fixture) : base(fixture)
     {

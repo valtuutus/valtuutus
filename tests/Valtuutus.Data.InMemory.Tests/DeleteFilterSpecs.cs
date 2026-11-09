@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.InMemory.Tests;
 
-[Collection("InMemorySpecs")]
-public sealed class DeleteFilterSpecs(InMemoryFixture fixture) : BaseDeleteFilterSpecs(fixture)
+public sealed class DeleteFilterSpecs(InMemoryFixture fixture) : BaseDeleteFilterSpecs(fixture), IClassFixture<InMemoryFixture>
 {
     protected override IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services) =>
         services.AddInMemory();

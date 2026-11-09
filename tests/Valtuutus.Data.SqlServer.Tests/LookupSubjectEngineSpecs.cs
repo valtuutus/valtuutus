@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs
+public sealed class LookupSubjectEngineSpecs : BaseLookupSubjectEngineSpecs, IClassFixture<SqlServerFixture>
 {
 
     public LookupSubjectEngineSpecs(SqlServerFixture fixture) : base(fixture){}

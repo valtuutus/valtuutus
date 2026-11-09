@@ -7,8 +7,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerAuthzSpec")]
-public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs
+public sealed class NonDefaultSchemaDataEngineSpecs : BaseDataEngineSpecs, IClassFixture<NonDefaultSchemaSqlServerFixture>
 {
     public NonDefaultSchemaDataEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 

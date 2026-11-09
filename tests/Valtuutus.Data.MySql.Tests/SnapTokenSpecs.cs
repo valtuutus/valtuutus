@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class SnapTokenSpecs(MySqlFixture fixture) : BaseSnapTokenSpecs(fixture)
+    public sealed class SnapTokenSpecs(MySqlFixture fixture) : BaseSnapTokenSpecs(fixture), IClassFixture<MySqlFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 
@@ -15,8 +14,7 @@ namespace Valtuutus.Data.MySql.Tests.MySql
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class SnapTokenSpecs(MariaDbFixture fixture) : BaseSnapTokenSpecs(fixture)
+    public sealed class SnapTokenSpecs(MariaDbFixture fixture) : BaseSnapTokenSpecs(fixture), IClassFixture<MariaDbFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 

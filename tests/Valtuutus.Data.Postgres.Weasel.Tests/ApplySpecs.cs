@@ -9,8 +9,7 @@ using Weasel.Core;
 
 namespace Valtuutus.Data.Postgres.Weasel.Tests;
 
-[Collection("PostgresWeasel")]
-public sealed class ApplySpecs(PostgresWeaselFixture fixture)
+public sealed class ApplySpecs(PostgresWeaselFixture fixture) : IClassFixture<PostgresWeaselFixture>
 {
     private const int CustomLockId = 424242;
 

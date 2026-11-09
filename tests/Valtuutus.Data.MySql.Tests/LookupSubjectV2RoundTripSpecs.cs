@@ -180,12 +180,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class LookupSubjectV2RoundTripSpecs(MySqlFixture fixture) : LookupSubjectV2RoundTripSpecsBase(fixture);
+    public sealed class LookupSubjectV2RoundTripSpecs(MySqlFixture fixture) : LookupSubjectV2RoundTripSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class LookupSubjectV2RoundTripSpecs(MariaDbFixture fixture) : LookupSubjectV2RoundTripSpecsBase(fixture);
+    public sealed class LookupSubjectV2RoundTripSpecs(MariaDbFixture fixture) : LookupSubjectV2RoundTripSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

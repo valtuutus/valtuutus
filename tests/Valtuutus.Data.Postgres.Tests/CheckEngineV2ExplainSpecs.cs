@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class CheckEngineV2ExplainSpecs : BaseCheckEngineV2RelationalExplainSpecs
+public sealed class CheckEngineV2ExplainSpecs : BaseCheckEngineV2RelationalExplainSpecs, IClassFixture<PostgresFixture>
 {
     public CheckEngineV2ExplainSpecs(PostgresFixture fixture) : base(fixture) { }
 

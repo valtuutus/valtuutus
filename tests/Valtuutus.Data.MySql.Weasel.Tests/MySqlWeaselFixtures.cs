@@ -1,42 +1,48 @@
-using DotNet.Testcontainers.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
-using Testcontainers.MariaDb;
-using Testcontainers.MySql;
+using Valtuutus.Tests.Containers;
 
 namespace Valtuutus.Data.MySql.Weasel.Tests;
 
-[CollectionDefinition("MySqlWeasel")]
-public sealed class MySqlWeaselCollection : ICollectionFixture<MySqlWeaselFixture>;
-
-[CollectionDefinition("MariaDbWeasel")]
-public sealed class MariaDbWeaselCollection : ICollectionFixture<MariaDbWeaselFixture>;
-
 public abstract class MySqlWeaselFixtureBase : IAsyncLifetime
 {
-    private IDatabaseContainer _container = default!;
+    private readonly List<string> _databases = [];
+    private string _server = default!;
 
     public abstract MySqlServerType ServerType { get; }
 
-    protected abstract IDatabaseContainer CreateContainer();
+    protected abstract Task<string> ServerAsync();
 
-    public async Task InitializeAsync()
+    public async Task InitializeAsync() => _server = await ServerAsync();
+
+    public async Task DisposeAsync()
     {
-        _container = CreateContainer();
-        await _container.StartAsync();
+        foreach (var name in _databases)
+        {
+            await using (var pooled = new MySqlConnection(ConnectionStringOf(name)))
+                await MySqlConnection.ClearPoolAsync(pooled);
+            await ExecuteOnServerAsync($"DROP DATABASE IF EXISTS `{name}`");
+        }
     }
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
-
-    /// <summary>Creates an empty database and returns its name and a connection string defaulting to it.</summary>
+    /// <summary>Creates an empty database on the shared server and returns its name and a connection string defaulting to it.</summary>
     public async Task<(string Name, string ConnectionString)> CreateDatabaseAsync()
     {
-        var name = $"db_{Guid.NewGuid():N}";
-        await using var admin = new MySqlConnection(_container.GetConnectionString());
-        await admin.OpenAsync();
-        await ScriptInstaller.Exec(admin, $"CREATE DATABASE `{name}`");
-        return (name, new MySqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name }.ConnectionString);
+        var name = SharedContainers.NewDatabaseName();
+        await ExecuteOnServerAsync($"CREATE DATABASE `{name}`");
+        _databases.Add(name);
+        return (name, ConnectionStringOf(name));
     }
+
+    private async Task ExecuteOnServerAsync(string sql)
+    {
+        await using var admin = new MySqlConnection(_server);
+        await admin.OpenAsync();
+        await ScriptInstaller.Exec(admin, sql);
+    }
+
+    private string ConnectionStringOf(string database) =>
+        new MySqlConnectionStringBuilder(_server) { Database = database }.ConnectionString;
 
     public ServiceProvider BuildServices(string connectionString, ValtuutusMySqlOptions dbOptions,
         Action<ValtuutusMySqlWeaselOptions>? configure = null)
@@ -57,18 +63,12 @@ public sealed class MySqlWeaselFixture : MySqlWeaselFixtureBase
 {
     public override MySqlServerType ServerType => MySqlServerType.MySql;
 
-    protected override IDatabaseContainer CreateContainer() => new MySqlBuilder("mysql:8.4")
-        .WithUsername("root").WithPassword("Valtuutus123").WithDatabase("valtuutus")
-        .WithName($"mysql-weasel-tests-{Guid.NewGuid()}")
-        .Build();
+    protected override Task<string> ServerAsync() => SharedContainers.MySqlAsync();
 }
 
 public sealed class MariaDbWeaselFixture : MySqlWeaselFixtureBase
 {
     public override MySqlServerType ServerType => MySqlServerType.MariaDb;
 
-    protected override IDatabaseContainer CreateContainer() => new MariaDbBuilder("mariadb:10.11")
-        .WithUsername("root").WithPassword("Valtuutus123").WithDatabase("valtuutus")
-        .WithName($"mariadb-weasel-tests-{Guid.NewGuid()}")
-        .Build();
+    protected override Task<string> ServerAsync() => SharedContainers.MariaDbAsync();
 }
