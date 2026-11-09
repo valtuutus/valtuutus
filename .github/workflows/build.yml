@@ -52,7 +52,7 @@ jobs:
           path: ${{ github.workspace }}/**/TestResults/**/*
           retention-days: 5
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.26.0
         if: always()
         with:
           trx_files: "${{ github.workspace }}/**/*.trx"
