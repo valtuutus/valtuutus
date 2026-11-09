@@ -4,34 +4,14 @@ namespace Valtuutus.Data.SqlServer;
 
 public record ValtuutusSqlServerOptions : IValtuutusDbOptions
 {
-    private string _schema = "dbo";
-    private string _transactionsTableName = "transactions";
-    private string _relationsTableName = "relation_tuples";
-    private string _attributesTableName = "attributes";
-
     /// <summary>
-    /// The schema holding the tables. Defaults to "dbo"; the tables default to "transactions",
-    /// "relation_tuples" and "attributes".
+    /// The schema holding the tables.
     /// </summary>
-    public string Schema { get => _schema; init => _schema = NotBlank(value, nameof(Schema)); }
+    public string Schema { get; init => field = NotBlank(value, nameof(Schema)); } = "dbo";
 
-    public string TransactionsTableName
-    {
-        get => _transactionsTableName;
-        init => _transactionsTableName = NotBlank(value, nameof(TransactionsTableName));
-    }
-
-    public string RelationsTableName
-    {
-        get => _relationsTableName;
-        init => _relationsTableName = NotBlank(value, nameof(RelationsTableName));
-    }
-
-    public string AttributesTableName
-    {
-        get => _attributesTableName;
-        init => _attributesTableName = NotBlank(value, nameof(AttributesTableName));
-    }
+    public string TransactionsTableName { get; init => field = NotBlank(value, nameof(TransactionsTableName)); } = "transactions";
+    public string RelationsTableName { get; init => field = NotBlank(value, nameof(RelationsTableName)); } = "relation_tuples";
+    public string AttributesTableName { get; init => field = NotBlank(value, nameof(AttributesTableName)); } = "attributes";
 
     /// <summary>
     /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
