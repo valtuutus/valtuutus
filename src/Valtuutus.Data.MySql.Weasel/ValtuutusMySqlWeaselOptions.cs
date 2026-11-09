@@ -17,7 +17,10 @@ public sealed class ValtuutusMySqlWeaselOptions
     /// </summary>
     public Func<IServiceProvider, DbConnectionFactory>? ConnectionFactory { get; set; }
 
-    /// <summary>Named lock (GET_LOCK) that serializes applies across nodes.</summary>
+    /// <summary>
+    /// Named lock (GET_LOCK) that serializes applies across nodes. The lock is taken per database, so
+    /// applies over different databases on one server don't wait for each other. At most 31 characters.
+    /// </summary>
     public string LockId { get; set; } = "valtuutus-schema";
 
     /// <summary>

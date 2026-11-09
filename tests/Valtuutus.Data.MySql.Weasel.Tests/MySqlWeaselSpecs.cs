@@ -27,12 +27,16 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
         return (await SchemaMigration.DetermineAsync(connection, MySqlSchema.Tables(o, database))).Difference;
     }
 
-    private static async Task<object?> Scalar(MySqlConnection connection, string sql)
+    private static async Task<object?> Scalar(MySqlConnection connection, string database, string sql)
     {
         await using var command = new MySqlCommand(sql, connection);
         command.Parameters.AddWithValue("name", CustomLockId);
+        command.Parameters.AddWithValue("database", database);
         return await command.ExecuteScalarAsync();
     }
+
+    private static readonly string GetLock = $"SELECT GET_LOCK({MySqlSchemaApplier.LockName}, 10)";
+    private static readonly string ReleaseLock = $"SELECT RELEASE_LOCK({MySqlSchemaApplier.LockName})";
 
     [Theory, MemberData(nameof(Names))]
     public async Task ScriptInstall_HasNoDifference(string names)
@@ -182,13 +186,13 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
         var (db, cs) = await fixture.CreateDatabaseAsync();
         await using var holder = new MySqlConnection(cs);
         await holder.OpenAsync();
-        (await Scalar(holder, "SELECT GET_LOCK(@name, 10)")).Should().Be(1L);
+        (await Scalar(holder, db, GetLock)).Should().Be(1L);
         await using var sp = fixture.BuildServices(cs, fixture.DefaultNames, options => options.LockId = CustomLockId);
 
         var apply = sp.ApplyValtuutusSchemaAsync();
         (await Task.WhenAny(apply, Task.Delay(TimeSpan.FromSeconds(2)))).Should().NotBeSameAs(apply);
 
-        await Scalar(holder, "SELECT RELEASE_LOCK(@name)");
+        await Scalar(holder, db, ReleaseLock);
         await apply;
 
         (await DifferenceAsync(cs, fixture.DefaultNames, db)).Should().Be(SchemaPatchDifference.None);
@@ -200,7 +204,7 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
         var (db, cs) = await fixture.CreateDatabaseAsync();
         await using var holder = new MySqlConnection(cs);
         await holder.OpenAsync();
-        (await Scalar(holder, "SELECT GET_LOCK(@name, 10)")).Should().Be(1L);
+        (await Scalar(holder, db, GetLock)).Should().Be(1L);
         await using var sp = fixture.BuildServices(cs, fixture.DefaultNames, options =>
         {
             options.LockId = CustomLockId;
@@ -211,9 +215,37 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage($"*{CustomLockId}*");
 
-        await Scalar(holder, "SELECT RELEASE_LOCK(@name)");
+        await Scalar(holder, db, ReleaseLock);
         await sp.ApplyValtuutusSchemaAsync();
         (await DifferenceAsync(cs, fixture.DefaultNames, db)).Should().Be(SchemaPatchDifference.None);
+    }
+
+    [Fact]
+    public async Task Apply_DoesNotWaitForLockHolderOverAnotherDatabase()
+    {
+        var (otherDb, otherCs) = await fixture.CreateDatabaseAsync();
+        var (db, cs) = await fixture.CreateDatabaseAsync();
+        await using var holder = new MySqlConnection(otherCs);
+        await holder.OpenAsync();
+        (await Scalar(holder, otherDb, GetLock)).Should().Be(1L);
+        await using var sp = fixture.BuildServices(cs, fixture.DefaultNames, options => options.LockId = CustomLockId);
+
+        await sp.ApplyValtuutusSchemaAsync().WaitAsync(TimeSpan.FromSeconds(10));
+
+        (await DifferenceAsync(cs, fixture.DefaultNames, db)).Should().Be(SchemaPatchDifference.None);
+        await Scalar(holder, otherDb, ReleaseLock);
+    }
+
+    [Fact]
+    public async Task Apply_RejectsLockIdLongerThanTheServerAllows()
+    {
+        var (_, cs) = await fixture.CreateDatabaseAsync();
+        await using var sp = fixture.BuildServices(cs, fixture.DefaultNames,
+            options => options.LockId = new string('x', MySqlSchemaApplier.MaxLockIdLength + 1));
+
+        var act = () => sp.ApplyValtuutusSchemaAsync();
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*longer than 31 characters*");
     }
 
     [Fact]
@@ -222,7 +254,7 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
         var (db, cs) = await fixture.CreateDatabaseAsync();
         await using var holder = new MySqlConnection(cs);
         await holder.OpenAsync();
-        (await Scalar(holder, "SELECT GET_LOCK(@name, 10)")).Should().Be(1L);
+        (await Scalar(holder, db, GetLock)).Should().Be(1L);
         await using var sp = fixture.BuildServices(cs, fixture.DefaultNames, options => options.LockId = CustomLockId);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
@@ -230,7 +262,7 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
 
         await act.Should().ThrowAsync<OperationCanceledException>();
 
-        await Scalar(holder, "SELECT RELEASE_LOCK(@name)");
+        await Scalar(holder, db, ReleaseLock);
         await sp.ApplyValtuutusSchemaAsync();
         (await DifferenceAsync(cs, fixture.DefaultNames, db)).Should().Be(SchemaPatchDifference.None);
     }
