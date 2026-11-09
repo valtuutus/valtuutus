@@ -13,13 +13,10 @@ namespace Valtuutus.Data.InMemory.Tests.V2;
 /// </summary>
 public sealed class MixedFanOutSpecs
 {
-    // holder takes a userset target, so the arrow is read through the tupleset at run time. The schema
-    // check validates an arrow's member on the type a userset resolves to (user), while the engines
-    // evaluate it on the userset's own entity (team), so user declares owner too.
+    // holder takes a userset target, so the arrow is read through the tupleset at run time. The arrow
+    // evaluates owner on the userset's own entity (team).
     private const string Schema = """
-        entity user {
-            relation owner @user;
-        }
+        entity user {}
         entity service_account {
             relation owner @user;
         }
