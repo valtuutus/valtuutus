@@ -28,6 +28,7 @@ public class MySqlDataReaderProvider : RateLimiterExecuter, IDataReaderProvider,
         // string is read from a fresh connection that is never opened.
         using var probeConnection = (MySqlConnection)connectionFactory();
         _dataSource = MySqlConnections.GetOrCreateDataSource(probeConnection.ConnectionString);
+        MySqlPendingSweeper.Ensure(_dataSource, MySqlConnections.Pending(dbOptions));
     }
 
     private static RelationTuple ReadRelationTuple(DbDataReader reader, KeyDecoder keys) =>

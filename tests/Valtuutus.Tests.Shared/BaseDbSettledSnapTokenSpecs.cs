@@ -46,6 +46,9 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
 
     protected abstract IValtuutusDataBuilder AddSpecificProvider(IServiceCollection services);
 
+    /// <summary>How long after a write ended without removing its registration readers may still stop below it.</summary>
+    protected virtual TimeSpan EndedWriteRelease => TimeSpan.FromMilliseconds(200);
+
     public Task InitializeAsync() => Fixture.ResetDatabaseAsync();
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -99,7 +102,7 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
         }
         var newer = await writer.Write([BobOwnsPrivate], [], default);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        await Task.Delay(EndedWriteRelease);
         var read = await AliceCanDelete(provider, snapToken: null);
 
         read.Allowed.Should().BeFalse();
