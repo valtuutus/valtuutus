@@ -11,6 +11,15 @@ public record ValtuutusDataOptions
     /// The amount of concurrent queries that a Check Request can evaluate at the same time.
     /// </summary>
     public int MaxConcurrentQueries { get; internal set; } = 5;
+
+    /// <summary>
+    /// How long a committed write waits for the older writes still open before it returns. Once it
+    /// returns, requests without a snap token see it. Past the timeout it returns anyway, and they see
+    /// it once those writes end. A transaction you own keeps newer writes waiting for up to this long.
+    /// <see cref="TimeSpan.Zero"/> turns the wait off: writes return as soon as they commit, and
+    /// requests without a token may miss them while an older write is open.
+    /// </summary>
+    public TimeSpan SettleTimeout { get; set; } = TimeSpan.FromSeconds(5);
     
     /// <summary>
     /// Handlers run, in the order added, once a write or delete has committed, with its snap token

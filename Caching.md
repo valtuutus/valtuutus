@@ -84,7 +84,7 @@ These durations set the expiry of Valtuutus's entries; the rest of your FusionCa
 
 ## Reading your own writes
 
-A request without a token reads at the latest token the cache knows, which can be slightly behind a write made on another node. To read your own write, pass the `SnapToken` that `Write`/`Delete` returns.
+A write returns once it is settled (see [Reading your own writes](Storing%20Data.md#reading-your-own-writes)), and it moves this node's latest token to it before returning, so a request without a token on the node that wrote sees the write. Another node learns the new latest token through the backplane, so it can be slightly behind. To read a write on any node right away, pass the `SnapToken` that `Write`/`Delete` returns.
 
 ## Registration order
 

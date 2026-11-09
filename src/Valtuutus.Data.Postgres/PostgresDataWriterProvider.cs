@@ -27,11 +27,14 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         public required string MergeAttributes { get; init; }
         public required string Settle { get; init; }
         public required string Renumber { get; init; }
+        public required string WaitForOlderWrites { get; init; }
+        public required string LatestSettled { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
     private readonly WriterCommands _c;
     private readonly PostgresPendingRegistrar _registrar;
+    private readonly NpgsqlDataSource _dataSource;
 
     public PostgresDataWriterProvider(DbConnectionFactory factory,
         IServiceProvider provider,
@@ -43,21 +46,29 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         _options = options;
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         var key = DbQueryCacheKey.From(dbOptions);
-        _c = CommandCache.GetOrAdd(key, static key => BuildCommands(key));
+        var pgOptions = dbOptions as ValtuutusPostgresOptions ?? new ValtuutusPostgresOptions();
+        _c = CommandCache.GetOrAdd(key, key => BuildCommands(key, PostgresDataReaderProvider.GetQueries(pgOptions).GetLatestSnapToken));
         // Same probe-then-cache pattern as the reader: the factory yields the connection string, the
         // shared cache yields the data source, and with it this database's registrar.
         using var probe = (NpgsqlConnection)factory();
-        var dataSource = PostgresDataReaderProvider.GetOrCreateDataSource(probe.ConnectionString,
-            dbOptions as ValtuutusPostgresOptions ?? new ValtuutusPostgresOptions());
-        _registrar = PostgresPendingRegistrar.For(dataSource, key);
+        _dataSource = PostgresDataReaderProvider.GetOrCreateDataSource(probe.ConnectionString, pgOptions);
+        _registrar = PostgresPendingRegistrar.For(_dataSource, key);
     }
 
-    private static WriterCommands BuildCommands(DbQueryCacheKey key) => new()
+    private static WriterCommands BuildCommands(DbQueryCacheKey key, string latestSettled) => new()
     {
         CopyRelations =
             $"copy {key.Schema}.{key.RelationsTable} (entity_type, entity_id, relation, subject_type, subject_id, subject_relation, created_tx_id) from STDIN (FORMAT BINARY)",
         InsertTransaction =
-            $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at) RETURNING pg_current_xact_id()::text",
+            // The write holds a lock keyed by its id until it ends, so a committed write can wait for
+            // the older writes still open instead of polling them.
+            $"INSERT INTO {key.Schema}.{key.TransactionsTable} (id, created_at) VALUES (@id, @created_at) RETURNING pg_current_xact_id()::text, pg_advisory_xact_lock(hashtextextended(@id, 0))",
+        WaitForOlderWrites = $"""
+            SELECT count(pg_advisory_xact_lock_shared(hashtextextended(p.lower_bound, 0)))
+            FROM {PostgresPendingRegistrar.PendingTable(key)} p
+            WHERE p.lower_bound < @snap_token AND pg_xact_status(p.xid) = 'in progress'
+            """,
+        LatestSettled = latestSettled,
         Settle = $"DELETE FROM {PostgresPendingRegistrar.PendingTable(key)} WHERE lower_bound = @lower_bound",
         Renumber = $"""
             UPDATE {key.Schema}.{key.TransactionsTable} SET id = @renumbered WHERE id = @id;
@@ -398,8 +409,56 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
     }
 
     /// <inheritdoc />
-    public Task NotifyCommitted(SnapToken snapToken)
-        => _options.NotifyDataWritten(_provider, snapToken);
+    public async Task NotifyCommitted(SnapToken snapToken)
+    {
+        await WaitUntilSettled(snapToken);
+        await _options.NotifyDataWritten(_provider, snapToken);
+    }
+
+    // A committed write is visible to requests without a token only once the latest settled token
+    // reaches it, which needs every older write still open to end. Each round waits on the locks of
+    // the older writes registered so far, then reads the latest settled token; a write registered
+    // later with an older id (a node whose clock is behind) is caught by the next round. Past the
+    // timeout the write returns anyway, and requests without a token see it once it settles.
+    private async Task WaitUntilSettled(SnapToken snapToken)
+    {
+        var deadline = _timeProvider.GetTimestamp() + (long)(_options.SettleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        var pause = TimeSpan.FromMilliseconds(1);
+        while (true)
+        {
+            var remaining = deadline - _timeProvider.GetTimestamp();
+            if (remaining <= 0) return;
+            var remainingMs = Math.Max(1, (long)(remaining * 1000.0 / _timeProvider.TimestampFrequency));
+
+            string? settled = null;
+            try
+            {
+                await using var connection = await _dataSource.OpenConnectionAsync();
+                await using var batch = connection.CreateBatch();
+                batch.BatchCommands.Add(new NpgsqlBatchCommand("BEGIN"));
+                batch.BatchCommands.Add(new NpgsqlBatchCommand($"SET LOCAL lock_timeout = {remainingMs}"));
+                var wait = new NpgsqlBatchCommand(_c.WaitForOlderWrites);
+                wait.Parameters.Add(new NpgsqlParameter<string>("snap_token", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken.Value });
+                batch.BatchCommands.Add(wait);
+                batch.BatchCommands.Add(new NpgsqlBatchCommand("COMMIT"));
+                batch.BatchCommands.Add(new NpgsqlBatchCommand(_c.LatestSettled));
+                await using var reader = await batch.ExecuteReaderAsync();
+                do
+                {
+                    if (reader.GetName(0) == "id" && await reader.ReadAsync() && !reader.IsDBNull(0))
+                        settled = reader.GetString(0);
+                } while (await reader.NextResultAsync());
+            }
+            catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.LockNotAvailable)
+            {
+                return;
+            }
+
+            if (settled is not null && string.CompareOrdinal(settled, snapToken.Value) >= 0) return;
+            await Task.Delay(pause, _timeProvider);
+            pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, TimeSpan.FromMilliseconds(20).Ticks));
+        }
+    }
 
     private static async Task ExecuteDeleteBatch(NpgsqlConnection connection, NpgsqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)
