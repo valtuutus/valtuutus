@@ -17,16 +17,9 @@ public static class DependencyInjectionExtensions
         AutoCreateGuard.EnsureSafe(options.AutoCreate);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<ISchemaApplier, MySqlSchemaApplier>();
-        builder.Services.AddHostedService<SchemaHostedService>();
+        builder.Services.AddSingleton<MySqlSchemaApplier>();
+        builder.Services.AddSingleton<ISchemaApplier>(sp => sp.GetRequiredService<MySqlSchemaApplier>());
+        builder.Services.AddHostedService(sp => new SchemaHostedService(sp.GetRequiredService<MySqlSchemaApplier>()));
         return builder;
-    }
-
-    /// <summary>Applies the Valtuutus schema now, with the options given to AddMySqlWeasel.</summary>
-    public static Task ApplyValtuutusSchemaAsync(this IServiceProvider services, CancellationToken cancellationToken = default)
-    {
-        var applier = services.GetService<ISchemaApplier>()
-            ?? throw new InvalidOperationException("Call AddMySqlWeasel() on the Valtuutus data builder before ApplyValtuutusSchemaAsync().");
-        return applier.ApplyAsync(cancellationToken);
     }
 }
