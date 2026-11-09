@@ -369,13 +369,15 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     // timeout the write returns anyway, and requests without a token see it once it settles.
     private async Task WaitUntilSettled(SnapToken snapToken)
     {
-        var deadline = _timeProvider.GetTimestamp() + (long)(_options.SettleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        // Real time, like the lock timeouts it pairs with: the injected clock dates writes and may
+        // stand still.
+        var deadline = TimeProvider.System.GetTimestamp() + (long)(_options.SettleTimeout.TotalSeconds * TimeProvider.System.TimestampFrequency);
         var pause = TimeSpan.FromMilliseconds(1);
         while (true)
         {
-            var remaining = deadline - _timeProvider.GetTimestamp();
+            var remaining = deadline - TimeProvider.System.GetTimestamp();
             if (remaining <= 0) return;
-            var remainingMs = (int)Math.Clamp(remaining * 1000.0 / _timeProvider.TimestampFrequency, 1, int.MaxValue);
+            var remainingMs = (int)Math.Clamp(remaining * 1000.0 / TimeProvider.System.TimestampFrequency, 1, int.MaxValue);
 
             string? settled = null;
             await using (var connection = (SqlConnection)_factory())
@@ -394,7 +396,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
             }
 
             if (settled is not null && string.CompareOrdinal(settled, snapToken.Value) >= 0) return;
-            await Task.Delay(pause, _timeProvider);
+            await Task.Delay(pause);
             pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, TimeSpan.FromMilliseconds(20).Ticks));
         }
     }

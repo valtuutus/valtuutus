@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Valtuutus.Core;
 using Valtuutus.Core.Configuration;
 using Valtuutus.Core.Data;
@@ -153,10 +154,32 @@ public abstract class BaseDbReadYourWritesSpecs : IAsyncLifetime
         read.Allowed.Should().BeTrue();
     }
 
-    private ServiceProvider BuildProvider(bool cached, TimeSpan? settleTimeout = null)
+    [Fact]
+    public async Task A_write_returns_while_the_injected_clock_stands_still()
+    {
+        // The older write rolls back while the newer one waits for it, and a write that just rolled
+        // back still holds readers back for a moment, so the newer write checks the settled token
+        // more than once.
+        await using var provider = BuildProvider(cached: false, clock: new FakeTimeProvider(DateTimeOffset.UtcNow));
+        var writer = provider.GetRequiredService<IDbDataWriterProvider>();
+        await using var connection = await OpenConnection();
+        await using var older = await connection.BeginTransactionAsync();
+        await writer.Write(connection, older, [BobOwnsPrivate], [], default);
+
+        var newer = writer.Write([AliceOwnsPublic], [], default);
+        await Task.Delay(TimeSpan.FromMilliseconds(20));
+        await older.RollbackAsync();
+        await newer.WaitAsync(TimeSpan.FromSeconds(15));
+        var read = await AliceCanDelete(provider, snapToken: null);
+
+        read.Allowed.Should().BeTrue();
+    }
+
+    private ServiceProvider BuildProvider(bool cached, TimeSpan? settleTimeout = null, TimeProvider? clock = null)
     {
         var services = new ServiceCollection();
         services.AddValtuutusCore(TestsConsts.DefaultSchema);
+        if (clock is not null) services.AddSingleton(clock);
         var builder = AddSpecificProvider(services);
         if (settleTimeout is { } timeout) builder.Options.SettleTimeout = timeout;
         if (cached)
