@@ -454,14 +454,29 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         var relationsTable = $"{key.Schema}.{key.RelationsTable}";
         var attributesTable = $"{key.Schema}.{key.AttributesTable}";
 
+        // The latest settled token: the newest committed id below every write still in flight, so
+        // no write can still commit at or under it. A registration younger than the threshold counts
+        // as in flight without asking for its transaction's status; past it, only while its
+        // transaction is in progress, so a write that rolled back or died stops holding readers back.
+        // Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
+        var settled = $"""
+            SELECT id FROM {key.Schema}.{key.TransactionsTable}
+            WHERE id < COALESCE((
+                SELECT p.lower_bound FROM {PostgresPendingRegistrar.PendingTable(key)} p
+                WHERE p.registered_at > clock_timestamp() - interval '100 milliseconds'
+                   OR pg_xact_status(p.xid) = 'in progress'
+                ORDER BY p.lower_bound LIMIT 1), '8')
+            ORDER BY id DESC LIMIT 1
+            """;
+
         return new ReaderQueries
         {
             RelationsTable = relationsTable,
             AttributesTable = attributesTable,
             TwoHopEntityScanLimit = scanLimit,
-            GetLatestSnapToken = $"SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1",
+            GetLatestSnapToken = settled,
             ResolveLatestSnapTokenForBatch =
-                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false)",
+                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE(({settled}), '{SnapToken.MinValue.Value}'), false)",
             // Also pins generic plans for the rest of this batch only (is_local: the batch's implicit
             // transaction). The batch's snap-token predicates read a session setting the planner
             // can't see, so custom and generic plans cost about the same, and depending on table
@@ -470,7 +485,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
             // auto-prepared statements: an unprepared statement is planned on every execution
             // anyway, and a generic plan there just loses the parameter values.
             ResolveLatestSnapTokenForBatchWithGenericPlans =
-                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE((SELECT id FROM {key.Schema}.{key.TransactionsTable} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}'), false), set_config('plan_cache_mode', 'force_generic_plan', true)",
+                $"SELECT set_config('{BatchResolvedSnapTokenSetting}', COALESCE(({settled}), '{SnapToken.MinValue.Value}'), false), set_config('plan_cache_mode', 'force_generic_plan', true)",
             HasDirectRelation = PgStatement.Compile($"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')"),
             HasAnyDirectRelation = PgStatement.Compile($"SELECT EXISTS(SELECT 1 FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = ANY(@entity_ids) AND relation = @relation AND subject_id = @subject_id AND subject_relation = '')"),
             HasAnyOfDirectRelations = PgStatement.Compile($"SELECT DISTINCT relation FROM {relationsTable} WHERE {snapPredicate} AND entity_type = @entity_type AND entity_id = @entity_id AND relation = ANY(@relations) AND subject_id = @subject_id AND subject_relation = ''"),

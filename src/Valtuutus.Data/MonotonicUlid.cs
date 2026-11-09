@@ -32,10 +32,28 @@ public static class MonotonicUlid
     /// Returns a ULID taken at the current time of <paramref name="clock"/>, or just after the last
     /// one generated for <paramref name="clock"/> when that one is not older.
     /// </summary>
-    public static Ulid Next(TimeProvider clock)
+    public static Ulid Next(TimeProvider clock) =>
+        Take(clock, clock.GetUtcNow().ToUnixTimeMilliseconds() << CounterBits);
+
+    /// <summary>
+    /// Returns a ULID greater than <paramref name="floor"/> and than every ULID generated for
+    /// <paramref name="clock"/> so far; ULIDs generated for <paramref name="clock"/> afterwards
+    /// follow it. A writer whose clock is behind a ULID another process already committed takes its
+    /// id from here.
+    /// </summary>
+    public static Ulid NextAfter(TimeProvider clock, Ulid floor)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        floor.TryWriteBytes(bytes);
+        var milliseconds = ((long)BinaryPrimitives.ReadUInt16BigEndian(bytes) << 32)
+                           | BinaryPrimitives.ReadUInt32BigEndian(bytes[2..]);
+        var position = (milliseconds << CounterBits) | BinaryPrimitives.ReadUInt16BigEndian(bytes[6..]);
+        return Take(clock, Math.Max(clock.GetUtcNow().ToUnixTimeMilliseconds() << CounterBits, position + 1));
+    }
+
+    private static Ulid Take(TimeProvider clock, long floor)
     {
         var state = States.GetValue(clock, static _ => new State());
-        var floor = clock.GetUtcNow().ToUnixTimeMilliseconds() << CounterBits;
         long last, next;
         do
         {

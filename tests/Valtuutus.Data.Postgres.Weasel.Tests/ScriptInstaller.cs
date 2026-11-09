@@ -29,7 +29,7 @@ public static class ScriptInstaller
     private static string Rename(string sql, ValtuutusPostgresOptions o)
     {
         sql = Regex.Replace(sql, @"""public""\.|\bpublic\.", $"\"{o.Schema}\".");
-        foreach (var (from, to) in new[] { ("relation_tuples", o.RelationsTableName), ("attributes", o.AttributesTableName), ("transactions", o.TransactionsTableName) })
+        foreach (var (from, to) in new[] { ("relation_tuples", o.RelationsTableName), ("attributes", o.AttributesTableName), ("transactions_pending", $"{o.TransactionsTableName}_pending"), ("transactions", o.TransactionsTableName) })
             sql = Regex.Replace(sql, $@"(?<=\""{Regex.Escape(o.Schema)}\""\.)(""{from}""|{from}\b)", $"\"{to}\"");
         return sql;
     }

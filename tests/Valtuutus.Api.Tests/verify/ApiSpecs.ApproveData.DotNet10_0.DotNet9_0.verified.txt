@@ -26,6 +26,7 @@ namespace Valtuutus.Data
     public static class MonotonicUlid
     {
         public static System.Ulid Next(System.TimeProvider clock) { }
+        public static System.Ulid NextAfter(System.TimeProvider clock, System.Ulid floor) { }
     }
     public abstract class RateLimiterExecuter
     {
