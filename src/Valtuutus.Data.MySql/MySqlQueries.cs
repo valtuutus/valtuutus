@@ -38,8 +38,10 @@ internal sealed record MySqlQueries
 
     public required MySqlStatement GetLatestSnapToken { get; init; }
 
-    // Sets the batch-resolved session variable to the latest token, then returns it. The SET
-    // produces no result set, so the command yields exactly one: one row, the token.
+    // Sets the batch-resolved session variable to the latest token, then returns it. The token is
+    // read with SELECT ... INTO, a consistent read: a SELECT nested in SET is a locking read on
+    // InnoDB, which waits for every open write and deadlocks with writers. SET and SELECT ... INTO
+    // produce no result set, so the command yields exactly one: one row, the token.
     public required MySqlStatement ResolveLatestSnapTokenForBatch { get; init; }
     public required MySqlStatement HasDirectRelation { get; init; }
     public required MySqlStatement HasAnyDirectRelationMany { get; init; }
@@ -148,7 +150,9 @@ internal sealed record MySqlQueries
 
             GetLatestSnapToken = Statement($"SELECT id FROM {tx} ORDER BY id DESC LIMIT 1"),
             ResolveLatestSnapTokenForBatch = Statement($"""
-                SET {BatchResolvedSnapToken} = COALESCE((SELECT id FROM {tx} ORDER BY id DESC LIMIT 1), '{SnapToken.MinValue.Value}');
+                SET {BatchResolvedSnapToken} = NULL;
+                SELECT id INTO {BatchResolvedSnapToken} FROM {tx} ORDER BY id DESC LIMIT 1;
+                SET {BatchResolvedSnapToken} = COALESCE({BatchResolvedSnapToken}, '{SnapToken.MinValue.Value}');
                 SELECT {BatchResolvedSnapToken}
                 """),
             HasDirectRelation = Statement($"SELECT {directExists}"),
