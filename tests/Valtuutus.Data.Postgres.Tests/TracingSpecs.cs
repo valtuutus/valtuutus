@@ -9,8 +9,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.Postgres.Tests;
 
-[Collection("PostgreSqlSpec")]
-public sealed class TracingSpecs : IAsyncLifetime
+public sealed class TracingSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private const string Schema = """
         entity user {}

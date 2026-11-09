@@ -12,7 +12,6 @@
         <PackageReference Include="AwesomeAssertions" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" />
         <PackageReference Include="NSubstitute" />
-        <PackageReference Include="Testcontainers.PostgreSql" />
         <PackageReference Include="xunit" />
         <PackageReference Include="xunit.runner.visualstudio">
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -23,6 +22,7 @@
     <ItemGroup>
         <ProjectReference Include="..\..\src\Valtuutus.Data.Postgres.Weasel\Valtuutus.Data.Postgres.Weasel.csproj" />
         <ProjectReference Include="..\Valtuutus.Tests.Shared\Valtuutus.Tests.Shared.csproj" />
+        <ProjectReference Include="..\Valtuutus.Tests.Containers\Valtuutus.Tests.Containers.csproj" />
     </ItemGroup>
 
 </Project>

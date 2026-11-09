@@ -7,8 +7,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public class TombstoneReaperSpecs : IAsyncLifetime
+public class TombstoneReaperSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     private readonly SqlServerFixture _fixture;
     private ServiceProvider _provider = default!;

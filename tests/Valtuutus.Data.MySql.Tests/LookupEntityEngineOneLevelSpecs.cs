@@ -5,8 +5,7 @@ namespace Valtuutus.Data.MySql.Tests.MySql
 {
     // The shared LookupEntity specs with one hop per query, next to LookupEntityEngineSpecs on the
     // provider default, so both shapes of the walk give the same answers.
-    [Collection("MySqlSpec")]
-    public sealed class LookupEntityEngineOneLevelSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineOneLevelSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MySqlFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 
@@ -19,8 +18,7 @@ namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
     // The shared LookupEntity specs with one hop per query, next to LookupEntityEngineSpecs on the
     // provider default, so both shapes of the walk give the same answers.
-    [Collection("MariaDbSpec")]
-    public sealed class LookupEntityEngineOneLevelSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineOneLevelSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MariaDbFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 

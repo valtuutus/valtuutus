@@ -119,12 +119,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class DeleteFilterMaskSpecs(MySqlFixture fixture) : DeleteFilterMaskSpecsBase(fixture);
+    public sealed class DeleteFilterMaskSpecs(MySqlFixture fixture) : DeleteFilterMaskSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class DeleteFilterMaskSpecs(MariaDbFixture fixture) : DeleteFilterMaskSpecsBase(fixture);
+    public sealed class DeleteFilterMaskSpecs(MariaDbFixture fixture) : DeleteFilterMaskSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

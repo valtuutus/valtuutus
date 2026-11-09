@@ -284,8 +284,6 @@ public abstract class MySqlWeaselSpecs(MySqlWeaselFixtureBase fixture)
     }
 }
 
-[Collection("MySqlWeasel")]
-public sealed class MySqlServerWeaselSpecs(MySqlWeaselFixture fixture) : MySqlWeaselSpecs(fixture);
+public sealed class MySqlServerWeaselSpecs(MySqlWeaselFixture fixture) : MySqlWeaselSpecs(fixture), IClassFixture<MySqlWeaselFixture>;
 
-[Collection("MariaDbWeasel")]
-public sealed class MariaDbServerWeaselSpecs(MariaDbWeaselFixture fixture) : MySqlWeaselSpecs(fixture);
+public sealed class MariaDbServerWeaselSpecs(MariaDbWeaselFixture fixture) : MySqlWeaselSpecs(fixture), IClassFixture<MariaDbWeaselFixture>;

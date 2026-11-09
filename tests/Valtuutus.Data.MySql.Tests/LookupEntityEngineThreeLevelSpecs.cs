@@ -5,8 +5,7 @@ namespace Valtuutus.Data.MySql.Tests.MySql
 {
     // The shared LookupEntity specs with three hops per query, so the deeper level statements stay
     // correct on joined grants, shortcuts and cycles.
-    [Collection("MySqlSpec")]
-    public sealed class LookupEntityEngineThreeLevelSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineThreeLevelSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MySqlFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 
@@ -19,8 +18,7 @@ namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
     // The shared LookupEntity specs with three hops per query, so the deeper level statements stay
     // correct on joined grants, shortcuts and cycles.
-    [Collection("MariaDbSpec")]
-    public sealed class LookupEntityEngineThreeLevelSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineThreeLevelSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MariaDbFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 

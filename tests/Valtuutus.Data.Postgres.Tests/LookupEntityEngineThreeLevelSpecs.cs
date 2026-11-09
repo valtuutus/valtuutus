@@ -5,8 +5,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 
 // The shared LookupEntity specs with three hops per query, so the deeper level statements stay
 // equal to the V1 engine on joined grants, shortcuts and cycles.
-[Collection("PostgreSqlSpec")]
-public sealed class LookupEntityEngineThreeLevelSpecs : BaseLookupEntityEngineSpecs
+public sealed class LookupEntityEngineThreeLevelSpecs : BaseLookupEntityEngineSpecs, IClassFixture<PostgresFixture>
 {
     public LookupEntityEngineThreeLevelSpecs(PostgresFixture fixture) : base(fixture) {}
 

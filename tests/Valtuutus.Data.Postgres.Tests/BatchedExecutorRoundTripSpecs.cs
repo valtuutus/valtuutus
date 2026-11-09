@@ -41,8 +41,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// BatchedPhysicalExecutor takes when a provider has no batch implementation. Same code path,
 /// no internals access required.
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
+public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private const string Schema = """
         entity user {}

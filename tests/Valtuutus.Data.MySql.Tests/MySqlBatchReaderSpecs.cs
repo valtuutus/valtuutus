@@ -259,12 +259,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class MySqlBatchReaderSpecs(MySqlFixture fixture) : MySqlBatchReaderSpecsBase(fixture);
+    public sealed class MySqlBatchReaderSpecs(MySqlFixture fixture) : MySqlBatchReaderSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class MySqlBatchReaderSpecs(MariaDbFixture fixture) : MySqlBatchReaderSpecsBase(fixture);
+    public sealed class MySqlBatchReaderSpecs(MariaDbFixture fixture) : MySqlBatchReaderSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

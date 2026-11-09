@@ -9,8 +9,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerSpec")]
-public sealed class TracingSpecs : IAsyncLifetime
+public sealed class TracingSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     private const string Schema = """
         entity user {}

@@ -196,12 +196,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class DataEngineSpecs(MySqlFixture fixture) : DataEngineSpecsBase(fixture, MySqlServerType.MySql);
+    public sealed class DataEngineSpecs(MySqlFixture fixture) : DataEngineSpecsBase(fixture, MySqlServerType.MySql), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class DataEngineSpecs(MariaDbFixture fixture) : DataEngineSpecsBase(fixture, MySqlServerType.MariaDb);
+    public sealed class DataEngineSpecs(MariaDbFixture fixture) : DataEngineSpecsBase(fixture, MySqlServerType.MariaDb), IClassFixture<MariaDbFixture>;
 }

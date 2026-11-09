@@ -74,12 +74,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class HasAnyOfAttributesRealDbSpecs(MySqlFixture fixture) : HasAnyOfAttributesRealDbSpecsBase(fixture);
+    public sealed class HasAnyOfAttributesRealDbSpecs(MySqlFixture fixture) : HasAnyOfAttributesRealDbSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class HasAnyOfAttributesRealDbSpecs(MariaDbFixture fixture) : HasAnyOfAttributesRealDbSpecsBase(fixture);
+    public sealed class HasAnyOfAttributesRealDbSpecs(MariaDbFixture fixture) : HasAnyOfAttributesRealDbSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

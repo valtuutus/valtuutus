@@ -16,8 +16,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// and the fused TTU leaf (doc.edit_or_own), each tokenless (resolved in the first batch) and with
 /// an explicit token (single-op path).
 /// </summary>
-[Collection("SqlServerSpec")]
-public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime
+public sealed class TwoHopJoinDirectionSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     private const string Schema = """
         entity user {}

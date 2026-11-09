@@ -5,8 +5,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 
 // The shared LookupEntity specs with one hop per query, next to LookupEntityEngineSpecs on the
 // provider default, so both shapes of the walk stay equal to the V1 engine.
-[Collection("PostgreSqlSpec")]
-public sealed class LookupEntityEngineOneLevelSpecs : BaseLookupEntityEngineSpecs
+public sealed class LookupEntityEngineOneLevelSpecs : BaseLookupEntityEngineSpecs, IClassFixture<PostgresFixture>
 {
     public LookupEntityEngineOneLevelSpecs(PostgresFixture fixture) : base(fixture) {}
 

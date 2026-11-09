@@ -2,11 +2,6 @@ using Xunit;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[CollectionDefinition("SqlServerAuthzSpec")]
-public sealed class SqlServerAuthzSpecsFixture : ICollectionFixture<NonDefaultSchemaSqlServerFixture>
-{
-}
-
 /// <summary>
 /// Provisions the Valtuutus tables under a non-default SQL schema ("authz") so every query's
 /// schema qualification is exercised end-to-end.

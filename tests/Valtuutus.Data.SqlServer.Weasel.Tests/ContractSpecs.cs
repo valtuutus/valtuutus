@@ -4,8 +4,7 @@ using Weasel.Core;
 
 namespace Valtuutus.Data.SqlServer.Weasel.Tests;
 
-[Collection("SqlServerWeasel")]
-public sealed class ContractSpecs(SqlServerWeaselFixture fixture)
+public sealed class ContractSpecs(SqlServerWeaselFixture fixture) : IClassFixture<SqlServerWeaselFixture>
 {
     public static TheoryData<string> Names => ["default", "custom"];
 

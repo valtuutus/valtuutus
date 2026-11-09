@@ -41,8 +41,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// BatchedPhysicalExecutor takes when a provider has no batch implementation. Same code path,
 /// no internals access required.
 /// </summary>
-[Collection("SqlServerSpec")]
-public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime
+public sealed class BatchedExecutorRoundTripSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     private const string Schema = """
         entity user {}

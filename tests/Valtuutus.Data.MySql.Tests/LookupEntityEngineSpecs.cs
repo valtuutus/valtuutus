@@ -3,8 +3,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class LookupEntityEngineSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineSpecs(MySqlFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MySqlFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 
@@ -15,8 +14,7 @@ namespace Valtuutus.Data.MySql.Tests.MySql
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class LookupEntityEngineSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture)
+    public sealed class LookupEntityEngineSpecs(MariaDbFixture fixture) : BaseLookupEntityEngineSpecs(fixture), IClassFixture<MariaDbFixture>
     {
         private MySqlFixtureBase Db => (MySqlFixtureBase)Fixture;
 

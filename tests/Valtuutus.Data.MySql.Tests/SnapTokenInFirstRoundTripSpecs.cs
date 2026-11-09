@@ -133,12 +133,10 @@ namespace Valtuutus.Data.MySql.Tests
 
 namespace Valtuutus.Data.MySql.Tests.MySql
 {
-    [Collection("MySqlSpec")]
-    public sealed class SnapTokenInFirstRoundTripSpecs(MySqlFixture fixture) : SnapTokenInFirstRoundTripSpecsBase(fixture);
+    public sealed class SnapTokenInFirstRoundTripSpecs(MySqlFixture fixture) : SnapTokenInFirstRoundTripSpecsBase(fixture), IClassFixture<MySqlFixture>;
 }
 
 namespace Valtuutus.Data.MySql.Tests.MariaDb
 {
-    [Collection("MariaDbSpec")]
-    public sealed class SnapTokenInFirstRoundTripSpecs(MariaDbFixture fixture) : SnapTokenInFirstRoundTripSpecsBase(fixture);
+    public sealed class SnapTokenInFirstRoundTripSpecs(MariaDbFixture fixture) : SnapTokenInFirstRoundTripSpecsBase(fixture), IClassFixture<MariaDbFixture>;
 }

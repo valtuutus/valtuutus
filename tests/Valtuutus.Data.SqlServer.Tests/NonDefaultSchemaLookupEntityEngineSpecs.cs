@@ -4,8 +4,7 @@ using Valtuutus.Tests.Shared;
 
 namespace Valtuutus.Data.SqlServer.Tests;
 
-[Collection("SqlServerAuthzSpec")]
-public sealed class NonDefaultSchemaLookupEntityEngineSpecs : BaseLookupEntityEngineSpecs
+public sealed class NonDefaultSchemaLookupEntityEngineSpecs : BaseLookupEntityEngineSpecs, IClassFixture<NonDefaultSchemaSqlServerFixture>
 {
     public NonDefaultSchemaLookupEntityEngineSpecs(NonDefaultSchemaSqlServerFixture fixture) : base(fixture) { }
 

@@ -25,8 +25,7 @@ namespace Valtuutus.Data.SqlServer.Tests;
 /// batching: false) — HasFusedExpression still lands on the counted reader below as exactly one
 /// call either way, with no need to also stand up a counting batch decorator.
 /// </summary>
-[Collection("SqlServerSpec")]
-public sealed class FusedExpressionRoundTripSpecs : IAsyncLifetime
+public sealed class FusedExpressionRoundTripSpecs : IAsyncLifetime, IClassFixture<SqlServerFixture>
 {
     private const string Schema = """
         entity user {}

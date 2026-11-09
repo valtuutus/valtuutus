@@ -1,31 +1,44 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
-using Testcontainers.MsSql;
+using Valtuutus.Tests.Containers;
 
 namespace Valtuutus.Data.SqlServer.Weasel.Tests;
 
-[CollectionDefinition("SqlServerWeasel")]
-public sealed class SqlServerWeaselCollection : ICollectionFixture<SqlServerWeaselFixture>;
-
 public sealed class SqlServerWeaselFixture : IAsyncLifetime
 {
-    private readonly MsSqlContainer _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU13-ubuntu-22.04")
-        .WithName($"mssql-weasel-tests-{Guid.NewGuid()}")
-        .Build();
+    private readonly List<string> _databases = [];
+    private string _server = default!;
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public async Task InitializeAsync() => _server = await SharedContainers.SqlServerAsync();
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public async Task DisposeAsync()
+    {
+        foreach (var name in _databases)
+        {
+            await using (var pooled = new SqlConnection(ConnectionStringOf(name)))
+                SqlConnection.ClearPool(pooled);
+            await SharedSqlServer.DropDatabaseAsync(_server, name);
+        }
+    }
 
-    /// <summary>Creates an empty database and returns its connection string.</summary>
+    /// <summary>Creates an empty database on the shared server and returns its connection string.</summary>
     public async Task<string> CreateDatabaseAsync(string? collation = null)
     {
-        var name = $"db_{Guid.NewGuid():N}";
-        await using var admin = new SqlConnection(_container.GetConnectionString());
-        await admin.OpenAsync();
-        await ScriptInstaller.Exec(admin, collation is null ? $"CREATE DATABASE [{name}]" : $"CREATE DATABASE [{name}] COLLATE {collation}");
-        return new SqlConnectionStringBuilder(_container.GetConnectionString()) { InitialCatalog = name }.ConnectionString;
+        var name = SharedContainers.NewDatabaseName();
+        await ExecuteOnServerAsync(collation is null ? $"CREATE DATABASE [{name}]" : $"CREATE DATABASE [{name}] COLLATE {collation}");
+        _databases.Add(name);
+        return ConnectionStringOf(name);
     }
+
+    private async Task ExecuteOnServerAsync(string sql)
+    {
+        await using var admin = new SqlConnection(_server);
+        await admin.OpenAsync();
+        await ScriptInstaller.Exec(admin, sql);
+    }
+
+    private string ConnectionStringOf(string database) =>
+        new SqlConnectionStringBuilder(_server) { InitialCatalog = database }.ConnectionString;
 
     public static ServiceProvider BuildServices(string connectionString, ValtuutusSqlServerOptions dbOptions,
         Action<ValtuutusSqlServerWeaselOptions>? configure = null)

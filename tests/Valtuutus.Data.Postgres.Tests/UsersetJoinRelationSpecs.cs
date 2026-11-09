@@ -16,8 +16,7 @@ namespace Valtuutus.Data.Postgres.Tests;
 /// DirectRelationNode with a userset target answered by one UsersetJoinOp round trip instead of
 /// HasDirectRelation-then-GetIndirectRelations-fan-out.
 /// </summary>
-[Collection("PostgreSqlSpec")]
-public sealed class UsersetJoinRelationSpecs : IAsyncLifetime
+public sealed class UsersetJoinRelationSpecs : IAsyncLifetime, IClassFixture<PostgresFixture>
 {
     private const string Schema = """
         entity user {}
