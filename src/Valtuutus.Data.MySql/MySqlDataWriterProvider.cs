@@ -188,8 +188,23 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             on.Add($"r.{column} = f.{column}");
         }
 
-        return $"UPDATE {relationsTable} r JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({string.Join(", ", columns)})) f " +
+        return $"UPDATE {DeleteHint(mask)} {relationsTable} r JOIN JSON_TABLE(@filters, '$[*]' COLUMNS ({string.Join(", ", columns)})) f " +
                $"ON {string.Join(" AND ", on)} SET r.deleted_tx_id = @tx WHERE r.deleted_tx_id IS NULL";
+    }
+
+    // MySQL may scan the whole table instead of seeking an index when an entity's tuples are mostly
+    // tombstones. A scan locks every row it reads, and inside a caller's repeatable-read transaction
+    // it keeps them: deletes of unrelated entities then wait on each other and deadlock. The hint
+    // reads the filters first and seeks the index the shape leads with. An index that doesn't exist
+    // only warns; MariaDB reads the hint as a comment and seeks the index on its own.
+    private static string DeleteHint(int mask)
+    {
+        static bool Has(int mask, params int[] bits) => bits.All(b => (mask & (1 << b)) != 0);
+        const int entityType = 0, entityId = 1, relation = 2, subjectType = 3, subjectId = 4;
+        var index = Has(mask, entityType, entityId) ? " INDEX(r idx_tuples_entity)"
+            : Has(mask, entityType, relation, subjectType, subjectId) ? " INDEX(r idx_tuples_subject)"
+            : "";
+        return $"/*+ JOIN_ORDER(f, r){index} */";
     }
 
     // The text depends only on the row count; every row's created_tx_id is the one @tx. A full chunk's
@@ -539,6 +554,8 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var mySqlTransaction = (MySqlTransaction)transaction;
         var now = _timeProvider.GetUtcNow();
         var (tx, slot) = await Register(ct);
+        // First, so the slot is locked for the rest of the write and the sweeper leaves it alone.
+        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, slot, now, ct);
 
         foreach (var group in filter.Relations.Where(FitsColumns).GroupBy(static f => RelationFilterShape.Of(f)))
         {
@@ -553,7 +570,6 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             await ExecuteDelete(mySqlConnection, mySqlTransaction, statement, tx, filtersJson, ct);
         }
 
-        await InsertTransaction(mySqlConnection, mySqlTransaction, tx, slot, now, ct);
         return new SnapToken(tx);
     }
 
