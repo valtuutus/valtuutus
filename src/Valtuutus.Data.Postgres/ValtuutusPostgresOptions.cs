@@ -5,30 +5,14 @@ namespace Valtuutus.Data.Postgres;
 public record ValtuutusPostgresOptions : IValtuutusDbOptions
 {
     /// <summary>
-    /// Uses the default names: schema "public" and the tables "transactions", "relation_tuples" and "attributes".
+    /// The schema holding the tables.
     /// </summary>
-    public ValtuutusPostgresOptions()
-    {
-    }
+    public string Schema { get; init => field = NotBlank(value, nameof(Schema)); } = "public";
 
-    public ValtuutusPostgresOptions(string schema,
-        string transactionsTableName, 
-        string relationsTableName,
-        string attributesTableName)
-    {
-        if(string.IsNullOrWhiteSpace(schema)) throw new ArgumentNullException(nameof(schema));
-        if(string.IsNullOrWhiteSpace(transactionsTableName)) throw new ArgumentNullException(nameof(transactionsTableName));
-        if(string.IsNullOrWhiteSpace(relationsTableName)) throw new ArgumentNullException(nameof(relationsTableName));
-        if(string.IsNullOrWhiteSpace(attributesTableName)) throw new ArgumentNullException(nameof(attributesTableName));
-        Schema = schema;
-        TransactionsTableName = transactionsTableName;
-        RelationsTableName = relationsTableName;
-        AttributesTableName = attributesTableName;
-    }
-    public string Schema { get; private set; } = "public";
-    public string TransactionsTableName  { get; private set; } = "transactions";
-    public string RelationsTableName  { get; private set; } = "relation_tuples";
-    public string AttributesTableName  { get; private set; } = "attributes";
+    public string TransactionsTableName { get; init => field = NotBlank(value, nameof(TransactionsTableName)); } = "transactions";
+    public string RelationsTableName { get; init => field = NotBlank(value, nameof(RelationsTableName)); } = "relation_tuples";
+    public string AttributesTableName { get; init => field = NotBlank(value, nameof(AttributesTableName)); } = "attributes";
+
     public int MaxAutoPrepare { get; init; } = 64;
     public int AutoPrepareMinUsages { get; init; } = 2;
 
@@ -46,4 +30,7 @@ public record ValtuutusPostgresOptions : IValtuutusDbOptions
     /// pays off when large entities are checked often and their subjects belong to few entities.
     /// </summary>
     public int TwoHopEntityScanLimit { get; init; } = 32;
+
+    private static string NotBlank(string value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentNullException(name) : value;
 }

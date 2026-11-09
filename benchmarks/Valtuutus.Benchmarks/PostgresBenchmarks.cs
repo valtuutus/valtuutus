@@ -38,7 +38,7 @@ public class PostgresBenchmarks : BenchmarkBase
         var (serviceProvider, checkEngine, lookupEntityEngine, lookupSubjectEngine) = await CommonSetup.MigrateAndSeed(
             sc => sc.AddPostgres(_ => DbFactory,
                 int.TryParse(Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_HOPS"), out var hops)
-                    ? new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes") { LookupHopsPerQuery = hops }
+                    ? new ValtuutusPostgresOptions { LookupHopsPerQuery = hops }
                     : null),
             Seeder.Seeder.GenerateData(),
             pgAssembly);

@@ -38,7 +38,7 @@ public class SqlServerBenchmarks : BenchmarkBase
         var (serviceProvider, checkEngine, lookupEntityEngine, lookupSubjectEngine) = await CommonSetup.MigrateAndSeed(
             sc => sc.AddSqlServer(_ => DbFactory,
                 int.TryParse(Environment.GetEnvironmentVariable("VALTUUTUS_LOOKUP_HOPS"), out var hops)
-                    ? new ValtuutusSqlServerOptions("dbo", "transactions", "relation_tuples", "attributes") { LookupHopsPerQuery = hops }
+                    ? new ValtuutusSqlServerOptions { LookupHopsPerQuery = hops }
                     : null),
             Seeder.Seeder.GenerateData(),
             mssqlAssembly);

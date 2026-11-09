@@ -5,31 +5,13 @@ namespace Valtuutus.Data.SqlServer;
 public record ValtuutusSqlServerOptions : IValtuutusDbOptions
 {
     /// <summary>
-    /// Uses the default names: schema "dbo" and the tables "transactions", "relation_tuples" and "attributes".
+    /// The schema holding the tables.
     /// </summary>
-    public ValtuutusSqlServerOptions()
-    {
-    }
+    public string Schema { get; init => field = NotBlank(value, nameof(Schema)); } = "dbo";
 
-    public ValtuutusSqlServerOptions(string schema,
-        string transactionsTableName, 
-        string relationsTableName,
-        string attributesTableName)
-    {
-        if(string.IsNullOrWhiteSpace(schema)) throw new ArgumentNullException(nameof(schema));
-        if(string.IsNullOrWhiteSpace(transactionsTableName)) throw new ArgumentNullException(nameof(transactionsTableName));
-        if(string.IsNullOrWhiteSpace(relationsTableName)) throw new ArgumentNullException(nameof(relationsTableName));
-        if(string.IsNullOrWhiteSpace(attributesTableName)) throw new ArgumentNullException(nameof(attributesTableName));
-        Schema = schema;
-        TransactionsTableName = transactionsTableName;
-        RelationsTableName = relationsTableName;
-        AttributesTableName = attributesTableName;
-    }
-    
-    public string Schema { get; } = "dbo";
-    public string TransactionsTableName { get; } = "transactions";
-    public string RelationsTableName { get; } = "relation_tuples";
-    public string AttributesTableName { get; } = "attributes";
+    public string TransactionsTableName { get; init => field = NotBlank(value, nameof(TransactionsTableName)); } = "transactions";
+    public string RelationsTableName { get; init => field = NotBlank(value, nameof(RelationsTableName)); } = "relation_tuples";
+    public string AttributesTableName { get; init => field = NotBlank(value, nameof(AttributesTableName)); } = "attributes";
 
     /// <summary>
     /// Levels of a userset chain one LookupSubject V2 query reads, and hops of a self-recursive
@@ -46,4 +28,6 @@ public record ValtuutusSqlServerOptions : IValtuutusDbOptions
     /// </summary>
     public int TwoHopEntityScanLimit { get; init; } = 32;
 
-};
+    private static string NotBlank(string value, string name) =>
+        string.IsNullOrWhiteSpace(value) ? throw new ArgumentNullException(name) : value;
+}

@@ -11,7 +11,7 @@ namespace Valtuutus.Data.MySql.Tests
         [Fact]
         public void AddMySql_Should_Register_Options_And_Resolve_Reader()
         {
-            var options = new ValtuutusMySqlOptions(fixture.ServerType, "", "transactions", "relation_tuples", "attributes");
+            var options = new ValtuutusMySqlOptions(fixture.ServerType);
             var services = new ServiceCollection().AddValtuutusCore(TestsConsts.DefaultSchema);
             services.AddMySql(_ => fixture.DbFactory, options);
             using var provider = services.BuildServiceProvider();
@@ -29,6 +29,18 @@ namespace Valtuutus.Data.MySql.Tests
             options.TransactionsTableName.Should().Be("transactions");
             options.RelationsTableName.Should().Be("relation_tuples");
             options.AttributesTableName.Should().Be("attributes");
+        }
+
+        [Theory]
+        [InlineData("")]
+        [InlineData(" ")]
+        public void A_blank_table_name_is_refused(string blank)
+        {
+            var options = new ValtuutusMySqlOptions(fixture.ServerType);
+
+            ((Action)(() => _ = options with { TransactionsTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("TransactionsTableName");
+            ((Action)(() => _ = options with { RelationsTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("RelationsTableName");
+            ((Action)(() => _ = options with { AttributesTableName = blank })).Should().Throw<ArgumentNullException>().WithParameterName("AttributesTableName");
         }
     }
 }

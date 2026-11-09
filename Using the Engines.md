@@ -300,7 +300,7 @@ The number of levels one query reads is `LookupHopsPerQuery` on `ValtuutusPostgr
 ```csharp
 .AddPostgres(
     _ => () => new NpgsqlConnection(connectionString),
-    new ValtuutusPostgresOptions("public", "transactions", "relation_tuples", "attributes")
+    new ValtuutusPostgresOptions
     {
         LookupHopsPerQuery = 4 // default 12; 1 reads one level per round trip
     });

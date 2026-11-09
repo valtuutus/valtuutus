@@ -56,7 +56,10 @@ public abstract class MySqlWeaselFixtureBase : IAsyncLifetime
     public ValtuutusMySqlOptions DefaultNames => new(ServerType);
 
     /// <summary>Custom table names, in the named database.</summary>
-    public ValtuutusMySqlOptions CustomNames(string database) => new(ServerType, database, "my_tx", "my_tuples", "my_attrs");
+    public ValtuutusMySqlOptions CustomNames(string database) => new(ServerType)
+    {
+        Schema = database, TransactionsTableName = "my_tx", RelationsTableName = "my_tuples", AttributesTableName = "my_attrs"
+    };
 }
 
 public sealed class MySqlWeaselFixture : MySqlWeaselFixtureBase
