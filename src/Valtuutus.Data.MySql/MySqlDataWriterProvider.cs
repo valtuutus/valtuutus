@@ -65,6 +65,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
 
     private sealed record WriterCommands
     {
+        public required string WaitUntilSettled { get; init; }
         public required MySqlStatement InsertTransaction { get; init; }
         public required MySqlStatement Register { get; init; }
         public required string InsertRelationsHead { get; init; }
@@ -123,6 +124,16 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
 
         return new WriterCommands
         {
+            // Waits for the slot lock of every older write still open: a write holds its slot row
+            // locked from its first statement until it ends. Then reads the latest settled token.
+            WaitUntilSettled = $"""
+                SET SESSION innodb_lock_wait_timeout = @timeout_s;
+                SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+                START TRANSACTION;
+                SELECT slot FROM {MySqlConnections.Pending(o)} WHERE lower_bound < @snap_token LOCK IN SHARE MODE;
+                COMMIT;
+                {MySqlQueries.Get(o).GetLatestSnapToken.Sql};
+                """,
             // The write frees its slot in its own transaction, first thing, so the slot stays locked
             // for the life of the write and is free exactly when the write commits, whoever commits
             // it.
@@ -611,8 +622,57 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             : $"The {field} of {tuple} is longer than {limit.Characters} characters.");
 
     /// <inheritdoc />
-    public Task NotifyCommitted(SnapToken snapToken)
-        => _options.NotifyDataWritten(_provider, snapToken);
+    public async Task NotifyCommitted(SnapToken snapToken)
+    {
+        await WaitUntilSettled(snapToken);
+        await _options.NotifyDataWritten(_provider, snapToken);
+    }
+
+    // A committed write is visible to requests without a token only once the latest settled token
+    // reaches it, which needs every older write still open to end. Each round waits on the slot locks
+    // of the older writes registered so far, then reads the latest settled token; a write registered
+    // later with an older id (a node whose clock is behind), or one between registering and locking
+    // its slot, is caught by the next round. Past the timeout the write returns anyway, and requests
+    // without a token see it once it settles.
+    private async Task WaitUntilSettled(SnapToken snapToken)
+    {
+        // Real time, like the lock timeouts it pairs with: the injected clock dates writes and may
+        // stand still.
+        var deadline = TimeProvider.System.GetTimestamp() + (long)(_options.SettleTimeout.TotalSeconds * TimeProvider.System.TimestampFrequency);
+        var pause = TimeSpan.FromMilliseconds(1);
+        while (true)
+        {
+            var remaining = deadline - TimeProvider.System.GetTimestamp();
+            if (remaining <= 0) return;
+            // The lock wait timeout is in whole seconds.
+            var remainingSeconds = (int)Math.Clamp(Math.Ceiling((double)remaining / TimeProvider.System.TimestampFrequency), 1, 1073741824);
+
+            string? settled = null;
+            try
+            {
+                await using var connection = await _dataSource.OpenConnectionAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = _c.WaitUntilSettled;
+                command.CommandTimeout = 0;
+                command.Parameters.AddWithValue("@timeout_s", remainingSeconds);
+                command.Parameters.AddWithValue("@snap_token", snapToken.Value);
+                await using var reader = await command.ExecuteReaderAsync();
+                do
+                {
+                    if (reader.GetName(0) == "id" && await reader.ReadAsync() && !reader.IsDBNull(0))
+                        settled = reader.GetString(0);
+                } while (await reader.NextResultAsync());
+            }
+            catch (MySqlException e) when (e.ErrorCode == MySqlErrorCode.LockWaitTimeout)
+            {
+                return;
+            }
+
+            if (settled is not null && string.CompareOrdinal(settled, snapToken.Value) >= 0) return;
+            await Task.Delay(pause);
+            pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, TimeSpan.FromMilliseconds(20).Ticks));
+        }
+    }
 
     private static async Task ExecuteDelete(MySqlConnection connection, MySqlTransaction transaction,
         MySqlStatement statement, string tx, string filtersJson, CancellationToken ct)

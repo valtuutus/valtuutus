@@ -29,13 +29,46 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         _options = options;
         _provider = provider;
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
-        _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions), static key => BuildCommands(key));
+        _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions),
+            key => BuildCommands(key, SqlServerDataReaderProvider.GetQueries(dbOptions).GetLatestSnapToken));
     }
 
-    private static WriterCommands BuildCommands(DbQueryCacheKey key)
+    private static WriterCommands BuildCommands(DbQueryCacheKey key, string latestSettled)
     {
         return new WriterCommands
         {
+            // Frees the slots of writes at or below this one that already ended (their app lock is free:
+            // a write takes it before claiming), such as this write's own when the caller committed it,
+            // so readers needn't wait for a just-claimed slot to age. Then waits, until the deadline,
+            // for the app lock of every older write whose slot is held, and reads the latest settled
+            // token. A slot being claimed or freed is skipped: the caller reads the settled token again
+            // until it reaches the write.
+            WaitUntilSettled = $"""
+                UPDATE s SET lower_bound = NULL
+                FROM [{key.Schema}].[{key.TransactionsTable}_pending] s WITH (READPAST, ROWLOCK)
+                WHERE s.lower_bound <= @snap_token
+                  AND APPLOCK_TEST('public', N'vt_pending_' + s.lower_bound, 'Exclusive', 'Session') = 1
+                OPTION (KEEPFIXED PLAN);
+                DECLARE @deadline datetime2 = DATEADD(millisecond, @timeout_ms, SYSUTCDATETIME());
+                DECLARE @older nchar(26), @resource nvarchar(255), @left int, @granted int;
+                DECLARE older CURSOR LOCAL FAST_FORWARD FOR
+                    SELECT lower_bound FROM [{key.Schema}].[{key.TransactionsTable}_pending] WITH (READCOMMITTEDLOCK, READPAST)
+                    WHERE lower_bound < @snap_token;
+                OPEN older;
+                FETCH NEXT FROM older INTO @older;
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    SET @left = DATEDIFF(millisecond, SYSUTCDATETIME(), @deadline);
+                    IF @left <= 0 BREAK;
+                    SET @resource = N'vt_pending_' + @older;
+                    EXEC @granted = sp_getapplock @Resource = @resource, @LockMode = 'Shared', @LockOwner = 'Session', @LockTimeout = @left;
+                    IF @granted >= 0 EXEC sp_releaseapplock @Resource = @resource, @LockOwner = 'Session';
+                    FETCH NEXT FROM older INTO @older;
+                END
+                CLOSE older;
+                DEALLOCATE older;
+                {latestSettled}
+                """,
             InsertTransaction =
                 $"INSERT INTO [{key.Schema}].[{key.TransactionsTable}] (id, created_at) VALUES (@id, @created_at)",
             // A write frees its slot once it committed; a caller-owned write never does, and the next
@@ -133,6 +166,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         public required string MergeAttributes { get; init; }
         public required string[] DeleteRelations { get; init; }
         public required string DeleteAttributes { get; init; }
+        public required string WaitUntilSettled { get; init; }
     }
 
     public async Task<SnapToken> Write(
@@ -322,8 +356,50 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
     }
 
     /// <inheritdoc />
-    public Task NotifyCommitted(SnapToken snapToken)
-        => _options.NotifyDataWritten(_provider, snapToken);
+    public async Task NotifyCommitted(SnapToken snapToken)
+    {
+        await WaitUntilSettled(snapToken);
+        await _options.NotifyDataWritten(_provider, snapToken);
+    }
+
+    // A committed write is visible to requests without a token only once the latest settled token
+    // reaches it, which needs every older write still open to end. Each round waits on the app locks
+    // of the older writes registered so far, then reads the latest settled token; a write registered
+    // later with an older id (a node whose clock is behind) is caught by the next round. Past the
+    // timeout the write returns anyway, and requests without a token see it once it settles.
+    private async Task WaitUntilSettled(SnapToken snapToken)
+    {
+        // Real time, like the lock timeouts it pairs with: the injected clock dates writes and may
+        // stand still.
+        var deadline = TimeProvider.System.GetTimestamp() + (long)(_options.SettleTimeout.TotalSeconds * TimeProvider.System.TimestampFrequency);
+        var pause = TimeSpan.FromMilliseconds(1);
+        while (true)
+        {
+            var remaining = deadline - TimeProvider.System.GetTimestamp();
+            if (remaining <= 0) return;
+            var remainingMs = (int)Math.Clamp(remaining * 1000.0 / TimeProvider.System.TimestampFrequency, 1, int.MaxValue);
+
+            string? settled = null;
+            await using (var connection = (SqlConnection)_factory())
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = _c.WaitUntilSettled;
+                command.CommandTimeout = 0;
+                command.Parameters.Add(new SqlParameter("@snap_token", SqlDbType.NChar, 26) { Value = snapToken.Value });
+                command.Parameters.Add(new SqlParameter("@timeout_ms", SqlDbType.Int) { Value = remainingMs });
+                await using var reader = await command.ExecuteReaderAsync();
+                do
+                {
+                    if (await reader.ReadAsync() && !reader.IsDBNull(0)) settled = reader.GetString(0);
+                } while (await reader.NextResultAsync());
+            }
+
+            if (settled is not null && string.CompareOrdinal(settled, snapToken.Value) >= 0) return;
+            await Task.Delay(pause);
+            pause = TimeSpan.FromTicks(Math.Min(pause.Ticks * 2, TimeSpan.FromMilliseconds(20).Ticks));
+        }
+    }
 
     private static async Task ExecuteDeleteBatch(SqlConnection connection, SqlTransaction transaction,
         string sql, string snapToken, string filtersJson, CancellationToken ct)
