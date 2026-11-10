@@ -382,21 +382,36 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         var attributesTable = $"[{key.Schema}].[{key.AttributesTable}]";
         var snapPredicate = SnapPredicate;
 
-        // The latest token is the latest settled one: the newest committed id below every write still
-        // in flight, so no write can still commit at or under it. A slot counts while its write's app
-        // lock is held, or while it was just claimed. Slots being claimed or freed are skipped rather
-        // than waited for: a write still claiming validates its id afterwards, and one freeing its
-        // slot already committed. The bound is resolved into a variable first so the token read is a
-        // seek; the slot table's plan is kept as is, since its statistics churn with every write.
-        // Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
-        var pendingBound = $"""
-            DECLARE @Pending nchar(26);
-            SELECT @Pending = MIN(p.lower_bound) FROM [{key.Schema}].[{key.TransactionsTable}_pending] p WITH (READCOMMITTEDLOCK, READPAST)
+        // The latest token is the latest settled one: the newest committed id no write still in flight
+        // can commit at or under. A slot counts while its write's app lock is held, or while it was
+        // just claimed. Its write commits at or above its lower bound, and above the newest id
+        // committed when it claimed the slot: when that id is the higher one, ids up to it
+        // (@Through) are settled, otherwise ids below the lower bound (@Pending). An open write's own
+        // row is above both, so the token read never waits for it. Slots being claimed or freed are
+        // skipped rather than waited for: a write still claiming validates its id afterwards, and
+        // one freeing its slot already committed. The bounds are resolved into variables first so the
+        // token read is a seek; the slot table's plan is kept as is, since its statistics churn with
+        // every write. Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
+        static string PendingBound(DbQueryCacheKey key, string hints) => $"""
+            DECLARE @Pending nchar(26), @Through nchar(26);
+            SELECT @Pending = MIN(CASE WHEN p.newest_committed >= p.lower_bound THEN NULL ELSE p.lower_bound END),
+                   @Through = MIN(CASE WHEN p.newest_committed >= p.lower_bound THEN p.newest_committed END)
+            FROM [{key.Schema}].[{key.TransactionsTable}_pending] p WITH ({hints})
             WHERE p.lower_bound IS NOT NULL
               AND (p.claimed_at > DATEADD(millisecond, -50, SYSUTCDATETIME())
                    OR APPLOCK_TEST('public', N'vt_pending_' + p.lower_bound, 'Exclusive', 'Session') = 0)
             OPTION (KEEPFIXED PLAN);
             SET @Pending = COALESCE(@Pending, CAST(N'8' AS nchar(26)));
+            SET @Through = COALESCE(@Through, CAST(N'8' AS nchar(26)));
+            """;
+        var pendingBound = PendingBound(key, "READCOMMITTEDLOCK, READPAST");
+        // Reads the newest id under whichever bound is lower, each a single range seek.
+        var settled = $"""
+            DECLARE @Settled nchar(26);
+            IF @Through < @Pending
+                SET @Settled = (SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id <= @Through ORDER BY id DESC);
+            ELSE
+                SET @Settled = (SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id < @Pending ORDER BY id DESC);
             """;
 
         return new ReaderQueries
@@ -406,11 +421,18 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
             TwoHopEntityScanLimit = scanLimit,
             GetLatestSnapToken = $"""
                 {pendingBound}
-                SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id < @Pending ORDER BY id DESC;
+                {settled}
+                SELECT id = @Settled WHERE @Settled IS NOT NULL;
+                """,
+            GetLatestSnapTokenAfterClaims = $"""
+                {PendingBound(key, "NOLOCK")}
+                {settled}
+                SELECT id = @Settled WHERE @Settled IS NOT NULL;
                 """,
             ResolveLatestSnapTokenForBatch = $"""
                 {pendingBound}
-                DECLARE @LatestSnapToken nchar(26) = COALESCE((SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WHERE id < @Pending ORDER BY id DESC), '{SnapToken.MinValue.Value}');
+                {settled}
+                DECLARE @LatestSnapToken nchar(26) = COALESCE(@Settled, '{SnapToken.MinValue.Value}');
                 EXEC sp_set_session_context @key = N'{BatchResolvedSnapTokenKey}', @value = @LatestSnapToken;
                 SELECT @LatestSnapToken;
                 """,
@@ -773,6 +795,10 @@ public class SqlServerDataReaderProvider : RateLimiterExecuter, IDataReaderProvi
         public required int TwoHopEntityScanLimit { get; init; }
         public required string AttributesTable { get; init; }
         public required string GetLatestSnapToken { get; init; }
+        // GetLatestSnapToken for a committed write's wait: counts slot claims in progress, read
+        // uncommitted, instead of skipping them, so the wait reads again until they commit. The
+        // slot table is a few reused rows, so the uncommitted read never sees rows move.
+        public required string GetLatestSnapTokenAfterClaims { get; init; }
         // Batch form of GetLatestSnapToken for SqlServerBatchOps: parks the latest token in the
         // session context (read back through DeclareBatchResolvedSnapToken) and returns it.
         public required string ResolveLatestSnapTokenForBatch { get; init; }

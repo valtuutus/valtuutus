@@ -84,7 +84,9 @@ internal static class PostgresSchema
         var t = NewTable(options, options.TransactionsTableName);
         t.AddColumn("id", TxId).AsPrimaryKey();
         t.AddColumn("created_at", "timestamptz").NotNull();
+        t.AddColumn("settled", "boolean").NotNull().DefaultValueByExpression("false");
         t.Indexes.Add(new IndexDefinition("idx_created_at") { Columns = ["created_at"] });
+        t.Indexes.Add(new IndexDefinition("idx_transactions_settled") { Columns = ["id"], Predicate = "settled" });
         return t;
     }
 }

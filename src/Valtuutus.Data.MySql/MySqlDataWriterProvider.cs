@@ -139,19 +139,27 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             // it.
             InsertTransaction = MySqlStatement.Compile(
                 $"UPDATE {MySqlConnections.Pending(o)} SET lower_bound = '~~~~~~~~~~~~~~~~~~~~~~~~~~' WHERE slot = @slot AND lower_bound = @lower_bound; INSERT INTO {tx} (id, created_at) VALUES (@id, @created_at)"),
-            // Claims a free slot, or adds one, in its own committed transaction; read committed takes
-            // no gap locks, so claims don't wait for each other. The newest committed id is read after
+            // Claims a free slot, or adds a free one, in its own committed transaction; read committed
+            // takes no gap locks, so claims don't wait for each other. The slot's bound is the write's
+            // id, or the newest committed id when that is higher: the write then commits above it,
+            // and readers settle up to the bound, so a write that took an older id doesn't take the
+            // settled token back below writes that committed before it claimed. The newest id is read
+            // once the slot row is locked, so a write committing after that read finds the claim in
+            // progress when it waits for older writes. The newest committed id is read again after
             // the claim committed.
             Register = MySqlStatement.Compile($"""
                 SET @valtuutus_slot = NULL;
                 SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
                 START TRANSACTION;
                 SELECT slot INTO @valtuutus_slot FROM {MySqlConnections.Pending(o)} WHERE lower_bound = '~~~~~~~~~~~~~~~~~~~~~~~~~~' LIMIT 1 FOR UPDATE SKIP LOCKED;
-                UPDATE {MySqlConnections.Pending(o)} SET lower_bound = @lower_bound, claimed_at = UTC_TIMESTAMP(6) WHERE slot = @valtuutus_slot;
-                INSERT INTO {MySqlConnections.Pending(o)} (lower_bound, claimed_at) SELECT @lower_bound, UTC_TIMESTAMP(6) FROM DUAL WHERE @valtuutus_slot IS NULL;
+                INSERT INTO {MySqlConnections.Pending(o)} (lower_bound, claimed_at) SELECT '~~~~~~~~~~~~~~~~~~~~~~~~~~', UTC_TIMESTAMP(6) FROM DUAL WHERE @valtuutus_slot IS NULL;
                 SET @valtuutus_slot = COALESCE(@valtuutus_slot, LAST_INSERT_ID());
+                SET @valtuutus_bound = NULL;
+                SELECT id INTO @valtuutus_bound FROM {tx} ORDER BY id DESC LIMIT 1;
+                SET @valtuutus_bound = IF(@valtuutus_bound IS NULL OR @valtuutus_bound < @lower_bound, @lower_bound, @valtuutus_bound);
+                UPDATE {MySqlConnections.Pending(o)} SET lower_bound = @valtuutus_bound, claimed_at = UTC_TIMESTAMP(6) WHERE slot = @valtuutus_slot;
                 COMMIT;
-                SELECT @valtuutus_slot, (SELECT id FROM {tx} ORDER BY id DESC LIMIT 1);
+                SELECT @valtuutus_slot, (SELECT id FROM {tx} ORDER BY id DESC LIMIT 1), CAST(@valtuutus_bound AS CHAR(26));
                 """),
             InsertRelationsHead = insertRelationsHead,
             InsertRelationsFull = BuildInsert(insertRelationsHead, RelationColumnCount, RowsPerInsert),
@@ -465,6 +473,7 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
         var lowerBound = MonotonicUlid.Next(_timeProvider);
         long slot;
         string? newest;
+        string bound;
         // The shared data source allows the user variable the claim parks the slot in.
         await using (var side = await _dataSource.OpenConnectionAsync(ct))
         {
@@ -474,16 +483,17 @@ public class MySqlDataWriterProvider : IDbDataWriterProvider
             await using var reader = await register.ExecuteReaderAsync(ct);
             do
             {
-                if (reader.FieldCount == 2 && await reader.ReadAsync(ct)) break;
+                if (reader.FieldCount == 3 && await reader.ReadAsync(ct)) break;
             } while (await reader.NextResultAsync(ct));
             slot = Convert.ToInt64(reader.GetValue(0));
             newest = reader.IsDBNull(1) ? null : reader.GetString(1);
+            bound = reader.GetString(2);
         }
 
         var id = newest is not null && string.CompareOrdinal(newest, lowerBound.ToString()) >= 0
             ? MonotonicUlid.NextAfter(_timeProvider, Ulid.Parse(newest))
             : lowerBound;
-        return (id.ToString(), new Slot(slot, lowerBound.ToString()));
+        return (id.ToString(), new Slot(slot, bound));
     }
 
     private readonly record struct Slot(long Number, string LowerBound);
