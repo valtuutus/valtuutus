@@ -38,11 +38,12 @@ internal sealed record MySqlQueries
 
     public required MySqlStatement GetLatestSnapToken { get; init; }
 
-    // The latest token is the latest settled one: the newest committed id below every write still
-    // in flight, so no write can still commit at or under it. Every ULID starts with a digit below
-    // 8, so '8' stands for "no write in flight".
+    // The latest token is the latest settled one: the newest committed id no write still in flight
+    // can commit at or under. A slot's bound is either its write's id, which isn't committed while
+    // the slot holds it, or a committed id its write commits above, so ids up to the lowest bound
+    // are settled. Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
     private static string SettledBound(ValtuutusMySqlOptions o) =>
-        $"id < COALESCE((SELECT MIN(lower_bound) FROM {MySqlConnections.Pending(o)}), '8')";
+        $"id <= COALESCE((SELECT MIN(lower_bound) FROM {MySqlConnections.Pending(o)}), '8')";
 
     // Sets the batch-resolved session variable to the latest token, then returns it. The token is
     // read with SELECT ... INTO, a consistent read: a SELECT nested in SET is a locking read on

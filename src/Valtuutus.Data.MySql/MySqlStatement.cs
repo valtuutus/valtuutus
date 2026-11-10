@@ -20,7 +20,7 @@ internal sealed class MySqlStatement
 
     // Session variables a statement may read: they are assigned on the server, not bound.
     private static readonly HashSet<string> SessionVariables =
-        new([MySqlQueries.BatchResolvedSnapToken[1..], "valtuutus_slot"], StringComparer.OrdinalIgnoreCase);
+        new([MySqlQueries.BatchResolvedSnapToken[1..], "valtuutus_slot", "valtuutus_bound"], StringComparer.OrdinalIgnoreCase);
 
     // Each distinct parameter name, in order of first appearance.
     private readonly string[] _names;

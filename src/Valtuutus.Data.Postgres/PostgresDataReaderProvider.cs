@@ -459,6 +459,11 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
         // as in flight without asking for its transaction's status; past it, only while its
         // transaction is in progress, so a write that rolled back or died stops holding readers back.
         // Every ULID starts with a digit below 8, so '8' stands for "no write in flight".
+        // A write marked settled stays settled: every write still open when it was marked had a
+        // higher lower bound, and every write registering later takes an id above it. So a write
+        // that took an older id but registered after a newer one was marked doesn't take the token
+        // back below that newer one. The mark is only read when a write in flight holds the newest
+        // id back.
         var settled = $"""
             SELECT id FROM {key.Schema}.{key.TransactionsTable}
             WHERE id < COALESCE((
@@ -466,6 +471,7 @@ public class PostgresDataReaderProvider : RateLimiterExecuter, IDataReaderProvid
                 WHERE p.registered_at > clock_timestamp() - interval '100 milliseconds'
                    OR pg_xact_status(p.xid) = 'in progress'
                 ORDER BY p.lower_bound LIMIT 1), '8')
+               OR id <= (SELECT s.id FROM {key.Schema}.{key.TransactionsTable} s WHERE s.settled ORDER BY s.id DESC LIMIT 1)
             ORDER BY id DESC LIMIT 1
             """;
 
