@@ -127,6 +127,22 @@ public abstract class BaseDbSettledSnapTokenSpecs : IAsyncLifetime
         (await AliceCanDelete(provider, revoked)).Allowed.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task An_open_write_with_an_older_id_does_not_hide_a_committed_write()
+    {
+        await using var provider = BuildProvider();
+        var committed = await provider.GetRequiredService<IDataWriterProvider>().Write([AliceOwnsPublic], [], default);
+        await using var behind = BuildProvider(new FakeTimeProvider(DateTimeOffset.UtcNow.AddHours(-1)));
+        await using var connection = await OpenConnection();
+        await using var open = await connection.BeginTransactionAsync();
+        await behind.GetRequiredService<IDbDataWriterProvider>().Write(connection, open, [BobOwnsPrivate], [], default);
+
+        var read = await AliceCanDelete(provider, snapToken: null);
+
+        read.Allowed.Should().BeTrue("the write at {0} committed before the open write registered", committed.Value);
+        string.CompareOrdinal(read.SnapToken!.Value.Value, committed.Value).Should().BeGreaterThanOrEqualTo(0);
+    }
+
     // A write committed in the caller's own transaction and never announced returns without waiting
     // for the older write the spec keeps open.
     private async Task<SnapToken> WriteUnannounced(IDbDataWriterProvider writer, RelationTuple[] relations)

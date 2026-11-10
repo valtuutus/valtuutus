@@ -30,7 +30,7 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
         _provider = provider;
         _timeProvider = provider.GetService<TimeProvider>() ?? TimeProvider.System;
         _c = CommandCache.GetOrAdd(DbQueryCacheKey.From(dbOptions),
-            key => BuildCommands(key, SqlServerDataReaderProvider.GetQueries(dbOptions).GetLatestSnapToken));
+            key => BuildCommands(key, SqlServerDataReaderProvider.GetQueries(dbOptions).GetLatestSnapTokenAfterClaims));
     }
 
     private static WriterCommands BuildCommands(DbQueryCacheKey key, string latestSettled)
@@ -41,7 +41,9 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
             // a write takes it before claiming), such as this write's own when the caller committed it,
             // so readers needn't wait for a just-claimed slot to age. Then waits, until the deadline,
             // for the app lock of every older write whose slot is held, and reads the latest settled
-            // token. A slot being claimed or freed is skipped: the caller reads the settled token again
+            // token counting the claims still in progress: a write that claimed its slot after this
+            // write committed records an id at or above it, and one claiming when it committed holds
+            // the token below it until its claim commits. The caller reads the settled token again
             // until it reaches the write.
             WaitUntilSettled = $"""
                 UPDATE s SET lower_bound = NULL
@@ -74,12 +76,18 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
             // A write frees its slot once it committed; a caller-owned write never does, and the next
             // claim reuses its slot once its lock is free.
             ReleaseSlot = $"UPDATE [{key.Schema}].[{key.TransactionsTable}_pending] SET lower_bound = NULL WHERE slot = @slot AND lower_bound = @lower_bound OPTION (KEEPFIXED PLAN)",
-            // Claims a free slot, or one whose write ended (its lock is free), or adds one, each in
-            // its own committed statement, then reads the newest committed id: the write's lock was
-            // taken before, so a reader that saw the slot unheld settled no higher than this.
+            // Claims a free slot, or one whose write ended (its lock is free), or adds one, then
+            // records the newest committed id while the slot row is still locked, and commits. The
+            // write commits above that id, so readers settle up to it, and a write that took an older
+            // id doesn't take the settled token back below writes that committed before it claimed.
+            // A write committing after that read finds the claim in progress when it waits for older
+            // writes. Then reads the newest committed id again: the write's lock was taken before, so
+            // a reader that saw the slot unheld settled no higher than this.
             Register = $"""
+                SET XACT_ABORT ON;
                 DECLARE @claimed TABLE (slot int);
-                UPDATE TOP (1) s SET lower_bound = @lower_bound, claimed_at = SYSUTCDATETIME()
+                BEGIN TRANSACTION;
+                UPDATE TOP (1) s SET lower_bound = @lower_bound, claimed_at = SYSUTCDATETIME(), newest_committed = NULL
                 OUTPUT inserted.slot INTO @claimed
                 FROM [{key.Schema}].[{key.TransactionsTable}_pending] s WITH (READPAST, ROWLOCK)
                 WHERE s.lower_bound IS NULL
@@ -87,6 +95,10 @@ public class SqlServerDataWriterProvider : IDbDataWriterProvider
                 OPTION (KEEPFIXED PLAN);
                 IF NOT EXISTS (SELECT 1 FROM @claimed)
                     INSERT INTO [{key.Schema}].[{key.TransactionsTable}_pending] (lower_bound, claimed_at) OUTPUT inserted.slot INTO @claimed VALUES (@lower_bound, SYSUTCDATETIME());
+                UPDATE [{key.Schema}].[{key.TransactionsTable}_pending]
+                SET newest_committed = (SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WITH (READCOMMITTEDLOCK, READPAST) ORDER BY id DESC)
+                WHERE slot = (SELECT slot FROM @claimed);
+                COMMIT TRANSACTION;
                 SELECT slot FROM @claimed;
                 SELECT TOP 1 id FROM [{key.Schema}].[{key.TransactionsTable}] WITH (READCOMMITTEDLOCK, READPAST) ORDER BY id DESC;
                 """,

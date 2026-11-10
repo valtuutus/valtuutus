@@ -71,6 +71,7 @@ internal static class SqlServerSchema
         t.AddColumn("slot", "int").AsPrimaryKey().AutoIncrement();
         t.AddColumn("lower_bound", TxId).AllowNulls();
         t.AddColumn("claimed_at", "datetime2(7)").AllowNulls();
+        t.AddColumn("newest_committed", TxId).AllowNulls();
         return t;
     }
 

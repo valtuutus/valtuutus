@@ -28,7 +28,7 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
         public required string Settle { get; init; }
         public required string Renumber { get; init; }
         public required string WaitForOlderWrites { get; init; }
-        public required string LatestSettled { get; init; }
+        public required string MarkSettled { get; init; }
     }
 
     private static readonly ConcurrentDictionary<DbQueryCacheKey, WriterCommands> CommandCache = new();
@@ -68,7 +68,14 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
             FROM {PostgresPendingRegistrar.PendingTable(key)} p
             WHERE p.lower_bound < @snap_token AND pg_xact_status(p.xid) = 'in progress'
             """,
-        LatestSettled = latestSettled,
+        // Reads the latest settled token and, once it reaches the write, marks the write settled.
+        MarkSettled = $"""
+            WITH latest AS ({latestSettled}),
+            marked AS (
+                UPDATE {key.Schema}.{key.TransactionsTable} SET settled = true
+                WHERE id = @snap_token AND id <= (SELECT id FROM latest))
+            SELECT id FROM latest
+            """,
         Settle = $"DELETE FROM {PostgresPendingRegistrar.PendingTable(key)} WHERE lower_bound = @lower_bound",
         Renumber = $"""
             UPDATE {key.Schema}.{key.TransactionsTable} SET id = @renumbered WHERE id = @id;
@@ -417,7 +424,8 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
 
     // A committed write is visible to requests without a token only once the latest settled token
     // reaches it, which needs every older write still open to end. Each round waits on the locks of
-    // the older writes registered so far, then reads the latest settled token; a write registered
+    // the older writes registered so far, then reads the latest settled token, marking the write
+    // settled once the token reaches it so later reads never settle below it; a write registered
     // later with an older id (a node whose clock is behind) is caught by the next round. Past the
     // timeout the write returns anyway, and requests without a token see it once it settles.
     private async Task WaitUntilSettled(SnapToken snapToken)
@@ -439,11 +447,16 @@ public class PostgresDataWriterProvider : IDbDataWriterProvider
                 await using var batch = connection.CreateBatch();
                 batch.BatchCommands.Add(new NpgsqlBatchCommand("BEGIN"));
                 batch.BatchCommands.Add(new NpgsqlBatchCommand($"SET LOCAL lock_timeout = {remainingMs}"));
+                // A crash that loses the mark only leaves reads where they were before it, so the
+                // mark needn't wait for the flush to disk.
+                batch.BatchCommands.Add(new NpgsqlBatchCommand("SET LOCAL synchronous_commit = off"));
                 var wait = new NpgsqlBatchCommand(_c.WaitForOlderWrites);
                 wait.Parameters.Add(new NpgsqlParameter<string>("snap_token", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken.Value });
                 batch.BatchCommands.Add(wait);
+                var mark = new NpgsqlBatchCommand(_c.MarkSettled);
+                mark.Parameters.Add(new NpgsqlParameter<string>("snap_token", NpgsqlDbType.Char) { Size = 26, TypedValue = snapToken.Value });
+                batch.BatchCommands.Add(mark);
                 batch.BatchCommands.Add(new NpgsqlBatchCommand("COMMIT"));
-                batch.BatchCommands.Add(new NpgsqlBatchCommand(_c.LatestSettled));
                 await using var reader = await batch.ExecuteReaderAsync();
                 do
                 {
